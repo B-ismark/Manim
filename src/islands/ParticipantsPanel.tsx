@@ -22,8 +22,11 @@ import { CheckIcon, CopyIcon, HandIcon, LeaveIcon, MicIcon, MicOffIcon, MoreIcon
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { moderate } from '@/lib/orchestrator'
+import { ringUser } from '@/features/calls/calls'
+import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
 
 function displayName(p: Participant): string {
@@ -37,6 +40,9 @@ export function ParticipantsPanel() {
   const room = useRoomContext()
   const { copied, copy } = useCopyLink()
   const [email, setEmail] = useState('')
+  const [callMsg, setCallMsg] = useState<string | null>(null)
+  const signedIn = useAuthStore((s) => s.signedIn)
+  const canRing = authEnabled && signedIn
 
   const isHost = useMemo(() => {
     try {
@@ -54,6 +60,14 @@ export function ParticipantsPanel() {
     const body = encodeURIComponent(`Join my call:\n\n${window.location.href}`)
     window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`, '_blank')
     setEmail('')
+  }
+
+  async function ring() {
+    if (!email.trim()) return
+    setCallMsg('Ringing…')
+    const err = await ringUser(email, room.name, localParticipant.name || 'Someone')
+    setCallMsg(err ?? `Ringing ${email}…`)
+    if (!err) setEmail('')
   }
 
   return (
@@ -74,10 +88,16 @@ export function ParticipantsPanel() {
             autoComplete="off"
             className="h-9 min-w-0 flex-1 rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
+          {canRing && (
+            <Button type="button" variant="neutral" size="sm" disabled={!email.trim()} onClick={ring}>
+              Call
+            </Button>
+          )}
           <Button type="submit" variant="accent" size="sm" disabled={!email.trim()}>
             Invite
           </Button>
         </form>
+        {callMsg && <p className="mt-1 text-xs text-ink-muted">{callMsg}</p>}
 
         <p className="mt-3 text-xs font-medium text-ink-subtle">{participants.length} in call</p>
       </div>
