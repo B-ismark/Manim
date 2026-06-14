@@ -1,14 +1,16 @@
-import { lazy, Suspense } from 'react'
-import { RoomAudioRenderer } from '@livekit/components-react'
+import { lazy, Suspense, useEffect } from 'react'
+import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react'
 import { Stage } from '@/islands/Stage'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
+import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/cn'
 
 // The chat/participants panel is only needed once opened — defer its chunk.
@@ -20,8 +22,17 @@ const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ defaul
  * desktop (STYLE.md §4).
  */
 export function RoomView({ onLeave }: { onLeave: () => void }) {
+  const room = useRoomContext()
+  const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   const blur = useBackgroundBlur()
+
+  // Activate end-to-end encryption when a passphrase was set at prejoin. The key
+  // is already configured on the room's keyProvider (see roomOptions).
+  useEffect(() => {
+    if (e2eePassphrase) void room.setE2EEEnabled(true).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const {
     isHost,
     locked,
@@ -39,6 +50,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   return (
     <>
       <RoomAudioRenderer />
+      <ConnectionBanner />
 
       {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
       <WaitingRoomBanner active={isHost && waiting} />

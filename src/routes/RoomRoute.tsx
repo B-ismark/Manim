@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { LiveKitRoom } from '@livekit/components-react'
 import { Island, Button } from '@/components/primitives'
@@ -21,6 +21,12 @@ export function RoomRoute() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [waitingId, setWaitingId] = useState<string | null>(null)
+
+  // Build once per (bandwidth, passphrase) so the E2EE worker isn't recreated.
+  const options = useMemo(
+    () => roomOptions(prejoin.lowBandwidth, prejoin.e2ee),
+    [prejoin.lowBandwidth, prejoin.e2ee],
+  )
 
   const handleJoin = useCallback(async () => {
     setError(null)
@@ -99,7 +105,7 @@ export function RoomRoute() {
         connect
         audio={prejoin.micEnabled}
         video={prejoin.cameraEnabled && !prejoin.lowBandwidth}
-        options={roomOptions(prejoin.lowBandwidth)}
+        options={options}
         onDisconnected={leave}
         onError={(e) => {
           setError(e.message)
