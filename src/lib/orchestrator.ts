@@ -123,3 +123,22 @@ export async function sendEmailInvite(to: string, room: string, link: string, fr
 }
 
 export const LIVEKIT_URL: string = import.meta.env.VITE_LIVEKIT_URL ?? ''
+
+export interface ServerHealth {
+  ok: boolean
+  /** LiveKit API key + secret present on the Worker (calls can mint tokens). */
+  hasKeys: boolean
+  /** RESEND_API_KEY present (real email invites; else mailto fallback). */
+  email: boolean
+}
+
+/** Probe server-side capabilities for the setup-status surface. Never throws. */
+export async function getHealth(): Promise<ServerHealth> {
+  try {
+    const res = await fetch('/api/health')
+    if (!res.ok) return { ok: false, hasKeys: false, email: false }
+    return (await res.json()) as ServerHealth
+  } catch {
+    return { ok: false, hasKeys: false, email: false }
+  }
+}

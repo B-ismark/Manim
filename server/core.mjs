@@ -76,7 +76,16 @@ async function ensureHost(roomService, room, caller) {
 
 export function handleHealth(env) {
   const { apiKey, apiSecret } = services(env)
-  return { status: 200, body: { ok: true, hasKeys: Boolean(apiKey && apiSecret) } }
+  // Server-side capability report for the client's setup-status surface. Only
+  // booleans — never echo the actual keys.
+  return {
+    status: 200,
+    body: {
+      ok: true,
+      hasKeys: Boolean(apiKey && apiSecret),
+      email: Boolean(env.RESEND_API_KEY),
+    },
+  }
 }
 
 export async function handleKnock(env, body) {
