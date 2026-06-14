@@ -123,6 +123,24 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
             label="Low-bandwidth mode (audio-first)"
           />
 
+          <details className="rounded-field bg-sunken px-3 py-2">
+            <summary className="cursor-pointer select-none text-sm text-ink-muted">
+              End-to-end encryption
+            </summary>
+            <input
+              type="password"
+              value={prejoin.e2ee ?? ''}
+              onChange={(e) => setPrejoin({ e2ee: e.target.value })}
+              placeholder="Shared passphrase (optional)"
+              aria-label="End-to-end encryption passphrase"
+              autoComplete="off"
+              className="mt-2 h-10 w-full rounded-field bg-surface px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <p className="mt-1.5 text-xs text-ink-subtle">
+              Everyone must enter the same passphrase to see and hear each other.
+            </p>
+          </details>
+
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={onJoin}>
             Join now
           </Button>
