@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, IconButton } from '@/components/primitives'
 import { SettingsIcon } from '@/components/icons'
 import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
+import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 
@@ -32,16 +33,21 @@ export function Landing() {
     <main className="min-h-dvh flex flex-col items-center justify-center gap-6 p-4">
       <header className="absolute inset-x-4 top-4 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
-        <Popover
-          side="bottom"
-          align="end"
-          trigger={<IconButton label="Appearance" icon={<SettingsIcon />} tone="neutral" />}
-        >
-          <div className="p-2 w-64">
-            <ThemeSwitcher />
-          </div>
-        </Popover>
+        <div className="flex items-center gap-2">
+          <SetupStatusButton />
+          <Popover
+            side="bottom"
+            align="end"
+            trigger={<IconButton label="Appearance" icon={<SettingsIcon />} tone="neutral" />}
+          >
+            <div className="p-2 w-64">
+              <ThemeSwitcher />
+            </div>
+          </Popover>
+        </div>
       </header>
+
+      <SetupBanner />
 
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink font-bold">
