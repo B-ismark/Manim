@@ -238,6 +238,43 @@ app.post('/api/roomflags', async (req, res) => {
   }
 })
 
+/**
+ * Real email invite via Resend (free tier). Returns 501 when no RESEND_API_KEY
+ * is set so the client can fall back to a mailto: link.
+ */
+app.post('/api/email-invite', async (req, res) => {
+  try {
+    const { to, room, link, fromName } = req.body ?? {}
+    if (!to || !link) return res.status(400).json({ error: 'to and link required' })
+    const key = process.env.RESEND_API_KEY
+    if (!key) return res.status(501).json({ error: 'email not configured' })
+
+    const from = process.env.RESEND_FROM || 'Manim <onboarding@resend.dev>'
+    const who = fromName || 'Someone'
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: `${who} invited you to a Manim call`,
+        html: `<p>${who} invited you to join a Manim call${room ? ` (room <b>${room}</b>)` : ''}.</p>
+               <p><a href="${link}">Join the call</a></p>
+               <p style="color:#888">${link}</p>`,
+      }),
+    })
+    if (!r.ok) {
+      const detail = await r.text().catch(() => '')
+      console.error('resend error', r.status, detail)
+      return res.status(502).json({ error: 'email send failed' })
+    }
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('email-invite error', err)
+    res.status(500).json({ error: 'email send failed' })
+  }
+})
+
 app.listen(PORT, () => {
   const keys = API_KEY && API_SECRET ? 'keys loaded' : 'NO KEYS (set .env)'
   console.log(`[token] http://localhost:${PORT}  (${keys})`)

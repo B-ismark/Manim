@@ -24,7 +24,7 @@ import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCopyLink } from '@/lib/useCopyLink'
-import { moderate } from '@/lib/orchestrator'
+import { moderate, sendEmailInvite } from '@/lib/orchestrator'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
@@ -52,13 +52,26 @@ export function ParticipantsPanel() {
     }
   }, [localParticipant.metadata])
 
-  function emailInvite(e: FormEvent) {
-    e.preventDefault()
-    const to = email.trim()
-    if (!to) return
+  function openMailto(to: string) {
     const subject = encodeURIComponent("You're invited to a Manim call")
     const body = encodeURIComponent(`Join my call:\n\n${window.location.href}`)
     window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`, '_blank')
+  }
+
+  async function emailInvite(e: FormEvent) {
+    e.preventDefault()
+    const to = email.trim()
+    if (!to) return
+    const who = localParticipant.name || 'Someone'
+    try {
+      // Try a real email first; fall back to the user's mail client if the
+      // server has no email provider configured.
+      const sent = await sendEmailInvite(to, room.name, window.location.href, who)
+      if (!sent) openMailto(to)
+      setCallMsg(sent ? `Invite emailed to ${to}` : null)
+    } catch {
+      openMailto(to)
+    }
     setEmail('')
   }
 

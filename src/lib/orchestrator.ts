@@ -107,4 +107,19 @@ export function setRoomFlags(req: RoomFlagsRequest): Promise<void> {
   return postJson<{ ok: boolean }>('/api/roomflags', req).then(() => undefined)
 }
 
+/**
+ * Send a real email invite (Resend). Resolves true if sent; false when the
+ * server has no email provider configured (caller should fall back to mailto).
+ */
+export async function sendEmailInvite(to: string, room: string, link: string, fromName: string): Promise<boolean> {
+  const res = await fetch('/api/email-invite', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ to, room, link, fromName }),
+  })
+  if (res.status === 501) return false // not configured → caller uses mailto
+  if (!res.ok) throw new Error('Email send failed')
+  return true
+}
+
 export const LIVEKIT_URL: string = import.meta.env.VITE_LIVEKIT_URL ?? ''
