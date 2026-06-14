@@ -18,7 +18,12 @@ export interface FloatingReaction {
   key: string
   emoji: string
   fromName: string
+  /** Horizontal offset (px) from center — round-robin lanes so they don't overlap. */
+  offset: number
 }
+
+const LANES = 7
+const LANE_SPACING = 46
 
 function displayName(identity: string, name?: string): string {
   return name || identity.split('#')[0] || 'Guest'
@@ -38,8 +43,11 @@ export function useReactions() {
   const timers = useRef<number[]>([])
 
   const push = useCallback((emoji: string, fromName: string) => {
-    const key = `r-${counter.current++}`
-    setActive((prev) => [...prev, { key, emoji, fromName }])
+    const n = counter.current++
+    const key = `r-${n}`
+    // Cycle through fixed lanes so simultaneous reactions spread out.
+    const offset = ((n % LANES) - (LANES - 1) / 2) * LANE_SPACING
+    setActive((prev) => [...prev, { key, emoji, fromName, offset }])
     const t = window.setTimeout(() => {
       setActive((prev) => prev.filter((r) => r.key !== key))
     }, REACTION_TTL)
