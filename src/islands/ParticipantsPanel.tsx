@@ -41,6 +41,11 @@ export function ParticipantsPanel() {
   const { copied, copy } = useCopyLink()
   const [email, setEmail] = useState('')
   const [callMsg, setCallMsg] = useState<string | null>(null)
+  // Set when the server couldn't send (not configured, or provider rejected the
+  // recipient). We render a real mailto link the user can click — a programmatic
+  // window.open after an await is killed by popup blockers, so a click is the
+  // only reliable fallback.
+  const [mailto, setMailto] = useState<{ href: string; to: string } | null>(null)
   const signedIn = useAuthStore((s) => s.signedIn)
   const canRing = authEnabled && signedIn
 
@@ -52,27 +57,39 @@ export function ParticipantsPanel() {
     }
   }, [localParticipant.metadata])
 
-  function openMailto(to: string) {
+  function mailtoHref(to: string): string {
     const subject = encodeURIComponent("You're invited to a Manim call")
     const body = encodeURIComponent(`Join my call:\n\n${window.location.href}`)
-    window.open(`mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`, '_blank')
+    return `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`
+  }
+
+  /** Fall back to the user's mail client: best-effort auto-open + a click target. */
+  function fallbackToMailto(to: string) {
+    const href = mailtoHref(to)
+    setMailto({ href, to })
+    setCallMsg(null)
+    window.open(href, '_blank') // best effort; popup blockers may ignore it
   }
 
   async function emailInvite(e: FormEvent) {
     e.preventDefault()
     const to = email.trim()
     if (!to) return
+    setMailto(null)
     const who = localParticipant.name || 'Someone'
     try {
-      // Try a real email first; fall back to the user's mail client if the
-      // server has no email provider configured.
+      // Try a real email first; fall back to the mail client if the server has
+      // no provider configured or the provider rejects the recipient.
       const sent = await sendEmailInvite(to, room.name, window.location.href, who)
-      if (!sent) openMailto(to)
-      setCallMsg(sent ? `Invite emailed to ${to}` : null)
+      if (sent) {
+        setCallMsg(`Invite emailed to ${to}`)
+        setEmail('')
+      } else {
+        fallbackToMailto(to)
+      }
     } catch {
-      openMailto(to)
+      fallbackToMailto(to)
     }
-    setEmail('')
   }
 
   async function ring() {
@@ -111,6 +128,21 @@ export function ParticipantsPanel() {
           </Button>
         </form>
         {callMsg && <p className="mt-1 text-xs text-ink-muted">{callMsg}</p>}
+        {mailto && (
+          <p className="mt-1 text-xs text-ink-muted">
+            Couldn’t email automatically.{' '}
+            <a
+              href={mailto.href}
+              className="font-medium text-accent underline underline-offset-2 hover:text-accent-hover"
+              onClick={() => {
+                setMailto(null)
+                setEmail('')
+              }}
+            >
+              Open mail app to invite {mailto.to}
+            </a>
+          </p>
+        )}
 
         <p className="mt-3 text-xs font-medium text-ink-subtle">{participants.length} in call</p>
       </div>

@@ -108,8 +108,10 @@ export function setRoomFlags(req: RoomFlagsRequest): Promise<void> {
 }
 
 /**
- * Send a real email invite (Resend). Resolves true if sent; false when the
- * server has no email provider configured (caller should fall back to mailto).
+ * Send a real email invite (Resend). Resolves true if sent; false on ANY
+ * failure — not configured (501) OR the provider rejected it (502, e.g. an
+ * unverified sandbox recipient). Either way the caller falls back to mailto, so
+ * an invite never silently drops. Only a network error rejects the promise.
  */
 export async function sendEmailInvite(to: string, room: string, link: string, fromName: string): Promise<boolean> {
   const res = await fetch('/api/email-invite', {
@@ -117,9 +119,7 @@ export async function sendEmailInvite(to: string, room: string, link: string, fr
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ to, room, link, fromName }),
   })
-  if (res.status === 501) return false // not configured → caller uses mailto
-  if (!res.ok) throw new Error('Email send failed')
-  return true
+  return res.ok
 }
 
 export const LIVEKIT_URL: string = import.meta.env.VITE_LIVEKIT_URL ?? ''
