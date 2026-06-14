@@ -1,0 +1,166 @@
+@import 'tailwindcss';
+
+/*
+  ───────────────────────────────────────────────────────────────────────────
+  VEIL DESIGN TOKENS  —  single source of truth for all UI.
+  See STYLE.md for the rules. NEVER hardcode color/radius/shadow in components.
+
+  How theming works (Slack model):
+  - @theme defines the DEFAULT token set (the "Aurora" light preset).
+  - Tailwind emits each token as a real CSS custom property and generates
+    utilities that reference it via var() — so overriding a token at runtime
+    re-themes the whole app with zero component edits.
+  - Theme presets live in src/styles/themes.ts and are applied by the theme
+    store, which sets these same custom properties on <html>.
+  ───────────────────────────────────────────────────────────────────────────
+*/
+
+@theme {
+  /* ── Surfaces ─────────────────────────────────────────────── */
+  --color-stage: oklch(0.97 0.005 270);        /* the neutral stage behind islands */
+  --color-surface: oklch(1 0 0);               /* island background */
+  --color-raised: oklch(0.99 0.004 270);       /* elevated island / popover */
+  --color-sunken: oklch(0.95 0.006 270);       /* inset wells, inputs */
+
+  /* ── Lines ────────────────────────────────────────────────── */
+  --color-line: oklch(0.91 0.006 270);
+  --color-line-strong: oklch(0.83 0.01 270);
+
+  /* ── Ink (text) ───────────────────────────────────────────── */
+  --color-ink: oklch(0.22 0.01 270);
+  --color-ink-muted: oklch(0.5 0.012 270);
+  --color-ink-subtle: oklch(0.65 0.012 270);
+
+  /* ── Accent ───────────────────────────────────────────────── */
+  --color-accent: oklch(0.62 0.18 275);
+  --color-accent-hover: oklch(0.56 0.19 275);
+  --color-accent-ink: oklch(0.99 0 0);         /* text/icon on accent */
+  /* Derived from accent + surface, so it stays correct in light AND dark and
+     when a preset changes only --color-accent. */
+  --color-accent-soft: color-mix(in oklch, var(--color-accent) 16%, var(--color-surface));
+
+  /* ── Status ───────────────────────────────────────────────── */
+  --color-danger: oklch(0.58 0.21 25);
+  --color-danger-hover: oklch(0.52 0.22 25);
+  --color-danger-ink: oklch(0.99 0 0);
+  --color-success: oklch(0.66 0.16 150);
+  --color-warning: oklch(0.78 0.15 80);
+  --color-info: oklch(0.66 0.13 240);
+
+  /* ── Special ──────────────────────────────────────────────── */
+  --color-scrim: oklch(0.2 0.02 270 / 0.45);   /* modal/backdrop overlay */
+  /* On-video chrome (name/quality pills, tile buttons). Stays dark in BOTH
+     modes — it sits over video, not over a surface — so white text on it always
+     meets contrast. Not overridden per mode by design. */
+  --color-overlay: oklch(0.18 0.02 270 / 0.72);
+  --color-speaking: oklch(0.7 0.17 150);       /* active-speaker ring */
+
+  /* ── Radius ───────────────────────────────────────────────── */
+  --radius-tile: 1.25rem;       /* participant video cards */
+  --radius-island: 1.5rem;      /* floating panels */
+  --radius-control: 999px;      /* pills, round buttons */
+  --radius-field: 0.75rem;      /* inputs, small controls */
+
+  /* ── Shadow (island elevation) ────────────────────────────── */
+  --shadow-island: 0 12px 40px -12px oklch(0.2 0.03 270 / 0.28), 0 2px 8px -4px oklch(0.2 0.03 270 / 0.18);
+  --shadow-raised: 0 20px 60px -16px oklch(0.2 0.03 270 / 0.34), 0 4px 12px -6px oklch(0.2 0.03 270 / 0.22);
+  --shadow-pop: 0 8px 24px -8px oklch(0.2 0.03 270 / 0.3);
+
+  /* ── Type ─────────────────────────────────────────────────── */
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/*
+  Motion tokens — used by CSS transitions and the Motion library.
+  Not part of @theme (they aren't utility-generating), but still tokens:
+  never inline durations/easings in components.
+*/
+:root {
+  --dur-fast: 120ms;
+  --dur-base: 220ms;
+  --dur-slow: 360ms;
+  --ease-island: cubic-bezier(0.22, 1, 0.36, 1);   /* gentle overshoot-free ease-out */
+  --ease-snap: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    background-color: var(--color-stage);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-synthesis: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Visible, token-driven focus ring on every keyboard-focusable element. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-field);
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+  }
+
+  /* Lightweight entrance for transient overlays (tooltip/popover). */
+  @keyframes mn-pop-in {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  .mn-pop {
+    animation: mn-pop-in var(--dur-fast) var(--ease-island);
+  }
+
+  /* Floating reaction: rises and fades. Resting state is visible (no `forwards`)
+     so it survives reduced-motion — see the override below. */
+  @keyframes mn-float-up {
+    0% {
+      opacity: 0;
+      transform: translate(var(--x, 0), 0) scale(0.6);
+    }
+    15% {
+      opacity: 1;
+      transform: translate(var(--x, 0), -10px) scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: translate(var(--x, 0), -160px) scale(1);
+    }
+  }
+  .mn-float {
+    animation: mn-float-up 4s var(--ease-island);
+  }
+
+  /* Accessibility: honor reduced-motion globally. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+    /* Reactions must still be visible without animation (class beats *). */
+    .mn-float {
+      animation: none !important;
+      opacity: 1 !important;
+      transform: translate(var(--x, 0), -48px) !important;
+    }
+  }
+}
