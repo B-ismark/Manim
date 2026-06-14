@@ -1,3 +1,0 @@
-# SPA fallback — serve the app shell for client-side routes (/r/:room).
-# /api/* is handled by the Pages Function and is matched before this.
-/*  /index.html  200
