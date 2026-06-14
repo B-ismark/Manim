@@ -16,6 +16,7 @@ import {
   ChatIcon,
   ChevronUpIcon,
   FullscreenIcon,
+  GridIcon,
   HandIcon,
   LeaveIcon,
   LockIcon,
@@ -30,6 +31,8 @@ import {
   SettingsIcon,
   SoundOffIcon,
   SoundOnIcon,
+  SpeakerLayoutIcon,
+  SpotlightIcon,
 } from '@/components/icons'
 import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
 import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
@@ -93,6 +96,8 @@ export function ControlBar({
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
   const unread = useRoomStore((s) => s.unread)
+  const layout = useRoomStore((s) => s.layout)
+  const setLayout = useRoomStore((s) => s.setLayout)
 
   useEffect(() => {
     const onLeavePip = () => setPipActive(false)
@@ -233,15 +238,21 @@ export function ControlBar({
           trigger={<IconButton label="More options" icon={<MoreIcon />} tone="neutral" />}
         >
           <div className="max-h-[min(70vh,32rem)] w-72 max-w-[80vw] overflow-y-auto p-1">
-            {/* View — mobile-only overflow of the inline group + window controls. */}
+            {/* View — overflow of the inline group (each item shown here only at
+                the width where it leaves the bar, so nothing duplicates) +
+                window controls for everyone. */}
             <Section label="View">
-              <div className="md:hidden">
+              {/* Screen share leaves the bar below sm. */}
+              <div className="sm:hidden">
                 <MenuRow
                   icon={<ScreenShareIcon />}
                   label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
                   onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
                   active={isScreenShareEnabled}
                 />
+              </div>
+              {/* Participants / hand / layout leave the bar below md. */}
+              <div className="md:hidden">
                 <MenuRow
                   icon={<PeopleIcon />}
                   label="Participants"
@@ -253,6 +264,24 @@ export function ControlBar({
                   label={handRaised ? 'Lower hand' : 'Raise hand'}
                   onClick={toggleHand}
                   active={handRaised}
+                />
+                <MenuRow
+                  icon={<GridIcon />}
+                  label="Grid"
+                  onClick={() => setLayout('grid')}
+                  active={layout === 'grid'}
+                />
+                <MenuRow
+                  icon={<SpeakerLayoutIcon />}
+                  label="Speaker"
+                  onClick={() => setLayout('speaker')}
+                  active={layout === 'speaker'}
+                />
+                <MenuRow
+                  icon={<SpotlightIcon />}
+                  label="Spotlight"
+                  onClick={() => setLayout('spotlight')}
+                  active={layout === 'spotlight'}
                 />
               </div>
               <MenuRow
@@ -267,6 +296,7 @@ export function ControlBar({
                 onClick={toggleFullscreen}
                 active={isFullscreen}
               />
+              {/* Reactions leave the bar below md. */}
               <div className="md:hidden">
                 <div className="px-2 pb-1 pt-2 text-xs font-medium text-ink-subtle">React</div>
                 <div className="flex justify-between px-1 pb-1">
