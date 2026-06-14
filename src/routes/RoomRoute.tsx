@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { LiveKitRoom } from '@livekit/components-react'
 import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
@@ -11,6 +11,7 @@ import { roomOptions } from '@/lib/livekit'
 export function RoomRoute() {
   const { room = '' } = useParams()
   const navigate = useNavigate()
+  const location = useLocation()
 
   const displayName = useAppStore((s) => s.displayName)
   const deviceId = useAppStore((s) => s.deviceId)
@@ -20,7 +21,7 @@ export function RoomRoute() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  async function handleJoin() {
+  const handleJoin = useCallback(async () => {
     setError(null)
     if (!LIVEKIT_URL) {
       setError('No media server configured. Set VITE_LIVEKIT_URL in .env (LiveKit Cloud ws URL), then restart the dev server.')
@@ -34,7 +35,20 @@ export function RoomRoute() {
       setError(e instanceof Error ? e.message : 'Failed to join')
       setConnecting(false)
     }
-  }
+  }, [room, displayName, deviceId])
+
+  // On a merge, navigation lands here with { autojoin } and a new room param.
+  // Reset the old connection and auto-join the target without a second prejoin.
+  const autojoin = Boolean((location.state as { autojoin?: boolean } | null)?.autojoin)
+  const joinedFor = useRef<string | null>(null)
+  useEffect(() => {
+    setToken(null)
+    setConnecting(false)
+    if (autojoin && displayName && joinedFor.current !== room) {
+      joinedFor.current = room
+      void handleJoin()
+    }
+  }, [room, autojoin, displayName, handleJoin])
 
   function leave() {
     setToken(null)
