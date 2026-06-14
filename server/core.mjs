@@ -116,9 +116,19 @@ export async function handleKnock(env, body) {
 
   if (isHost || alreadyIn || !flags.waiting) {
     // Record the authoritative host identity once, server-side, so it can't be
-    // forged via participant metadata (see ensureHost).
+    // forged via participant metadata (see ensureHost). At first-join the room
+    // doesn't exist yet, so updateRoomMetadata would fail — create it with the
+    // metadata instead. (LiveKit auto-creates the room on connect either way.)
     if (isHost && flags.hostId !== identity) {
-      await mergeRoomFlags(roomService, room, { hostId: identity })
+      try {
+        await mergeRoomFlags(roomService, room, { hostId: identity })
+      } catch {
+        try {
+          await roomService.createRoom({ name: room, metadata: JSON.stringify({ hostId: identity }) })
+        } catch {
+          /* non-fatal: host UI/moderation degrades, joining still works */
+        }
+      }
     }
     const minted = await mintToken(env, room, name, deviceId, isHost, userId)
     return { status: 200, body: { ...minted, host: isHost } }
