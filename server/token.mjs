@@ -46,13 +46,29 @@ app.post('/api/token', async (req, res) => {
     // so it can't be spoofed by the client. Falls back to the client hint only
     // when the RoomServiceClient isn't configured (no LIVEKIT URL).
     let isHost = Boolean(host)
+    let participants = []
     if (roomService) {
       try {
-        const participants = await roomService.listParticipants(room)
+        participants = await roomService.listParticipants(room)
         isHost = participants.length === 0
       } catch {
         // Room doesn't exist yet → this caller is the first in.
         isHost = true
+      }
+
+      // Room lock: block new joins when locked (host + existing participants
+      // reconnecting are still allowed).
+      if (!isHost) {
+        try {
+          const rooms = await roomService.listRooms([room])
+          const locked = rooms[0]?.metadata ? Boolean(JSON.parse(rooms[0].metadata).locked) : false
+          const alreadyIn = participants.some((p) => p.identity === identity)
+          if (locked && !alreadyIn) {
+            return res.status(403).json({ error: 'This room is locked by the host.' })
+          }
+        } catch {
+          /* no room/metadata yet → not locked */
+        }
       }
     }
 
@@ -120,6 +136,35 @@ app.post('/api/moderate', async (req, res) => {
   } catch (err) {
     console.error('moderate error', err)
     res.status(500).json({ error: 'moderation failed' })
+  }
+})
+
+/** Host toggles the room lock (stored in room metadata, enforced at token mint). */
+app.post('/api/lock', async (req, res) => {
+  try {
+    const { room, caller, locked } = req.body ?? {}
+    if (!room || !caller || typeof locked !== 'boolean') {
+      return res.status(400).json({ error: 'room, caller, locked(boolean) required' })
+    }
+    if (!roomService) {
+      return res.status(500).json({ error: 'RoomServiceClient not configured' })
+    }
+    const participants = await roomService.listParticipants(room)
+    const callerInfo = participants.find((p) => p.identity === caller)
+    let callerIsHost = false
+    try {
+      callerIsHost = Boolean(JSON.parse(callerInfo?.metadata || '{}').host)
+    } catch {
+      callerIsHost = false
+    }
+    if (!callerIsHost) {
+      return res.status(403).json({ error: 'only the host can lock the room' })
+    }
+    await roomService.updateRoomMetadata(room, JSON.stringify({ locked }))
+    res.json({ ok: true, locked })
+  } catch (err) {
+    console.error('lock error', err)
+    res.status(500).json({ error: 'failed to update lock' })
   }
 })
 

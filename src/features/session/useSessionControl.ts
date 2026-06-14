@@ -5,9 +5,11 @@ import {
   useLocalParticipant,
   useParticipants,
   useRoomContext,
+  useRoomInfo,
 } from '@livekit/components-react'
 import type { Participant } from 'livekit-client'
 import { useAppStore } from '@/store/useAppStore'
+import { setLock } from '@/lib/orchestrator'
 
 /** Control-plane signalling topic (end / merge / handoff). */
 const CONTROL_TOPIC = 'mn.control'
@@ -34,6 +36,7 @@ export function useSessionControl(onLeave: () => void) {
   const navigate = useNavigate()
   const { localParticipant } = useLocalParticipant()
   const participants = useParticipants()
+  const { metadata: roomMetadata } = useRoomInfo()
   const deviceId = useAppStore((s) => s.deviceId)
 
   const isHost = useMemo(() => {
@@ -43,6 +46,14 @@ export function useSessionControl(onLeave: () => void) {
       return false
     }
   }, [localParticipant.metadata])
+
+  const locked = useMemo(() => {
+    try {
+      return Boolean(JSON.parse(roomMetadata || '{}').locked)
+    } catch {
+      return false
+    }
+  }, [roomMetadata])
 
   const myName = nameOf(localParticipant)
 
@@ -116,7 +127,25 @@ export function useSessionControl(onLeave: () => void) {
     }
   }, [broadcast, myName, deviceId])
 
-  return { isHost, doLeave, endForEveryone, mergeInto, sameNameOther, switchToThisDevice }
+  /** Host: lock/unlock the room (blocks new joins). */
+  const toggleLock = useCallback(async () => {
+    try {
+      await setLock({ room: room.name, caller: localParticipant.identity, locked: !locked })
+    } catch {
+      /* surfaced via thrown error elsewhere */
+    }
+  }, [room.name, localParticipant.identity, locked])
+
+  return {
+    isHost,
+    locked,
+    doLeave,
+    endForEveryone,
+    mergeInto,
+    toggleLock,
+    sameNameOther,
+    switchToThisDevice,
+  }
 }
 
 export type SessionControl = ReturnType<typeof useSessionControl>

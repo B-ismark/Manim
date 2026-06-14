@@ -21,8 +21,16 @@ const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ defaul
 export function RoomView({ onLeave }: { onLeave: () => void }) {
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   const blur = useBackgroundBlur()
-  const { isHost, doLeave, endForEveryone, mergeInto, sameNameOther, switchToThisDevice } =
-    useSessionControl(onLeave)
+  const {
+    isHost,
+    locked,
+    doLeave,
+    endForEveryone,
+    mergeInto,
+    toggleLock,
+    sameNameOther,
+    switchToThisDevice,
+  } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
 
   return (
@@ -45,6 +53,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         onEndForEveryone={endForEveryone}
         onMerge={mergeInto}
         isHost={isHost}
+        locked={locked}
+        onToggleLock={toggleLock}
         sendReaction={sendReaction}
         handRaised={handRaised}
         toggleHand={toggleHand}
