@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import {
+  Button,
+  Dialog,
   DropdownMenu,
   DropdownItem,
   Island,
@@ -14,6 +16,7 @@ import {
   ChatIcon,
   HandIcon,
   LeaveIcon,
+  MergeIcon,
   MicIcon,
   MicOffIcon,
   MoreIcon,
@@ -36,6 +39,8 @@ export interface ControlBarProps {
   onLeave: () => void
   /** Host-only: end the call for everyone. */
   onEndForEveryone: () => void
+  /** Host-only: move everyone into another room. */
+  onMerge: (room: string) => void
   isHost: boolean
   sendReaction: (emoji: string) => void
   handRaised: boolean
@@ -51,6 +56,7 @@ export interface ControlBarProps {
 export function ControlBar({
   onLeave,
   onEndForEveryone,
+  onMerge,
   isHost,
   sendReaction,
   handRaised,
@@ -226,6 +232,13 @@ export function ControlBar({
               <Divider />
             </div>
 
+            {isHost && (
+              <>
+                <MergeControl onMerge={onMerge} />
+                <Divider />
+              </>
+            )}
+
             <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-ink-subtle">Background</div>
             <BackgroundEffects controls={blur} />
             <Divider />
@@ -291,6 +304,52 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
         ))}
       </div>
     </Popover>
+  )
+}
+
+/** Host-only: merge everyone into another room. Opens a Dialog for the target code. */
+function MergeControl({ onMerge }: { onMerge: (room: string) => void }) {
+  const [open, setOpen] = useState(false)
+  const [room, setRoom] = useState('')
+
+  function submit(e: FormEvent) {
+    e.preventDefault()
+    if (!room.trim()) return
+    onMerge(room)
+    setOpen(false)
+    setRoom('')
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4"
+      >
+        <MergeIcon />
+        Merge with another call
+      </button>
+      <Dialog
+        open={open}
+        onOpenChange={setOpen}
+        title="Merge calls"
+        description="Move everyone in this call into another room."
+      >
+        <form onSubmit={submit} className="flex flex-col gap-3">
+          <input
+            value={room}
+            onChange={(e) => setRoom(e.target.value)}
+            placeholder="Target room code"
+            aria-label="Target room code"
+            autoComplete="off"
+            className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+          />
+          <Button type="submit" variant="accent" disabled={!room.trim()}>
+            Merge everyone
+          </Button>
+        </form>
+      </Dialog>
+    </>
   )
 }
 

@@ -269,14 +269,23 @@ No architecture rework to scale — only a plan upgrade.
 - Chat + P2P file transfer, participants panel (lazy-loaded), host island.
 - Reactions, raise hand, layout switcher, pin/spotlight.
 
-### Phase 4 — Differentiators
-- Call merge (orchestrator + incoming banner + merge UI).
-- Multi-device handoff.
-- PiP, background blur + slider.
+### Phase 4 — Differentiators ✅ (shipped, except the parts that need presence)
+- ✅ PiP, background blur + slider (code-split, slider-to-zero off).
+- ✅ Multi-device handoff: join both devices (works via `name#deviceId`), or
+  "switch to this device" (in-room control channel drops other same-name sessions).
+- ✅ Call merge *mechanism*: host moves everyone into another room (control
+  broadcast → auto-rejoin). **Deferred to Phase 5:** the *incoming-call/ringing
+  trigger* ("someone calls while you're in a call") — needs cross-room presence.
 
-### Phase 5 — Security, theming, polish
-- Waiting room + lock, moderation controls, E2EE toggle.
-- Slack-model theming + vision-assistive themes.
+### Phase 5 — Security, presence, theming, polish
+- **Auth + presence (Supabase):** real `userId` (refines handoff "same user"
+  beyond display-name match), Realtime presence → ringing / incoming-call banner
+  → merge prompt. **Real email invites** (Resend / Supabase Edge) — replaces the
+  current free `mailto:` compose.
+- Waiting room + lock, moderation controls (force-mute / remove), E2EE toggle.
+- Slack-model theming custom-token tab + vision-assistive themes (presets done).
 - Accessibility pass (keyboard/ARIA), mobile sheet layouts, reconnection handling.
 
-> **Next build step:** Phase 2 — a clickable React prototype of the island layout + token-driven component library. Validates the design language and the anti-orphan structure before media complexity or cost.
+> **Status:** Phases 0–4 implemented (foundation, working call, group features,
+> differentiators). Next: Phase 5 — auth + presence unlock ringing-triggered
+> merge and true multi-user handoff, plus security/moderation and real email.

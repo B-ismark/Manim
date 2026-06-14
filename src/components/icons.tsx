@@ -175,6 +175,12 @@ export const CrownIcon = (p: P) => (
   </svg>
 )
 
+export const MergeIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M7 3v4a5 5 0 0 0 5 5 5 5 0 0 0 5-5V3M12 12v9M9 18l3 3 3-3" />
+  </svg>
+)
+
 export const ChevronLeftIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M15 5l-7 7 7 7" />
