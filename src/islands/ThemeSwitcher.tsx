@@ -1,5 +1,6 @@
 import { accentPresets } from '@/styles/themes'
 import { useThemeStore, type ThemeMode } from '@/store/useThemeStore'
+import { Toggle } from '@/components/primitives'
 import { cn } from '@/lib/cn'
 
 const MODES: { id: ThemeMode; label: string }[] = [
@@ -15,8 +16,10 @@ const MODES: { id: ThemeMode; label: string }[] = [
 export function ThemeSwitcher() {
   const mode = useThemeStore((s) => s.mode)
   const accentId = useThemeStore((s) => s.accentId)
+  const highContrast = useThemeStore((s) => s.highContrast)
   const setMode = useThemeStore((s) => s.setMode)
   const setAccent = useThemeStore((s) => s.setAccent)
+  const setHighContrast = useThemeStore((s) => s.setHighContrast)
 
   const standard = accentPresets.filter((p) => !p.visionAssistive)
   const vision = accentPresets.filter((p) => p.visionAssistive)
@@ -71,6 +74,12 @@ export function ThemeSwitcher() {
             />
           ))}
         </div>
+        <Toggle
+          checked={highContrast}
+          onCheckedChange={setHighContrast}
+          label="High contrast"
+          className="mt-3 w-full justify-between"
+        />
       </div>
     </div>
   )
