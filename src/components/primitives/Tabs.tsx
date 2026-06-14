@@ -31,7 +31,7 @@ export function Tabs({ items, value, onValueChange, children, className }: TabsP
               'flex flex-1 items-center justify-center gap-1.5 rounded-control px-3 py-1.5 text-sm font-medium',
               'transition-colors duration-[var(--dur-fast)] outline-none',
               'text-ink-muted hover:text-ink',
-              'data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-raised',
+              'data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-pop',
               '[&_svg]:size-4',
             )}
           >

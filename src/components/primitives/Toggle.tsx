@@ -42,7 +42,9 @@ export function Toggle({
       >
         <RS.Thumb
           className={cn(
-            'block size-5 translate-x-0.5 rounded-control bg-surface shadow-pop',
+            // accent-ink is a fixed near-white in every theme, so the knob stays
+            // visible on the dark OFF-track in dark mode (a plain surface fill sinks).
+            'block size-5 translate-x-0.5 rounded-control bg-accent-ink shadow-pop',
             'transition-transform duration-[var(--dur-fast)] ease-[var(--ease-snap)]',
             'data-[state=checked]:translate-x-[1.375rem]',
           )}

@@ -45,6 +45,10 @@
   --color-danger-ink: oklch(0.99 0 0);
   --color-success: oklch(0.66 0.16 150);
   --color-warning: oklch(0.78 0.15 80);
+  /* Readable foreground on a `warning` fill. Warning is a fixed light amber in
+     BOTH modes, so its ink must be a fixed dark — neither --color-ink nor
+     --color-stage works (they flip per mode). Use for any text/icon on amber. */
+  --color-warning-ink: oklch(0.28 0.06 80);
   --color-info: oklch(0.66 0.13 240);
 
   /* ── Special ──────────────────────────────────────────────── */

@@ -181,7 +181,7 @@ function ParticipantRow({
       <div className="relative">
         <Avatar name={name} size="sm" />
         {handRaised && (
-          <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-warning text-white [&_svg]:size-2.5">
+          <span className="absolute -right-1 -top-1 grid size-4 place-items-center rounded-full bg-warning text-warning-ink [&_svg]:size-2.5">
             <HandIcon />
           </span>
         )}
