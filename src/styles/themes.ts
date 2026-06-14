@@ -38,6 +38,35 @@ export const baseDark: TokenMap = {
   '--color-scrim': 'oklch(0.08 0.02 270 / 0.6)',
 }
 
+/* ── High-contrast overrides (mode-aware) ──────────────────────────────────
+   Applied on top of the base set when the user turns High contrast on. Pure
+   neutral surfaces + maximum ink/line separation for low-vision users. */
+export const highContrastLight: TokenMap = {
+  '--color-stage': 'oklch(1 0 0)',
+  '--color-surface': 'oklch(1 0 0)',
+  '--color-raised': 'oklch(1 0 0)',
+  '--color-sunken': 'oklch(0.94 0 0)',
+  '--color-line': 'oklch(0.45 0 0)',
+  '--color-line-strong': 'oklch(0.2 0 0)',
+  '--color-ink': 'oklch(0.1 0 0)',
+  '--color-ink-muted': 'oklch(0.24 0 0)',
+  '--color-ink-subtle': 'oklch(0.32 0 0)',
+  '--color-scrim': 'oklch(0 0 0 / 0.6)',
+}
+
+export const highContrastDark: TokenMap = {
+  '--color-stage': 'oklch(0.06 0 0)',
+  '--color-surface': 'oklch(0.12 0 0)',
+  '--color-raised': 'oklch(0.17 0 0)',
+  '--color-sunken': 'oklch(0.03 0 0)',
+  '--color-line': 'oklch(0.62 0 0)',
+  '--color-line-strong': 'oklch(0.82 0 0)',
+  '--color-ink': 'oklch(1 0 0)',
+  '--color-ink-muted': 'oklch(0.86 0 0)',
+  '--color-ink-subtle': 'oklch(0.72 0 0)',
+  '--color-scrim': 'oklch(0 0 0 / 0.75)',
+}
+
 /* ── Accent presets (named tiles in the theme picker) ──────────────────── */
 
 export interface AccentPreset {

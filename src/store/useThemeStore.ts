@@ -5,6 +5,8 @@ import {
   baseLight,
   defaultAccentId,
   getAccentPreset,
+  highContrastDark,
+  highContrastLight,
   type TokenMap,
 } from '@/styles/themes'
 
@@ -13,10 +15,13 @@ export type ThemeMode = 'light' | 'dark' | 'system'
 interface ThemeState {
   mode: ThemeMode
   accentId: string
+  /** Maximum-contrast surfaces/ink for low vision (mode-aware). */
+  highContrast: boolean
   /** Power-user overrides from the custom-theme tab (token -> value). */
   custom: TokenMap
   setMode: (mode: ThemeMode) => void
   setAccent: (id: string) => void
+  setHighContrast: (on: boolean) => void
   setCustomToken: (token: string, value: string) => void
   clearCustom: () => void
 }
@@ -30,18 +35,38 @@ export function resolveDark(mode: ThemeMode): boolean {
 }
 
 /** Apply the full token set to <html>. The single point where themes hit the DOM. */
-export function applyTheme(state: Pick<ThemeState, 'mode' | 'accentId' | 'custom'>): void {
+export function applyTheme(
+  state: Pick<ThemeState, 'mode' | 'accentId' | 'highContrast' | 'custom'>,
+): void {
   const root = document.documentElement
   const dark = resolveDark(state.mode)
+  const base = dark ? baseDark : baseLight
+  const preset = getAccentPreset(state.accentId)
 
   root.setAttribute('data-theme', dark ? 'dark' : 'light')
   root.style.colorScheme = dark ? 'dark' : 'light'
 
-  const tokens: TokenMap = {
-    ...(dark ? baseDark : baseLight),
-    ...getAccentPreset(state.accentId).tokens,
-    ...state.custom,
+  const tokens: TokenMap = { ...base, ...preset.tokens }
+
+  // Tint the neutral surfaces toward the accent so picking a theme visibly
+  // recolours the WHOLE app (Slack model), not just buttons. Skipped for
+  // vision-assistive presets and high contrast, which must stay neutral.
+  const accent = preset.tokens['--color-accent']
+  if (accent && !preset.visionAssistive && !state.highContrast) {
+    const tint = (neutral: string, pct: number) =>
+      `color-mix(in oklch, ${accent} ${pct}%, ${neutral})`
+    tokens['--color-stage'] = tint(base['--color-stage'], 6)
+    tokens['--color-surface'] = tint(base['--color-surface'], 3)
+    tokens['--color-raised'] = tint(base['--color-raised'], 4)
+    tokens['--color-sunken'] = tint(base['--color-sunken'], 6)
+    tokens['--color-line'] = tint(base['--color-line'], 8)
   }
+
+  if (state.highContrast) {
+    Object.assign(tokens, dark ? highContrastDark : highContrastLight)
+  }
+
+  Object.assign(tokens, state.custom)
   for (const [key, value] of Object.entries(tokens)) {
     root.style.setProperty(key, value)
   }
@@ -52,6 +77,7 @@ export const useThemeStore = create<ThemeState>()(
     (set, get) => ({
       mode: 'system',
       accentId: defaultAccentId,
+      highContrast: false,
       custom: {},
       setMode: (mode) => {
         set({ mode })
@@ -59,6 +85,10 @@ export const useThemeStore = create<ThemeState>()(
       },
       setAccent: (accentId) => {
         set({ accentId })
+        applyTheme(get())
+      },
+      setHighContrast: (highContrast) => {
+        set({ highContrast })
         applyTheme(get())
       },
       setCustomToken: (token, value) => {
