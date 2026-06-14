@@ -1,0 +1,5 @@
+name = "manim"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-09-23"
+# nodejs_compat lets livekit-server-sdk (jose / crypto) run on the Workers runtime.
+compatibility_flags = ["nodejs_compat"]
