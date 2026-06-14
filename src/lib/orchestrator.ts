@@ -21,6 +21,8 @@ export interface JoinRequest {
   room: string
   name: string
   deviceId: string
+  /** Stable account/guest id — stamped into metadata for presence + handoff. */
+  userId?: string
   host?: boolean
 }
 

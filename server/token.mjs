@@ -31,13 +31,13 @@ app.use(express.json())
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-async function mintToken(room, name, deviceId, isHost) {
+async function mintToken(room, name, deviceId, isHost, userId) {
   const identity = `${name}#${deviceId || 'web'}`
   const at = new AccessToken(API_KEY, API_SECRET, {
     identity,
     name,
     ttl: '15m', // short-lived per security model
-    metadata: JSON.stringify({ host: isHost }),
+    metadata: JSON.stringify({ host: isHost, userId: userId || '' }),
   })
   at.addGrant({
     room,
@@ -101,11 +101,11 @@ async function requireHost(req, res) {
   return true
 }
 
-// In-memory waiting room: room -> Map(requestId -> { name, deviceId, status, token, identity })
-const waiting = new Map()
-function roomQueue(room) {
-  if (!waiting.has(room)) waiting.set(room, new Map())
-  return waiting.get(room)
+// Waiting room is stored in the room metadata `queue` (stateless → serverless-
+// ready). Tokens are minted on approval read, never stored.
+async function readQueue(room) {
+  const flags = await getRoomFlags(room)
+  return Array.isArray(flags.queue) ? flags.queue : []
 }
 
 // ── Routes ───────────────────────────────────────────────────────────────────
@@ -120,7 +120,7 @@ app.get('/api/health', (_req, res) => {
  */
 app.post('/api/knock', async (req, res) => {
   try {
-    const { room, name, deviceId } = req.body ?? {}
+    const { room, name, deviceId, userId } = req.body ?? {}
     if (!room || !name) return res.status(400).json({ error: 'room and name are required' })
     if (!API_KEY || !API_SECRET) {
       return res.status(500).json({ error: 'LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set in .env' })
@@ -130,7 +130,7 @@ app.post('/api/knock', async (req, res) => {
 
     if (!roomService) {
       // No orchestration available → mint directly (host hint from client).
-      const minted = await mintToken(room, name, deviceId, Boolean(req.body.host))
+      const minted = await mintToken(room, name, deviceId, Boolean(req.body.host), userId)
       return res.json({ ...minted, host: Boolean(req.body.host) })
     }
 
@@ -144,13 +144,15 @@ app.post('/api/knock', async (req, res) => {
     }
 
     if (isHost || alreadyIn || !flags.waiting) {
-      const minted = await mintToken(room, name, deviceId, isHost)
+      const minted = await mintToken(room, name, deviceId, isHost, userId)
       return res.json({ ...minted, host: isHost })
     }
 
-    // Waiting room on → queue a knock for host approval.
+    // Waiting room on → queue a knock for host approval (stored in metadata).
     const requestId = randomUUID()
-    roomQueue(room).set(requestId, { name, deviceId, status: 'pending' })
+    const queue = Array.isArray(flags.queue) ? flags.queue : []
+    queue.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending' })
+    await mergeRoomFlags(room, { queue: queue.slice(-50) })
     res.json({ pending: true, requestId })
   } catch (err) {
     console.error('knock error', err)
@@ -158,13 +160,15 @@ app.post('/api/knock', async (req, res) => {
   }
 })
 
-/** Knocker polls for the host's decision. */
-app.get('/api/knock-status', (req, res) => {
+/** Knocker polls for the host's decision. Token is minted fresh on approval. */
+app.get('/api/knock-status', async (req, res) => {
+  if (!roomService) return res.json({ status: 'expired' })
   const { room, requestId } = req.query
-  const entry = waiting.get(room)?.get(requestId)
+  const entry = (await readQueue(room)).find((e) => e.id === requestId)
   if (!entry) return res.json({ status: 'expired' })
   if (entry.status === 'approved') {
-    return res.json({ status: 'approved', token: entry.token, identity: entry.identity })
+    const minted = await mintToken(room, entry.name, entry.deviceId, false, entry.userId)
+    return res.json({ status: 'approved', ...minted })
   }
   res.json({ status: entry.status })
 })
@@ -175,27 +179,21 @@ app.get('/api/pending', async (req, res) => {
   if (!roomService) return res.json({ pending: [] })
   const participants = await listParticipants(room)
   if (!isHostParticipant(participants, caller)) return res.status(403).json({ error: 'host only' })
-  const q = waiting.get(room)
-  const pending = q
-    ? [...q.entries()].filter(([, e]) => e.status === 'pending').map(([id, e]) => ({ id, name: e.name }))
-    : []
+  const pending = (await readQueue(room))
+    .filter((e) => e.status === 'pending')
+    .map((e) => ({ id: e.id, name: e.name }))
   res.json({ pending })
 })
 
-/** Host admits or denies a knocker. */
+/** Host admits or denies a knocker (updates the metadata queue). */
 app.post('/api/admit', async (req, res) => {
   if (!(await requireHost(req, res))) return
   const { room, requestId, approve } = req.body ?? {}
-  const entry = waiting.get(room)?.get(requestId)
+  const queue = await readQueue(room)
+  const entry = queue.find((e) => e.id === requestId)
   if (!entry) return res.status(404).json({ error: 'request not found' })
-  if (approve) {
-    const minted = await mintToken(room, entry.name, entry.deviceId, false)
-    entry.status = 'approved'
-    entry.token = minted.token
-    entry.identity = minted.identity
-  } else {
-    entry.status = 'denied'
-  }
+  entry.status = approve ? 'approved' : 'denied'
+  await mergeRoomFlags(room, { queue })
   res.json({ ok: true })
 })
 

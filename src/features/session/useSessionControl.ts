@@ -17,10 +17,14 @@ const CONTROL_TOPIC = 'mn.control'
 type ControlMessage =
   | { type: 'end' }
   | { type: 'merge'; room: string }
-  | { type: 'handoff'; name: string; keepDevice: string }
+  | { type: 'handoff'; userId: string; keepDevice: string }
 
-function nameOf(p: Participant): string {
-  return p.name || p.identity.split('#')[0] || 'Guest'
+function userIdOf(p: Participant): string {
+  try {
+    return JSON.parse(p.metadata || '{}').userId || ''
+  } catch {
+    return ''
+  }
 }
 
 /**
@@ -56,12 +60,13 @@ export function useSessionControl(onLeave: () => void) {
     }
   }, [roomMetadata])
 
-  const myName = nameOf(localParticipant)
+  const myUserId = userIdOf(localParticipant)
 
-  // Another session with the same display name is present on a different device.
+  // The same signed-in user is present on another device (guests are device-bound,
+  // so this only fires for a real shared account).
   const sameNameOther = useMemo(
-    () => participants.some((p) => !p.isLocal && nameOf(p) === myName),
-    [participants, myName],
+    () => Boolean(myUserId) && participants.some((p) => !p.isLocal && userIdOf(p) === myUserId),
+    [participants, myUserId],
   )
 
   const doLeave = useCallback(async () => {
@@ -84,7 +89,7 @@ export function useSessionControl(onLeave: () => void) {
       void doLeave()
     } else if (data.type === 'merge' && data.room) {
       navigate(`/r/${encodeURIComponent(data.room)}`, { state: { autojoin: true } })
-    } else if (data.type === 'handoff' && data.name === myName && data.keepDevice !== deviceId) {
+    } else if (data.type === 'handoff' && data.userId === myUserId && data.keepDevice !== deviceId) {
       void doLeave()
     }
   })
@@ -122,11 +127,11 @@ export function useSessionControl(onLeave: () => void) {
   /** Multi-device: keep this device, drop my other sessions in this room. */
   const switchToThisDevice = useCallback(async () => {
     try {
-      await broadcast({ type: 'handoff', name: myName, keepDevice: deviceId })
+      await broadcast({ type: 'handoff', userId: myUserId, keepDevice: deviceId })
     } catch {
       /* best effort */
     }
-  }, [broadcast, myName, deviceId])
+  }, [broadcast, myUserId, deviceId])
 
   /** Host: lock/unlock the room (blocks new joins). */
   const toggleLock = useCallback(async () => {
