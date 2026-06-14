@@ -9,6 +9,14 @@
 */
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
 
+const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
+/** Escape user-supplied text before interpolating into email HTML. */
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => HTML_ESCAPE[c])
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
 function services(env) {
   const apiKey = env.LIVEKIT_API_KEY
   const apiSecret = env.LIVEKIT_API_SECRET
@@ -60,18 +68,14 @@ async function mergeRoomFlags(roomService, room, patch) {
   await roomService.updateRoomMetadata(room, JSON.stringify({ ...current, ...patch }))
 }
 
-function isHostParticipant(participants, identity) {
-  const info = participants.find((p) => p.identity === identity)
-  try {
-    return Boolean(JSON.parse(info?.metadata || '{}').host)
-  } catch {
-    return false
-  }
-}
-
+// Host authority lives in ROOM metadata (written only by the server / a roomAdmin
+// token), NOT participant metadata: tokens grant canUpdateOwnMetadata (needed for
+// raise-hand attributes), so a participant could otherwise rewrite their own
+// metadata to {host:true} and self-promote. Room metadata is unforgeable by
+// non-host participants (they have roomAdmin:false).
 async function ensureHost(roomService, room, caller) {
-  const participants = await listParticipants(roomService, room)
-  return isHostParticipant(participants, caller)
+  const flags = await getRoomFlags(roomService, room)
+  return Boolean(flags.hostId) && flags.hostId === caller
 }
 
 export function handleHealth(env) {
@@ -111,6 +115,11 @@ export async function handleKnock(env, body) {
   }
 
   if (isHost || alreadyIn || !flags.waiting) {
+    // Record the authoritative host identity once, server-side, so it can't be
+    // forged via participant metadata (see ensureHost).
+    if (isHost && flags.hostId !== identity) {
+      await mergeRoomFlags(roomService, room, { hostId: identity })
+    }
     const minted = await mintToken(env, room, name, deviceId, isHost, userId)
     return { status: 200, body: { ...minted, host: isHost } }
   }
@@ -195,19 +204,35 @@ export async function handleRoomflags(env, body) {
 export async function handleEmailInvite(env, body) {
   const { to, room, link, fromName } = body ?? {}
   if (!to || !link) return { status: 400, body: { error: 'to and link required' } }
+  // Validate the recipient + the link. The link must be an http(s) URL — this
+  // prevents javascript:/data: payloads and limits the endpoint to sending
+  // join links, not arbitrary content.
+  if (!EMAIL_RE.test(String(to))) return { status: 400, body: { error: 'invalid recipient' } }
+  let url
+  try {
+    url = new URL(String(link))
+  } catch {
+    return { status: 400, body: { error: 'invalid link' } }
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { status: 400, body: { error: 'invalid link' } }
+  }
   const key = env.RESEND_API_KEY
   if (!key) return { status: 501, body: { error: 'email not configured' } }
   const from = env.RESEND_FROM || 'Manim <onboarding@resend.dev>'
-  const who = fromName || 'Someone'
+  // All interpolated values are escaped — they come from the client.
+  const who = escapeHtml(fromName || 'Someone')
+  const safeRoom = room ? escapeHtml(room) : ''
+  const href = escapeHtml(url.href)
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       from,
-      to: [to],
+      to: [String(to)],
       subject: `${who} invited you to a Manim call`,
-      html: `<p>${who} invited you to join a Manim call${room ? ` (room <b>${room}</b>)` : ''}.</p>
-             <p><a href="${link}">Join the call</a></p><p style="color:#888">${link}</p>`,
+      html: `<p>${who} invited you to join a Manim call${safeRoom ? ` (room <b>${safeRoom}</b>)` : ''}.</p>
+             <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>`,
     }),
   })
   if (!r.ok) return { status: 502, body: { error: 'email send failed' } }

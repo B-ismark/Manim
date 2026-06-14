@@ -3,6 +3,7 @@ import {
   useLocalParticipant,
   useParticipants,
   useRoomContext,
+  useRoomInfo,
   useIsSpeaking,
   useIsMuted,
 } from '@livekit/components-react'
@@ -63,14 +64,17 @@ export function ParticipantsPanel() {
   const [mailto, setMailto] = useState<{ href: string; to: string } | null>(null)
   const signedIn = useAuthStore((s) => s.signedIn)
   const canRing = authEnabled && signedIn
+  const { metadata: roomMetadata } = useRoomInfo()
 
+  // Host authority is the server-written room hostId (not forgeable participant
+  // metadata). UI only — the server re-checks every moderation call.
   const isHost = useMemo(() => {
     try {
-      return Boolean(JSON.parse(localParticipant.metadata || '{}').host)
+      return JSON.parse(roomMetadata || '{}').hostId === localParticipant.identity
     } catch {
       return false
     }
-  }, [localParticipant.metadata])
+  }, [roomMetadata, localParticipant.identity])
 
   function mailtoHref(to: string): string {
     const subject = encodeURIComponent("You're invited to a Manim call")

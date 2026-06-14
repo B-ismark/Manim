@@ -46,22 +46,19 @@ export function useSessionControl(onLeave: () => void) {
   const { metadata: roomMetadata } = useRoomInfo()
   const deviceId = useAppStore((s) => s.deviceId)
 
-  const isHost = useMemo(() => {
-    try {
-      return Boolean(JSON.parse(localParticipant.metadata || '{}').host)
-    } catch {
-      return false
-    }
-  }, [localParticipant.metadata])
-
-  const { locked, waiting } = useMemo(() => {
+  // Authority comes from ROOM metadata (server-written), never participant
+  // metadata — participants can rewrite their own metadata (canUpdateOwnMetadata,
+  // needed for raise-hand) and would otherwise self-promote to host.
+  const { hostId, locked, waiting } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
-      return { locked: Boolean(f.locked), waiting: Boolean(f.waiting) }
+      return { hostId: f.hostId || '', locked: Boolean(f.locked), waiting: Boolean(f.waiting) }
     } catch {
-      return { locked: false, waiting: false }
+      return { hostId: '', locked: false, waiting: false }
     }
   }, [roomMetadata])
+
+  const isHost = Boolean(hostId) && localParticipant.identity === hostId
 
   const myUserId = userIdOf(localParticipant)
 
@@ -88,13 +85,28 @@ export function useSessionControl(onLeave: () => void) {
     } catch {
       return
     }
+    // The sender's identity is from their signed token (unforgeable); the host's
+    // identity is the server-written hostId. Authorize destructive actions
+    // against that, so a malicious participant can't end/redirect the call.
+    const senderId = msg.from?.identity ?? ''
+    let senderUserId = ''
+    try {
+      senderUserId = JSON.parse(msg.from?.metadata || '{}').userId || ''
+    } catch {
+      /* ignore */
+    }
+
     if (data.type === 'end') {
+      if (senderId !== hostId) return // only the room host can end for everyone
       sounds.end()
       void doLeave()
     } else if (data.type === 'merge' && data.room) {
+      if (senderId !== hostId) return // only the host can move everyone
       navigate(`/r/${encodeURIComponent(data.room)}`, { state: { autojoin: true } })
-    } else if (data.type === 'handoff' && data.userId === myUserId && data.keepDevice !== deviceId) {
-      void doLeave()
+    } else if (data.type === 'handoff') {
+      // Only the owner of an account may drop their own other devices.
+      if (!senderUserId || senderUserId !== data.userId) return
+      if (data.userId === myUserId && data.keepDevice !== deviceId) void doLeave()
     } else if (data.type === 'report' && isHost) {
       // Only the host is notified of a report.
       toast(`${data.by} reported ${data.target}`, 'danger')
