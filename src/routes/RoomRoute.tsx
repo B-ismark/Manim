@@ -4,6 +4,7 @@ import { LiveKitRoom } from '@livekit/components-react'
 import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
 import { RoomView } from '@/islands/RoomView'
+import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
@@ -137,22 +138,23 @@ export function RoomRoute() {
     )
   }
 
+  // Connecting (knock in flight) with no error yet → full joining experience.
+  if (connecting && !error) {
+    return <JoiningScreen room={room} />
+  }
+
   return (
     <div className="relative">
       <PreJoin room={room} onJoin={handleJoin} />
-      {(error || connecting) && (
+      {error && (
         <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
           <Island elevation="raised" className="max-w-md">
-            {connecting && !error ? (
-              <p className="text-sm text-ink-muted">Connecting…</p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <p className="text-sm text-danger">{error}</p>
-                <Button size="sm" variant="neutral" onClick={() => setError(null)}>
-                  Dismiss
-                </Button>
-              </div>
-            )}
+            <div className="flex flex-col gap-2">
+              <p className="text-sm text-danger">{error}</p>
+              <Button size="sm" variant="neutral" onClick={() => setError(null)}>
+                Dismiss
+              </Button>
+            </div>
           </Island>
         </div>
       )}

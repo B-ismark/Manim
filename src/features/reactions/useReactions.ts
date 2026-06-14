@@ -5,6 +5,7 @@ import {
   useParticipantAttribute,
 } from '@livekit/components-react'
 import type { Participant } from 'livekit-client'
+import { sounds } from '@/lib/sounds'
 
 /** Ephemeral reaction broadcast topic. */
 const REACTION_TOPIC = 'mn.reaction'
@@ -60,6 +61,7 @@ export function useReactions() {
       if (!data.emoji) return
       const from = msg.from
       push(data.emoji, displayName(from?.identity ?? '', from?.name))
+      sounds.reaction()
     } catch {
       /* malformed payload — ignore */
     }

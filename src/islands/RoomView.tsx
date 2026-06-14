@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { RoomAudioRenderer, useRoomContext } from '@livekit/components-react'
+import { RoomAudioRenderer, useRoomContext, useConnectionState } from '@livekit/components-react'
+import { ConnectionState } from 'livekit-client'
 import { Stage } from '@/islands/Stage'
+import { JoiningScreen } from '@/islands/JoiningScreen'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner } from '@/islands/HandoffBanner'
@@ -8,6 +10,7 @@ import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
+import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
@@ -26,6 +29,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   const blur = useBackgroundBlur()
+  useCallSounds()
 
   // Activate end-to-end encryption when a passphrase was set at prejoin. The key
   // is already configured on the room's keyProvider (see roomOptions).
@@ -46,6 +50,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
+  const connState = useConnectionState()
+
+  // Cover the initial connect (before media + roster arrive) with the joining
+  // screen. Reconnects after that are handled by ConnectionBanner, not here.
+  if (connState === ConnectionState.Connecting) {
+    return <JoiningScreen room={room.name} label="Connecting" />
+  }
 
   return (
     <>

@@ -10,6 +10,7 @@ import {
 import type { Participant } from 'livekit-client'
 import { useAppStore } from '@/store/useAppStore'
 import { setRoomFlags } from '@/lib/orchestrator'
+import { sounds } from '@/lib/sounds'
 
 /** Control-plane signalling topic (end / merge / handoff). */
 const CONTROL_TOPIC = 'mn.control'
@@ -86,6 +87,7 @@ export function useSessionControl(onLeave: () => void) {
       return
     }
     if (data.type === 'end') {
+      sounds.end()
       void doLeave()
     } else if (data.type === 'merge' && data.room) {
       navigate(`/r/${encodeURIComponent(data.room)}`, { state: { autojoin: true } })
