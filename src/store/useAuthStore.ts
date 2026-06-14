@@ -48,6 +48,14 @@ function applySession(session: Session | null) {
       email: session.user.email ?? null,
       signedIn: true,
     })
+    // Make this user reachable by email for calls (best-effort; needs a
+    // `profiles` table — see deploy docs). Degrades silently if absent.
+    if (supabase && session.user.email) {
+      void supabase
+        .from('profiles')
+        .upsert({ id: session.user.id, email: session.user.email })
+        .then(() => {})
+    }
   } else {
     useAuthStore.setState({ userId: guestId(), email: null, signedIn: false })
   }

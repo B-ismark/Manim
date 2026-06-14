@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@/components/primitives'
 import { Landing } from '@/routes/Landing'
+import { IncomingCallBanner } from '@/islands/IncomingCallBanner'
 
 // The call route pulls in the LiveKit client (the heavy dependency). Lazy-load
 // it so the landing page ships almost none of it (lightweight goal).
@@ -12,6 +13,7 @@ const RoomRoute = lazy(() =>
 export function App() {
   return (
     <TooltipProvider>
+      <IncomingCallBanner />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route
