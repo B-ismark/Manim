@@ -38,8 +38,20 @@ async function handleApi(request, env, url) {
     if (path === 'admit' && method === 'POST') return json(await handleAdmit(env, await bodyOf()))
     if (path === 'moderate' && method === 'POST') return json(await handleModerate(env, await bodyOf()))
     if (path === 'roomflags' && method === 'POST') return json(await handleRoomflags(env, await bodyOf()))
-    if (path === 'email-invite' && method === 'POST')
+    if (path === 'email-invite' && method === 'POST') {
+      // Per-IP rate limit (native Workers binding) to keep the unauthenticated
+      // invite endpoint from being used as a spam relay. Degrades gracefully if
+      // the binding isn't present.
+      const limiter = env.EMAIL_RATELIMIT
+      if (limiter && typeof limiter.limit === 'function') {
+        const ip = request.headers.get('cf-connecting-ip') || 'anon'
+        const { success } = await limiter.limit({ key: `email:${ip}` })
+        if (!success) {
+          return json({ status: 429, body: { error: 'Too many invites — try again in a minute.' } })
+        }
+      }
       return json(await handleEmailInvite(env, await bodyOf()))
+    }
     return new Response('Not found', { status: 404 })
   } catch {
     return json({ status: 500, body: { error: 'server error' } })
