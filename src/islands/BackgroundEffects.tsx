@@ -1,9 +1,9 @@
 import { Slider, Toggle } from '@/components/primitives'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 
-/** Tier-2 background effects: blur toggle + live radius slider. */
+/** Tier-2 background effects: blur toggle + live radius slider + quality. */
 export function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
-  const { supported, enabled, setEnabled, radius, setRadius } = controls
+  const { supported, enabled, setEnabled, radius, setRadius, quality, setQuality } = controls
 
   if (!supported) {
     return (
@@ -46,6 +46,20 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
           label="Blur strength (0 turns blur off)"
         />
       </div>
+
+      {enabled && (
+        <div className="mt-3">
+          <Toggle
+            checked={quality === 'high'}
+            onCheckedChange={(v) => setQuality(v ? 'high' : 'standard')}
+            label="High quality"
+            className="w-full justify-between"
+          />
+          <p className="mt-1 text-xs text-ink-subtle">
+            Sharper, steadier edges via GPU segmentation. Uses more power.
+          </p>
+        </div>
+      )}
     </div>
   )
 }

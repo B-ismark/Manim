@@ -94,8 +94,10 @@ export function Stage() {
 function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useCopyLink()
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-4">
-      <div className="aspect-video w-full max-w-3xl">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-3 sm:p-4">
+      {/* Mobile (portrait): fill the screen so the camera feels natural, not a
+          letterboxed landscape strip. Desktop: a centered 16:9 card. */}
+      <div className="min-h-0 w-full flex-1 sm:aspect-video sm:max-w-3xl sm:flex-none">
         {selfTrack ? (
           <Tile trackRef={selfTrack} fill />
         ) : (
@@ -104,7 +106,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           </div>
         )}
       </div>
-      <div className="text-center">
+      <div className="shrink-0 text-center">
         <p className="text-sm font-medium">You're the only one here</p>
         <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
         <Button variant="accent" className="mt-3" onClick={copy}>

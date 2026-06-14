@@ -95,9 +95,15 @@ export function ControlBar({
         setPipActive(false)
         return
       }
-      const video = document.querySelector<HTMLVideoElement>('video')
-      if (video && document.pictureInPictureEnabled) {
-        await video.requestPictureInPicture()
+      // The local self-view is CSS-mirrored, but PiP shows raw (unmirrored)
+      // frames, so PiP-ing yourself looks flipped. Prefer a remote video —
+      // detected as one with no mirror transform — that's actually playing.
+      const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('video'))
+      const playing = videos.filter((v) => v.videoWidth > 0)
+      const target =
+        playing.find((v) => getComputedStyle(v).transform === 'none') ?? playing[0] ?? videos[0]
+      if (target && document.pictureInPictureEnabled) {
+        await target.requestPictureInPicture()
         setPipActive(true)
       }
     } catch {
