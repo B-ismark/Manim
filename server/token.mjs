@@ -80,6 +80,49 @@ app.post('/api/token', async (req, res) => {
   }
 })
 
+/**
+ * Host moderation: force-mute or remove a participant. The caller must be the
+ * room host — verified server-side against the participant metadata stamped at
+ * join, so a non-host client can't moderate even if it calls this directly.
+ */
+app.post('/api/moderate', async (req, res) => {
+  try {
+    const { room, caller, target, action, trackSid } = req.body ?? {}
+    if (!room || !caller || !target || !action) {
+      return res.status(400).json({ error: 'room, caller, target, action required' })
+    }
+    if (!roomService) {
+      return res.status(500).json({ error: 'RoomServiceClient not configured (set VITE_LIVEKIT_URL)' })
+    }
+
+    const participants = await roomService.listParticipants(room)
+    const callerInfo = participants.find((p) => p.identity === caller)
+    let callerIsHost = false
+    try {
+      callerIsHost = Boolean(JSON.parse(callerInfo?.metadata || '{}').host)
+    } catch {
+      callerIsHost = false
+    }
+    if (!callerIsHost) {
+      return res.status(403).json({ error: 'only the host can moderate' })
+    }
+
+    if (action === 'remove') {
+      await roomService.removeParticipant(room, target)
+    } else if (action === 'mute') {
+      if (!trackSid) return res.status(400).json({ error: 'trackSid required to mute' })
+      await roomService.mutePublishedTrack(room, target, trackSid, true)
+    } else {
+      return res.status(400).json({ error: 'unknown action' })
+    }
+
+    res.json({ ok: true })
+  } catch (err) {
+    console.error('moderate error', err)
+    res.status(500).json({ error: 'moderation failed' })
+  }
+})
+
 app.listen(PORT, () => {
   const keys = API_KEY && API_SECRET ? 'keys loaded' : 'NO KEYS (set .env)'
   console.log(`[token] http://localhost:${PORT}  (${keys})`)

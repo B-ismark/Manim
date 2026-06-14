@@ -1,19 +1,29 @@
-import { useState, type FormEvent } from 'react'
+import { useMemo, useState, type FormEvent } from 'react'
 import {
   useLocalParticipant,
   useParticipants,
+  useRoomContext,
   useIsSpeaking,
   useIsMuted,
 } from '@livekit/components-react'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { Participant } from 'livekit-client'
-import { Avatar, Badge, Button, DropdownMenu, DropdownItem, IconButton } from '@/components/primitives'
-import { CheckIcon, CopyIcon, HandIcon, MicIcon, MicOffIcon, MoreIcon, PinIcon } from '@/components/icons'
+import {
+  Avatar,
+  Badge,
+  Button,
+  DropdownMenu,
+  DropdownItem,
+  DropdownSeparator,
+  IconButton,
+} from '@/components/primitives'
+import { CheckIcon, CopyIcon, HandIcon, LeaveIcon, MicIcon, MicOffIcon, MoreIcon, PinIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useCopyLink } from '@/lib/useCopyLink'
+import { moderate } from '@/lib/orchestrator'
 import { cn } from '@/lib/cn'
 
 function displayName(p: Participant): string {
@@ -24,8 +34,17 @@ function displayName(p: Participant): string {
 export function ParticipantsPanel() {
   const participants = useParticipants()
   const { localParticipant } = useLocalParticipant()
+  const room = useRoomContext()
   const { copied, copy } = useCopyLink()
   const [email, setEmail] = useState('')
+
+  const isHost = useMemo(() => {
+    try {
+      return Boolean(JSON.parse(localParticipant.metadata || '{}').host)
+    } catch {
+      return false
+    }
+  }, [localParticipant.metadata])
 
   function emailInvite(e: FormEvent) {
     e.preventDefault()
@@ -64,14 +83,33 @@ export function ParticipantsPanel() {
       </div>
       <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
         {participants.map((p) => (
-          <ParticipantRow key={p.identity} participant={p} isLocal={p.identity === localParticipant.identity} />
+          <ParticipantRow
+            key={p.identity}
+            participant={p}
+            isLocal={p.identity === localParticipant.identity}
+            canModerate={isHost && p.identity !== localParticipant.identity}
+            room={room.name}
+            caller={localParticipant.identity}
+          />
         ))}
       </ul>
     </div>
   )
 }
 
-function ParticipantRow({ participant, isLocal }: { participant: Participant; isLocal: boolean }) {
+function ParticipantRow({
+  participant,
+  isLocal,
+  canModerate,
+  room,
+  caller,
+}: {
+  participant: Participant
+  isLocal: boolean
+  canModerate: boolean
+  room: string
+  caller: string
+}) {
   const speaking = useIsSpeaking(participant)
   const micRef = { participant, source: Track.Source.Microphone } as TrackReferenceOrPlaceholder
   const micMuted = useIsMuted(micRef)
@@ -81,6 +119,24 @@ function ParticipantRow({ participant, isLocal }: { participant: Participant; is
   const togglePin = useRoomStore((s) => s.togglePin)
 
   const name = displayName(participant)
+
+  async function forceMute() {
+    const trackSid = participant.getTrackPublication(Track.Source.Microphone)?.trackSid
+    if (!trackSid) return
+    try {
+      await moderate({ room, caller, target: participant.identity, action: 'mute', trackSid })
+    } catch {
+      /* surfaced elsewhere; ignore here */
+    }
+  }
+
+  async function remove() {
+    try {
+      await moderate({ room, caller, target: participant.identity, action: 'remove' })
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <li
@@ -122,6 +178,17 @@ function ParticipantRow({ participant, isLocal }: { participant: Participant; is
         <DropdownItem icon={<PinIcon />} onSelect={() => togglePin(participant.identity)}>
           {pinned ? 'Unpin' : 'Pin'}
         </DropdownItem>
+        {canModerate && (
+          <>
+            <DropdownSeparator />
+            <DropdownItem icon={<MicOffIcon />} disabled={micMuted} onSelect={forceMute}>
+              Mute
+            </DropdownItem>
+            <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={remove}>
+              Remove from call
+            </DropdownItem>
+          </>
+        )}
       </DropdownMenu>
     </li>
   )

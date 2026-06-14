@@ -29,4 +29,27 @@ export async function fetchToken(req: TokenRequest): Promise<TokenResponse> {
   return (await res.json()) as TokenResponse
 }
 
+export interface ModerateRequest {
+  room: string
+  /** Identity of the host making the request (verified server-side). */
+  caller: string
+  /** Identity of the participant being moderated. */
+  target: string
+  action: 'mute' | 'remove'
+  /** Required for `mute` — the track to silence. */
+  trackSid?: string
+}
+
+export async function moderate(req: ModerateRequest): Promise<void> {
+  const res = await fetch('/api/moderate', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(body.error ?? `moderation failed (${res.status})`)
+  }
+}
+
 export const LIVEKIT_URL: string = import.meta.env.VITE_LIVEKIT_URL ?? ''
