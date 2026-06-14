@@ -14,6 +14,8 @@ import {
   CameraIcon,
   CameraOffIcon,
   ChatIcon,
+  ChevronUpIcon,
+  FullscreenIcon,
   HandIcon,
   LeaveIcon,
   LockIcon,
@@ -26,6 +28,8 @@ import {
   ReactionIcon,
   ScreenShareIcon,
   SettingsIcon,
+  SoundOffIcon,
+  SoundOnIcon,
 } from '@/components/icons'
 import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
 import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
@@ -34,6 +38,8 @@ import { BackgroundEffects } from '@/islands/BackgroundEffects'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useSoundStore } from '@/store/useSoundStore'
+import { cn } from '@/lib/cn'
 
 export interface ControlBarProps {
   /** Leave the call yourself (call continues for others). */
@@ -77,6 +83,9 @@ export function ControlBar({
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant()
   const [pipActive, setPipActive] = useState(false)
+  const { isFullscreen, toggleFullscreen } = useFullscreen()
+  const soundOn = useSoundStore((s) => s.enabled)
+  const toggleSound = useSoundStore((s) => s.toggle)
 
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
@@ -213,56 +222,55 @@ export function ControlBar({
           <LayoutSwitcher />
         </span>
 
-        <Tooltip content="Picture-in-picture">
-          <IconButton
-            label="Picture-in-picture"
-            icon={<PipIcon />}
-            tone="neutral"
-            active={pipActive}
-            className="hidden md:inline-flex"
-            onClick={togglePip}
-          />
-        </Tooltip>
-
-        {/* More — overflow on mobile + Tier-2 (devices, theme) everywhere. */}
+        {/* More — window controls (PiP, full screen), effects, devices,
+            appearance, host controls; plus the Tier-1 overflow on mobile. */}
         <Popover
           side="top"
           align="end"
           trigger={<IconButton label="More options" icon={<MoreIcon />} tone="neutral" />}
         >
-          <div className="w-72 max-w-[80vw] p-1">
-            {/* Mobile-only overflow of the inline Tier-1 group. */}
-            <div className="md:hidden">
-              <MenuRow
-                icon={<ScreenShareIcon />}
-                label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
-                onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
-                active={isScreenShareEnabled}
-              />
-              <MenuRow
-                icon={<PeopleIcon />}
-                label="Participants"
-                onClick={() => togglePanel('people')}
-                active={panel === 'people'}
-              />
-              <MenuRow
-                icon={<HandIcon />}
-                label={handRaised ? 'Lower hand' : 'Raise hand'}
-                onClick={toggleHand}
-                active={handRaised}
-              />
-              <MenuRow icon={<PipIcon />} label="Picture-in-picture" onClick={togglePip} active={pipActive} />
-              <div className="px-2 pb-1 pt-2 text-xs font-medium text-ink-subtle">React</div>
-              <div className="flex justify-between px-1 pb-1">
-                {REACTION_EMOJI.map((e) => (
-                  <IconButton key={e} size="sm" label={`React ${e}`} icon={<span className="text-lg">{e}</span>} onClick={() => sendReaction(e)} />
-                ))}
+          <div className="max-h-[min(70vh,32rem)] w-72 max-w-[80vw] overflow-y-auto p-1">
+            {/* View — mobile-only overflow of the inline group + window controls. */}
+            <Section label="View">
+              <div className="md:hidden">
+                <MenuRow
+                  icon={<ScreenShareIcon />}
+                  label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
+                  onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+                  active={isScreenShareEnabled}
+                />
+                <MenuRow
+                  icon={<PeopleIcon />}
+                  label="Participants"
+                  onClick={() => togglePanel('people')}
+                  active={panel === 'people'}
+                />
+                <MenuRow
+                  icon={<HandIcon />}
+                  label={handRaised ? 'Lower hand' : 'Raise hand'}
+                  onClick={toggleHand}
+                  active={handRaised}
+                />
               </div>
-              <Divider />
-            </div>
+              <MenuRow icon={<PipIcon />} label="Picture-in-picture" onClick={togglePip} active={pipActive} />
+              <MenuRow
+                icon={<FullscreenIcon />}
+                label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                onClick={toggleFullscreen}
+                active={isFullscreen}
+              />
+              <div className="md:hidden">
+                <div className="px-2 pb-1 pt-2 text-xs font-medium text-ink-subtle">React</div>
+                <div className="flex justify-between px-1 pb-1">
+                  {REACTION_EMOJI.map((e) => (
+                    <IconButton key={e} size="sm" label={`React ${e}`} icon={<span className="text-lg">{e}</span>} onClick={() => sendReaction(e)} />
+                  ))}
+                </div>
+              </div>
+            </Section>
 
             {isHost && (
-              <>
+              <Section label="Host controls">
                 <MenuRow
                   icon={<LockIcon />}
                   label={locked ? 'Unlock room' : 'Lock room'}
@@ -276,40 +284,72 @@ export function ControlBar({
                   active={waiting}
                 />
                 <MergeControl onMerge={onMerge} />
-                <Divider />
-              </>
+              </Section>
             )}
 
-            <div className="px-2 pb-1 pt-1.5 text-xs font-medium text-ink-subtle">Background</div>
-            <BackgroundEffects controls={blur} />
-            <Divider />
+            <Section label="Effects">
+              <BackgroundEffects controls={blur} />
+            </Section>
 
-            <DeviceMenu
-              trigger={
-                <button className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4">
-                  <SettingsIcon />
-                  Devices
-                </button>
-              }
-            />
-            <Divider />
-            <ThemeSwitcher />
+            <Section label="Devices">
+              <DeviceMenu
+                trigger={
+                  <button className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4">
+                    <SettingsIcon />
+                    Devices
+                  </button>
+                }
+              />
+            </Section>
+
+            <Section label="Appearance" last>
+              <MenuRow
+                icon={soundOn ? <SoundOnIcon /> : <SoundOffIcon />}
+                label={soundOn ? 'Sounds on' : 'Sounds off'}
+                onClick={toggleSound}
+                active={soundOn}
+              />
+              <ThemeSwitcher />
+            </Section>
           </div>
         </Popover>
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
         {isHost ? (
-          <DropdownMenu
-            side="top"
-            align="end"
-            trigger={<IconButton label="Leave or end call" icon={<LeaveIcon />} tone="danger" />}
-          >
-            <DropdownItem onSelect={onLeave}>Leave (call continues)</DropdownItem>
-            <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={onEndForEveryone}>
-              End call for everyone
-            </DropdownItem>
-          </DropdownMenu>
+          // Split control: leaving (call continues) is the primary action; ending
+          // for everyone is tucked behind the caret. Styled as one danger pill.
+          <div className="flex h-11 items-stretch overflow-hidden rounded-control">
+            <Tooltip content="Leave — the call continues">
+              <button
+                type="button"
+                onClick={onLeave}
+                aria-label="Leave call"
+                className="flex items-center gap-2 bg-danger pl-4 pr-3.5 text-sm font-medium text-danger-ink transition-colors hover:bg-danger-hover [&_svg]:size-5"
+              >
+                <LeaveIcon />
+                <span className="hidden sm:inline">Leave</span>
+              </button>
+            </Tooltip>
+            <span className="w-px bg-danger-ink/25" aria-hidden />
+            <DropdownMenu
+              side="top"
+              align="end"
+              trigger={
+                <button
+                  type="button"
+                  aria-label="End call for everyone"
+                  className="grid place-items-center bg-danger px-2 text-danger-ink transition-colors hover:bg-danger-hover [&_svg]:size-4"
+                >
+                  <ChevronUpIcon />
+                </button>
+              }
+            >
+              <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={onEndForEveryone}>
+                End call for everyone
+              </DropdownItem>
+            </DropdownMenu>
+          </div>
         ) : (
           <Tooltip content="Leave">
             <IconButton label="Leave call" icon={<LeaveIcon />} tone="danger" onClick={onLeave} />
@@ -417,6 +457,29 @@ function MenuRow({
   )
 }
 
-function Divider() {
-  return <div className="my-1 h-px bg-line" aria-hidden />
+/** Labeled group inside the More menu — a hairline-separated section header. */
+function Section({ label, last, children }: { label: string; last?: boolean; children: ReactNode }) {
+  return (
+    <div className={cn(!last && 'mb-1 border-b border-line pb-1')}>
+      <p className="px-2 pb-0.5 pt-1.5 text-xs font-medium text-ink-subtle">{label}</p>
+      {children}
+    </div>
+  )
+}
+
+/** Document-level fullscreen toggle + live state. */
+function useFullscreen() {
+  const [isFullscreen, setIsFullscreen] = useState(
+    () => typeof document !== 'undefined' && Boolean(document.fullscreenElement),
+  )
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [])
+  const toggleFullscreen = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
+    else void document.documentElement.requestFullscreen().catch(() => {})
+  }, [])
+  return { isFullscreen, toggleFullscreen }
 }
