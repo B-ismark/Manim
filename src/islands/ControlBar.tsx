@@ -46,6 +46,9 @@ export interface ControlBarProps {
   /** Room lock state + host toggle. */
   locked: boolean
   onToggleLock: () => void
+  /** Waiting-room state + host toggle. */
+  waiting: boolean
+  onToggleWaiting: () => void
   sendReaction: (emoji: string) => void
   handRaised: boolean
   toggleHand: () => void
@@ -64,6 +67,8 @@ export function ControlBar({
   isHost,
   locked,
   onToggleLock,
+  waiting,
+  onToggleWaiting,
   sendReaction,
   handRaised,
   toggleHand,
@@ -257,6 +262,12 @@ export function ControlBar({
                   label={locked ? 'Unlock room' : 'Lock room'}
                   onClick={onToggleLock}
                   active={locked}
+                />
+                <MenuRow
+                  icon={<PeopleIcon />}
+                  label={waiting ? 'Waiting room: on' : 'Waiting room: off'}
+                  onClick={onToggleWaiting}
+                  active={waiting}
                 />
                 <MergeControl onMerge={onMerge} />
                 <Divider />

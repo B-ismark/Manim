@@ -9,7 +9,7 @@ import {
 } from '@livekit/components-react'
 import type { Participant } from 'livekit-client'
 import { useAppStore } from '@/store/useAppStore'
-import { setLock } from '@/lib/orchestrator'
+import { setRoomFlags } from '@/lib/orchestrator'
 
 /** Control-plane signalling topic (end / merge / handoff). */
 const CONTROL_TOPIC = 'mn.control'
@@ -47,11 +47,12 @@ export function useSessionControl(onLeave: () => void) {
     }
   }, [localParticipant.metadata])
 
-  const locked = useMemo(() => {
+  const { locked, waiting } = useMemo(() => {
     try {
-      return Boolean(JSON.parse(roomMetadata || '{}').locked)
+      const f = JSON.parse(roomMetadata || '{}')
+      return { locked: Boolean(f.locked), waiting: Boolean(f.waiting) }
     } catch {
-      return false
+      return { locked: false, waiting: false }
     }
   }, [roomMetadata])
 
@@ -130,19 +131,30 @@ export function useSessionControl(onLeave: () => void) {
   /** Host: lock/unlock the room (blocks new joins). */
   const toggleLock = useCallback(async () => {
     try {
-      await setLock({ room: room.name, caller: localParticipant.identity, locked: !locked })
+      await setRoomFlags({ room: room.name, caller: localParticipant.identity, locked: !locked })
     } catch {
       /* surfaced via thrown error elsewhere */
     }
   }, [room.name, localParticipant.identity, locked])
 
+  /** Host: turn the waiting room on/off (new joins must be admitted). */
+  const toggleWaiting = useCallback(async () => {
+    try {
+      await setRoomFlags({ room: room.name, caller: localParticipant.identity, waiting: !waiting })
+    } catch {
+      /* surfaced via thrown error elsewhere */
+    }
+  }, [room.name, localParticipant.identity, waiting])
+
   return {
     isHost,
     locked,
+    waiting,
     doLeave,
     endForEveryone,
     mergeInto,
     toggleLock,
+    toggleWaiting,
     sameNameOther,
     switchToThisDevice,
   }
