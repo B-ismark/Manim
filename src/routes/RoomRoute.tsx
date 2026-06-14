@@ -5,6 +5,7 @@ import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
 import { RoomView } from '@/islands/RoomView'
 import { useAppStore } from '@/store/useAppStore'
+import { useAuthStore } from '@/store/useAuthStore'
 import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
 import { roomOptions } from '@/lib/livekit'
 
@@ -16,6 +17,7 @@ export function RoomRoute() {
   const displayName = useAppStore((s) => s.displayName)
   const deviceId = useAppStore((s) => s.deviceId)
   const prejoin = useAppStore((s) => s.prejoin)
+  const userId = useAuthStore((s) => s.userId)
 
   const [token, setToken] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
@@ -36,7 +38,7 @@ export function RoomRoute() {
     }
     setConnecting(true)
     try {
-      const res = await knock({ room, name: displayName, deviceId })
+      const res = await knock({ room, name: displayName, deviceId, userId })
       if (res.token) {
         setToken(res.token)
       } else if (res.pending && res.requestId) {
@@ -51,7 +53,7 @@ export function RoomRoute() {
       setError(e instanceof Error ? e.message : 'Failed to join')
       setConnecting(false)
     }
-  }, [room, displayName, deviceId])
+  }, [room, displayName, deviceId, userId])
 
   // While queued in the waiting room, poll for the host's decision.
   useEffect(() => {
