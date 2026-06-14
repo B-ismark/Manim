@@ -11,14 +11,16 @@ import type { Participant } from 'livekit-client'
 import { useAppStore } from '@/store/useAppStore'
 import { setRoomFlags } from '@/lib/orchestrator'
 import { sounds } from '@/lib/sounds'
+import { toast } from '@/store/useToastStore'
 
-/** Control-plane signalling topic (end / merge / handoff). */
-const CONTROL_TOPIC = 'mn.control'
+/** Control-plane signalling topic (end / merge / handoff / report). */
+export const CONTROL_TOPIC = 'mn.control'
 
 type ControlMessage =
   | { type: 'end' }
   | { type: 'merge'; room: string }
   | { type: 'handoff'; userId: string; keepDevice: string }
+  | { type: 'report'; target: string; by: string }
 
 function userIdOf(p: Participant): string {
   try {
@@ -93,6 +95,9 @@ export function useSessionControl(onLeave: () => void) {
       navigate(`/r/${encodeURIComponent(data.room)}`, { state: { autojoin: true } })
     } else if (data.type === 'handoff' && data.userId === myUserId && data.keepDevice !== deviceId) {
       void doLeave()
+    } else if (data.type === 'report' && isHost) {
+      // Only the host is notified of a report.
+      toast(`${data.by} reported ${data.target}`, 'danger')
     }
   })
 

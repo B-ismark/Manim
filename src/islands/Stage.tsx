@@ -6,6 +6,7 @@ import { CopyIcon, CheckIcon, HandIcon, MicOffIcon, PinIcon } from '@/components
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
@@ -23,13 +24,14 @@ export function Stage() {
   const layout = useRoomStore((s) => s.layout)
   const pinned = useRoomStore((s) => s.pinned)
   const participants = useParticipants()
+  const blocked = useBlockStore((s) => s.blocked)
   const tracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false },
-  )
+  ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />

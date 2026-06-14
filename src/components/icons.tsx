@@ -234,3 +234,16 @@ export const RefreshIcon = (p: P) => (
     <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4" />
   </svg>
 )
+
+export const BanIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M5.6 5.6l12.8 12.8" />
+  </svg>
+)
+
+export const FlagIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 21V4M5 4h11l-1.5 3.5L16 11H5" />
+  </svg>
+)
