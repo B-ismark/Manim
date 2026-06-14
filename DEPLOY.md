@@ -78,9 +78,26 @@ create table if not exists profiles (
   email text unique
 );
 alter table profiles enable row level security;
-create policy "profiles readable" on profiles for select using (true);
+
+-- Read/write ONLY your own row. A `using (true)` select policy would let anyone
+-- with the public anon key dump every user's email (harvest/enumeration).
+create policy "read own profile" on profiles for select using (auth.uid() = id);
 create policy "insert own profile" on profiles for insert with check (auth.uid() = id);
 create policy "update own profile" on profiles for update using (auth.uid() = id);
+
+-- Call-by-email lookup: returns a single id for an EXACT email match without
+-- exposing the table. SECURITY DEFINER bypasses RLS but only ever returns one
+-- row, so it can't be used to list/dump profiles. Signed-in users only.
+create or replace function lookup_profile_id(lookup_email text)
+returns uuid
+language sql
+security definer
+set search_path = public
+as $$
+  select id from profiles where email = lower(lookup_email) limit 1;
+$$;
+revoke all on function lookup_profile_id(text) from public;
+grant execute on function lookup_profile_id(text) to authenticated;
 ```
 
 ## 5. LiveKit Cloud

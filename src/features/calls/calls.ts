@@ -18,15 +18,16 @@ export async function ringUser(
   fromName: string,
 ): Promise<string | null> {
   if (!supabase) return 'Calling is not configured.'
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id')
-    .eq('email', email.trim().toLowerCase())
-    .maybeSingle()
+  // Resolve via a SECURITY DEFINER RPC (single exact-match lookup) rather than a
+  // table select — the profiles table is not publicly readable, to prevent email
+  // harvesting. Returns the id scalar or null.
+  const { data, error } = await supabase.rpc('lookup_profile_id', {
+    lookup_email: email.trim().toLowerCase(),
+  })
   if (error) return 'Could not look up that user.'
   if (!data) return 'No Manim account with that email.'
 
-  const channel = supabase.channel(`user:${data.id}`)
+  const channel = supabase.channel(`user:${data as string}`)
   await channel.subscribe()
   await channel.send({ type: 'broadcast', event: 'ring', payload: { room, fromName } })
   await supabase.removeChannel(channel)
