@@ -13,3 +13,14 @@ directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = true
+
+# Runtime plain-text vars. These MUST live here (not just the dashboard): a
+# `wrangler deploy` treats wrangler.toml as the source of truth and drops any
+# dashboard-only plain-text vars. VITE_LIVEKIT_URL is public (it ships in the
+# browser bundle too), so committing it is fine.
+# SECRETS (LIVEKIT_API_KEY, LIVEKIT_API_SECRET, RESEND_API_KEY) are NOT here —
+# set them as encrypted Secrets in the dashboard / `wrangler secret put`; those
+# survive deploys and never get committed.
+[vars]
+VITE_LIVEKIT_URL = "wss://manim-2dl88wbx.livekit.cloud"
+RESEND_FROM = "Manim <onboarding@resend.dev>"
