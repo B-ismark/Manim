@@ -1,5 +1,15 @@
 name = "manim"
-pages_build_output_dir = "dist"
+main = "worker/index.js"
 compatibility_date = "2024-09-23"
 # nodejs_compat lets livekit-server-sdk (jose / crypto) run on the Workers runtime.
 compatibility_flags = ["nodejs_compat"]
+
+# Workers + Static Assets: serve the Vite build and route /api/* through the
+# Worker. run_worker_first = true so the Worker handles API routes before the
+# SPA fallback; everything else is served from the assets (index.html for
+# unknown client routes like /r/:room).
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = true

@@ -1,11 +1,11 @@
 /*
-  Cloudflare Pages Function — production backend. Wraps the shared orchestration
-  core (server/core.mjs), the same logic the local Express dev server uses.
-  Served same-origin under /api/*, so no CORS needed.
+  Cloudflare Worker entry (Workers + Static Assets model). Serves the built SPA
+  (via the ASSETS binding) and routes /api/* to the shared orchestration core
+  (server/core.mjs) — the same logic the local Express dev server uses.
 
-  Requires the Pages project to have the `nodejs_compat` flag (see wrangler.toml)
-  and these env vars: LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VITE_LIVEKIT_URL,
-  and optionally RESEND_API_KEY / RESEND_FROM.
+  Deployed with `wrangler deploy` per wrangler.toml. Requires the `nodejs_compat`
+  flag and env vars: LIVEKIT_API_KEY, LIVEKIT_API_SECRET, VITE_LIVEKIT_URL, and
+  optionally RESEND_API_KEY / RESEND_FROM.
 */
 import {
   handleHealth,
@@ -16,7 +16,7 @@ import {
   handleModerate,
   handleRoomflags,
   handleEmailInvite,
-} from '../../server/core.mjs'
+} from '../server/core.mjs'
 
 const json = (r) =>
   new Response(JSON.stringify(r.body), {
@@ -24,9 +24,7 @@ const json = (r) =>
     headers: { 'content-type': 'application/json' },
   })
 
-export async function onRequest(context) {
-  const { request, env } = context
-  const url = new URL(request.url)
+async function handleApi(request, env, url) {
   const path = url.pathname.replace(/^\/api\//, '')
   const method = request.method
   const query = Object.fromEntries(url.searchParams)
@@ -46,4 +44,13 @@ export async function onRequest(context) {
   } catch {
     return json({ status: 500, body: { error: 'server error' } })
   }
+}
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url)
+    if (url.pathname.startsWith('/api/')) return handleApi(request, env, url)
+    // Static assets (SPA fallback handled by [assets] not_found_handling).
+    return env.ASSETS.fetch(request)
+  },
 }
