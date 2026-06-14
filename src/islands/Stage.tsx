@@ -8,6 +8,7 @@ import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
+import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
 
 /** Responsive column count — keeps tiles large and readable at any size. */
@@ -16,26 +17,6 @@ function gridCols(n: number): string {
   if (n <= 4) return 'grid-cols-1 sm:grid-cols-2'
   if (n <= 9) return 'grid-cols-2 lg:grid-cols-3'
   return 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
-}
-
-const isLocalCam = (t: TrackReferenceOrPlaceholder) =>
-  t.participant.isLocal && t.source === Track.Source.Camera
-
-/** Pick the focused track: explicit pin > active screen share > active speaker > first. */
-function focusTrack(
-  tracks: TrackReferenceOrPlaceholder[],
-  pinned: string | null,
-): TrackReferenceOrPlaceholder | undefined {
-  if (pinned) {
-    const byPin =
-      tracks.find((t) => t.participant.identity === pinned && t.source === Track.Source.Camera) ??
-      tracks.find((t) => t.participant.identity === pinned)
-    if (byPin) return byPin
-  }
-  const screen = tracks.find((t) => t.source === Track.Source.ScreenShare)
-  if (screen) return screen
-  const speaking = tracks.find((t) => t.participant.isSpeaking)
-  return speaking ?? tracks[0]
 }
 
 export function Stage() {

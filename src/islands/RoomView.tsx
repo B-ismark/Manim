@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState } from '@livekit/components-react'
 import { ConnectionState } from 'livekit-client'
 import { Stage } from '@/islands/Stage'
 import { JoiningScreen } from '@/islands/JoiningScreen'
+import { PipPanel } from '@/islands/PipPanel'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner } from '@/islands/HandoffBanner'
@@ -11,6 +13,7 @@ import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
+import { useDocumentPip } from '@/features/pip/useDocumentPip'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
@@ -29,6 +32,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   const blur = useBackgroundBlur()
+  const docPip = useDocumentPip()
   useCallSounds()
 
   // Activate end-to-end encryption when a passphrase was set at prejoin. The key
@@ -88,6 +92,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         handRaised={handRaised}
         toggleHand={toggleHand}
         blur={blur}
+        docPip={{ supported: docPip.supported, active: docPip.active, toggle: docPip.toggle }}
       />
       <ReactionsOverlay reactions={active} />
 
@@ -96,6 +101,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           <SidePanel />
         </Suspense>
       )}
+
+      {/* Document PiP: the panel lives in its own OS window but stays in the
+          React/LiveKit tree via a portal, so its controls drive this session. */}
+      {docPip.pipWindow && createPortal(<PipPanel onLeave={doLeave} />, docPip.pipWindow.document.body)}
     </>
   )
 }

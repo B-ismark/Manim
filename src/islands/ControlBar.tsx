@@ -59,6 +59,8 @@ export interface ControlBarProps {
   handRaised: boolean
   toggleHand: () => void
   blur: BackgroundBlurControls
+  /** Document PiP (whole-app). Falls back to element PiP when unsupported. */
+  docPip: { supported: boolean; active: boolean; toggle: () => void }
 }
 
 /**
@@ -79,6 +81,7 @@ export function ControlBar({
   handRaised,
   toggleHand,
   blur,
+  docPip,
 }: ControlBarProps) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant()
@@ -252,7 +255,12 @@ export function ControlBar({
                   active={handRaised}
                 />
               </div>
-              <MenuRow icon={<PipIcon />} label="Picture-in-picture" onClick={togglePip} active={pipActive} />
+              <MenuRow
+                icon={<PipIcon />}
+                label="Picture-in-picture"
+                onClick={() => (docPip.supported ? docPip.toggle() : togglePip())}
+                active={docPip.supported ? docPip.active : pipActive}
+              />
               <MenuRow
                 icon={<FullscreenIcon />}
                 label={isFullscreen ? 'Exit full screen' : 'Full screen'}
