@@ -196,6 +196,32 @@ export const ChevronLeftIcon = (p: P) => (
   </svg>
 )
 
+export const ChevronUpIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 15l7-7 7 7" />
+  </svg>
+)
+
+export const FullscreenIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4" />
+  </svg>
+)
+
+export const SoundOnIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 9v6h4l5 4V5L8 9H4z" />
+    <path d="M16 9a3 3 0 0 1 0 6M18.5 6.5a6.5 6.5 0 0 1 0 11" />
+  </svg>
+)
+
+export const SoundOffIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 9v6h4l5 4V5L8 9H4z" />
+    <path d="M22 9l-5 6M17 9l5 6" />
+  </svg>
+)
+
 export const CopyIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="9" y="9" width="11" height="11" rx="2" />

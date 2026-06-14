@@ -150,6 +150,39 @@
     animation: mn-float-up 4s var(--ease-island);
   }
 
+  /* Joining loader — a "broadcast" motif: rings ping outward from a pulsing
+     core. Contextual to connecting a live call. Animated SVG, no asset/deps. */
+  @keyframes mn-ping {
+    0% {
+      transform: scale(0.35);
+      opacity: 0.65;
+    }
+    80%,
+    100% {
+      transform: scale(1.7);
+      opacity: 0;
+    }
+  }
+  @keyframes mn-breathe {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.12);
+    }
+  }
+  .mn-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: mn-ping 1.9s var(--ease-island) infinite;
+  }
+  .mn-core {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: mn-breathe 1.9s var(--ease-island) infinite;
+  }
+
   /* Accessibility: honor reduced-motion globally. */
   @media (prefers-reduced-motion: reduce) {
     *,
@@ -165,6 +198,14 @@
       animation: none !important;
       opacity: 1 !important;
       transform: translate(var(--x, 0), -48px) !important;
+    }
+    /* Loader: hold a static ring instead of pinging. */
+    .mn-ring {
+      animation: none !important;
+      opacity: 0.25 !important;
+    }
+    .mn-core {
+      animation: none !important;
     }
   }
 }
