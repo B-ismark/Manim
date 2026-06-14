@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { Avatar, IconButton } from '@/components/primitives'
-import { AttachIcon, DownloadIcon, SendIcon } from '@/components/icons'
+import { Avatar, IconButton, Popover } from '@/components/primitives'
+import { AttachIcon, DownloadIcon, GifIcon, SendIcon } from '@/components/icons'
 import { useChatMessages, type ChatItem, type FileItem } from '@/features/chat/useChatMessages'
+import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, uploadError } from '@/features/chat/limits'
+import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { cn } from '@/lib/cn'
 
 function humanSize(bytes?: number): string {
@@ -15,10 +17,12 @@ function timeOf(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-/** Chat timeline + composer. Files render inline as cards (STYLE.md §5 Tier-1). */
+/** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
 export function ChatPanel() {
   const { items, sendText, sendFile } = useChatMessages()
   const [draft, setDraft] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [gifOpen, setGifOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -34,7 +38,14 @@ export function ChatPanel() {
 
   function onPickFiles(files: FileList | null) {
     if (!files) return
-    for (const f of Array.from(files)) void sendFile(f)
+    for (const f of Array.from(files)) {
+      const err = uploadError(f)
+      if (err) {
+        setError(err)
+        continue
+      }
+      void sendFile(f)
+    }
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -45,7 +56,7 @@ export function ChatPanel() {
           <div className="grid h-full place-items-center text-center">
             <div>
               <p className="text-sm font-medium">No messages yet</p>
-              <p className="mt-1 text-xs text-ink-muted">Say hello or share a file.</p>
+              <p className="mt-1 text-xs text-ink-muted">Say hello, share a file or a GIF.</p>
             </div>
           </div>
         ) : (
@@ -53,6 +64,15 @@ export function ChatPanel() {
         )}
         <div ref={endRef} />
       </div>
+
+      {error && (
+        <div className="mx-3 mb-1 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger">
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="text-ink-muted hover:text-ink">
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <form
         className="flex shrink-0 items-end gap-2 border-t border-line p-3"
@@ -75,6 +95,24 @@ export function ChatPanel() {
           icon={<AttachIcon />}
           onClick={() => fileInputRef.current?.click()}
         />
+        {gifEnabled && (
+          <Popover
+            open={gifOpen}
+            onOpenChange={setGifOpen}
+            side="top"
+            align="start"
+            trigger={
+              <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} />
+            }
+          >
+            <GifPicker
+              onSelect={(url) => {
+                sendText(url)
+                setGifOpen(false)
+              }}
+            />
+          </Popover>
+        )}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -115,17 +153,53 @@ function MessageRow({ item }: { item: ChatItem }) {
           <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
         </div>
         {item.kind === 'text' ? (
-          <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{item.text}</p>
+          looksLikeImageUrl(item.text) ? (
+            <ImageBubble src={item.text} />
+          ) : (
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{item.text}</p>
+          )
         ) : (
-          <FileCard file={item} />
+          <FileMessage file={item} />
         )}
       </div>
     </div>
   )
 }
 
-function FileCard({ file }: { file: FileItem }) {
+/** Inline image / GIF preview. `download` is set for received files (blob URLs). */
+function ImageBubble({ src, download }: { src: string; download?: string }) {
+  return (
+    <div className="mt-1">
+      <a href={src} target="_blank" rel="noreferrer" className="inline-block">
+        <img
+          src={src}
+          alt={download || 'shared image'}
+          loading="lazy"
+          className="max-h-60 max-w-full rounded-field object-contain"
+        />
+      </a>
+      {download && (
+        <a
+          href={src}
+          download={download}
+          className="mt-1 inline-flex items-center gap-1 text-xs text-ink-muted hover:text-ink [&_svg]:size-3.5"
+        >
+          <DownloadIcon /> Download
+        </a>
+      )}
+    </div>
+  )
+}
+
+function FileMessage({ file }: { file: FileItem }) {
   const done = file.progress >= 1 && file.url
+  // Small images preview inline; large images (and other files) show a card.
+  const inlineImage = done && isImage(file.mimeType) && (file.size ?? 0) <= IMAGE_INLINE_MAX_BYTES
+
+  if (inlineImage && file.url) {
+    return <ImageBubble src={file.url} download={file.fileName} />
+  }
+
   return (
     <div className="mt-1 flex items-center gap-3 rounded-field border border-line bg-raised p-2.5">
       <div className="grid size-9 shrink-0 place-items-center rounded-field bg-accent-soft text-accent">
@@ -133,7 +207,10 @@ function FileCard({ file }: { file: FileItem }) {
       </div>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{file.fileName}</p>
-        <p className="text-xs text-ink-muted">{humanSize(file.size)}</p>
+        <p className="text-xs text-ink-muted">
+          {humanSize(file.size)}
+          {done && isImage(file.mimeType) ? ' · large image — download to view' : ''}
+        </p>
         {!done && (
           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sunken">
             <div
