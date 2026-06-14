@@ -5,7 +5,7 @@ import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
 import { RoomView } from '@/islands/RoomView'
 import { useAppStore } from '@/store/useAppStore'
-import { fetchToken, LIVEKIT_URL } from '@/lib/orchestrator'
+import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
 import { roomOptions } from '@/lib/livekit'
 
 export function RoomRoute() {
@@ -20,6 +20,7 @@ export function RoomRoute() {
   const [token, setToken] = useState<string | null>(null)
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [waitingId, setWaitingId] = useState<string | null>(null)
 
   const handleJoin = useCallback(async () => {
     setError(null)
@@ -29,13 +30,45 @@ export function RoomRoute() {
     }
     setConnecting(true)
     try {
-      const { token } = await fetchToken({ room, name: displayName, deviceId })
-      setToken(token)
+      const res = await knock({ room, name: displayName, deviceId })
+      if (res.token) {
+        setToken(res.token)
+      } else if (res.pending && res.requestId) {
+        // Waiting room is on — wait for the host to admit us.
+        setWaitingId(res.requestId)
+        setConnecting(false)
+      } else {
+        setError('Could not join this room.')
+        setConnecting(false)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to join')
       setConnecting(false)
     }
   }, [room, displayName, deviceId])
+
+  // While queued in the waiting room, poll for the host's decision.
+  useEffect(() => {
+    if (!waitingId) return
+    let stop = false
+    const id = window.setInterval(async () => {
+      const s = await knockStatus(room, waitingId)
+      if (stop) return
+      if (s.status === 'approved' && s.token) {
+        setToken(s.token)
+        setWaitingId(null)
+      } else if (s.status === 'denied') {
+        setError('The host declined your request to join.')
+        setWaitingId(null)
+      } else if (s.status === 'expired') {
+        setWaitingId(null)
+      }
+    }, 2000)
+    return () => {
+      stop = true
+      window.clearInterval(id)
+    }
+  }, [waitingId, room])
 
   // On a merge, navigation lands here with { autojoin } and a new room param.
   // Reset the old connection and auto-join the target without a second prejoin.
@@ -44,6 +77,7 @@ export function RoomRoute() {
   useEffect(() => {
     setToken(null)
     setConnecting(false)
+    setWaitingId(null)
     if (autojoin && displayName && joinedFor.current !== room) {
       joinedFor.current = room
       void handleJoin()
@@ -53,6 +87,7 @@ export function RoomRoute() {
   function leave() {
     setToken(null)
     setConnecting(false)
+    setWaitingId(null)
     navigate('/')
   }
 
@@ -75,6 +110,22 @@ export function RoomRoute() {
       >
         <RoomView onLeave={leave} />
       </LiveKitRoom>
+    )
+  }
+
+  if (waitingId) {
+    return (
+      <main className="grid min-h-dvh place-items-center p-4">
+        <Island pad="lg" className="w-full max-w-sm text-center">
+          <h1 className="text-lg font-semibold">Waiting to be let in</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            The host has been notified. You'll join {room} as soon as they admit you.
+          </p>
+          <Button variant="neutral" className="mt-4" onClick={leave}>
+            Cancel
+          </Button>
+        </Island>
+      </main>
     )
   }
 

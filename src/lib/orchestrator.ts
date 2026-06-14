@@ -1,32 +1,80 @@
 /*
-  Client side of the session orchestrator. Today it only fetches a join token
-  from the dev token server. Merge / handoff / waiting-room admit calls will be
-  added here (same module) in later milestones — the UI imports from one place.
+  Client side of the session orchestrator. Talks to the dev token server today;
+  the same calls map onto a serverless function in production. One import site
+  for join (knock), waiting-room admit, moderation, and room flags.
 */
 
-export interface TokenRequest {
+async function postJson<T>(url: string, body: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(data.error ?? `request failed (${res.status})`)
+  }
+  return (await res.json()) as T
+}
+
+export interface JoinRequest {
   room: string
   name: string
   deviceId: string
   host?: boolean
 }
 
-export interface TokenResponse {
-  token: string
-  identity: string
+export interface KnockResponse {
+  /** Present when admitted immediately (host, existing participant, or no waiting room). */
+  token?: string
+  identity?: string
+  host?: boolean
+  /** Present when the waiting room queued the request for host approval. */
+  pending?: boolean
+  requestId?: string
 }
 
-export async function fetchToken(req: TokenRequest): Promise<TokenResponse> {
-  const res = await fetch('/api/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? `token request failed (${res.status})`)
-  }
-  return (await res.json()) as TokenResponse
+/** Request to join. May return a token directly or a pending knock. */
+export function knock(req: JoinRequest): Promise<KnockResponse> {
+  return postJson<KnockResponse>('/api/knock', req)
+}
+
+export interface KnockStatus {
+  status: 'pending' | 'approved' | 'denied' | 'expired'
+  token?: string
+  identity?: string
+}
+
+/** Poll the host's decision on a queued knock. */
+export async function knockStatus(room: string, requestId: string): Promise<KnockStatus> {
+  const res = await fetch(`/api/knock-status?room=${encodeURIComponent(room)}&requestId=${requestId}`)
+  if (!res.ok) return { status: 'expired' }
+  return (await res.json()) as KnockStatus
+}
+
+export interface PendingKnocker {
+  id: string
+  name: string
+}
+
+/** Host: list people waiting to be admitted. */
+export async function listPending(room: string, caller: string): Promise<PendingKnocker[]> {
+  const res = await fetch(
+    `/api/pending?room=${encodeURIComponent(room)}&caller=${encodeURIComponent(caller)}`,
+  )
+  if (!res.ok) return []
+  const data = (await res.json()) as { pending?: PendingKnocker[] }
+  return data.pending ?? []
+}
+
+/** Host: admit or deny a waiting knocker. */
+export function admit(
+  room: string,
+  caller: string,
+  requestId: string,
+  approve: boolean,
+): Promise<{ ok: boolean }> {
+  return postJson('/api/admit', { room, caller, requestId, approve })
 }
 
 export interface ModerateRequest {
@@ -40,35 +88,21 @@ export interface ModerateRequest {
   trackSid?: string
 }
 
-export async function moderate(req: ModerateRequest): Promise<void> {
-  const res = await fetch('/api/moderate', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? `moderation failed (${res.status})`)
-  }
+export function moderate(req: ModerateRequest): Promise<void> {
+  return postJson<{ ok: boolean }>('/api/moderate', req).then(() => undefined)
 }
 
-export interface LockRequest {
+export interface RoomFlagsRequest {
   room: string
   /** Host identity (verified server-side). */
   caller: string
-  locked: boolean
+  locked?: boolean
+  waiting?: boolean
 }
 
-export async function setLock(req: LockRequest): Promise<void> {
-  const res = await fetch('/api/lock', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(req),
-  })
-  if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(body.error ?? `lock failed (${res.status})`)
-  }
+/** Host: set room flags (lock / waiting room). */
+export function setRoomFlags(req: RoomFlagsRequest): Promise<void> {
+  return postJson<{ ok: boolean }>('/api/roomflags', req).then(() => undefined)
 }
 
 export const LIVEKIT_URL: string = import.meta.env.VITE_LIVEKIT_URL ?? ''

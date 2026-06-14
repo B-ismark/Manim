@@ -4,6 +4,7 @@ import { Stage } from '@/islands/Stage'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner } from '@/islands/HandoffBanner'
+import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useSessionControl } from '@/features/session/useSessionControl'
@@ -24,10 +25,12 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const {
     isHost,
     locked,
+    waiting,
     doLeave,
     endForEveryone,
     mergeInto,
     toggleLock,
+    toggleWaiting,
     sameNameOther,
     switchToThisDevice,
   } = useSessionControl(onLeave)
@@ -38,6 +41,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <RoomAudioRenderer />
 
       {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
+      <WaitingRoomBanner active={isHost && waiting} />
 
       <div
         className={cn(
@@ -55,6 +59,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         isHost={isHost}
         locked={locked}
         onToggleLock={toggleLock}
+        waiting={waiting}
+        onToggleWaiting={toggleWaiting}
         sendReaction={sendReaction}
         handRaised={handRaised}
         toggleHand={toggleHand}

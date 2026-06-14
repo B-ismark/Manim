@@ -1,13 +1,17 @@
 /*
-  Dev-only token server. Mints short-lived LiveKit access tokens so the API
-  secret never reaches the browser. In production this becomes a serverless
-  function (Cloudflare Worker / Supabase Edge Function) — same logic.
+  Dev-only token + session server. Mints short-lived LiveKit access tokens so
+  the API secret never reaches the browser, and runs the lightweight session
+  orchestration (host detection, lock, moderation, waiting room).
 
-  Identity is `displayName##userId#deviceId` so one user can hold multiple
-  device connections (multi-device handoff). LiveKit requires unique identity
-  per connection; the `#deviceId` suffix guarantees that.
+  In production this becomes a serverless function (Cloudflare Worker / Supabase
+  Edge Function) and the in-memory waiting-room store moves to a shared store
+  (Supabase) — same logic.
+
+  Identity is `name#deviceId` so one user can hold multiple device connections
+  (multi-device handoff). LiveKit requires a unique identity per connection.
 */
 import 'dotenv/config'
+import { randomUUID } from 'node:crypto'
 import express from 'express'
 import cors from 'cors'
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
@@ -25,103 +29,182 @@ const app = express()
 app.use(cors())
 app.use(express.json())
 
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+async function mintToken(room, name, deviceId, isHost) {
+  const identity = `${name}#${deviceId || 'web'}`
+  const at = new AccessToken(API_KEY, API_SECRET, {
+    identity,
+    name,
+    ttl: '15m', // short-lived per security model
+    metadata: JSON.stringify({ host: isHost }),
+  })
+  at.addGrant({
+    room,
+    roomJoin: true,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true, // chat + P2P file transfer (data channel)
+    canUpdateOwnMetadata: true, // raise-hand + presence via participant attributes
+    roomAdmin: isHost, // host gets moderation rights
+  })
+  return { token: await at.toJwt(), identity }
+}
+
+async function listParticipants(room) {
+  try {
+    return await roomService.listParticipants(room)
+  } catch {
+    return []
+  }
+}
+
+async function getRoomFlags(room) {
+  try {
+    const rooms = await roomService.listRooms([room])
+    return rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Merge a patch into the room metadata (preserves other flags). */
+async function mergeRoomFlags(room, patch) {
+  const current = await getRoomFlags(room)
+  await roomService.updateRoomMetadata(room, JSON.stringify({ ...current, ...patch }))
+}
+
+function isHostParticipant(participants, identity) {
+  const info = participants.find((p) => p.identity === identity)
+  try {
+    return Boolean(JSON.parse(info?.metadata || '{}').host)
+  } catch {
+    return false
+  }
+}
+
+async function requireHost(req, res) {
+  const { room, caller } = req.body ?? {}
+  if (!room || !caller) {
+    res.status(400).json({ error: 'room and caller required' })
+    return false
+  }
+  if (!roomService) {
+    res.status(500).json({ error: 'RoomServiceClient not configured (set VITE_LIVEKIT_URL)' })
+    return false
+  }
+  const participants = await listParticipants(room)
+  if (!isHostParticipant(participants, caller)) {
+    res.status(403).json({ error: 'host only' })
+    return false
+  }
+  return true
+}
+
+// In-memory waiting room: room -> Map(requestId -> { name, deviceId, status, token, identity })
+const waiting = new Map()
+function roomQueue(room) {
+  if (!waiting.has(room)) waiting.set(room, new Map())
+  return waiting.get(room)
+}
+
+// ── Routes ───────────────────────────────────────────────────────────────────
+
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, hasKeys: Boolean(API_KEY && API_SECRET) })
 })
 
-app.post('/api/token', async (req, res) => {
+/**
+ * Join request. Returns a token directly for the host, existing participants,
+ * and normal rooms; enforces lock; and queues a knock when the waiting room is on.
+ */
+app.post('/api/knock', async (req, res) => {
   try {
-    const { room, name, deviceId, host } = req.body ?? {}
-    if (!room || !name) {
-      return res.status(400).json({ error: 'room and name are required' })
-    }
+    const { room, name, deviceId } = req.body ?? {}
+    if (!room || !name) return res.status(400).json({ error: 'room and name are required' })
     if (!API_KEY || !API_SECRET) {
       return res.status(500).json({ error: 'LIVEKIT_API_KEY / LIVEKIT_API_SECRET not set in .env' })
     }
 
-    const device = deviceId || 'web'
-    const identity = `${name}#${device}`
+    const identity = `${name}#${deviceId || 'web'}`
 
-    // Host = the first person to join the room (creator). Determined server-side
-    // so it can't be spoofed by the client. Falls back to the client hint only
-    // when the RoomServiceClient isn't configured (no LIVEKIT URL).
-    let isHost = Boolean(host)
-    let participants = []
-    if (roomService) {
-      try {
-        participants = await roomService.listParticipants(room)
-        isHost = participants.length === 0
-      } catch {
-        // Room doesn't exist yet → this caller is the first in.
-        isHost = true
-      }
-
-      // Room lock: block new joins when locked (host + existing participants
-      // reconnecting are still allowed).
-      if (!isHost) {
-        try {
-          const rooms = await roomService.listRooms([room])
-          const locked = rooms[0]?.metadata ? Boolean(JSON.parse(rooms[0].metadata).locked) : false
-          const alreadyIn = participants.some((p) => p.identity === identity)
-          if (locked && !alreadyIn) {
-            return res.status(403).json({ error: 'This room is locked by the host.' })
-          }
-        } catch {
-          /* no room/metadata yet → not locked */
-        }
-      }
+    if (!roomService) {
+      // No orchestration available → mint directly (host hint from client).
+      const minted = await mintToken(room, name, deviceId, Boolean(req.body.host))
+      return res.json({ ...minted, host: Boolean(req.body.host) })
     }
 
-    const at = new AccessToken(API_KEY, API_SECRET, {
-      identity,
-      name,
-      ttl: '15m', // short-lived per security model
-      metadata: JSON.stringify({ host: isHost }),
-    })
-    at.addGrant({
-      room,
-      roomJoin: true,
-      canPublish: true,
-      canSubscribe: true,
-      canPublishData: true, // for chat + P2P file transfer (data channel)
-      canUpdateOwnMetadata: true, // for raise-hand + presence via participant attributes
-      roomAdmin: isHost, // host gets moderation rights
-    })
+    const participants = await listParticipants(room)
+    const isHost = participants.length === 0
+    const alreadyIn = participants.some((p) => p.identity === identity)
+    const flags = await getRoomFlags(room)
 
-    const token = await at.toJwt()
-    res.json({ token, identity, host: isHost })
+    if (!isHost && !alreadyIn && flags.locked) {
+      return res.status(403).json({ error: 'This room is locked by the host.' })
+    }
+
+    if (isHost || alreadyIn || !flags.waiting) {
+      const minted = await mintToken(room, name, deviceId, isHost)
+      return res.json({ ...minted, host: isHost })
+    }
+
+    // Waiting room on → queue a knock for host approval.
+    const requestId = randomUUID()
+    roomQueue(room).set(requestId, { name, deviceId, status: 'pending' })
+    res.json({ pending: true, requestId })
   } catch (err) {
-    console.error('token error', err)
-    res.status(500).json({ error: 'failed to mint token' })
+    console.error('knock error', err)
+    res.status(500).json({ error: 'failed to join' })
   }
 })
 
-/**
- * Host moderation: force-mute or remove a participant. The caller must be the
- * room host — verified server-side against the participant metadata stamped at
- * join, so a non-host client can't moderate even if it calls this directly.
- */
+/** Knocker polls for the host's decision. */
+app.get('/api/knock-status', (req, res) => {
+  const { room, requestId } = req.query
+  const entry = waiting.get(room)?.get(requestId)
+  if (!entry) return res.json({ status: 'expired' })
+  if (entry.status === 'approved') {
+    return res.json({ status: 'approved', token: entry.token, identity: entry.identity })
+  }
+  res.json({ status: entry.status })
+})
+
+/** Host lists pending knockers. */
+app.get('/api/pending', async (req, res) => {
+  const { room, caller } = req.query
+  if (!roomService) return res.json({ pending: [] })
+  const participants = await listParticipants(room)
+  if (!isHostParticipant(participants, caller)) return res.status(403).json({ error: 'host only' })
+  const q = waiting.get(room)
+  const pending = q
+    ? [...q.entries()].filter(([, e]) => e.status === 'pending').map(([id, e]) => ({ id, name: e.name }))
+    : []
+  res.json({ pending })
+})
+
+/** Host admits or denies a knocker. */
+app.post('/api/admit', async (req, res) => {
+  if (!(await requireHost(req, res))) return
+  const { room, requestId, approve } = req.body ?? {}
+  const entry = waiting.get(room)?.get(requestId)
+  if (!entry) return res.status(404).json({ error: 'request not found' })
+  if (approve) {
+    const minted = await mintToken(room, entry.name, entry.deviceId, false)
+    entry.status = 'approved'
+    entry.token = minted.token
+    entry.identity = minted.identity
+  } else {
+    entry.status = 'denied'
+  }
+  res.json({ ok: true })
+})
+
+/** Host moderation: force-mute or remove a participant (host-verified). */
 app.post('/api/moderate', async (req, res) => {
   try {
-    const { room, caller, target, action, trackSid } = req.body ?? {}
-    if (!room || !caller || !target || !action) {
-      return res.status(400).json({ error: 'room, caller, target, action required' })
-    }
-    if (!roomService) {
-      return res.status(500).json({ error: 'RoomServiceClient not configured (set VITE_LIVEKIT_URL)' })
-    }
-
-    const participants = await roomService.listParticipants(room)
-    const callerInfo = participants.find((p) => p.identity === caller)
-    let callerIsHost = false
-    try {
-      callerIsHost = Boolean(JSON.parse(callerInfo?.metadata || '{}').host)
-    } catch {
-      callerIsHost = false
-    }
-    if (!callerIsHost) {
-      return res.status(403).json({ error: 'only the host can moderate' })
-    }
+    if (!(await requireHost(req, res))) return
+    const { room, target, action, trackSid } = req.body ?? {}
+    if (!target || !action) return res.status(400).json({ error: 'target and action required' })
 
     if (action === 'remove') {
       await roomService.removeParticipant(room, target)
@@ -131,7 +214,6 @@ app.post('/api/moderate', async (req, res) => {
     } else {
       return res.status(400).json({ error: 'unknown action' })
     }
-
     res.json({ ok: true })
   } catch (err) {
     console.error('moderate error', err)
@@ -139,32 +221,22 @@ app.post('/api/moderate', async (req, res) => {
   }
 })
 
-/** Host toggles the room lock (stored in room metadata, enforced at token mint). */
-app.post('/api/lock', async (req, res) => {
+/** Host toggles room flags (lock / waiting). Stored in room metadata. */
+app.post('/api/roomflags', async (req, res) => {
   try {
-    const { room, caller, locked } = req.body ?? {}
-    if (!room || !caller || typeof locked !== 'boolean') {
-      return res.status(400).json({ error: 'room, caller, locked(boolean) required' })
+    if (!(await requireHost(req, res))) return
+    const { room, locked, waiting: waitingFlag } = req.body ?? {}
+    const patch = {}
+    if (typeof locked === 'boolean') patch.locked = locked
+    if (typeof waitingFlag === 'boolean') patch.waiting = waitingFlag
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'nothing to update' })
     }
-    if (!roomService) {
-      return res.status(500).json({ error: 'RoomServiceClient not configured' })
-    }
-    const participants = await roomService.listParticipants(room)
-    const callerInfo = participants.find((p) => p.identity === caller)
-    let callerIsHost = false
-    try {
-      callerIsHost = Boolean(JSON.parse(callerInfo?.metadata || '{}').host)
-    } catch {
-      callerIsHost = false
-    }
-    if (!callerIsHost) {
-      return res.status(403).json({ error: 'only the host can lock the room' })
-    }
-    await roomService.updateRoomMetadata(room, JSON.stringify({ locked }))
-    res.json({ ok: true, locked })
+    await mergeRoomFlags(room, patch)
+    res.json({ ok: true, ...patch })
   } catch (err) {
-    console.error('lock error', err)
-    res.status(500).json({ error: 'failed to update lock' })
+    console.error('roomflags error', err)
+    res.status(500).json({ error: 'failed to update room flags' })
   }
 })
 
