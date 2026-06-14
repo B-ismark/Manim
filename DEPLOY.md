@@ -35,7 +35,7 @@ build vars live under the Build section.)
 | `VITE_SUPABASE_ANON_KEY` | build | for accounts | Supabase anon key |
 | `RESEND_API_KEY` | runtime (secret) | optional | real email invites (else mailto) |
 | `RESEND_FROM` | runtime | optional | e.g. `Manim <onboarding@resend.dev>` |
-| `VITE_TENOR_KEY` | build | optional | GIF picker (Tenor closed signups — use Giphy when wired) |
+| `VITE_GIPHY_KEY` | build | optional | GIF picker (free key from developers.giphy.com) |
 
 > Set `VITE_LIVEKIT_URL` in **both** build and runtime (the client connects with
 > it; the Worker uses it to reach the LiveKit RoomService).

@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react'
 
-const TENOR_KEY = import.meta.env.VITE_TENOR_KEY ?? ''
-/** GIF feature is available only when a (free) Tenor API key is configured. */
-export const gifEnabled = Boolean(TENOR_KEY)
+const GIPHY_KEY = import.meta.env.VITE_GIPHY_KEY ?? ''
+/** GIF feature is available only when a (free) Giphy API key is configured. */
+export const gifEnabled = Boolean(GIPHY_KEY)
 
-interface TenorResult {
+interface GiphyImage {
+  url?: string
+}
+interface GiphyResult {
   id: string
-  media_formats?: Record<string, { url?: string }>
+  images?: Record<string, GiphyImage>
 }
 
 interface GifItem {
@@ -15,7 +18,7 @@ interface GifItem {
   gif: string
 }
 
-/** Tenor GIF search/picker. Selecting a GIF sends its URL as a chat message. */
+/** Giphy GIF search/picker. Selecting a GIF sends its URL as a chat message. */
 export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
   const [query, setQuery] = useState('')
   const [items, setItems] = useState<GifItem[]>([])
@@ -27,20 +30,20 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
       setLoading(true)
       try {
         const q = query.trim()
-        const endpoint = q
-          ? `https://tenor.googleapis.com/v2/search?q=${encodeURIComponent(q)}`
-          : 'https://tenor.googleapis.com/v2/featured?'
-        const url = `${endpoint}&key=${TENOR_KEY}&client_key=manim&limit=24&media_filter=tinygif,gif`
+        const base = q
+          ? `https://api.giphy.com/v1/gifs/search?q=${encodeURIComponent(q)}`
+          : 'https://api.giphy.com/v1/gifs/trending?'
+        const url = `${base}&api_key=${GIPHY_KEY}&limit=24&rating=g`
         const res = await fetch(url)
-        const data = (await res.json()) as { results?: TenorResult[] }
+        const data = (await res.json()) as { data?: GiphyResult[] }
         if (cancelled) return
-        const mapped = (data.results ?? [])
-          .map((r) => ({
-            id: r.id,
-            preview: r.media_formats?.tinygif?.url ?? '',
-            gif: r.media_formats?.gif?.url ?? '',
+        const mapped = (data.data ?? [])
+          .map((g) => ({
+            id: g.id,
+            preview: g.images?.fixed_width_small?.url ?? g.images?.preview_gif?.url ?? '',
+            gif: g.images?.downsized?.url ?? g.images?.original?.url ?? '',
           }))
-          .filter((r) => r.preview && r.gif)
+          .filter((g) => g.preview && g.gif)
         setItems(mapped)
       } catch {
         if (!cancelled) setItems([])
@@ -80,7 +83,7 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
           <p className="col-span-2 py-6 text-center text-xs text-ink-subtle">No GIFs found.</p>
         )}
       </div>
-      <p className="mt-1.5 text-center text-[10px] text-ink-subtle">Powered by Tenor</p>
+      <p className="mt-1.5 text-center text-[10px] text-ink-subtle">Powered by GIPHY</p>
     </div>
   )
 }
