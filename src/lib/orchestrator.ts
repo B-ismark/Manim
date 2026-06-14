@@ -52,4 +52,23 @@ export async function moderate(req: ModerateRequest): Promise<void> {
   }
 }
 
+export interface LockRequest {
+  room: string
+  /** Host identity (verified server-side). */
+  caller: string
+  locked: boolean
+}
+
+export async function setLock(req: LockRequest): Promise<void> {
+  const res = await fetch('/api/lock', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    const body = (await res.json().catch(() => ({}))) as { error?: string }
+    throw new Error(body.error ?? `lock failed (${res.status})`)
+  }
+}
+
 export const LIVEKIT_URL: string = import.meta.env.VITE_LIVEKIT_URL ?? ''

@@ -16,6 +16,7 @@ import {
   ChatIcon,
   HandIcon,
   LeaveIcon,
+  LockIcon,
   MergeIcon,
   MicIcon,
   MicOffIcon,
@@ -42,6 +43,9 @@ export interface ControlBarProps {
   /** Host-only: move everyone into another room. */
   onMerge: (room: string) => void
   isHost: boolean
+  /** Room lock state + host toggle. */
+  locked: boolean
+  onToggleLock: () => void
   sendReaction: (emoji: string) => void
   handRaised: boolean
   toggleHand: () => void
@@ -58,6 +62,8 @@ export function ControlBar({
   onEndForEveryone,
   onMerge,
   isHost,
+  locked,
+  onToggleLock,
   sendReaction,
   handRaised,
   toggleHand,
@@ -103,6 +109,18 @@ export function ControlBar({
         elevation="raised"
         className="pointer-events-auto flex items-center gap-1.5 rounded-control px-3 py-2 sm:gap-2"
       >
+        {locked && (
+          <Tooltip content="Room is locked">
+            <span
+              className="grid size-9 place-items-center rounded-control bg-accent-soft text-accent [&_svg]:size-4"
+              role="img"
+              aria-label="Room is locked"
+            >
+              <LockIcon />
+            </span>
+          </Tooltip>
+        )}
+
         <Tooltip content={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
           <IconButton
             label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
@@ -234,6 +252,12 @@ export function ControlBar({
 
             {isHost && (
               <>
+                <MenuRow
+                  icon={<LockIcon />}
+                  label={locked ? 'Unlock room' : 'Lock room'}
+                  onClick={onToggleLock}
+                  active={locked}
+                />
                 <MergeControl onMerge={onMerge} />
                 <Divider />
               </>
