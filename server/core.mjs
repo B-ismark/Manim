@@ -1,10 +1,10 @@
 /*
   Orchestration core — pure, env-injected, runtime-agnostic. Shared by the local
-  Express dev server (server/token.mjs) and the Cloudflare Pages Function
-  (functions/api/[[path]].ts) so the logic lives in exactly one place.
+  Express dev server (server/token.mjs) and the Cloudflare Worker
+  (worker/index.js) so the logic lives in exactly one place.
 
   Every handler takes (env, input) and returns { status, body }. `env` is
-  process.env locally and the Pages `context.env` in production. Uses only
+  process.env locally and the Worker's `env` binding in production. Uses only
   Web-standard APIs (global fetch, global crypto) so it runs on Workers.
 */
 import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
