@@ -14,6 +14,7 @@ import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
+import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
@@ -34,6 +35,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const blur = useBackgroundBlur()
   const docPip = useDocumentPip()
   useCallSounds()
+  useApplyBlocks()
 
   // Activate end-to-end encryption when a passphrase was set at prejoin. The key
   // is already configured on the room's keyProvider (see roomOptions).

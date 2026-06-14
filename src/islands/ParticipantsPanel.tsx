@@ -18,11 +18,26 @@ import {
   DropdownSeparator,
   IconButton,
 } from '@/components/primitives'
-import { CheckIcon, CopyIcon, HandIcon, LeaveIcon, MicIcon, MicOffIcon, MoreIcon, PinIcon } from '@/components/icons'
+import {
+  BanIcon,
+  CameraOffIcon,
+  CheckIcon,
+  CopyIcon,
+  FlagIcon,
+  HandIcon,
+  LeaveIcon,
+  MicIcon,
+  MicOffIcon,
+  MoreIcon,
+  PinIcon,
+} from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
+import { CONTROL_TOPIC } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useBlockStore } from '@/store/useBlockStore'
+import { toast } from '@/store/useToastStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { moderate, sendEmailInvite } from '@/lib/orchestrator'
 import { ringUser } from '@/features/calls/calls'
@@ -100,6 +115,20 @@ export function ParticipantsPanel() {
     if (!err) setEmail('')
   }
 
+  // Report flags a participant to the host over the control channel (only the
+  // host is notified). No central moderation backend — keeps it lightweight.
+  async function reportUser(targetName: string) {
+    const payload = new TextEncoder().encode(
+      JSON.stringify({ type: 'report', target: targetName, by: localParticipant.name || 'Someone' }),
+    )
+    try {
+      await localParticipant.publishData(payload, { reliable: true, topic: CONTROL_TOPIC })
+    } catch {
+      /* best effort */
+    }
+    toast('Reported to the host', 'neutral')
+  }
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-3 pt-3">
@@ -155,6 +184,7 @@ export function ParticipantsPanel() {
             canModerate={isHost && p.identity !== localParticipant.identity}
             room={room.name}
             caller={localParticipant.identity}
+            onReport={reportUser}
           />
         ))}
       </ul>
@@ -168,12 +198,14 @@ function ParticipantRow({
   canModerate,
   room,
   caller,
+  onReport,
 }: {
   participant: Participant
   isLocal: boolean
   canModerate: boolean
   room: string
   caller: string
+  onReport: (targetName: string) => void
 }) {
   const speaking = useIsSpeaking(participant)
   const micRef = { participant, source: Track.Source.Microphone } as TrackReferenceOrPlaceholder
@@ -182,8 +214,12 @@ function ParticipantRow({
 
   const pinned = useRoomStore((s) => s.pinned) === participant.identity
   const togglePin = useRoomStore((s) => s.togglePin)
+  const blocked = useBlockStore((s) => s.blocked.includes(participant.identity))
+  const toggleBlock = useBlockStore((s) => s.toggle)
 
   const name = displayName(participant)
+  const camPub = participant.getTrackPublication(Track.Source.Camera)
+  const hasCamera = Boolean(camPub && !camPub.isMuted)
 
   async function forceMute() {
     const trackSid = participant.getTrackPublication(Track.Source.Microphone)?.trackSid
@@ -192,6 +228,16 @@ function ParticipantRow({
       await moderate({ room, caller, target: participant.identity, action: 'mute', trackSid })
     } catch {
       /* surfaced elsewhere; ignore here */
+    }
+  }
+
+  async function disableVideo() {
+    const trackSid = camPub?.trackSid
+    if (!trackSid) return
+    try {
+      await moderate({ room, caller, target: participant.identity, action: 'mute', trackSid })
+    } catch {
+      /* ignore */
     }
   }
 
@@ -243,11 +289,28 @@ function ParticipantRow({
         <DropdownItem icon={<PinIcon />} onSelect={() => togglePin(participant.identity)}>
           {pinned ? 'Unpin' : 'Pin'}
         </DropdownItem>
+
+        {/* Personal, client-side moderation — available for any other participant. */}
+        {!isLocal && (
+          <>
+            <DropdownItem icon={<BanIcon />} onSelect={() => toggleBlock(participant.identity)}>
+              {blocked ? 'Unblock' : 'Block for me'}
+            </DropdownItem>
+            <DropdownItem icon={<FlagIcon />} onSelect={() => onReport(name)}>
+              Report
+            </DropdownItem>
+          </>
+        )}
+
+        {/* Host-only enforcement. */}
         {canModerate && (
           <>
             <DropdownSeparator />
             <DropdownItem icon={<MicOffIcon />} disabled={micMuted} onSelect={forceMute}>
               Mute
+            </DropdownItem>
+            <DropdownItem icon={<CameraOffIcon />} disabled={!hasCamera} onSelect={disableVideo}>
+              Turn off camera
             </DropdownItem>
             <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={remove}>
               Remove from call
