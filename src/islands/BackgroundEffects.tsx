@@ -1,6 +1,9 @@
 import { useRef } from 'react'
+import { useLocalParticipant, VideoTrack } from '@livekit/components-react'
+import { Track } from 'livekit-client'
+import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Slider, Toggle } from '@/components/primitives'
-import { BanIcon } from '@/components/icons'
+import { BanIcon, CameraOffIcon } from '@/components/icons'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import { isLowPowerDevice } from '@/lib/device'
 import { cn } from '@/lib/cn'
@@ -28,6 +31,7 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
     addCustomImage,
   } = controls
   const fileRef = useRef<HTMLInputElement>(null)
+  const { localParticipant, isCameraEnabled } = useLocalParticipant()
 
   if (!supported) {
     return (
@@ -39,9 +43,30 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
 
   const lowPower = isLowPowerDevice()
   const imageSelected = (src: string) => mode === 'image' && selectedImage === src
+  const camPub = localParticipant.getTrackPublication(Track.Source.Camera)
+  const previewRef = camPub
+    ? ({ participant: localParticipant, source: Track.Source.Camera, publication: camPub } as TrackReferenceOrPlaceholder)
+    : null
 
   return (
     <div className="px-2.5 py-1.5">
+      {/* Live self-preview so the choice is visible before it's applied (the
+          processor is already on the published track, so the effect shows here
+          in real time). Mirrored like the stage self-view. */}
+      <div className="mb-3 aspect-video w-full overflow-hidden rounded-tile bg-sunken">
+        {isCameraEnabled && previewRef ? (
+          <VideoTrack
+            trackRef={previewRef as Parameters<typeof VideoTrack>[0]['trackRef']}
+            className="size-full object-cover [transform:scaleX(-1)]"
+          />
+        ) : (
+          <div className="grid size-full place-items-center gap-1 text-center text-xs text-ink-subtle [&_svg]:size-5">
+            <CameraOffIcon />
+            Turn on your camera to preview effects
+          </div>
+        )}
+      </div>
+
       <div className="flex flex-wrap gap-2">
         <Thumb label="None" selected={mode === 'none'} onClick={useNone}>
           <span className="grid size-full place-items-center text-ink-muted [&_svg]:size-5">
@@ -81,11 +106,14 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
           type="button"
           onClick={() => fileRef.current?.click()}
           aria-label="Upload a background image"
-          className="grid size-14 place-items-center rounded-tile border border-dashed border-line-strong text-ink-muted hover:bg-sunken [&_svg]:size-5"
+          className="flex flex-col items-center gap-1"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
+          <span className="grid size-14 place-items-center rounded-tile border border-dashed border-line-strong text-ink-muted hover:bg-sunken [&_svg]:size-5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </span>
+          <span className="text-[11px] leading-none text-ink-muted">Upload</span>
         </button>
         <input
           ref={fileRef}
