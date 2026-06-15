@@ -7,6 +7,7 @@ import {
   Island,
   IconButton,
   Popover,
+  Sheet,
   Toggle,
   Tooltip,
 } from '@/components/primitives'
@@ -40,6 +41,7 @@ import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useIsTouch } from '@/lib/useIsTouch'
 import { cn } from '@/lib/cn'
 
 export interface ControlBarProps {
@@ -95,6 +97,7 @@ export function ControlBar({
   const [pipActive, setPipActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
+  const touch = useIsTouch()
   const { isFullscreen, toggleFullscreen } = useFullscreen()
 
   const panel = useRoomStore((s) => s.panel)
@@ -134,13 +137,6 @@ export function ControlBar({
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
 
-  // Programmatic close of the More menu — must also release the chrome hold,
-  // since changing the controlled `open` prop doesn't fire Radix's onOpenChange.
-  const closeMore = useCallback(() => {
-    setMoreOpen(false)
-    onMenuOpenChange?.(false)
-  }, [onMenuOpenChange])
-
   // Mobile front/rear flip — restart the camera track with the opposite facing
   // mode. (Desktops use the device picker in More → Devices instead.)
   const flipCamera = useCallback(async () => {
@@ -156,6 +152,171 @@ export function ControlBar({
       /* device can't switch facing — ignore */
     }
   }, [localParticipant])
+
+  // Single open/close path for the More menu so the chrome hold always tracks
+  // it — including programmatic closes (controlled prop changes don't fire the
+  // primitive's onOpenChange).
+  const setMore = useCallback(
+    (open: boolean) => {
+      setMoreOpen(open)
+      onMenuOpenChange?.(open)
+    },
+    [onMenuOpenChange],
+  )
+  const closeMore = () => setMore(false)
+
+  // Shared "More" body — rendered in a bottom sheet on mobile, a popover on
+  // desktop. A reaction strip headlines the sheet; quick toggles fill a grid;
+  // rich controls (effects/audio/devices) follow as labeled sections. Items
+  // that live on the inline bar at wider widths hide here at the matching
+  // breakpoint, so nothing duplicates.
+  const moreContent = (
+    <div className="flex flex-col">
+      <div className="mb-2 pointer-fine:hidden">
+        <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">React</p>
+        <div className="flex justify-between gap-1">
+          {REACTION_EMOJI.map((e) => (
+            <IconButton
+              key={e}
+              label={`React ${e}`}
+              icon={<span className="text-xl">{e}</span>}
+              onClick={() => {
+                sendReaction(e)
+                closeMore()
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-4 gap-1">
+        <GridTile
+          className="pointer-fine:hidden"
+          icon={<ScreenShareIcon />}
+          label={isScreenShareEnabled ? 'Stop share' : 'Share'}
+          active={isScreenShareEnabled}
+          onClick={() => {
+            localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
+            closeMore()
+          }}
+        />
+        {/* People lives only here (every device) to keep the bar slim. */}
+        <GridTile
+          icon={<PeopleIcon />}
+          label="People"
+          active={panel === 'people'}
+          onClick={() => {
+            togglePanel('people')
+            closeMore()
+          }}
+        />
+        <GridTile
+          className="pointer-fine:hidden"
+          icon={<HandIcon />}
+          label={handRaised ? 'Lower' : 'Raise'}
+          active={handRaised}
+          onClick={() => {
+            toggleHand()
+            closeMore()
+          }}
+        />
+        <GridTile
+          className="pointer-fine:hidden"
+          icon={<GridIcon />}
+          label="Grid"
+          active={layout === 'grid'}
+          onClick={() => {
+            setLayout('grid')
+            closeMore()
+          }}
+        />
+        <GridTile
+          className="pointer-fine:hidden"
+          icon={<SpeakerLayoutIcon />}
+          label="Speaker"
+          active={layout === 'speaker'}
+          onClick={() => {
+            setLayout('speaker')
+            closeMore()
+          }}
+        />
+        <GridTile
+          className="pointer-fine:hidden"
+          icon={<SpotlightIcon />}
+          label="Spotlight"
+          active={layout === 'spotlight'}
+          onClick={() => {
+            setLayout('spotlight')
+            closeMore()
+          }}
+        />
+        <GridTile
+          icon={<PipIcon />}
+          label="PiP"
+          active={docPip.supported ? docPip.active : pipActive}
+          onClick={() => {
+            if (docPip.supported) docPip.toggle()
+            else void togglePip()
+            closeMore()
+          }}
+        />
+        <GridTile
+          icon={<FullscreenIcon />}
+          label={isFullscreen ? 'Exit' : 'Full'}
+          active={isFullscreen}
+          onClick={() => {
+            toggleFullscreen()
+            closeMore()
+          }}
+        />
+        {isHost && (
+          <GridTile
+            icon={<LockIcon />}
+            label={locked ? 'Unlock' : 'Lock'}
+            active={locked}
+            onClick={onToggleLock}
+          />
+        )}
+        {isHost && (
+          <GridTile
+            icon={<PeopleIcon />}
+            label={waiting ? 'Lobby on' : 'Lobby off'}
+            active={waiting}
+            onClick={onToggleWaiting}
+          />
+        )}
+      </div>
+
+      <div className="mt-1 border-t border-line pt-1">
+        <Section label="Effects">
+          <BackgroundEffects controls={blur} />
+        </Section>
+        <Section label="Audio">
+          <NoiseSuppression controls={noise} />
+        </Section>
+        <Section label="Devices">
+          <DeviceMenu
+            trigger={
+              <button className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4">
+                <SettingsIcon />
+                Devices
+              </button>
+            }
+          />
+        </Section>
+        <Section label="Preferences" last>
+          <MenuRow
+            icon={<SettingsIcon />}
+            label="Settings"
+            onClick={() => {
+              setSettingsOpen(true)
+              closeMore()
+            }}
+          />
+        </Section>
+      </div>
+    </div>
+  )
 
   return (
     // bottom inset clears the iOS home indicator (viewport-fit=cover is set).
@@ -248,7 +409,7 @@ export function ControlBar({
         </Tooltip>
 
         {/* Desktop-inline Tier-1 group (mouse only; folded into More on touch).
-            Participants lives only in More on every device — see below. */}
+            Participants lives only in More on every device — see moreContent. */}
         <span className="hidden pointer-fine:inline-flex">
           <ReactionButton onPick={sendReaction} />
         </span>
@@ -268,141 +429,36 @@ export function ControlBar({
           <LayoutSwitcher />
         </span>
 
-        {/* More — window controls (PiP, full screen), effects, devices,
-            appearance, host controls; plus the Tier-1 overflow on mobile. */}
-        <Popover
-          side="top"
-          align="end"
-          open={moreOpen}
-          onOpenChange={(o) => {
-            setMoreOpen(o)
-            onMenuOpenChange?.(o)
-          }}
-          trigger={<IconButton label="More options" icon={<MoreIcon />} tone="neutral" />}
-        >
-          <div className="max-h-[min(70vh,32rem)] w-72 max-w-[80vw] overflow-y-auto p-1">
-            {/* View — overflow of the inline group (each item shown here only at
-                the width where it leaves the bar, so nothing duplicates) +
-                window controls for everyone. */}
-            <Section label="View">
-              {/* Screen share leaves the bar on touch devices. */}
-              <div className="pointer-fine:hidden">
-                <MenuRow
-                  icon={<ScreenShareIcon />}
-                  label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
-                  onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
-                  active={isScreenShareEnabled}
-                />
-              </div>
-              {/* Participants lives only here (every device) to keep the bar slim.
-                  Close More on open so the panel/sheet isn't stacked under it. */}
-              <MenuRow
-                icon={<PeopleIcon />}
-                label="Participants"
-                onClick={() => {
-                  togglePanel('people')
-                  closeMore()
-                }}
-                active={panel === 'people'}
-              />
-              {/* Hand / layout leave the bar on touch devices. */}
-              <div className="pointer-fine:hidden">
-                <MenuRow
-                  icon={<HandIcon />}
-                  label={handRaised ? 'Lower hand' : 'Raise hand'}
-                  onClick={toggleHand}
-                  active={handRaised}
-                />
-                <MenuRow
-                  icon={<GridIcon />}
-                  label="Grid"
-                  onClick={() => setLayout('grid')}
-                  active={layout === 'grid'}
-                />
-                <MenuRow
-                  icon={<SpeakerLayoutIcon />}
-                  label="Speaker"
-                  onClick={() => setLayout('speaker')}
-                  active={layout === 'speaker'}
-                />
-                <MenuRow
-                  icon={<SpotlightIcon />}
-                  label="Spotlight"
-                  onClick={() => setLayout('spotlight')}
-                  active={layout === 'spotlight'}
-                />
-              </div>
-              <MenuRow
-                icon={<PipIcon />}
-                label="Picture-in-picture"
-                onClick={() => (docPip.supported ? docPip.toggle() : togglePip())}
-                active={docPip.supported ? docPip.active : pipActive}
-              />
-              <MenuRow
-                icon={<FullscreenIcon />}
-                label={isFullscreen ? 'Exit full screen' : 'Full screen'}
-                onClick={toggleFullscreen}
-                active={isFullscreen}
-              />
-              {/* Reactions leave the bar on touch devices. */}
-              <div className="pointer-fine:hidden">
-                <div className="px-2 pb-1 pt-2 text-xs font-medium text-ink-subtle">React</div>
-                <div className="flex justify-between px-1 pb-1">
-                  {REACTION_EMOJI.map((e) => (
-                    <IconButton key={e} size="sm" label={`React ${e}`} icon={<span className="text-lg">{e}</span>} onClick={() => sendReaction(e)} />
-                  ))}
-                </div>
-              </div>
-            </Section>
-
-            {isHost && (
-              <Section label="Host controls">
-                <MenuRow
-                  icon={<LockIcon />}
-                  label={locked ? 'Unlock room' : 'Lock room'}
-                  onClick={onToggleLock}
-                  active={locked}
-                />
-                <MenuRow
-                  icon={<PeopleIcon />}
-                  label={waiting ? 'Waiting room: on' : 'Waiting room: off'}
-                  onClick={onToggleWaiting}
-                  active={waiting}
-                />
-              </Section>
-            )}
-
-            <Section label="Effects">
-              <BackgroundEffects controls={blur} />
-            </Section>
-
-            <Section label="Audio">
-              <NoiseSuppression controls={noise} />
-            </Section>
-
-            <Section label="Devices">
-              <DeviceMenu
-                trigger={
-                  <button className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4">
-                    <SettingsIcon />
-                    Devices
-                  </button>
-                }
-              />
-            </Section>
-
-            <Section label="Preferences" last>
-              <MenuRow
-                icon={<SettingsIcon />}
-                label="Settings"
-                onClick={() => {
-                  setSettingsOpen(true)
-                  closeMore()
-                }}
-              />
-            </Section>
-          </div>
-        </Popover>
+        {/* More — bottom sheet on mobile (thumb-reachable), popover on desktop.
+            Both render the same body; see moreContent above. */}
+        {touch ? (
+          <>
+            <IconButton
+              label="More options"
+              icon={<MoreIcon />}
+              tone="neutral"
+              active={moreOpen}
+              onClick={() => setMore(true)}
+            />
+            <Sheet open={moreOpen} onOpenChange={setMore} side="bottom" title="More">
+              {moreContent}
+            </Sheet>
+          </>
+        ) : (
+          <Popover
+            open={moreOpen}
+            onOpenChange={setMore}
+            side="top"
+            align="end"
+            trigger={
+              <IconButton label="More options" icon={<MoreIcon />} tone="neutral" active={moreOpen} />
+            }
+          >
+            <div className="max-h-[min(70vh,32rem)] w-80 max-w-[85vw] overflow-y-auto p-2">
+              {moreContent}
+            </div>
+          </Popover>
+        )}
 
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
@@ -525,6 +581,42 @@ function MenuRow({
     >
       {icon}
       {label}
+    </button>
+  )
+}
+
+/** Quick-action tile in the More grid: round icon over a small label. */
+function GridTile({
+  icon,
+  label,
+  active,
+  onClick,
+  className,
+}: {
+  icon: ReactNode
+  label: string
+  active?: boolean
+  onClick: () => void
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn('flex flex-col items-center gap-1 rounded-field px-1 py-2 hover:bg-sunken', className)}
+    >
+      <span
+        className={cn(
+          'grid size-11 place-items-center rounded-control [&_svg]:size-5',
+          active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink',
+        )}
+      >
+        {icon}
+      </span>
+      <span className={cn('text-center text-[11px] leading-tight', active ? 'text-accent' : 'text-ink-muted')}>
+        {label}
+      </span>
     </button>
   )
 }
