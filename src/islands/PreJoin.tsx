@@ -137,7 +137,8 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
         <p className="text-xs font-medium text-ink-subtle">Joining</p>
         <h1 className="text-xl font-semibold">{room}</h1>
 
-        <div className="mt-4 aspect-video w-full overflow-hidden rounded-tile bg-sunken">
+        {/* Portrait on touch (matches the in-call tiles), landscape on desktop. */}
+        <div className="mx-auto mt-4 aspect-[3/4] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken pointer-fine:aspect-video pointer-fine:max-w-none">
           {cameraOn ? (
             <video ref={videoRef} autoPlay muted playsInline className="size-full object-cover [transform:scaleX(-1)]" />
           ) : (

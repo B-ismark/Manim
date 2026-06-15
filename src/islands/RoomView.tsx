@@ -12,6 +12,7 @@ import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { CallStatusBar } from '@/islands/CallStatusBar'
 import { LayoutChip } from '@/islands/LayoutChip'
+import { StageTopBar } from '@/islands/StageTopBar'
 import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { useReactions } from '@/features/reactions/useReactions'
@@ -156,6 +157,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <ConnectionBanner />
       <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
       <LayoutChip visible={chromeVisible} />
+      <StageTopBar visible={chromeVisible} />
       <PinCoachmark />
 
       {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
