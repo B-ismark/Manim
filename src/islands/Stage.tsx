@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { useTracks, VideoTrack, useParticipants } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -184,11 +185,23 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
   const selfFacing = useRoomStore((s) => s.selfFacing)
   const mirror = p.isLocal && !isScreen && selfFacing === 'user'
 
+  // Long-press to pin (touch) — a second, more discoverable gesture alongside
+  // double-tap. A drag (swipe to switch layout) cancels it.
+  const pressTimer = useRef<number | undefined>(undefined)
+  const startPress = () => {
+    pressTimer.current = window.setTimeout(() => togglePin(p.identity), 500)
+  }
+  const cancelPress = () => window.clearTimeout(pressTimer.current)
+
   return (
     <div
-      // Double-tap a tile to pin/spotlight it (single tap bubbles to the stage
-      // chrome toggle on mobile). Mirrors Zoom/Telegram/Discord.
+      // Double-tap (or long-press) a tile to pin/spotlight it; single tap bubbles
+      // to the stage chrome toggle on mobile. Mirrors Zoom/Telegram/Discord.
       onDoubleClick={() => togglePin(p.identity)}
+      onPointerDown={startPress}
+      onPointerUp={cancelPress}
+      onPointerLeave={cancelPress}
+      onPointerMove={cancelPress}
       className={cn(
         'group relative overflow-hidden rounded-tile bg-sunken',
         fill ? 'size-full' : 'aspect-video',

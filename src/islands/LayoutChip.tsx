@@ -1,4 +1,4 @@
-import { Popover } from '@/components/primitives'
+import { Popover, StageChip } from '@/components/primitives'
 import { GridIcon, SpeakerLayoutIcon, SpotlightIcon } from '@/components/icons'
 import { useRoomStore, type LayoutMode } from '@/store/useRoomStore'
 import { cn } from '@/lib/cn'
@@ -33,14 +33,10 @@ export function LayoutChip({ visible }: { visible: boolean }) {
         side="bottom"
         align="start"
         trigger={
-          <button
-            type="button"
-            aria-label={`Layout: ${current.label}. Tap to change.`}
-            className="pointer-events-auto flex items-center gap-1.5 rounded-control bg-overlay px-2.5 py-1.5 text-xs font-medium text-white shadow-raised backdrop-blur [&_svg]:size-4"
-          >
+          <StageChip className="pointer-events-auto" aria-label={`Layout: ${current.label}. Tap to change.`}>
             <CurrentIcon />
             {current.label}
-          </button>
+          </StageChip>
         }
       >
         <div className="flex flex-col">

@@ -78,6 +78,9 @@ export function useBackgroundBlur() {
 
   // Optimistic: show the controls; verified against the module on first enable.
   const [supported, setSupported] = useState(true)
+  // True while the processor is (re)building — covers the first ~160KB MediaPipe
+  // import so the preview can show a spinner instead of looking frozen.
+  const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<EffectMode>('none')
   const [radius, setRadius] = useState(DEFAULT_RADIUS)
   const [quality, setQuality] = useState<BlurQuality>('standard')
@@ -124,9 +127,11 @@ export function useBackgroundBlur() {
     async function sync() {
       if (mode === 'none') {
         await stopCurrent()
+        if (!cancelled) setBusy(false)
         return
       }
       if (!track) return
+      if (!cancelled) setBusy(true)
       try {
         if (!modRef.current) modRef.current = await import('@livekit/track-processors')
         const mod = modRef.current
@@ -151,6 +156,8 @@ export function useBackgroundBlur() {
         }
       } catch {
         if (!cancelled) setMode('none')
+      } finally {
+        if (!cancelled) setBusy(false)
       }
     }
 
@@ -203,6 +210,7 @@ export function useBackgroundBlur() {
 
   return {
     supported,
+    busy,
     allowHighQuality,
     mode,
     radius,
