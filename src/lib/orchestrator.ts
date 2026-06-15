@@ -4,12 +4,12 @@
   for join (knock), waiting-room admit, moderation, and room flags.
 */
 
-async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify(body),
-  })
+async function postJson<T>(url: string, body: unknown, token?: string): Promise<T> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  // Host endpoints authenticate by the caller's signed LiveKit token (Bearer),
+  // verified server-side — not a plaintext identity (which any participant can read).
+  if (token) headers.authorization = `Bearer ${token}`
+  const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string }
     throw new Error(data.error ?? `request failed (${res.status})`)
@@ -59,30 +59,30 @@ export interface PendingKnocker {
   name: string
 }
 
-/** Host: list people waiting to be admitted. */
-export async function listPending(room: string, caller: string): Promise<PendingKnocker[]> {
-  const res = await fetch(
-    `/api/pending?room=${encodeURIComponent(room)}&caller=${encodeURIComponent(caller)}`,
-  )
+/** Host: list people waiting to be admitted. `token` is the host's signed join token. */
+export async function listPending(room: string, token: string): Promise<PendingKnocker[]> {
+  const res = await fetch(`/api/pending?room=${encodeURIComponent(room)}`, {
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  })
   if (!res.ok) return []
   const data = (await res.json()) as { pending?: PendingKnocker[] }
   return data.pending ?? []
 }
 
-/** Host: admit or deny a waiting knocker. */
+/** Host: admit or deny a waiting knocker. `token` is the host's signed join token. */
 export function admit(
   room: string,
-  caller: string,
+  token: string,
   requestId: string,
   approve: boolean,
 ): Promise<{ ok: boolean }> {
-  return postJson('/api/admit', { room, caller, requestId, approve })
+  return postJson('/api/admit', { room, requestId, approve }, token)
 }
 
 export interface ModerateRequest {
   room: string
-  /** Identity of the host making the request (verified server-side). */
-  caller: string
+  /** The host's signed LiveKit join token — proves host authority server-side. */
+  token: string
   /** Identity of the participant being moderated. */
   target: string
   action: 'mute' | 'remove'
@@ -90,21 +90,21 @@ export interface ModerateRequest {
   trackSid?: string
 }
 
-export function moderate(req: ModerateRequest): Promise<void> {
-  return postJson<{ ok: boolean }>('/api/moderate', req).then(() => undefined)
+export function moderate({ token, ...body }: ModerateRequest): Promise<void> {
+  return postJson<{ ok: boolean }>('/api/moderate', body, token).then(() => undefined)
 }
 
 export interface RoomFlagsRequest {
   room: string
-  /** Host identity (verified server-side). */
-  caller: string
+  /** The host's signed LiveKit join token — proves host authority server-side. */
+  token: string
   locked?: boolean
   waiting?: boolean
 }
 
 /** Host: set room flags (lock / waiting room). */
-export function setRoomFlags(req: RoomFlagsRequest): Promise<void> {
-  return postJson<{ ok: boolean }>('/api/roomflags', req).then(() => undefined)
+export function setRoomFlags({ token, ...body }: RoomFlagsRequest): Promise<void> {
+  return postJson<{ ok: boolean }>('/api/roomflags', body, token).then(() => undefined)
 }
 
 /**

@@ -45,6 +45,7 @@ export function useSessionControl(onLeave: () => void) {
   const participants = useParticipants()
   const { metadata: roomMetadata } = useRoomInfo()
   const deviceId = useAppStore((s) => s.deviceId)
+  const roomToken = useAppStore((s) => s.roomToken)
 
   // Authority comes from ROOM metadata (server-written), never participant
   // metadata — participants can rewrite their own metadata (canUpdateOwnMetadata,
@@ -154,21 +155,23 @@ export function useSessionControl(onLeave: () => void) {
 
   /** Host: lock/unlock the room (blocks new joins). */
   const toggleLock = useCallback(async () => {
+    if (!roomToken) return
     try {
-      await setRoomFlags({ room: room.name, caller: localParticipant.identity, locked: !locked })
+      await setRoomFlags({ room: room.name, token: roomToken, locked: !locked })
     } catch {
       /* surfaced via thrown error elsewhere */
     }
-  }, [room.name, localParticipant.identity, locked])
+  }, [room.name, roomToken, locked])
 
   /** Host: turn the waiting room on/off (new joins must be admitted). */
   const toggleWaiting = useCallback(async () => {
+    if (!roomToken) return
     try {
-      await setRoomFlags({ room: room.name, caller: localParticipant.identity, waiting: !waiting })
+      await setRoomFlags({ room: room.name, token: roomToken, waiting: !waiting })
     } catch {
       /* surfaced via thrown error elsewhere */
     }
-  }, [room.name, localParticipant.identity, waiting])
+  }, [room.name, roomToken, waiting])
 
   return {
     isHost,

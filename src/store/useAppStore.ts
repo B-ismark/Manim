@@ -14,6 +14,9 @@ function loadDeviceId(): string {
 interface AppState {
   displayName: string
   deviceId: string
+  /** Current room's signed LiveKit join token. Sent as Bearer to host endpoints
+   *  (admit / moderate / roomflags) so the server can verify host authority. */
+  roomToken: string | null
   /** Pre-join device + quality intent, read when connecting to a room. */
   prejoin: {
     micEnabled: boolean
@@ -27,11 +30,13 @@ interface AppState {
   }
   setDisplayName: (name: string) => void
   setPrejoin: (patch: Partial<AppState['prejoin']>) => void
+  setRoomToken: (token: string | null) => void
 }
 
 export const useAppStore = create<AppState>((set) => ({
   displayName: '',
   deviceId: loadDeviceId(),
+  roomToken: null,
   prejoin: {
     micEnabled: true,
     cameraEnabled: true,
@@ -39,4 +44,5 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setDisplayName: (displayName) => set({ displayName }),
   setPrejoin: (patch) => set((s) => ({ prejoin: { ...s.prejoin, ...patch } })),
+  setRoomToken: (roomToken) => set({ roomToken }),
 }))

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useTracks, VideoTrack, useParticipants } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -12,12 +13,24 @@ import { useDraggable } from '@/lib/useDraggable'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
 
-/** Responsive column count — keeps tiles large and readable at any size. */
-function gridCols(n: number): string {
-  if (n <= 1) return 'grid-cols-1'
-  if (n <= 4) return 'grid-cols-1 sm:grid-cols-2'
-  if (n <= 9) return 'grid-cols-2 lg:grid-cols-3'
-  return 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'
+/**
+ * Modular grid that scales with the participant count instead of stepping through
+ * fixed breakpoints. Columns target a roughly square layout (√n) so tiles stay as
+ * large as possible, capped tighter on narrow screens. Beyond the cap the grid
+ * scrolls rather than shrinking tiles into unreadable thumbnails.
+ */
+function useGridColumns(n: number): number {
+  const [narrow, setNarrow] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 640px)')
+    const onChange = () => setNarrow(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  if (n <= 1) return 1
+  return Math.min(Math.ceil(Math.sqrt(n)), narrow ? 2 : 5)
 }
 
 export function Stage() {
@@ -33,13 +46,23 @@ export function Stage() {
     { onlySubscribed: false },
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
+  const columns = useGridColumns(tracks.length)
+
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />
   }
 
   if (layout === 'grid' || tracks.length <= 1) {
+    // Many tiles → top-align and scroll so each stays readable; few → center.
+    const many = tracks.length > columns * 3
     return (
-      <div className={cn('grid flex-1 content-center gap-3 p-3', gridCols(tracks.length))}>
+      <div
+        className={cn(
+          'grid min-h-0 flex-1 gap-3 p-3',
+          many ? 'content-start overflow-y-auto' : 'content-center',
+        )}
+        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+      >
         {tracks.map((ref) => (
           <Tile key={`${ref.participant.identity}-${ref.source}`} trackRef={ref} />
         ))}

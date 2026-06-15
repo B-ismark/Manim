@@ -18,9 +18,17 @@ export function RoomRoute() {
   const displayName = useAppStore((s) => s.displayName)
   const deviceId = useAppStore((s) => s.deviceId)
   const prejoin = useAppStore((s) => s.prejoin)
+  const setRoomToken = useAppStore((s) => s.setRoomToken)
   const userId = useAuthStore((s) => s.userId)
 
   const [token, setToken] = useState<string | null>(null)
+
+  // Mirror the join token into the store so in-room host controls can present it
+  // as the Bearer credential to the orchestrator (admit / moderate / roomflags).
+  useEffect(() => {
+    setRoomToken(token)
+    return () => setRoomToken(null)
+  }, [token, setRoomToken])
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [waitingId, setWaitingId] = useState<string | null>(null)

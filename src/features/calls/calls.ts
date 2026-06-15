@@ -1,11 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useCallStore, type IncomingCall } from '@/store/useCallStore'
 
-export interface IncomingCall {
-  room: string
-  fromName: string
-}
+export type { IncomingCall }
 
 /**
  * Ring a Manim user by email — resolves their id via the `profiles` table and
@@ -41,7 +39,9 @@ export async function ringUser(
 export function useIncomingCalls() {
   const userId = useAuthStore((s) => s.userId)
   const signedIn = useAuthStore((s) => s.signedIn)
-  const [incoming, setIncoming] = useState<IncomingCall | null>(null)
+  const incoming = useCallStore((s) => s.incoming)
+  const setIncoming = useCallStore((s) => s.setIncoming)
+  const dismiss = useCallStore((s) => s.dismiss)
 
   useEffect(() => {
     const sb = supabase
@@ -56,8 +56,7 @@ export function useIncomingCalls() {
     return () => {
       void sb.removeChannel(channel)
     }
-  }, [userId, signedIn])
+  }, [userId, signedIn, setIncoming])
 
-  const dismiss = useCallback(() => setIncoming(null), [])
   return { incoming, dismiss }
 }

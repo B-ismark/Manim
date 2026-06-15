@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useLocalParticipant, useRoomContext } from '@livekit/components-react'
+import { useRoomContext } from '@livekit/components-react'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { admit, listPending, type PendingKnocker } from '@/lib/orchestrator'
+import { useAppStore } from '@/store/useAppStore'
 
 /**
  * Host-only: shows people knocking when the waiting room is on, with Admit/Deny.
@@ -9,17 +10,17 @@ import { admit, listPending, type PendingKnocker } from '@/lib/orchestrator'
  */
 export function WaitingRoomBanner({ active }: { active: boolean }) {
   const room = useRoomContext()
-  const { localParticipant } = useLocalParticipant()
+  const token = useAppStore((s) => s.roomToken)
   const [pending, setPending] = useState<PendingKnocker[]>([])
 
   useEffect(() => {
-    if (!active) {
+    if (!active || !token) {
       setPending([])
       return
     }
     let stop = false
     async function poll() {
-      const list = await listPending(room.name, localParticipant.identity)
+      const list = await listPending(room.name, token!)
       if (!stop) setPending(list)
     }
     void poll()
@@ -28,14 +29,15 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
       stop = true
       window.clearInterval(id)
     }
-  }, [active, room.name, localParticipant.identity])
+  }, [active, room.name, token])
 
   const decide = useCallback(
     (id: string, approve: boolean) => {
+      if (!token) return
       setPending((prev) => prev.filter((p) => p.id !== id))
-      void admit(room.name, localParticipant.identity, id, approve).catch(() => {})
+      void admit(room.name, token, id, approve).catch(() => {})
     },
-    [room.name, localParticipant.identity],
+    [room.name, token],
   )
 
   if (!active || pending.length === 0) return null

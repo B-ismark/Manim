@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, IconButton } from '@/components/primitives'
 import { SettingsIcon } from '@/components/icons'
-import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
+import { SettingsDialog } from '@/islands/Settings'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -18,6 +18,7 @@ function randomRoom(): string {
 export function Landing() {
   const navigate = useNavigate()
   const [room, setRoom] = useState('')
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   function go(target: string) {
     const slug = target.trim().toLowerCase().replace(/\s+/g, '-')
@@ -35,17 +36,16 @@ export function Landing() {
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
           <SetupStatusButton />
-          <Popover
-            side="bottom"
-            align="end"
-            trigger={<IconButton label="Appearance" icon={<SettingsIcon />} tone="neutral" />}
-          >
-            <div className="p-2 w-64">
-              <ThemeSwitcher />
-            </div>
-          </Popover>
+          <IconButton
+            label="Settings"
+            icon={<SettingsIcon />}
+            tone="neutral"
+            onClick={() => setSettingsOpen(true)}
+          />
         </div>
       </header>
+
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <SetupBanner />
 

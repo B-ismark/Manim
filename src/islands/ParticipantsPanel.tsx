@@ -36,6 +36,7 @@ import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { CONTROL_TOPIC } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useBlockStore } from '@/store/useBlockStore'
 import { toast } from '@/store/useToastStore'
@@ -64,6 +65,7 @@ export function ParticipantsPanel() {
   const [mailto, setMailto] = useState<{ href: string; to: string } | null>(null)
   const signedIn = useAuthStore((s) => s.signedIn)
   const canRing = authEnabled && signedIn
+  const roomToken = useAppStore((s) => s.roomToken)
   const { metadata: roomMetadata } = useRoomInfo()
 
   // Host authority is the server-written room hostId (not forgeable participant
@@ -187,7 +189,7 @@ export function ParticipantsPanel() {
             isLocal={p.identity === localParticipant.identity}
             canModerate={isHost && p.identity !== localParticipant.identity}
             room={room.name}
-            caller={localParticipant.identity}
+            token={roomToken}
             onReport={reportUser}
           />
         ))}
@@ -201,14 +203,14 @@ function ParticipantRow({
   isLocal,
   canModerate,
   room,
-  caller,
+  token,
   onReport,
 }: {
   participant: Participant
   isLocal: boolean
   canModerate: boolean
   room: string
-  caller: string
+  token: string | null
   onReport: (targetName: string) => void
 }) {
   const speaking = useIsSpeaking(participant)
@@ -227,9 +229,9 @@ function ParticipantRow({
 
   async function forceMute() {
     const trackSid = participant.getTrackPublication(Track.Source.Microphone)?.trackSid
-    if (!trackSid) return
+    if (!trackSid || !token) return
     try {
-      await moderate({ room, caller, target: participant.identity, action: 'mute', trackSid })
+      await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
     } catch {
       /* surfaced elsewhere; ignore here */
     }
@@ -237,17 +239,18 @@ function ParticipantRow({
 
   async function disableVideo() {
     const trackSid = camPub?.trackSid
-    if (!trackSid) return
+    if (!trackSid || !token) return
     try {
-      await moderate({ room, caller, target: participant.identity, action: 'mute', trackSid })
+      await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
     } catch {
       /* ignore */
     }
   }
 
   async function remove() {
+    if (!token) return
     try {
-      await moderate({ room, caller, target: participant.identity, action: 'remove' })
+      await moderate({ room, token, target: participant.identity, action: 'remove' })
     } catch {
       /* ignore */
     }

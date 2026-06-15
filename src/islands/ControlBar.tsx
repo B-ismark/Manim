@@ -1,13 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import {
-  Button,
-  Dialog,
   DropdownMenu,
   DropdownItem,
   Island,
   IconButton,
   Popover,
+  Toggle,
   Tooltip,
 } from '@/components/primitives'
 import {
@@ -20,7 +19,6 @@ import {
   HandIcon,
   LeaveIcon,
   LockIcon,
-  MergeIcon,
   MicIcon,
   MicOffIcon,
   MoreIcon,
@@ -29,19 +27,17 @@ import {
   ReactionIcon,
   ScreenShareIcon,
   SettingsIcon,
-  SoundOffIcon,
-  SoundOnIcon,
   SpeakerLayoutIcon,
   SpotlightIcon,
 } from '@/components/icons'
-import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
 import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
 import { DeviceMenu } from '@/islands/DeviceMenu'
 import { BackgroundEffects } from '@/islands/BackgroundEffects'
+import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
+import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore } from '@/store/useRoomStore'
-import { useSoundStore } from '@/store/useSoundStore'
 import { cn } from '@/lib/cn'
 
 export interface ControlBarProps {
@@ -49,8 +45,6 @@ export interface ControlBarProps {
   onLeave: () => void
   /** Host-only: end the call for everyone. */
   onEndForEveryone: () => void
-  /** Host-only: move everyone into another room. */
-  onMerge: (room: string) => void
   isHost: boolean
   /** Room lock state + host toggle. */
   locked: boolean
@@ -62,6 +56,8 @@ export interface ControlBarProps {
   handRaised: boolean
   toggleHand: () => void
   blur: BackgroundBlurControls
+  /** AI background-noise suppression (Krisp). */
+  noise: NoiseFilterControls
   /** Document PiP (whole-app). Falls back to element PiP when unsupported. */
   docPip: { supported: boolean; active: boolean; toggle: () => void }
 }
@@ -74,7 +70,6 @@ export interface ControlBarProps {
 export function ControlBar({
   onLeave,
   onEndForEveryone,
-  onMerge,
   isHost,
   locked,
   onToggleLock,
@@ -84,14 +79,14 @@ export function ControlBar({
   handRaised,
   toggleHand,
   blur,
+  noise,
   docPip,
 }: ControlBarProps) {
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
     useLocalParticipant()
   const [pipActive, setPipActive] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const { isFullscreen, toggleFullscreen } = useFullscreen()
-  const soundOn = useSoundStore((s) => s.enabled)
-  const toggleSound = useSoundStore((s) => s.toggle)
 
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
@@ -321,12 +316,15 @@ export function ControlBar({
                   onClick={onToggleWaiting}
                   active={waiting}
                 />
-                <MergeControl onMerge={onMerge} />
               </Section>
             )}
 
             <Section label="Effects">
               <BackgroundEffects controls={blur} />
+            </Section>
+
+            <Section label="Audio">
+              <NoiseSuppression controls={noise} />
             </Section>
 
             <Section label="Devices">
@@ -340,17 +338,17 @@ export function ControlBar({
               />
             </Section>
 
-            <Section label="Appearance" last>
+            <Section label="Preferences" last>
               <MenuRow
-                icon={soundOn ? <SoundOnIcon /> : <SoundOffIcon />}
-                label={soundOn ? 'Sounds on' : 'Sounds off'}
-                onClick={toggleSound}
-                active={soundOn}
+                icon={<SettingsIcon />}
+                label="Settings"
+                onClick={() => setSettingsOpen(true)}
               />
-              <ThemeSwitcher />
             </Section>
           </div>
         </Popover>
+
+        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
@@ -426,49 +424,28 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
   )
 }
 
-/** Host-only: merge everyone into another room. Opens a Dialog for the target code. */
-function MergeControl({ onMerge }: { onMerge: (room: string) => void }) {
-  const [open, setOpen] = useState(false)
-  const [room, setRoom] = useState('')
-
-  function submit(e: FormEvent) {
-    e.preventDefault()
-    if (!room.trim()) return
-    onMerge(room)
-    setOpen(false)
-    setRoom('')
+/** Tier-2 audio: AI background-noise suppression toggle (Krisp). */
+function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
+  const { supported, enabled, setEnabled } = controls
+  if (!supported) {
+    return (
+      <p className="px-2.5 py-2 text-xs text-ink-subtle">
+        Noise suppression isn't supported on this browser.
+      </p>
+    )
   }
-
   return (
-    <>
-      <button
-        onClick={() => setOpen(true)}
-        className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4"
-      >
-        <MergeIcon />
-        Merge with another call
-      </button>
-      <Dialog
-        open={open}
-        onOpenChange={setOpen}
-        title="Merge calls"
-        description="Move everyone in this call into another room."
-      >
-        <form onSubmit={submit} className="flex flex-col gap-3">
-          <input
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            placeholder="Target room code"
-            aria-label="Target room code"
-            autoComplete="off"
-            className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-          />
-          <Button type="submit" variant="accent" disabled={!room.trim()}>
-            Merge everyone
-          </Button>
-        </form>
-      </Dialog>
-    </>
+    <div className="px-2.5 py-1.5">
+      <Toggle
+        checked={enabled}
+        onCheckedChange={setEnabled}
+        label="Noise suppression"
+        className="w-full justify-between"
+      />
+      <p className="mt-1 text-xs text-ink-subtle">
+        Strips keyboard, fans, and background voices the mic picks up.
+      </p>
+    </div>
   )
 }
 
