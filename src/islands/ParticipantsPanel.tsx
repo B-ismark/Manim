@@ -23,6 +23,7 @@ import {
   BanIcon,
   CameraOffIcon,
   CheckIcon,
+  CloseIcon,
   CopyIcon,
   FlagIcon,
   HandIcon,
@@ -39,6 +40,7 @@ import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useBlockStore } from '@/store/useBlockStore'
+import { useInviteStore } from '@/store/useInviteStore'
 import { toast } from '@/store/useToastStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
@@ -69,6 +71,19 @@ export function ParticipantsPanel() {
   const canRing = authEnabled && signedIn
   const roomToken = useAppStore((s) => s.roomToken)
   const { metadata: roomMetadata } = useRoomInfo()
+  const pendingInvites = useInviteStore((s) => s.pending)
+  const addInvite = useInviteStore((s) => s.addInvite)
+  const clearInvite = useInviteStore((s) => s.clearInvite)
+
+  // Ghost "Invited · waiting" rows: drop ones older than 3 min or whose label
+  // matches a present participant (they joined). Client/device-local hint only.
+  const ghostInvites = useMemo(() => {
+    const now = Date.now()
+    const present = new Set(participants.map((p) => displayName(p).toLowerCase()))
+    return pendingInvites.filter(
+      (inv) => now - inv.ts < 3 * 60_000 && !present.has(inv.label.toLowerCase()),
+    )
+  }, [pendingInvites, participants])
 
   // Host authority is the server-written room hostId (not forgeable participant
   // metadata). UI only — the server re-checks every moderation call.
@@ -91,6 +106,7 @@ export function ParticipantsPanel() {
     const href = mailtoHref(to)
     setMailto({ href, to })
     setCallMsg(null)
+    addInvite(to)
     window.open(href, '_blank') // best effort; popup blockers may ignore it
   }
 
@@ -106,6 +122,7 @@ export function ParticipantsPanel() {
       const sent = await sendEmailInvite(to, room.name, window.location.href, who)
       if (sent) {
         setCallMsg(`Invite emailed to ${to}`)
+        addInvite(to)
         setEmail('')
       } else {
         fallbackToMailto(to)
@@ -120,7 +137,10 @@ export function ParticipantsPanel() {
     setCallMsg('Ringing…')
     const err = await ringUser(email, room.name, localParticipant.name || 'Someone')
     setCallMsg(err ?? `Ringing ${email}…`)
-    if (!err) setEmail('')
+    if (!err) {
+      addInvite(email)
+      setEmail('')
+    }
   }
 
   // Report flags a participant to the host over the control channel (only the
@@ -135,6 +155,28 @@ export function ParticipantsPanel() {
       /* best effort */
     }
     toast('Reported to the host', 'neutral')
+  }
+
+  // Host bulk actions — loop the existing per-track /api/moderate over everyone
+  // but self. Client-only; the "let attendees unmute" permission lock is a
+  // separate server change (deferred), so this mutes once, it doesn't lock.
+  async function muteAll(source: Track.Source, kind: 'mic' | 'camera') {
+    if (!roomToken) return
+    const targets = participants.filter((p) => p.identity !== localParticipant.identity)
+    await Promise.all(
+      targets.map((p) => {
+        const pub = p.getTrackPublication(source)
+        if (!pub || pub.isMuted || !pub.trackSid) return undefined
+        return moderate({
+          room: room.name,
+          token: roomToken,
+          target: p.identity,
+          action: 'mute',
+          trackSid: pub.trackSid,
+        }).catch(() => {})
+      }),
+    )
+    toast(kind === 'mic' ? 'Muted everyone' : 'Stopped everyone’s video', 'neutral')
   }
 
   return (
@@ -196,7 +238,38 @@ export function ParticipantsPanel() {
             onReport={reportUser}
           />
         ))}
+
+        {ghostInvites.map((inv) => (
+          <li
+            key={inv.id}
+            className="flex items-center gap-3 rounded-field px-2 py-1.5 opacity-70"
+          >
+            <Avatar name={inv.label} size="sm" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{inv.label}</p>
+              <p className="text-xs text-ink-subtle">Invited · waiting</p>
+            </div>
+            <IconButton
+              size="sm"
+              tone="neutral"
+              label={`Cancel invite to ${inv.label}`}
+              icon={<CloseIcon />}
+              onClick={() => clearInvite(inv.id)}
+            />
+          </li>
+        ))}
       </ul>
+
+      {isHost && participants.length > 1 && (
+        <div className="flex gap-2 border-t border-line p-2">
+          <Button variant="neutral" size="sm" block onClick={() => muteAll(Track.Source.Microphone, 'mic')}>
+            <MicOffIcon /> Mute all
+          </Button>
+          <Button variant="neutral" size="sm" block onClick={() => muteAll(Track.Source.Camera, 'camera')}>
+            <CameraOffIcon /> Stop video
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
