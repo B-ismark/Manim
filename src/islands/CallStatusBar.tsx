@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useConnectionQualityIndicator, useLocalParticipant } from '@livekit/components-react'
 import { ConnectionQuality as Quality } from 'livekit-client'
 import { LockIcon } from '@/components/icons'
@@ -11,18 +12,41 @@ export interface CallStatusBarProps {
   visible: boolean
 }
 
+/** mm:ss, or h:mm:ss past an hour. */
+function formatElapsed(totalSeconds: number): string {
+  const s = Math.max(0, totalSeconds)
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const sec = s % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(sec).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${m}:${ss}`
+}
+
+/** Live call duration since the local participant joined (ticks every second). */
+function useCallTimer(): string {
+  const { localParticipant } = useLocalParticipant()
+  const [now, setNow] = useState(() => Date.now())
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  // joinedAt reflects the true call start (survives reconnects); fall back to
+  // first render before the roster settles.
+  const startedAt = localParticipant.joinedAt?.getTime() ?? now
+  return formatElapsed(Math.floor((now - startedAt) / 1000))
+}
+
 /**
- * Persistent trust + health chip, top-center. Shows an end-to-end-encryption
- * badge (when active) and live connection quality — the WhatsApp/Telegram
- * convention. Non-interactive; taps pass through to the stage gesture layer.
+ * Persistent status chip, top-center (WhatsApp/Telegram convention): the call
+ * timer always, plus an end-to-end-encryption badge and weak-connection warning
+ * when relevant. Non-interactive; taps pass through to the stage gesture layer.
  */
 export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
   const { localParticipant } = useLocalParticipant()
   const { quality } = useConnectionQualityIndicator({ participant: localParticipant })
   const poor = quality === Quality.Poor || quality === Quality.Lost
-
-  // Nothing worth showing: good connection and no encryption badge.
-  if (!encrypted && !poor) return null
+  const elapsed = useCallTimer()
 
   return (
     <div
@@ -33,18 +57,18 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
       )}
     >
       <div className="flex items-center gap-2 rounded-control bg-overlay px-2.5 py-1 text-xs font-medium text-white backdrop-blur">
-        {encrypted && (
-          <span className="flex items-center gap-1" title="End-to-end encrypted">
-            <LockIcon className="size-3.5" />
-            <span>Encrypted</span>
-          </span>
-        )}
-        {encrypted && poor && <span className="h-3 w-px bg-white/30" aria-hidden />}
+        {encrypted && <LockIcon className="size-3.5" aria-label="End-to-end encrypted" />}
+        <span className="tabular-nums" aria-label="Call duration">
+          {elapsed}
+        </span>
         {poor && (
-          <span className="flex items-center gap-1.5">
-            <ConnectionQuality participant={localParticipant} />
-            <span>{quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}</span>
-          </span>
+          <>
+            <span className="h-3 w-px bg-white/30" aria-hidden />
+            <span className="flex items-center gap-1.5">
+              <ConnectionQuality participant={localParticipant} />
+              <span>{quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}</span>
+            </span>
+          </>
         )}
       </div>
     </div>
