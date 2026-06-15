@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
 import {
+  Button,
+  Dialog,
   DropdownMenu,
   DropdownItem,
   Island,
@@ -33,6 +35,7 @@ import {
   SpeakerLayoutIcon,
   SpotlightIcon,
   EffectsIcon,
+  KeyboardIcon,
 } from '@/components/icons'
 import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
 import { DeviceSettings } from '@/islands/DeviceMenu'
@@ -99,6 +102,8 @@ export function ControlBar({
   const [pipActive, setPipActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
+  const [endConfirmOpen, setEndConfirmOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const touch = useIsTouch()
   const { isFullscreen, toggleFullscreen } = useFullscreen()
@@ -171,6 +176,43 @@ export function ControlBar({
     [onMenuOpenChange],
   )
   const closeMore = () => setMore(false)
+
+  // Desktop keyboard shortcuts (Architecture-Plan §8.6). Ignored on touch and
+  // while typing / holding a modifier, so they never fight text entry or browser
+  // chords. Leave/end are intentionally NOT bound — too costly to trigger by slip.
+  useEffect(() => {
+    if (touch) return
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
+      const el = e.target as HTMLElement | null
+      if (el?.closest('input, textarea, [contenteditable="true"], select')) return
+      switch (e.key.toLowerCase()) {
+        case 'm':
+          void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+          break
+        case 'v':
+          void localParticipant.setCameraEnabled(!isCameraEnabled)
+          break
+        case 'c':
+          togglePanel('chat')
+          break
+        case 'p':
+          togglePanel('people')
+          break
+        case 'f':
+          toggleFullscreen()
+          break
+        case '?':
+          setShortcutsOpen(true)
+          break
+        default:
+          return
+      }
+      e.preventDefault()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [touch, localParticipant, isMicrophoneEnabled, isCameraEnabled, toggleFullscreen, setPanel, panel])
 
   // Shared "More" body — rendered in a bottom sheet on mobile, a popover on
   // desktop. A reaction strip headlines the sheet; quick toggles fill a grid;
@@ -311,6 +353,17 @@ export function ControlBar({
               closeMore()
             }}
           />
+          {/* Keyboard shortcuts — desktop (mouse) only. */}
+          <div className="hidden pointer-fine:block">
+            <MenuRow
+              icon={<KeyboardIcon />}
+              label="Keyboard shortcuts"
+              onClick={() => {
+                setShortcutsOpen(true)
+                closeMore()
+              }}
+            />
+          </div>
         </Section>
       </div>
     </div>
@@ -460,6 +513,29 @@ export function ControlBar({
 
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <EffectsDialog open={effectsOpen} onOpenChange={setEffectsOpen} controls={blur} />
+        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        <Dialog
+          open={endConfirmOpen}
+          onOpenChange={setEndConfirmOpen}
+          title="End the call for everyone?"
+          description="This disconnects all participants and can't be undone. To just leave yourself, use Leave instead."
+        >
+          <div className="flex justify-end gap-2">
+            <Button variant="neutral" onClick={() => setEndConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                setEndConfirmOpen(false)
+                onEndForEveryone()
+              }}
+            >
+              <LeaveIcon />
+              End for everyone
+            </Button>
+          </div>
+        </Dialog>
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
@@ -493,7 +569,7 @@ export function ControlBar({
                 </button>
               }
             >
-              <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={onEndForEveryone}>
+              <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={() => setEndConfirmOpen(true)}>
                 End call for everyone
               </DropdownItem>
             </DropdownMenu>
@@ -505,6 +581,33 @@ export function ControlBar({
         )}
       </Island>
     </div>
+  )
+}
+
+const SHORTCUTS: Array<[string, string]> = [
+  ['M', 'Mute / unmute microphone'],
+  ['V', 'Start / stop camera'],
+  ['C', 'Toggle chat'],
+  ['P', 'Toggle participants'],
+  ['F', 'Toggle full screen'],
+  ['?', 'Show this help'],
+]
+
+/** Keyboard-shortcut legend (desktop). Opened from More or by pressing "?". */
+function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts" description="Available on desktop while not typing.">
+      <ul className="flex flex-col gap-1.5">
+        {SHORTCUTS.map(([key, desc]) => (
+          <li key={key} className="flex items-center justify-between gap-4 text-sm">
+            <span className="text-ink">{desc}</span>
+            <kbd className="rounded-field border border-line bg-sunken px-2 py-0.5 font-mono text-xs text-ink-muted">
+              {key}
+            </kbd>
+          </li>
+        ))}
+      </ul>
+    </Dialog>
   )
 }
 

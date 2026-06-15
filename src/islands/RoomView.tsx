@@ -11,6 +11,7 @@ import { HandoffBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { CallStatusBar } from '@/islands/CallStatusBar'
+import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { LayoutChip } from '@/islands/LayoutChip'
 import { StageTopBar } from '@/islands/StageTopBar'
 import { PinCoachmark } from '@/islands/PinCoachmark'
@@ -157,6 +158,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   return (
     <>
       <RoomAudioRenderer />
+      <CallAnnouncer />
       <ConnectionBanner />
       <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
       <LayoutChip visible={chromeVisible} />
@@ -170,7 +172,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <div
         {...stageHandlers}
         className={cn(
-          'mn-pop flex min-h-0 flex-1 flex-col transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+          // Fade only (no scale): scaling a container that holds live <video>
+          // causes a repaint flash on connect. transition is for the panel reflow.
+          'mn-fade flex min-h-0 flex-1 flex-col transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
           panel && 'md:pr-[23rem]',
         )}
       >

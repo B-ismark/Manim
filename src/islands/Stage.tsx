@@ -200,7 +200,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         <VideoTrack
           trackRef={trackRef as Parameters<typeof VideoTrack>[0]['trackRef']}
           className={cn(
-            'size-full',
+            'mn-video-in size-full',
             isScreen ? 'bg-black object-contain' : 'object-cover',
             mirror && '[transform:scaleX(-1)]',
           )}
