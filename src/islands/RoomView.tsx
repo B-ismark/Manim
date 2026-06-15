@@ -20,6 +20,7 @@ import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
+import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
@@ -144,6 +145,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const panel = useRoomStore((s) => s.panel)
   const connState = useConnectionState()
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
+  // Mic/camera/hang-up buttons in native PiP + OS media controls.
+  useMediaSessionControls(doLeave)
 
   // Cover the initial connect (before media + roster arrive) with the joining
   // screen. Reconnects after that are handled by ConnectionBanner, not here.
