@@ -14,6 +14,9 @@ interface RoomState {
   panel: PanelTab
   /** Unread chat count while the chat panel is closed (cleared on open). */
   unread: number
+  /** Facing mode of the local camera. Front ('user') is mirrored like a selfie;
+   *  rear ('environment') must NOT be mirrored or the world looks flipped. */
+  selfFacing: 'user' | 'environment'
 
   setLayout: (layout: LayoutMode) => void
   /** Toggle pin for an identity; pinning auto-switches to speaker layout if in grid. */
@@ -21,6 +24,7 @@ interface RoomState {
   setPanel: (panel: PanelTab) => void
   bumpUnread: (by?: number) => void
   clearUnread: () => void
+  setSelfFacing: (facing: 'user' | 'environment') => void
 }
 
 export const useRoomStore = create<RoomState>((set) => ({
@@ -31,8 +35,10 @@ export const useRoomStore = create<RoomState>((set) => ({
   pinned: null,
   panel: null,
   unread: 0,
+  selfFacing: 'user',
 
   setLayout: (layout) => set({ layout }),
+  setSelfFacing: (selfFacing) => set({ selfFacing }),
   togglePin: (identity) =>
     set((s) => {
       const pinned = s.pinned === identity ? null : identity

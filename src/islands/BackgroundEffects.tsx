@@ -5,6 +5,7 @@ import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Slider, Toggle } from '@/components/primitives'
 import { BanIcon, CameraOffIcon } from '@/components/icons'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
+import { useRoomStore } from '@/store/useRoomStore'
 import { isLowPowerDevice } from '@/lib/device'
 import { cn } from '@/lib/cn'
 
@@ -43,6 +44,7 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
 
   const lowPower = isLowPowerDevice()
   const imageSelected = (src: string) => mode === 'image' && selectedImage === src
+  const selfFacing = useRoomStore((s) => s.selfFacing)
   const camPub = localParticipant.getTrackPublication(Track.Source.Camera)
   const previewRef = camPub
     ? ({ participant: localParticipant, source: Track.Source.Camera, publication: camPub } as TrackReferenceOrPlaceholder)
@@ -57,7 +59,7 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
         {isCameraEnabled && previewRef ? (
           <VideoTrack
             trackRef={previewRef as Parameters<typeof VideoTrack>[0]['trackRef']}
-            className="size-full object-cover [transform:scaleX(-1)]"
+            className={cn('size-full object-cover', selfFacing === 'user' && '[transform:scaleX(-1)]')}
           />
         ) : (
           <div className="grid size-full place-items-center gap-1 text-center text-xs text-ink-subtle [&_svg]:size-5">

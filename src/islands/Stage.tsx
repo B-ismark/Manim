@@ -179,6 +179,10 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
 
   const pinned = useRoomStore((s) => s.pinned) === p.identity
   const togglePin = useRoomStore((s) => s.togglePin)
+  // Mirror only the front ('user') self camera — a mirrored rear camera shows
+  // the world flipped (text backwards, etc).
+  const selfFacing = useRoomStore((s) => s.selfFacing)
+  const mirror = p.isLocal && !isScreen && selfFacing === 'user'
 
   return (
     <div
@@ -198,7 +202,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
           className={cn(
             'size-full',
             isScreen ? 'bg-black object-contain' : 'object-cover',
-            p.isLocal && !isScreen && '[transform:scaleX(-1)]',
+            mirror && '[transform:scaleX(-1)]',
           )}
         />
       ) : (

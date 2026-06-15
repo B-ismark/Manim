@@ -34,7 +34,7 @@ import {
   SpotlightIcon,
 } from '@/components/icons'
 import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
-import { DeviceMenu } from '@/islands/DeviceMenu'
+import { DeviceSettings } from '@/islands/DeviceMenu'
 import { BackgroundEffects } from '@/islands/BackgroundEffects'
 import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
@@ -105,6 +105,7 @@ export function ControlBar({
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
+  const setSelfFacing = useRoomStore((s) => s.setSelfFacing)
 
   useEffect(() => {
     const onLeavePip = () => setPipActive(false)
@@ -138,7 +139,9 @@ export function ControlBar({
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
 
   // Mobile front/rear flip — restart the camera track with the opposite facing
-  // mode. (Desktops use the device picker in More → Devices instead.)
+  // mode. (Desktops use the device picker in More → Devices instead.) Record the
+  // facing so the self-view mirror only applies to the front camera — the rear
+  // camera mirrored would show the world flipped.
   const flipCamera = useCallback(async () => {
     const track = localParticipant.getTrackPublication(Track.Source.Camera)?.track as
       | LocalVideoTrack
@@ -148,10 +151,11 @@ export function ControlBar({
     const next = facing === 'environment' ? 'user' : 'environment'
     try {
       await track.restartTrack({ facingMode: next })
+      setSelfFacing(next)
     } catch {
       /* device can't switch facing — ignore */
     }
-  }, [localParticipant])
+  }, [localParticipant, setSelfFacing])
 
   // Single open/close path for the More menu so the chrome hold always tracks
   // it — including programmatic closes (controlled prop changes don't fire the
@@ -286,14 +290,7 @@ export function ControlBar({
           <NoiseSuppression controls={noise} />
         </Section>
         <Section label="Devices">
-          <DeviceMenu
-            trigger={
-              <button className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4">
-                <SettingsIcon />
-                Devices
-              </button>
-            }
-          />
+          <DeviceSettings />
         </Section>
         <Section label="Preferences" last>
           <MenuRow
