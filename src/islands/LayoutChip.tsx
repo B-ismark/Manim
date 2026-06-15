@@ -24,7 +24,7 @@ export function LayoutChip({ visible }: { visible: boolean }) {
   return (
     <div
       className={cn(
-        'pointer-events-none fixed left-4 top-[max(1rem,env(safe-area-inset-top))] z-20 pointer-fine:hidden',
+        'pointer-events-none fixed left-4 top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 pointer-fine:hidden',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !visible && '-translate-y-[150%] opacity-0',
       )}

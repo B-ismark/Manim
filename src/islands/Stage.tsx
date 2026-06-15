@@ -219,9 +219,10 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         </div>
       )}
 
-      {/* Pin toggle — reveals on hover/focus on pointer devices, but stays
-          visible on touch (no hover; double-tap to pin isn't discoverable). */}
-      <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+      {/* Pin toggle — reveals on hover/focus (desktop). On touch there's no
+          hover and the top-right corner is taken by the participants chip, so we
+          rely on double-tap to pin (taught once by PinCoachmark) instead. */}
+      <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
         <IconButton
           size="sm"
           label={pinned ? `Unpin ${name}` : `Pin ${name}`}

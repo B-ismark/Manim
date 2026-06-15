@@ -2,7 +2,7 @@ import { useRef } from 'react'
 import { useLocalParticipant, VideoTrack } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
-import { Slider, Toggle } from '@/components/primitives'
+import { Dialog, Slider, Toggle } from '@/components/primitives'
 import { BanIcon, CameraOffIcon } from '@/components/icons'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import { useRoomStore } from '@/store/useRoomStore'
@@ -10,11 +10,44 @@ import { isLowPowerDevice } from '@/lib/device'
 import { cn } from '@/lib/cn'
 
 /**
+ * Effects in their own dialog (not crammed in the More menu) so the live preview
+ * gets real estate — you see blur / a virtual background applied before
+ * committing. Same picker on web + mobile.
+ */
+export function EffectsDialog({
+  open,
+  onOpenChange,
+  controls,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  controls: BackgroundBlurControls
+}) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Background effects"
+      description="Blur or replace your background. Changes preview live before they apply."
+    >
+      <BackgroundEffects controls={controls} previewSize="lg" />
+    </Dialog>
+  )
+}
+
+/**
  * Background effects picker: none / blur / preset images / custom upload —
  * a thumbnail strip (the Teams/Meet convention), with a blur-strength slider
  * and a high-quality toggle when blur is active.
  */
-export function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
+export function BackgroundEffects({
+  controls,
+  previewSize = 'sm',
+}: {
+  controls: BackgroundBlurControls
+  /** 'lg' gives the live preview more height — used in the dedicated dialog. */
+  previewSize?: 'sm' | 'lg'
+}) {
   const {
     supported,
     mode,
@@ -55,7 +88,12 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
       {/* Live self-preview so the choice is visible before it's applied (the
           processor is already on the published track, so the effect shows here
           in real time). Mirrored like the stage self-view. */}
-      <div className="mb-3 aspect-video w-full overflow-hidden rounded-tile bg-sunken">
+      <div
+        className={cn(
+          'mb-3 w-full overflow-hidden rounded-tile bg-sunken',
+          previewSize === 'lg' ? 'aspect-video max-h-[40vh]' : 'aspect-video',
+        )}
+      >
         {isCameraEnabled && previewRef ? (
           <VideoTrack
             trackRef={previewRef as Parameters<typeof VideoTrack>[0]['trackRef']}

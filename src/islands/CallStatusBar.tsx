@@ -51,7 +51,7 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
   return (
     <div
       className={cn(
-        'pointer-events-none fixed inset-x-0 top-[max(0.5rem,env(safe-area-inset-top))] z-20 flex justify-center px-4',
+        'pointer-events-none fixed inset-x-0 top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 flex justify-center px-4',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !visible && '-translate-y-[150%] opacity-0',
       )}
