@@ -101,9 +101,7 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
       </div>
 
       {lowPower && (
-        <p className="mt-2 text-xs text-ink-subtle">
-          Real-time effects are CPU-intensive and use more battery on this device.
-        </p>
+        <p className="mt-2 text-xs text-ink-subtle">Uses more battery on this device.</p>
       )}
 
       {mode === 'blur' && (
@@ -122,9 +120,7 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
                 label="High quality"
                 className="w-full justify-between"
               />
-              <p className="mt-1 text-xs text-ink-subtle">
-                Sharper, steadier edges via GPU segmentation. Uses more power.
-              </p>
+              <p className="mt-1 text-xs text-ink-subtle">Sharper edges. Uses more power.</p>
             </div>
           )}
         </div>

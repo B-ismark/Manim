@@ -45,7 +45,7 @@ export function PinCoachmark() {
         onClick={dismiss}
         className="mn-pop pointer-events-auto rounded-control bg-overlay px-3 py-2 text-center text-xs text-white shadow-raised backdrop-blur"
       >
-        Double-tap a video to pin it · drag your own video to move it
+        Double-tap a video to pin · drag your own to move · swipe to switch layout
       </button>
     </div>
   )
