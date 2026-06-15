@@ -91,10 +91,17 @@ export function RoomRoute() {
   // Reset the old connection and auto-join the target without a second prejoin.
   const autojoin = Boolean((location.state as { autojoin?: boolean } | null)?.autojoin)
   const joinedFor = useRef<string | null>(null)
+  const prevRoom = useRef(room)
   useEffect(() => {
-    setToken(null)
-    setConnecting(false)
-    setWaitingId(null)
+    // Only tear down the connection when the ROOM actually changes (e.g. a merge).
+    // Previously this ran on every displayName keystroke / handleJoin identity
+    // change and nulled the live token — churn that could flicker or drop a call.
+    if (prevRoom.current !== room) {
+      prevRoom.current = room
+      setToken(null)
+      setConnecting(false)
+      setWaitingId(null)
+    }
     if (autojoin && displayName && joinedFor.current !== room) {
       joinedFor.current = room
       void handleJoin()

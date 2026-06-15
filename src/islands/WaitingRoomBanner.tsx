@@ -43,7 +43,7 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
   if (!active || pending.length === 0) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-30 flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-30 flex justify-center px-4">
       <Island elevation="raised" pad="sm" className="pointer-events-auto w-full max-w-sm">
         <p className="mb-2 text-xs font-medium text-ink-subtle">
           Waiting to join ({pending.length})

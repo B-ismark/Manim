@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
+import { isMobile } from '@/lib/device'
 
 const DEFAULT_RADIUS = 12
 
@@ -29,6 +30,11 @@ type BlurProcessor = ReturnType<TrackProcessorsModule['BackgroundBlur']>
  */
 export function useBackgroundBlur() {
   const { localParticipant } = useLocalParticipant()
+
+  // The GPU "high" delegate runs hot — fine on a plugged-in desktop, but on phones
+  // it spikes battery/thermals (and the camera is already capped to 360p, so the
+  // edge gain is marginal). Hide it on mobile and pin quality to standard there.
+  const allowHighQuality = !isMobile()
 
   // Optimistic: show the control; verified against the module on first enable.
   const [supported, setSupported] = useState(true)
@@ -114,7 +120,23 @@ export function useBackgroundBlur() {
 
   const toggle = useCallback(() => setEnabled((v) => !v), [])
 
-  return { supported, enabled, setEnabled, toggle, radius, setRadius, quality, setQuality }
+  // On mobile, never expose/allow the GPU-high path.
+  const setQualityGated = useCallback(
+    (q: BlurQuality) => setQuality(allowHighQuality ? q : 'standard'),
+    [allowHighQuality],
+  )
+
+  return {
+    supported,
+    enabled,
+    setEnabled,
+    toggle,
+    radius,
+    setRadius,
+    quality,
+    setQuality: setQualityGated,
+    allowHighQuality,
+  }
 }
 
 export type BackgroundBlurControls = ReturnType<typeof useBackgroundBlur>

@@ -3,7 +3,8 @@ import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlu
 
 /** Tier-2 background effects: blur toggle + live radius slider + quality. */
 export function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
-  const { supported, enabled, setEnabled, radius, setRadius, quality, setQuality } = controls
+  const { supported, enabled, setEnabled, radius, setRadius, quality, setQuality, allowHighQuality } =
+    controls
 
   if (!supported) {
     return (
@@ -47,7 +48,7 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
         />
       </div>
 
-      {enabled && (
+      {enabled && allowHighQuality && (
         <div className="mt-3">
           <Toggle
             checked={quality === 'high'}

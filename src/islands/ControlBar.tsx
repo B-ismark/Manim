@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
+import { Track, type LocalVideoTrack } from 'livekit-client'
 import {
   DropdownMenu,
   DropdownItem,
@@ -19,6 +20,7 @@ import {
   HandIcon,
   LeaveIcon,
   LockIcon,
+  FlipCameraIcon,
   MicIcon,
   MicOffIcon,
   MoreIcon,
@@ -125,8 +127,25 @@ export function ControlBar({
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
 
+  // Mobile front/rear flip — restart the camera track with the opposite facing
+  // mode. (Desktops use the device picker in More → Devices instead.)
+  const flipCamera = useCallback(async () => {
+    const track = localParticipant.getTrackPublication(Track.Source.Camera)?.track as
+      | LocalVideoTrack
+      | undefined
+    if (!track) return
+    const facing = track.mediaStreamTrack.getSettings().facingMode
+    const next = facing === 'environment' ? 'user' : 'environment'
+    try {
+      await track.restartTrack({ facingMode: next })
+    } catch {
+      /* device can't switch facing — ignore */
+    }
+  }, [localParticipant])
+
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+    // bottom inset clears the iOS home indicator (viewport-fit=cover is set).
+    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4">
       <Island
         pad="none"
         elevation="raised"
@@ -163,6 +182,19 @@ export function ControlBar({
             onClick={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
           />
         </Tooltip>
+
+        {/* Flip front/rear — mobile only, and only while the camera is on. */}
+        {isCameraEnabled && (
+          <Tooltip content="Flip camera">
+            <IconButton
+              label="Flip camera"
+              icon={<FlipCameraIcon />}
+              tone="neutral"
+              className="sm:hidden"
+              onClick={() => void flipCamera()}
+            />
+          </Tooltip>
+        )}
 
         {/* Screen share — hidden on the narrowest screens, available in More. */}
         <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
