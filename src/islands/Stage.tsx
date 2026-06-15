@@ -133,6 +133,7 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
     <div
       role="group"
       aria-label="Your video — drag to reposition"
+      data-no-stage-gesture
       style={style}
       {...handlers}
       className={cn(
@@ -162,6 +163,9 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
 
   return (
     <div
+      // Double-tap a tile to pin/spotlight it (single tap bubbles to the stage
+      // chrome toggle on mobile). Mirrors Zoom/Telegram/Discord.
+      onDoubleClick={() => togglePin(p.identity)}
       className={cn(
         'group relative overflow-hidden rounded-tile bg-sunken',
         fill ? 'size-full' : 'aspect-video',
