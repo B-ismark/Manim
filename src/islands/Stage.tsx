@@ -31,7 +31,26 @@ function useGridColumns(n: number): number {
     return () => mq.removeEventListener('change', onChange)
   }, [])
   if (n <= 1) return 1
+  // Phones cap at 2 columns (portrait tiles stay legible); desktops fan to 5.
   return Math.min(Math.ceil(Math.sqrt(n)), narrow ? 2 : 5)
+}
+
+/**
+ * True on touch devices (phones/tablets) — the signal that drives the mobile
+ * tile layout (portrait fill + self-PiP), mirroring the control bar. Width
+ * breakpoints miss wide foldables that are still hand-held in portrait.
+ */
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
+  )
+  useEffect(() => {
+    const mq = window.matchMedia('(pointer: coarse)')
+    const onChange = () => setCoarse(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return coarse
 }
 
 export function Stage() {
@@ -48,38 +67,53 @@ export function Stage() {
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
   const columns = useGridColumns(tracks.length)
+  const coarse = useCoarsePointer()
 
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />
   }
 
-  if (layout === 'grid' || tracks.length <= 1) {
+  // On phones a 1-on-1 reads best as remote-fills + floating self-PiP (Discord/
+  // Meet), not two equal tiles — route it through the focus layout even in grid.
+  const screenShare = tracks.some((t) => t.source === Track.Source.ScreenShare)
+  const phone1on1 = coarse && tracks.length === 2 && !screenShare
+
+  if ((layout === 'grid' && !phone1on1) || tracks.length <= 1) {
     // Many tiles → top-align and scroll so each stays readable; few → center.
     const many = tracks.length > columns * 3
     return (
       <div
         className={cn(
-          'grid min-h-0 flex-1 gap-3 p-3',
-          many ? 'content-start overflow-y-auto' : 'content-center',
+          'grid min-h-0 flex-1 gap-2 p-2 sm:gap-3 sm:p-3',
+          // Touch: equal rows fill the stage so tiles are portrait (object-cover),
+          // edge-to-edge like Patreon/Messenger. Desktop: aspect-video tiles,
+          // centered when few / scrolling when many.
+          coarse ? 'auto-rows-fr' : many ? 'content-start overflow-y-auto' : 'content-center',
+          coarse && many && 'overflow-y-auto',
         )}
         style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
       >
         {tracks.map((ref) => (
-          <Tile key={`${ref.participant.identity}-${ref.source}`} trackRef={ref} />
+          <Tile
+            key={`${ref.participant.identity}-${ref.source}`}
+            trackRef={ref}
+            fill={coarse}
+          />
         ))}
       </div>
     )
   }
 
-  // Speaker / spotlight: a focused remote (or screen share) fills the stage and
-  // the local camera floats as a draggable self-view (STYLE.md §2 island model).
+  // Speaker / spotlight (and phone 1-on-1): a focused remote (or screen share)
+  // fills the stage and the local camera floats as a draggable self-view
+  // (STYLE.md §2 island model).
   const localCam = tracks.find(isLocalCam)
   const others = tracks.filter((t) => !isLocalCam(t))
   const focus = focusTrack(others, pinned) ?? localCam
   const filmstrip = others.filter((t) => t !== focus)
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-3">
+    <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-2 sm:p-3">
       <div className="min-h-0 flex-1">{focus && <Tile trackRef={focus} fill />}</div>
 
       {layout === 'speaker' && filmstrip.length > 0 && (
@@ -101,23 +135,25 @@ export function Stage() {
 function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useCopyLink()
   return (
-    // pb-28 keeps content clear of the floating control bar; both the preview and
-    // the invite CTA stay centered and visible. The camera is a constrained card,
-    // not full-bleed — full-bleed video previously pushed the CTA off-screen
-    // behind the control bar in portrait.
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-3 pb-28 sm:p-4 sm:pb-28">
-      <div className="aspect-video w-full max-w-3xl max-h-[55dvh] shrink-0">
+    // Touch (phones): self-view fills the stage in portrait (object-cover, like
+    // Meet) and the invite floats as an overlay pill above the control bar.
+    // Desktop (mouse): a constrained landscape card with the invite below it —
+    // full-bleed on desktop would waste the wide canvas.
+    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-end p-3 pb-28 pointer-fine:justify-center pointer-fine:gap-5 pointer-fine:p-4 pointer-fine:pb-28">
+      <div className="absolute inset-0 pointer-fine:static pointer-fine:aspect-video pointer-fine:w-full pointer-fine:max-w-3xl pointer-fine:max-h-[55dvh] pointer-fine:shrink-0">
         {selfTrack ? (
           <Tile trackRef={selfTrack} fill />
         ) : (
-          <div className="grid size-full place-items-center rounded-tile bg-sunken text-sm text-ink-subtle">
+          <div className="grid size-full place-items-center bg-sunken text-sm text-ink-subtle pointer-fine:rounded-tile">
             Camera off
           </div>
         )}
       </div>
-      <div className="shrink-0 text-center">
+      <div className="relative z-10 shrink-0 rounded-tile bg-overlay px-5 py-4 text-center text-white pointer-fine:bg-transparent pointer-fine:p-0 pointer-fine:text-ink">
         <p className="text-sm font-medium">You're the only one here</p>
-        <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
+        <p className="mt-1 text-xs text-white/75 pointer-fine:text-ink-muted">
+          Invite someone to join this call.
+        </p>
         <Button variant="accent" className="mt-3" onClick={copy}>
           {copied ? <CheckIcon /> : <CopyIcon />}
           {copied ? 'Link copied' : 'Copy invite link'}
@@ -138,8 +174,11 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
       style={style}
       {...handlers}
       className={cn(
-        'fixed bottom-24 right-4 z-20 w-36 cursor-grab touch-none select-none active:cursor-grabbing sm:w-52',
-        'aspect-video shadow-raised rounded-tile',
+        'fixed bottom-24 right-4 z-20 cursor-grab touch-none select-none active:cursor-grabbing',
+        // Touch: a tall portrait card (Discord/Snapchat self-view). Desktop:
+        // a wider landscape thumbnail.
+        'w-24 aspect-[3/4] pointer-fine:w-52 pointer-fine:aspect-video',
+        'shadow-raised rounded-tile',
       )}
     >
       <Tile trackRef={trackRef} fill />

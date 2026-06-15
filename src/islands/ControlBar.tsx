@@ -193,27 +193,27 @@ export function ControlBar({
           />
         </Tooltip>
 
-        {/* Flip front/rear — mobile only, and only while the camera is on. */}
+        {/* Flip front/rear — touch devices only, and only while the camera is on. */}
         {isCameraEnabled && (
           <Tooltip content="Flip camera">
             <IconButton
               label="Flip camera"
               icon={<FlipCameraIcon />}
               tone="neutral"
-              className="sm:hidden"
+              className="pointer-fine:hidden"
               onClick={() => void flipCamera()}
             />
           </Tooltip>
         )}
 
-        {/* Screen share — hidden on the narrowest screens, available in More. */}
+        {/* Screen share — desktop (mouse) only; folded into More on touch. */}
         <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
           <IconButton
             label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
             icon={<ScreenShareIcon />}
             tone="neutral"
             active={isScreenShareEnabled}
-            className="hidden sm:inline-flex"
+            className="hidden pointer-fine:inline-flex"
             onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
           />
         </Tooltip>
@@ -236,19 +236,19 @@ export function ControlBar({
           </span>
         </Tooltip>
 
-        {/* Desktop-inline Tier-1 group. */}
+        {/* Desktop-inline Tier-1 group (mouse only; folded into More on touch). */}
         <Tooltip content="Participants">
           <IconButton
             label="Show participants"
             icon={<PeopleIcon />}
             tone="neutral"
             active={panel === 'people'}
-            className="hidden md:inline-flex"
+            className="hidden pointer-fine:inline-flex"
             onClick={() => togglePanel('people')}
           />
         </Tooltip>
 
-        <span className="hidden md:inline-flex">
+        <span className="hidden pointer-fine:inline-flex">
           <ReactionButton onPick={sendReaction} />
         </span>
 
@@ -258,12 +258,12 @@ export function ControlBar({
             icon={<HandIcon />}
             tone={handRaised ? 'accent' : 'neutral'}
             active={handRaised}
-            className="hidden md:inline-flex"
+            className="hidden pointer-fine:inline-flex"
             onClick={toggleHand}
           />
         </Tooltip>
 
-        <span className="hidden md:inline-flex">
+        <span className="hidden pointer-fine:inline-flex">
           <LayoutSwitcher />
         </span>
 
@@ -279,8 +279,8 @@ export function ControlBar({
                 the width where it leaves the bar, so nothing duplicates) +
                 window controls for everyone. */}
             <Section label="View">
-              {/* Screen share leaves the bar below sm. */}
-              <div className="sm:hidden">
+              {/* Screen share leaves the bar on touch devices. */}
+              <div className="pointer-fine:hidden">
                 <MenuRow
                   icon={<ScreenShareIcon />}
                   label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
@@ -288,8 +288,8 @@ export function ControlBar({
                   active={isScreenShareEnabled}
                 />
               </div>
-              {/* Participants / hand / layout leave the bar below md. */}
-              <div className="md:hidden">
+              {/* Participants / hand / layout leave the bar on touch devices. */}
+              <div className="pointer-fine:hidden">
                 <MenuRow
                   icon={<PeopleIcon />}
                   label="Participants"
@@ -333,8 +333,8 @@ export function ControlBar({
                 onClick={toggleFullscreen}
                 active={isFullscreen}
               />
-              {/* Reactions leave the bar below md. */}
-              <div className="md:hidden">
+              {/* Reactions leave the bar on touch devices. */}
+              <div className="pointer-fine:hidden">
                 <div className="px-2 pb-1 pt-2 text-xs font-medium text-ink-subtle">React</div>
                 <div className="flex justify-between px-1 pb-1">
                   {REACTION_EMOJI.map((e) => (
@@ -406,7 +406,7 @@ export function ControlBar({
                 className="flex items-center gap-2 bg-danger pl-4 pr-3.5 text-sm font-medium text-danger-ink transition-colors hover:bg-danger-hover [&_svg]:size-5"
               >
                 <LeaveIcon />
-                <span className="hidden sm:inline">Leave</span>
+                <span className="hidden pointer-fine:inline">Leave</span>
               </button>
             </Tooltip>
             <span className="w-px bg-danger-ink/25" aria-hidden />
