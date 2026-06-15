@@ -200,16 +200,7 @@ export function ControlBar({
             closeMore()
           }}
         />
-        {/* People lives only here (every device) to keep the bar slim. */}
-        <GridTile
-          icon={<PeopleIcon />}
-          label="People"
-          active={panel === 'people'}
-          onClick={() => {
-            togglePanel('people')
-            closeMore()
-          }}
-        />
+        {/* People lives in the top-right StageTopBar, not here. */}
         <GridTile
           className="pointer-fine:hidden"
           icon={<HandIcon />}
