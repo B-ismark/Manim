@@ -13,7 +13,7 @@ export function HandoffBanner({ onSwitch }: { onSwitch: () => void }) {
   if (dismissed) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-30 flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-30 flex justify-center px-4">
       <Island elevation="raised" pad="sm" className="pointer-events-auto flex items-center gap-3">
         <p className="text-sm text-ink">
           You're in this call on another device.

@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { Avatar, IconButton, Popover } from '@/components/primitives'
+import { Avatar, IconButton, Popover, Sheet } from '@/components/primitives'
 import { AttachIcon, DownloadIcon, GifIcon, SendIcon } from '@/components/icons'
 import { useChatMessages, type ChatItem, type FileItem } from '@/features/chat/useChatMessages'
 import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, uploadError } from '@/features/chat/limits'
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
+import { useIsTouch } from '@/lib/useIsTouch'
 import { cn } from '@/lib/cn'
 
 function humanSize(bytes?: number): string {
@@ -23,6 +24,7 @@ export function ChatPanel() {
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
+  const narrow = useIsTouch()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -51,6 +53,9 @@ export function ChatPanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <p className="shrink-0 border-b border-line px-3 py-1.5 text-center text-[11px] text-ink-subtle">
+        Messages are visible only to people in this call.
+      </p>
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
         {items.length === 0 ? (
           <div className="grid h-full place-items-center text-center">
@@ -95,24 +100,46 @@ export function ChatPanel() {
           icon={<AttachIcon />}
           onClick={() => fileInputRef.current?.click()}
         />
-        {gifEnabled && (
-          <Popover
-            open={gifOpen}
-            onOpenChange={setGifOpen}
-            side="top"
-            align="start"
-            trigger={
-              <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} />
-            }
-          >
-            <GifPicker
-              onSelect={(url) => {
-                sendText(url)
-                setGifOpen(false)
-              }}
-            />
-          </Popover>
-        )}
+        {gifEnabled &&
+          (narrow ? (
+            <>
+              <IconButton
+                type="button"
+                size="sm"
+                label="Send a GIF"
+                icon={<GifIcon />}
+                active={gifOpen}
+                onClick={() => setGifOpen(true)}
+              />
+              <Sheet open={gifOpen} onOpenChange={setGifOpen} side="bottom" title="Send a GIF">
+                <GifPicker
+                  onSelect={(url) => {
+                    sendText(url)
+                    setGifOpen(false)
+                  }}
+                />
+              </Sheet>
+            </>
+          ) : (
+            <Popover
+              open={gifOpen}
+              onOpenChange={setGifOpen}
+              side="top"
+              align="start"
+              trigger={
+                <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} />
+              }
+            >
+              <div className="w-72">
+                <GifPicker
+                  onSelect={(url) => {
+                    sendText(url)
+                    setGifOpen(false)
+                  }}
+                />
+              </div>
+            </Popover>
+          ))}
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}

@@ -10,6 +10,8 @@ import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
+import { CallStatusBar } from '@/islands/CallStatusBar'
+import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
@@ -151,6 +153,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     <>
       <RoomAudioRenderer />
       <ConnectionBanner />
+      <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
+      <PinCoachmark />
 
       {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
       <WaitingRoomBanner active={isHost && waiting} />

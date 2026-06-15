@@ -59,7 +59,7 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
   }, [query])
 
   return (
-    <div className="w-72">
+    <div className="w-full">
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}

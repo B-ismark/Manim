@@ -5,28 +5,68 @@ import { isMobile } from '@/lib/device'
 
 const DEFAULT_RADIUS = 12
 
+/** What the camera processor is currently doing. */
+export type EffectMode = 'none' | 'blur' | 'image'
+
 /**
- * Edge quality:
+ * Edge quality (blur only):
  * - `standard` — MediaPipe segmentation on the default (CPU/auto) delegate.
- *   Lightest; the safe baseline.
- * - `high` — segmentation forced onto the **GPU** delegate. Runs at a higher
- *   frame rate, so the person/background mask updates more often and the edge
- *   flickers far less. Heavier on the GPU; falls back to `standard` if the
- *   browser can't init the GPU delegate, so it never breaks the call.
+ * - `high` — segmentation forced onto the **GPU** delegate: higher frame rate,
+ *   less edge flicker, heavier on the GPU. Falls back to `standard` if the GPU
+ *   delegate can't init, so it never breaks the call.
  */
 export type BlurQuality = 'standard' | 'high'
 
+export interface BackgroundPreset {
+  id: string
+  label: string
+  /** Data URL of the background image fed to VirtualBackground. */
+  src: string
+}
+
 type TrackProcessorsModule = typeof import('@livekit/track-processors')
-type BlurProcessor = ReturnType<TrackProcessorsModule['BackgroundBlur']>
+type Processor = ReturnType<TrackProcessorsModule['BackgroundBlur']>
 
 /**
- * Client-side background blur via @livekit/track-processors (MediaPipe, WebGL).
- *
- * The processor module (~160 KB incl. MediaPipe) is **dynamically imported only
- * when blur is first enabled**, keeping the room bundle light (STYLE.md /
- * Architecture "lightweight"). Radius adjusts live; the processor is rebuilt
- * when the camera track or quality changes (segmenterOptions can't update live).
- * Owned by RoomView so it persists across menu open/close.
+ * Paint a simple gradient into an offscreen canvas and return it as a data URL.
+ * Avoids shipping image assets — presets are generated at runtime, once.
+ */
+function gradientDataUrl(stops: Array<[number, string]>, diagonal = true): string {
+  const c = document.createElement('canvas')
+  c.width = 640
+  c.height = 360
+  const ctx = c.getContext('2d')
+  if (!ctx) return ''
+  const grd = diagonal
+    ? ctx.createLinearGradient(0, 0, c.width, c.height)
+    : ctx.createLinearGradient(0, 0, 0, c.height)
+  for (const [offset, color] of stops) grd.addColorStop(offset, color)
+  ctx.fillStyle = grd
+  ctx.fillRect(0, 0, c.width, c.height)
+  return c.toDataURL('image/png')
+}
+
+let cachedPresets: BackgroundPreset[] | null = null
+function buildPresets(): BackgroundPreset[] {
+  if (cachedPresets) return cachedPresets
+  if (typeof document === 'undefined') return []
+  cachedPresets = [
+    { id: 'slate', label: 'Slate', src: gradientDataUrl([[0, '#1f2933'], [1, '#3e4c59']]) },
+    { id: 'dusk', label: 'Dusk', src: gradientDataUrl([[0, '#4c1d95'], [1, '#1e3a8a']]) },
+    { id: 'warm', label: 'Warm', src: gradientDataUrl([[0, '#f59e0b'], [1, '#b45309']]) },
+    { id: 'mint', label: 'Mint', src: gradientDataUrl([[0, '#0f766e'], [1, '#134e4a']]) },
+  ]
+  return cachedPresets
+}
+
+/**
+ * Client-side background effects via @livekit/track-processors (MediaPipe, WebGL):
+ * blur or a replacement image. The processor module (~160 KB incl. MediaPipe) is
+ * **dynamically imported only when an effect is first enabled**, keeping the room
+ * bundle light. Blur radius and the chosen image update live; the processor is
+ * rebuilt only when the mode, camera track, or blur quality changes (the
+ * segmenter delegate is fixed at construction). Owned by RoomView so it persists
+ * across menu open/close.
  */
 export function useBackgroundBlur() {
   const { localParticipant } = useLocalParticipant()
@@ -36,13 +76,22 @@ export function useBackgroundBlur() {
   // edge gain is marginal). Hide it on mobile and pin quality to standard there.
   const allowHighQuality = !isMobile()
 
-  // Optimistic: show the control; verified against the module on first enable.
+  // Optimistic: show the controls; verified against the module on first enable.
   const [supported, setSupported] = useState(true)
-  const [enabled, setEnabled] = useState(false)
+  const [mode, setMode] = useState<EffectMode>('none')
   const [radius, setRadius] = useState(DEFAULT_RADIUS)
   const [quality, setQuality] = useState<BlurQuality>('standard')
-  const procRef = useRef<BlurProcessor | null>(null)
+  const [imageSrc, setImageSrc] = useState<string>('')
+  const [customImage, setCustomImage] = useState<string | null>(null)
+  const [presets] = useState<BackgroundPreset[]>(() => buildPresets())
+
+  const procRef = useRef<Processor | null>(null)
   const modRef = useRef<TrackProcessorsModule | null>(null)
+  // Latest selection read by the rebuild effect without re-triggering it.
+  const radiusRef = useRef(radius)
+  const imageRef = useRef(imageSrc)
+  radiusRef.current = radius
+  imageRef.current = imageSrc
 
   const cameraPub = localParticipant.getTrackPublication(Track.Source.Camera)
   const track = cameraPub?.track as LocalVideoTrack | undefined
@@ -51,57 +100,57 @@ export function useBackgroundBlur() {
   useEffect(() => {
     let cancelled = false
 
-    async function apply(mod: TrackProcessorsModule, useGpu: boolean) {
-      const seg = useGpu ? { delegate: 'GPU' as const } : undefined
-      const proc = mod.BackgroundBlur(radius, seg)
-      await track!.setProcessor(proc)
-      procRef.current = proc
-    }
-
-    async function sync() {
-      if (enabled) {
-        if (!track) return
-        try {
-          if (!modRef.current) modRef.current = await import('@livekit/track-processors')
-          const mod = modRef.current
-          if (cancelled) return
-          if (!mod.supportsBackgroundProcessors()) {
-            setSupported(false)
-            setEnabled(false)
-            return
-          }
-          // Rebuild from scratch — segmenter delegate is fixed at construction.
-          if (procRef.current) {
-            try {
-              await track.stopProcessor()
-            } catch {
-              /* already stopped */
-            }
-            procRef.current = null
-          }
-          if (cancelled) return
-          try {
-            await apply(mod, quality === 'high')
-          } catch {
-            // GPU delegate unsupported on this device → drop to standard so the
-            // toggle degrades gracefully instead of disabling blur entirely.
-            if (quality === 'high' && !cancelled) {
-              setQuality('standard')
-              await apply(mod, false)
-            } else {
-              throw new Error('processor failed')
-            }
-          }
-        } catch {
-          setEnabled(false)
-        }
-      } else if (procRef.current && track) {
+    async function stopCurrent() {
+      if (procRef.current && track) {
         try {
           await track.stopProcessor()
         } catch {
           /* already stopped */
         }
-        procRef.current = null
+      }
+      procRef.current = null
+    }
+
+    async function build(mod: TrackProcessorsModule) {
+      const seg = quality === 'high' ? { delegate: 'GPU' as const } : undefined
+      const proc =
+        mode === 'image'
+          ? mod.VirtualBackground(imageRef.current, seg)
+          : mod.BackgroundBlur(radiusRef.current, seg)
+      await track!.setProcessor(proc)
+      procRef.current = proc
+    }
+
+    async function sync() {
+      if (mode === 'none') {
+        await stopCurrent()
+        return
+      }
+      if (!track) return
+      try {
+        if (!modRef.current) modRef.current = await import('@livekit/track-processors')
+        const mod = modRef.current
+        if (cancelled) return
+        if (!mod.supportsBackgroundProcessors()) {
+          setSupported(false)
+          setMode('none')
+          return
+        }
+        await stopCurrent()
+        if (cancelled) return
+        try {
+          await build(mod)
+        } catch {
+          // GPU delegate (or this effect) failed → drop to standard blur so the
+          // control degrades gracefully instead of leaving a broken processor.
+          if (quality === 'high' && !cancelled) {
+            setQuality('standard')
+          } else {
+            throw new Error('processor failed')
+          }
+        }
+      } catch {
+        if (!cancelled) setMode('none')
       }
     }
 
@@ -109,16 +158,42 @@ export function useBackgroundBlur() {
     return () => {
       cancelled = true
     }
-    // radius excluded — adjusted live below without rebuilding the processor.
+    // radius/imageSrc excluded — updated live below without a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, trackSid, quality])
+  }, [mode, trackSid, quality])
 
+  // Live blur-radius adjustment (no rebuild).
   useEffect(() => {
-    if (!enabled || !procRef.current) return
+    if (mode !== 'blur' || !procRef.current) return
     void procRef.current.updateTransformerOptions({ blurRadius: radius }).catch(() => {})
-  }, [radius, enabled])
+  }, [radius, mode])
 
-  const toggle = useCallback(() => setEnabled((v) => !v), [])
+  // Live background-image swap (no rebuild).
+  useEffect(() => {
+    if (mode !== 'image' || !procRef.current || !imageSrc) return
+    void procRef.current.updateTransformerOptions({ imagePath: imageSrc }).catch(() => {})
+  }, [imageSrc, mode])
+
+  const useNone = useCallback(() => setMode('none'), [])
+  const useBlur = useCallback(() => setMode('blur'), [])
+
+  const selectImage = useCallback((src: string) => {
+    setImageSrc(src)
+    setMode('image')
+  }, [])
+
+  const addCustomImage = useCallback(
+    (file: File) => {
+      const url = URL.createObjectURL(file)
+      setCustomImage((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return url
+      })
+      setImageSrc(url)
+      setMode('image')
+    },
+    [],
+  )
 
   // On mobile, never expose/allow the GPU-high path.
   const setQualityGated = useCallback(
@@ -128,14 +203,19 @@ export function useBackgroundBlur() {
 
   return {
     supported,
-    enabled,
-    setEnabled,
-    toggle,
+    allowHighQuality,
+    mode,
     radius,
     setRadius,
     quality,
     setQuality: setQualityGated,
-    allowHighQuality,
+    selectedImage: imageSrc,
+    presets,
+    customImage,
+    useNone,
+    useBlur,
+    selectImage,
+    addCustomImage,
   }
 }
 
