@@ -41,6 +41,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useBlockStore } from '@/store/useBlockStore'
 import { toast } from '@/store/useToastStore'
 import { useCopyLink } from '@/lib/useCopyLink'
+import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { moderate, sendEmailInvite } from '@/lib/orchestrator'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
@@ -54,6 +55,7 @@ function displayName(p: Participant): string {
 export function ParticipantsPanel() {
   const participants = useParticipants()
   const { localParticipant } = useLocalParticipant()
+  const myUserId = useMyUserId()
   const room = useRoomContext()
   const { copied, copy } = useCopyLink()
   const [email, setEmail] = useState('')
@@ -187,6 +189,7 @@ export function ParticipantsPanel() {
             key={p.identity}
             participant={p}
             isLocal={p.identity === localParticipant.identity}
+            myOtherDevice={isMyOtherDevice(p, myUserId)}
             canModerate={isHost && p.identity !== localParticipant.identity}
             room={room.name}
             token={roomToken}
@@ -201,6 +204,7 @@ export function ParticipantsPanel() {
 function ParticipantRow({
   participant,
   isLocal,
+  myOtherDevice,
   canModerate,
   room,
   token,
@@ -208,6 +212,7 @@ function ParticipantRow({
 }: {
   participant: Participant
   isLocal: boolean
+  myOtherDevice: boolean
   canModerate: boolean
   room: string
   token: string | null
@@ -276,6 +281,7 @@ function ParticipantRow({
         <p className="truncate text-sm font-medium">
           {name}
           {isLocal && <span className="text-ink-subtle"> (you)</span>}
+          {myOtherDevice && <span className="text-ink-subtle"> (your device)</span>}
         </p>
         {pinned && (
           <Badge tone="accent" className="mt-0.5">

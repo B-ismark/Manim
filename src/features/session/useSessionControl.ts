@@ -7,9 +7,9 @@ import {
   useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
-import type { Participant } from 'livekit-client'
 import { useAppStore } from '@/store/useAppStore'
 import { setRoomFlags } from '@/lib/orchestrator'
+import { userIdOf } from '@/lib/identity'
 import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
 
@@ -21,14 +21,6 @@ type ControlMessage =
   | { type: 'merge'; room: string }
   | { type: 'handoff'; userId: string; keepDevice: string }
   | { type: 'report'; target: string; by: string }
-
-function userIdOf(p: Participant): string {
-  try {
-    return JSON.parse(p.metadata || '{}').userId || ''
-  } catch {
-    return ''
-  }
-}
 
 /**
  * Session control plane over the LiveKit data channel:
