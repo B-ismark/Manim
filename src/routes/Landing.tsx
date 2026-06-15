@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, IconButton } from '@/components/primitives'
-import { SettingsIcon } from '@/components/icons'
+import { SettingsIcon, GoogleIcon } from '@/components/icons'
 import { SettingsDialog } from '@/islands/Settings'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
@@ -93,10 +93,20 @@ function AccountMenu() {
   const signedIn = useAuthStore((s) => s.signedIn)
   const email = useAuthStore((s) => s.email)
   const signInWithEmail = useAuthStore((s) => s.signInWithEmail)
+  const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle)
   const signOut = useAuthStore((s) => s.signOut)
   const [value, setValue] = useState('')
   const [sent, setSent] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  async function google() {
+    setErr(null)
+    try {
+      await signInWithGoogle()
+    } catch (ex) {
+      setErr(ex instanceof Error ? ex.message : 'Google sign-in failed')
+    }
+  }
 
   async function submit(e: FormEvent) {
     e.preventDefault()
@@ -129,22 +139,33 @@ function AccountMenu() {
       ) : sent ? (
         <p className="w-64 p-2 text-sm text-ink-muted">Check your email for a sign-in link.</p>
       ) : (
-        <form onSubmit={submit} className="flex w-64 flex-col gap-2 p-1">
-          <input
-            type="email"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-            placeholder="you@email.com"
-            aria-label="Email"
-            autoComplete="email"
-            className="h-9 rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-          />
-          <Button type="submit" variant="accent" size="sm" disabled={!value.trim()}>
-            Send magic link
+        <div className="flex w-64 flex-col gap-2 p-1">
+          <Button variant="neutral" size="sm" block onClick={() => void google()}>
+            <GoogleIcon className="size-4" />
+            Continue with Google
           </Button>
+          <div className="flex items-center gap-2 py-0.5 text-xs text-ink-subtle">
+            <span className="h-px flex-1 bg-line" />
+            or
+            <span className="h-px flex-1 bg-line" />
+          </div>
+          <form onSubmit={submit} className="flex flex-col gap-2">
+            <input
+              type="email"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="you@email.com"
+              aria-label="Email"
+              autoComplete="email"
+              className="h-9 rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <Button type="submit" variant="accent" size="sm" disabled={!value.trim()}>
+              Send magic link
+            </Button>
+          </form>
           {err && <p className="text-xs text-danger">{err}</p>}
           <p className="text-xs text-ink-subtle">Sign in to move calls between your devices.</p>
-        </form>
+        </div>
       )}
     </Popover>
   )

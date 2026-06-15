@@ -20,6 +20,8 @@ interface AuthState {
   signedIn: boolean
   /** Sends a magic link. Resolves once the email is dispatched. */
   signInWithEmail: (email: string) => Promise<void>
+  /** Google OAuth — one tap, carries the existing Google session across devices. */
+  signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
 }
 
@@ -32,6 +34,17 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: window.location.origin },
+    })
+    if (error) throw error
+  },
+  signInWithGoogle: async () => {
+    if (!supabase) throw new Error('Sign-in is not configured.')
+    // Redirects to Google, then back to the app origin where onAuthStateChange
+    // (initAuth) picks up the session. Requires the Google provider to be enabled
+    // in the Supabase dashboard (OAuth client id/secret) — see DEPLOY.md.
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin },
     })
     if (error) throw error
   },

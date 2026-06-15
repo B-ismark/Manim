@@ -23,9 +23,28 @@ export const MicIcon = (p: P) => (
   </svg>
 )
 
+/** Google "G" — brand colors, multi-fill (not the stroke-based base). */
+export const GoogleIcon = (p: P) => (
+  <svg viewBox="0 0 24 24" {...p}>
+    <path fill="#4285F4" d="M21.6 12.23c0-.71-.06-1.4-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.74 2.98-4.3 2.98-7.35z" />
+    <path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.62-2.42l-3.24-2.5c-.9.6-2.05.96-3.38.96-2.6 0-4.8-1.76-5.58-4.12H3.06v2.58A10 10 0 0 0 12 22z" />
+    <path fill="#FBBC05" d="M6.42 13.92a6 6 0 0 1 0-3.84V7.5H3.06a10 10 0 0 0 0 9z" />
+    <path fill="#EA4335" d="M12 5.96c1.47 0 2.79.5 3.83 1.5l2.87-2.87C16.96 2.99 14.7 2 12 2A10 10 0 0 0 3.06 7.5l3.36 2.58C7.2 7.72 9.4 5.96 12 5.96z" />
+  </svg>
+)
+
 export const NoiseIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4" />
+  </svg>
+)
+
+export const FlipCameraIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3" y="6" width="18" height="13" rx="2" />
+    <circle cx="12" cy="12.5" r="2.5" />
+    <path d="M9 3.5h6" />
+    <path d="M13.8 11.2a2.5 2.5 0 0 0-3.8.3M10.2 13.8a2.5 2.5 0 0 0 3.8-.3" />
   </svg>
 )
 

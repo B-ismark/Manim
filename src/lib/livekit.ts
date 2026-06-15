@@ -1,5 +1,6 @@
 import { type RoomOptions, VideoPresets, ExternalE2EEKeyProvider } from 'livekit-client'
 import E2EEWorker from 'livekit-client/e2ee-worker?worker'
+import { isMobile } from '@/lib/device'
 
 /**
  * Room options tuned for our goals: simulcast + adaptive stream + dynacast keep
@@ -28,6 +29,10 @@ import E2EEWorker from 'livekit-client/e2ee-worker?worker'
  */
 export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): RoomOptions {
   const e2ee = Boolean(e2eePassphrase)
+  // Phones publish into small portrait tiles and pay the most for per-frame work
+  // (encode + background-blur segmentation). Capping capture/top-layer to 360p
+  // there cuts CPU, battery, and blur cost with no visible loss at tile size.
+  const light = lowBandwidth || isMobile()
   const options: RoomOptions = {
     adaptiveStream: true,
     dynacast: true,
@@ -38,7 +43,7 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
       ...(e2ee ? {} : { backupCodec: { codec: 'vp8' as const } }),
       // Active for the VP8 paths; ignored once VP9/SVC takes over.
       simulcast: true,
-      videoSimulcastLayers: lowBandwidth
+      videoSimulcastLayers: light
         ? [VideoPresets.h180, VideoPresets.h360]
         : [VideoPresets.h360, VideoPresets.h720],
       // Opus discontinuous transmission: near-silent frames cost ~nothing.
@@ -47,7 +52,7 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
       red: true,
     },
     videoCaptureDefaults: {
-      resolution: lowBandwidth ? VideoPresets.h360.resolution : VideoPresets.h720.resolution,
+      resolution: light ? VideoPresets.h360.resolution : VideoPresets.h720.resolution,
     },
     // Always-on baseline audio cleanup (browser WebRTC DSP). The opt-in Krisp
     // filter (useNoiseFilter) layers stronger AI suppression on top of this.

@@ -78,7 +78,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       <div
         className={cn(
-          'flex min-h-0 flex-1 flex-col transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+          'mn-pop flex min-h-0 flex-1 flex-col transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
           panel && 'md:pr-[23rem]',
         )}
       >

@@ -100,10 +100,12 @@ export function Stage() {
 function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useCopyLink()
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-3 sm:p-4">
-      {/* Mobile (portrait): fill the screen so the camera feels natural, not a
-          letterboxed landscape strip. Desktop: a centered 16:9 card. */}
-      <div className="min-h-0 w-full flex-1 sm:aspect-video sm:max-w-3xl sm:flex-none">
+    // pb-28 keeps content clear of the floating control bar; both the preview and
+    // the invite CTA stay centered and visible. The camera is a constrained card,
+    // not full-bleed — full-bleed video previously pushed the CTA off-screen
+    // behind the control bar in portrait.
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-5 p-3 pb-28 sm:p-4 sm:pb-28">
+      <div className="aspect-video w-full max-w-3xl max-h-[55dvh] shrink-0">
         {selfTrack ? (
           <Tile trackRef={selfTrack} fill />
         ) : (

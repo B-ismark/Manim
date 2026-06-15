@@ -69,7 +69,16 @@ Two more gotchas:
    tier out of the box.)
 2. **Authentication → URL Configuration**: add your Worker URL to the redirect
    allow-list (e.g. `https://manim.i-ai.workers.dev`, plus any custom domain).
-   Magic-link sign-in fails silently if the URL isn't allow-listed.
+   Magic-link AND Google sign-in fail silently if the URL isn't allow-listed.
+
+   **Google sign-in (optional, recommended — one tap, carries across devices):**
+   - **Google Cloud Console** → create an OAuth 2.0 Client ID (Web application).
+     Authorized redirect URI = `https://<your-project>.supabase.co/auth/v1/callback`
+     (shown in the Supabase Google provider page).
+   - **Supabase → Authentication → Providers → Google**: enable, paste the client
+     ID + secret. No app code change needed — the "Continue with Google" button is
+     already wired (`signInWithOAuth`). Without this, the button errors and users
+     fall back to the magic link.
 3. **SQL editor** → run, so users are reachable by email for calls:
 
 ```sql
