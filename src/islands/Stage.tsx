@@ -134,26 +134,31 @@ export function Stage() {
 /** Alone in the call: show your own camera (like Teams/Meet) + an invite hint. */
 function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useCopyLink()
+  const coarse = useCoarsePointer()
   return (
-    // Touch (phones): self-view fills the stage in portrait (object-cover, like
-    // Meet) and the invite floats as an overlay pill above the control bar.
-    // Desktop (mouse): a constrained landscape card with the invite below it —
-    // full-bleed on desktop would waste the wide canvas.
-    <div className="relative flex min-h-0 flex-1 flex-col items-center justify-end p-3 pb-28 pointer-fine:justify-center pointer-fine:gap-5 pointer-fine:p-4 pointer-fine:pb-28">
-      <div className="absolute inset-0 pointer-fine:static pointer-fine:aspect-video pointer-fine:w-full pointer-fine:max-w-3xl pointer-fine:max-h-[55dvh] pointer-fine:shrink-0">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28">
+      {/* Touch (phones): a tall portrait card that fills the available height
+          (Meet/Gmail self-view), invite below. Desktop (mouse): a constrained
+          landscape card — full height would waste the wide canvas. */}
+      <div
+        className={cn(
+          'overflow-hidden rounded-tile',
+          coarse
+            ? 'min-h-0 w-full flex-1'
+            : 'aspect-video w-full max-w-3xl max-h-[55dvh] shrink-0',
+        )}
+      >
         {selfTrack ? (
           <Tile trackRef={selfTrack} fill />
         ) : (
-          <div className="grid size-full place-items-center bg-sunken text-sm text-ink-subtle pointer-fine:rounded-tile">
+          <div className="grid size-full place-items-center bg-sunken text-sm text-ink-subtle">
             Camera off
           </div>
         )}
       </div>
-      <div className="relative z-10 shrink-0 rounded-tile bg-overlay px-5 py-4 text-center text-white pointer-fine:bg-transparent pointer-fine:p-0 pointer-fine:text-ink">
+      <div className="shrink-0 text-center">
         <p className="text-sm font-medium">You're the only one here</p>
-        <p className="mt-1 text-xs text-white/75 pointer-fine:text-ink-muted">
-          Invite someone to join this call.
-        </p>
+        <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
         <Button variant="accent" className="mt-3" onClick={copy}>
           {copied ? <CheckIcon /> : <CopyIcon />}
           {copied ? 'Link copied' : 'Copy invite link'}
