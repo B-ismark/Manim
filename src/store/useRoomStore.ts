@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { isMobile } from '@/lib/device'
 
 /** Stage layout modes (STYLE.md §5 layout switch). */
 export type LayoutMode = 'grid' | 'speaker' | 'spotlight'
@@ -23,7 +24,10 @@ interface RoomState {
 }
 
 export const useRoomStore = create<RoomState>((set) => ({
-  layout: 'grid',
+  // Portrait phones default to active-speaker (one large feed + filmstrip) — the
+  // mobile convention. A √n grid on a tall narrow screen makes every tile tiny.
+  // Desktop keeps the grid. User can switch either way via the LayoutSwitcher.
+  layout: isMobile() ? 'speaker' : 'grid',
   pinned: null,
   panel: null,
   unread: 0,

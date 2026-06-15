@@ -1,5 +1,6 @@
 import { Slider, Toggle } from '@/components/primitives'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
+import { isLowPowerDevice } from '@/lib/device'
 
 /** Tier-2 background effects: blur toggle + live radius slider + quality. */
 export function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
@@ -25,6 +26,8 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
     if (!enabled) setEnabled(true)
   }
 
+  const lowPower = isLowPowerDevice()
+
   return (
     <div className="px-2.5 py-1.5">
       <Toggle
@@ -33,6 +36,11 @@ export function BackgroundEffects({ controls }: { controls: BackgroundBlurContro
         label="Background blur"
         className="w-full justify-between"
       />
+      {lowPower && (
+        <p className="mt-1 text-xs text-ink-subtle">
+          Real-time blur is CPU-intensive and uses more battery on this device.
+        </p>
+      )}
       <div className="mt-3">
         <div className="mb-1.5 flex items-center justify-between text-xs text-ink-muted">
           <span>Blur strength</span>

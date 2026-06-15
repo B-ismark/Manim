@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState } from '@livekit/components-react'
 import { ConnectionState } from 'livekit-client'
@@ -20,7 +20,66 @@ import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
+import { isMobile } from '@/lib/device'
 import { cn } from '@/lib/cn'
+
+/**
+ * Mobile gesture + auto-hide-chrome controller for the stage.
+ * - Tap empty stage → toggle the control bar (FaceTime/Zoom/Telegram pattern).
+ * - Horizontal swipe → switch grid ↔ speaker layout.
+ * - Controls auto-hide after 4s on touch devices; any tap brings them back.
+ * Desktop keeps controls always visible (hover model) and ignores gestures.
+ */
+function useStageChrome() {
+  const mobile = useMemo(() => isMobile(), [])
+  const layout = useRoomStore((s) => s.layout)
+  const setLayout = useRoomStore((s) => s.setLayout)
+  const [visible, setVisible] = useState(true)
+  const hideTimer = useRef<number | undefined>(undefined)
+  const down = useRef<{ x: number; y: number; t: number } | null>(null)
+
+  const scheduleHide = useCallback(() => {
+    if (!mobile) return
+    window.clearTimeout(hideTimer.current)
+    hideTimer.current = window.setTimeout(() => setVisible(false), 4000)
+  }, [mobile])
+
+  const show = useCallback(() => {
+    setVisible(true)
+    scheduleHide()
+  }, [scheduleHide])
+
+  useEffect(() => {
+    if (mobile) scheduleHide()
+    return () => window.clearTimeout(hideTimer.current)
+  }, [mobile, scheduleHide])
+
+  const onPointerDown = useCallback((e: PointerEvent) => {
+    down.current = { x: e.clientX, y: e.clientY, t: e.timeStamp }
+  }, [])
+
+  const onPointerUp = useCallback(
+    (e: PointerEvent) => {
+      const d = down.current
+      down.current = null
+      if (!d || !mobile) return
+      // Ignore interactions on real controls (buttons) or the draggable self-view.
+      if ((e.target as HTMLElement).closest('button, a, input, [data-no-stage-gesture]')) return
+      const dx = e.clientX - d.x
+      const dy = e.clientY - d.y
+      const dt = e.timeStamp - d.t
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        setLayout(layout === 'grid' ? 'speaker' : 'grid') // horizontal swipe
+      } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
+        setVisible((v) => !v) // tap toggles chrome
+        scheduleHide()
+      }
+    },
+    [mobile, layout, setLayout, scheduleHide],
+  )
+
+  return { chromeVisible: visible, show, stageHandlers: { onPointerDown, onPointerUp } }
+}
 
 // The chat/participants panel is only needed once opened — defer its chunk.
 const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ default: m.SidePanel })))
@@ -60,6 +119,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
   const connState = useConnectionState()
+  const { chromeVisible, stageHandlers } = useStageChrome()
 
   // Cover the initial connect (before media + roster arrive) with the joining
   // screen. Reconnects after that are handled by ConnectionBanner, not here.
@@ -77,6 +137,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
 
       <div
+        {...stageHandlers}
         className={cn(
           'mn-pop flex min-h-0 flex-1 flex-col transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
           panel && 'md:pr-[23rem]',
@@ -86,6 +147,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       </div>
 
       <ControlBar
+        chromeVisible={chromeVisible}
         onLeave={doLeave}
         onEndForEveryone={endForEveryone}
         isHost={isHost}

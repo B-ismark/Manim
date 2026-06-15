@@ -43,6 +43,8 @@ import { useRoomStore } from '@/store/useRoomStore'
 import { cn } from '@/lib/cn'
 
 export interface ControlBarProps {
+  /** When false (mobile auto-hide), the bar slides out of the thumb zone. */
+  chromeVisible: boolean
   /** Leave the call yourself (call continues for others). */
   onLeave: () => void
   /** Host-only: end the call for everyone. */
@@ -70,6 +72,7 @@ export interface ControlBarProps {
  * Tier-2 (devices, theme) lives in More. STYLE.md §4/§5.
  */
 export function ControlBar({
+  chromeVisible,
   onLeave,
   onEndForEveryone,
   isHost,
@@ -145,7 +148,14 @@ export function ControlBar({
 
   return (
     // bottom inset clears the iOS home indicator (viewport-fit=cover is set).
-    <div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4">
+    // Slides out of the thumb zone when chrome is hidden (mobile tap-to-hide).
+    <div
+      className={cn(
+        'pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4',
+        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        !chromeVisible && 'translate-y-[150%] opacity-0',
+      )}
+    >
       <Island
         pad="none"
         elevation="raised"
