@@ -23,6 +23,12 @@ export const MicIcon = (p: P) => (
   </svg>
 )
 
+export const NoiseIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4" />
+  </svg>
+)
+
 export const MicOffIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M9 9v2a3 3 0 0 0 5.12 2.12M15 10.5V6a3 3 0 0 0-5.94-.6" />

@@ -23,6 +23,13 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
     videoCaptureDefaults: {
       resolution: lowBandwidth ? VideoPresets.h360.resolution : VideoPresets.h720.resolution,
     },
+    // Always-on baseline audio cleanup (browser WebRTC DSP). The opt-in Krisp
+    // filter (useNoiseFilter) layers stronger AI suppression on top of this.
+    audioCaptureDefaults: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+    },
   }
 
   if (e2eePassphrase) {

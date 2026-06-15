@@ -1,16 +1,20 @@
 import { useNavigate } from 'react-router-dom'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { useIncomingCalls } from '@/features/calls/calls'
+import { useAppStore } from '@/store/useAppStore'
 
 /**
- * App-level incoming-call surface. Mounted once (CallController). Joining
- * navigates into the caller's room — if you're already in a call, the host can
- * then merge the two rooms (More → Merge).
+ * App-level incoming-call surface, mounted once. Owns the single Realtime
+ * subscription (useIncomingCalls). Shown only when NOT in a call — once you're in
+ * a room the in-call banner (InCallIncomingBanner) takes over, since that's where
+ * merging the two calls is possible.
  */
 export function IncomingCallBanner() {
   const { incoming, dismiss } = useIncomingCalls()
+  const inCall = useAppStore((s) => s.roomToken !== null)
   const navigate = useNavigate()
-  if (!incoming) return null
+  // In a call → defer to the in-call banner (which adds Merge / Switch).
+  if (inCall || !incoming) return null
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-4 z-50 flex justify-center px-4">

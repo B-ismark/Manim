@@ -7,7 +7,7 @@
   process.env locally and the Worker's `env` binding in production. Uses only
   Web-standard APIs (global fetch, global crypto) so it runs on Workers.
 */
-import { AccessToken, RoomServiceClient } from 'livekit-server-sdk'
+import { AccessToken, RoomServiceClient, TokenVerifier } from 'livekit-server-sdk'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -68,14 +68,39 @@ async function mergeRoomFlags(roomService, room, patch) {
   await roomService.updateRoomMetadata(room, JSON.stringify({ ...current, ...patch }))
 }
 
+// Resolve the caller's identity from their LiveKit JWT — the same token they hold
+// to join the room. The signature is verified with the API secret, so the identity
+// (`sub`) is unforgeable: a client cannot claim to be someone else. We also bind
+// the token to the room it's acting on, so a host token for room A can't moderate
+// room B. Returns the verified identity string, or null if absent/invalid.
+async function verifyCaller(env, token, room) {
+  const { apiKey, apiSecret } = services(env)
+  if (!token || !apiKey || !apiSecret) return null
+  try {
+    const verifier = new TokenVerifier(apiKey, apiSecret)
+    const claims = await verifier.verify(token)
+    if (room && claims?.video?.room && claims.video.room !== room) return null
+    return claims?.sub || null
+  } catch {
+    return null
+  }
+}
+
 // Host authority lives in ROOM metadata (written only by the server / a roomAdmin
 // token), NOT participant metadata: tokens grant canUpdateOwnMetadata (needed for
 // raise-hand attributes), so a participant could otherwise rewrite their own
 // metadata to {host:true} and self-promote. Room metadata is unforgeable by
 // non-host participants (they have roomAdmin:false).
-async function ensureHost(roomService, room, caller) {
+//
+// The caller proves identity by presenting their signed join token (Bearer) — NOT
+// a plain identity string, which any participant can read off the room roster and
+// replay. We verify the token, then check the verified identity matches the
+// server-recorded hostId.
+async function ensureHost(env, roomService, room, token) {
+  const identity = await verifyCaller(env, token, room)
+  if (!identity) return false
   const flags = await getRoomFlags(roomService, room)
-  return Boolean(flags.hostId) && flags.hostId === caller
+  return Boolean(flags.hostId) && flags.hostId === identity
 }
 
 export function handleHealth(env) {
@@ -101,25 +126,35 @@ export async function handleKnock(env, body) {
   const identity = `${name}#${deviceId || 'web'}`
 
   if (!roomService) {
-    const minted = await mintToken(env, room, name, deviceId, Boolean(host), userId)
-    return { status: 200, body: { ...minted, host: Boolean(host) } }
+    // Degraded mode = no LiveKit configured (local UI-first dev). Host status is
+    // unverifiable here and the host HTTP endpoints are disabled anyway (they all
+    // require roomService), so a client-claimed `host` grants no real authority.
+    // Still, only honor it behind an explicit dev opt-in so a MISCONFIGURED prod
+    // (keys set but VITE_LIVEKIT_URL missing) never lets clients self-promote.
+    const devHost = env.ALLOW_DEV_HOST === 'true' && Boolean(host)
+    const minted = await mintToken(env, room, name, deviceId, devHost, userId)
+    return { status: 200, body: { ...minted, host: devHost } }
   }
 
-  const participants = await listParticipants(roomService, room)
-  const isHost = participants.length === 0
-  const alreadyIn = participants.some((p) => p.identity === identity)
+  // Read room flags FIRST so host election keys off the recorded hostId, not just
+  // a (racy) participant count. The recorded host reclaims host on reconnect; a
+  // brand-new room with no host yet is claimed by its first occupant.
   const flags = await getRoomFlags(roomService, room)
+  const participants = await listParticipants(roomService, room)
+  const alreadyIn = participants.some((p) => p.identity === identity)
+  const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
 
   if (!isHost && !alreadyIn && flags.locked) {
     return { status: 403, body: { error: 'This room is locked by the host.' } }
   }
 
   if (isHost || alreadyIn || !flags.waiting) {
-    // Record the authoritative host identity once, server-side, so it can't be
-    // forged via participant metadata (see ensureHost). At first-join the room
-    // doesn't exist yet, so updateRoomMetadata would fail — create it with the
-    // metadata instead. (LiveKit auto-creates the room on connect either way.)
-    if (isHost && flags.hostId !== identity) {
+    // Record the authoritative host identity ONCE (only when unclaimed), server-side,
+    // so it can't be forged via participant metadata (see ensureHost) and a second
+    // simultaneous first-join can't overwrite it. At first-join the room doesn't
+    // exist yet, so updateRoomMetadata would fail — create it with the metadata
+    // instead. (LiveKit auto-creates the room on connect either way.)
+    if (isHost && !flags.hostId) {
       try {
         await mergeRoomFlags(roomService, room, { hostId: identity })
       } catch {
@@ -155,11 +190,11 @@ export async function handleKnockStatus(env, query) {
   return { status: 200, body: { status: entry.status } }
 }
 
-export async function handlePending(env, query) {
+export async function handlePending(env, query, token) {
   const { roomService } = services(env)
   if (!roomService) return { status: 200, body: { pending: [] } }
-  const { room, caller } = query
-  if (!(await ensureHost(roomService, room, caller))) return { status: 403, body: { error: 'host only' } }
+  const { room } = query
+  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
   const flags = await getRoomFlags(roomService, room)
   const pending = (Array.isArray(flags.queue) ? flags.queue : [])
     .filter((e) => e.status === 'pending')
@@ -167,11 +202,11 @@ export async function handlePending(env, query) {
   return { status: 200, body: { pending } }
 }
 
-export async function handleAdmit(env, body) {
+export async function handleAdmit(env, body, token) {
   const { roomService } = services(env)
-  const { room, caller, requestId, approve } = body ?? {}
+  const { room, requestId, approve } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
-  if (!(await ensureHost(roomService, room, caller))) return { status: 403, body: { error: 'host only' } }
+  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
   const flags = await getRoomFlags(roomService, room)
   const queue = Array.isArray(flags.queue) ? flags.queue : []
   const entry = queue.find((e) => e.id === requestId)
@@ -181,12 +216,12 @@ export async function handleAdmit(env, body) {
   return { status: 200, body: { ok: true } }
 }
 
-export async function handleModerate(env, body) {
+export async function handleModerate(env, body, token) {
   const { roomService } = services(env)
-  const { room, caller, target, action, trackSid } = body ?? {}
+  const { room, target, action, trackSid } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
-  if (!room || !caller || !target || !action) return { status: 400, body: { error: 'missing fields' } }
-  if (!(await ensureHost(roomService, room, caller))) return { status: 403, body: { error: 'host only' } }
+  if (!room || !target || !action) return { status: 400, body: { error: 'missing fields' } }
+  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
   if (action === 'remove') {
     await roomService.removeParticipant(room, target)
   } else if (action === 'mute') {
@@ -198,11 +233,11 @@ export async function handleModerate(env, body) {
   return { status: 200, body: { ok: true } }
 }
 
-export async function handleRoomflags(env, body) {
+export async function handleRoomflags(env, body, token) {
   const { roomService } = services(env)
-  const { room, caller, locked, waiting } = body ?? {}
+  const { room, locked, waiting } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
-  if (!(await ensureHost(roomService, room, caller))) return { status: 403, body: { error: 'host only' } }
+  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
   const patch = {}
   if (typeof locked === 'boolean') patch.locked = locked
   if (typeof waiting === 'boolean') patch.waiting = waiting

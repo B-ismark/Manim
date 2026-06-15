@@ -10,8 +10,10 @@ import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
+import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
+import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
@@ -33,6 +35,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   const blur = useBackgroundBlur()
+  const noise = useNoiseFilter()
   const docPip = useDocumentPip()
   useCallSounds()
   useApplyBlocks()
@@ -71,6 +74,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
       <WaitingRoomBanner active={isHost && waiting} />
+      <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
 
       <div
         className={cn(
@@ -84,7 +88,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <ControlBar
         onLeave={doLeave}
         onEndForEveryone={endForEveryone}
-        onMerge={mergeInto}
         isHost={isHost}
         locked={locked}
         onToggleLock={toggleLock}
@@ -94,6 +97,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         handRaised={handRaised}
         toggleHand={toggleHand}
         blur={blur}
+        noise={noise}
         docPip={{ supported: docPip.supported, active: docPip.active, toggle: docPip.toggle }}
       />
       <ReactionsOverlay reactions={active} />

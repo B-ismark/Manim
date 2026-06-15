@@ -11,6 +11,19 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // Split the heavy, rarely-changing vendor code into long-lived cacheable
+        // chunks so app edits don't bust the whole bundle. livekit is the biggest
+        // dependency by far; React + Radix are stable too.
+        manualChunks: {
+          livekit: ['livekit-client', '@livekit/components-react', '@livekit/track-processors'],
+          react: ['react', 'react-dom', 'react-router-dom'],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

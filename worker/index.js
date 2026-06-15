@@ -24,6 +24,10 @@ const json = (r) =>
     headers: { 'content-type': 'application/json' },
   })
 
+// Bearer token = the caller's signed LiveKit join token. Host endpoints verify it
+// server-side (see ensureHost in core.mjs) instead of trusting a plaintext identity.
+const bearer = (request) => (request.headers.get('authorization') || '').replace(/^Bearer\s+/i, '')
+
 async function handleApi(request, env, url) {
   const path = url.pathname.replace(/^\/api\//, '')
   const method = request.method
@@ -34,10 +38,10 @@ async function handleApi(request, env, url) {
     if (path === 'health') return json(handleHealth(env))
     if (path === 'knock' && method === 'POST') return json(await handleKnock(env, await bodyOf()))
     if (path === 'knock-status') return json(await handleKnockStatus(env, query))
-    if (path === 'pending') return json(await handlePending(env, query))
-    if (path === 'admit' && method === 'POST') return json(await handleAdmit(env, await bodyOf()))
-    if (path === 'moderate' && method === 'POST') return json(await handleModerate(env, await bodyOf()))
-    if (path === 'roomflags' && method === 'POST') return json(await handleRoomflags(env, await bodyOf()))
+    if (path === 'pending') return json(await handlePending(env, query, bearer(request)))
+    if (path === 'admit' && method === 'POST') return json(await handleAdmit(env, await bodyOf(), bearer(request)))
+    if (path === 'moderate' && method === 'POST') return json(await handleModerate(env, await bodyOf(), bearer(request)))
+    if (path === 'roomflags' && method === 'POST') return json(await handleRoomflags(env, await bodyOf(), bearer(request)))
     if (path === 'email-invite' && method === 'POST') {
       // Per-IP rate limit (native Workers binding) to keep the unauthenticated
       // invite endpoint from being used as a spam relay. Degrades gracefully if

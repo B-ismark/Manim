@@ -25,13 +25,16 @@ app.use(express.json())
 const send = (res, r) => res.status(r.status).json(r.body)
 const env = process.env
 
+// Bearer token = the caller's signed LiveKit join token; host endpoints verify it.
+const bearer = (req) => (req.get('authorization') || '').replace(/^Bearer\s+/i, '')
+
 app.get('/api/health', (_req, res) => send(res, handleHealth(env)))
 app.post('/api/knock', async (req, res) => send(res, await handleKnock(env, req.body)))
 app.get('/api/knock-status', async (req, res) => send(res, await handleKnockStatus(env, req.query)))
-app.get('/api/pending', async (req, res) => send(res, await handlePending(env, req.query)))
-app.post('/api/admit', async (req, res) => send(res, await handleAdmit(env, req.body)))
-app.post('/api/moderate', async (req, res) => send(res, await handleModerate(env, req.body)))
-app.post('/api/roomflags', async (req, res) => send(res, await handleRoomflags(env, req.body)))
+app.get('/api/pending', async (req, res) => send(res, await handlePending(env, req.query, bearer(req))))
+app.post('/api/admit', async (req, res) => send(res, await handleAdmit(env, req.body, bearer(req))))
+app.post('/api/moderate', async (req, res) => send(res, await handleModerate(env, req.body, bearer(req))))
+app.post('/api/roomflags', async (req, res) => send(res, await handleRoomflags(env, req.body, bearer(req))))
 app.post('/api/email-invite', async (req, res) => send(res, await handleEmailInvite(env, req.body)))
 
 app.listen(PORT, () => {
