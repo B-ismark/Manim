@@ -50,6 +50,7 @@ export function BackgroundEffects({
 }) {
   const {
     supported,
+    busy,
     mode,
     radius,
     setRadius,
@@ -90,7 +91,7 @@ export function BackgroundEffects({
           in real time). Mirrored like the stage self-view. */}
       <div
         className={cn(
-          'mb-3 w-full overflow-hidden rounded-tile bg-sunken',
+          'relative mb-3 w-full overflow-hidden rounded-tile bg-sunken',
           previewSize === 'lg' ? 'aspect-video max-h-[40vh]' : 'aspect-video',
         )}
       >
@@ -103,6 +104,15 @@ export function BackgroundEffects({
           <div className="grid size-full place-items-center gap-1 text-center text-xs text-ink-subtle [&_svg]:size-5">
             <CameraOffIcon />
             Turn on your camera to preview effects
+          </div>
+        )}
+        {busy && (
+          <div className="absolute inset-0 grid place-items-center bg-overlay/40 backdrop-blur-sm">
+            <span
+              className="size-6 animate-spin rounded-full border-2 border-white/30 border-t-white"
+              role="status"
+              aria-label="Applying effect"
+            />
           </div>
         )}
       </div>

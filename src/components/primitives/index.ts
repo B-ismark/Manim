@@ -9,6 +9,7 @@ export { Sheet, type SheetProps } from './Sheet'
 export { Popover, type PopoverProps } from './Popover'
 export { Toggle, type ToggleProps } from './Toggle'
 export { Slider, type SliderProps } from './Slider'
+export { StageChip } from './StageChip'
 export {
   DropdownMenu,
   DropdownItem,

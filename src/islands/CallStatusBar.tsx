@@ -56,7 +56,7 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
         !visible && '-translate-y-[150%] opacity-0',
       )}
     >
-      <div className="flex items-center gap-2 rounded-control bg-overlay px-2.5 py-1 text-xs font-medium text-white backdrop-blur">
+      <div className="flex min-h-11 items-center gap-2 rounded-control bg-overlay px-3 text-xs font-medium text-white backdrop-blur">
         {encrypted && <LockIcon className="size-3.5" aria-label="End-to-end encrypted" />}
         <span className="tabular-nums" aria-label="Call duration">
           {elapsed}

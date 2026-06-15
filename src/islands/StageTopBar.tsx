@@ -1,4 +1,5 @@
 import { useParticipants } from '@livekit/components-react'
+import { StageChip } from '@/components/primitives'
 import { ExitFullscreenIcon, PeopleIcon } from '@/components/icons'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useFullscreen } from '@/lib/useFullscreen'
@@ -20,8 +21,6 @@ export function StageTopBar({ visible }: { visible: boolean }) {
   const showParticipants = panel === null
   if (!showParticipants && !isFullscreen) return null
 
-  const pill = 'flex items-center gap-1.5 rounded-control bg-overlay px-2.5 py-1.5 text-sm font-medium text-white shadow-raised backdrop-blur [&_svg]:size-4'
-
   return (
     <div
       className={cn(
@@ -31,20 +30,15 @@ export function StageTopBar({ visible }: { visible: boolean }) {
       )}
     >
       {isFullscreen && (
-        <button type="button" onClick={exitFullscreen} aria-label="Exit full screen" className={pill}>
+        <StageChip onClick={exitFullscreen} aria-label="Exit full screen">
           <ExitFullscreenIcon />
-        </button>
+        </StageChip>
       )}
       {showParticipants && (
-        <button
-          type="button"
-          onClick={() => setPanel('people')}
-          aria-label={`Participants (${participants.length})`}
-          className={pill}
-        >
+        <StageChip onClick={() => setPanel('people')} aria-label={`Participants (${participants.length})`}>
           <PeopleIcon />
           {participants.length}
-        </button>
+        </StageChip>
       )}
     </div>
   )
