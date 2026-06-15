@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useLocalParticipant, useParticipants } from '@livekit/components-react'
 import type { Participant } from 'livekit-client'
+import { HAND_ATTR } from '@/features/reactions/useReactions'
 
 function nameOf(p: Participant): string {
   return p.name || p.identity.split('#')[0] || 'Someone'
@@ -39,6 +40,25 @@ export function CallAnnouncer() {
     }
     setMessage(isMicrophoneEnabled ? 'Microphone on' : 'Microphone muted')
   }, [isMicrophoneEnabled])
+
+  // Announce raised hands (the mn.hand attribute) so they aren't a purely visual
+  // cue. Keyed on the set of raised identities so it fires only on change.
+  const raisedKey = participants
+    .filter((p) => p.attributes?.[HAND_ATTR] === '1')
+    .map((p) => p.identity)
+    .sort()
+    .join('|')
+  const prevRaised = useRef<Set<string> | null>(null)
+  useEffect(() => {
+    const raised = new Set(raisedKey ? raisedKey.split('|') : [])
+    const prev = prevRaised.current
+    prevRaised.current = raised
+    if (!prev) return
+    const newly = participants.filter((p) => raised.has(p.identity) && !prev.has(p.identity))
+    if (newly.length === 1) setMessage(`${nameOf(newly[0])} raised their hand`)
+    else if (newly.length > 1) setMessage(`${newly.length} people raised their hands`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [raisedKey])
 
   return (
     <div aria-live="polite" role="status" className="sr-only">

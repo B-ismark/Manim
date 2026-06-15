@@ -1,6 +1,7 @@
 import { useMediaDeviceSelect } from '@livekit/components-react'
 import { DropdownMenu, DropdownItem } from '@/components/primitives'
 import { CheckIcon, ChevronDownIcon } from '@/components/icons'
+import { toast } from '@/store/useToastStore'
 
 interface RowProps {
   kind: MediaDeviceKind
@@ -40,7 +41,10 @@ function DeviceRow({ kind, label }: RowProps) {
           <DropdownItem
             key={d.deviceId}
             icon={d.deviceId === active?.deviceId ? <CheckIcon /> : <span className="size-4" />}
-            onSelect={() => void setActiveMediaDevice(d.deviceId)}
+            onSelect={() => {
+              void setActiveMediaDevice(d.deviceId)
+              toast(`${label}: ${d.label || 'changed'}`, 'neutral')
+            }}
           >
             <span className="truncate">{d.label || 'Unnamed device'}</span>
           </DropdownItem>
