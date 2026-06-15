@@ -32,16 +32,18 @@ import {
   SettingsIcon,
   SpeakerLayoutIcon,
   SpotlightIcon,
+  EffectsIcon,
 } from '@/components/icons'
 import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
 import { DeviceSettings } from '@/islands/DeviceMenu'
-import { BackgroundEffects } from '@/islands/BackgroundEffects'
+import { EffectsDialog } from '@/islands/BackgroundEffects'
 import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useFullscreen } from '@/lib/useFullscreen'
 import { cn } from '@/lib/cn'
 
 export interface ControlBarProps {
@@ -96,6 +98,7 @@ export function ControlBar({
     useLocalParticipant()
   const [pipActive, setPipActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [effectsOpen, setEffectsOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const touch = useIsTouch()
   const { isFullscreen, toggleFullscreen } = useFullscreen()
@@ -284,7 +287,14 @@ export function ControlBar({
 
       <div className="mt-1 border-t border-line pt-1">
         <Section label="Effects">
-          <BackgroundEffects controls={blur} />
+          <MenuRow
+            icon={<EffectsIcon />}
+            label="Background effects"
+            onClick={() => {
+              setEffectsOpen(true)
+              closeMore()
+            }}
+          />
         </Section>
         <Section label="Audio">
           <NoiseSuppression controls={noise} />
@@ -449,6 +459,7 @@ export function ControlBar({
         )}
 
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        <EffectsDialog open={effectsOpen} onOpenChange={setEffectsOpen} controls={blur} />
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
@@ -617,21 +628,4 @@ function Section({ label, last, children }: { label: string; last?: boolean; chi
       {children}
     </div>
   )
-}
-
-/** Document-level fullscreen toggle + live state. */
-function useFullscreen() {
-  const [isFullscreen, setIsFullscreen] = useState(
-    () => typeof document !== 'undefined' && Boolean(document.fullscreenElement),
-  )
-  useEffect(() => {
-    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement))
-    document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
-  }, [])
-  const toggleFullscreen = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {})
-    else void document.documentElement.requestFullscreen().catch(() => {})
-  }, [])
-  return { isFullscreen, toggleFullscreen }
 }

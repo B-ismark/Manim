@@ -245,6 +245,19 @@ export const FullscreenIcon = (p: P) => (
   </svg>
 )
 
+export const ExitFullscreenIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 4v4a1 1 0 0 1-1 1H4M20 9h-4a1 1 0 0 1-1-1V4M15 20v-4a1 1 0 0 1 1-1h4M4 15h4a1 1 0 0 1 1 1v4" />
+  </svg>
+)
+
+export const EffectsIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M5 3v4M3 5h4M6 17v3M4.5 18.5h3" />
+    <path d="M13 4l2.2 5.8L21 12l-5.8 2.2L13 20l-2.2-5.8L5 12l5.8-2.2L13 4z" />
+  </svg>
+)
+
 export const SoundOnIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 9v6h4l5 4V5L8 9H4z" />
