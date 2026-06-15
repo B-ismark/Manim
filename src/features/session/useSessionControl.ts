@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   useDataChannel,
@@ -42,16 +42,46 @@ export function useSessionControl(onLeave: () => void) {
   // Authority comes from ROOM metadata (server-written), never participant
   // metadata — participants can rewrite their own metadata (canUpdateOwnMetadata,
   // needed for raise-hand) and would otherwise self-promote to host.
-  const { hostId, locked, waiting } = useMemo(() => {
+  const { hostId, locked, waiting, coHosts } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
-      return { hostId: f.hostId || '', locked: Boolean(f.locked), waiting: Boolean(f.waiting) }
+      return {
+        hostId: f.hostId || '',
+        locked: Boolean(f.locked),
+        waiting: Boolean(f.waiting),
+        coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
+      }
     } catch {
-      return { hostId: '', locked: false, waiting: false }
+      return { hostId: '', locked: false, waiting: false, coHosts: [] as string[] }
     }
   }, [roomMetadata])
 
-  const isHost = Boolean(hostId) && localParticipant.identity === hostId
+  // Primary host = the one who can promote/demote co-hosts. isHost grants the
+  // moderation UI to the primary host AND any co-host (server re-checks both).
+  const isPrimaryHost = Boolean(hostId) && localParticipant.identity === hostId
+  const isHost = isPrimaryHost || coHosts.includes(localParticipant.identity)
+
+  // Tell a participant the moment they're promoted (their identity enters coHosts).
+  const wasCoHost = useRef(false)
+  useEffect(() => {
+    const nowCo = coHosts.includes(localParticipant.identity)
+    if (nowCo && !wasCoHost.current && !isPrimaryHost) toast("You're now a co-host", 'neutral')
+    wasCoHost.current = nowCo
+  }, [coHosts, localParticipant.identity, isPrimaryHost])
+
+  /** Primary host: add/remove a participant identity from the co-host roster. */
+  const setCoHost = useCallback(
+    async (identity: string, on: boolean) => {
+      if (!roomToken || !isPrimaryHost) return
+      const next = on ? [...coHosts, identity] : coHosts.filter((id) => id !== identity)
+      try {
+        await setRoomFlags({ room: room.name, token: roomToken, coHosts: next })
+      } catch {
+        /* surfaced via thrown error elsewhere */
+      }
+    },
+    [roomToken, isPrimaryHost, coHosts, room.name],
+  )
 
   const myUserId = userIdOf(localParticipant)
 
@@ -167,6 +197,9 @@ export function useSessionControl(onLeave: () => void) {
 
   return {
     isHost,
+    isPrimaryHost,
+    coHosts,
+    setCoHost,
     locked,
     waiting,
     doLeave,

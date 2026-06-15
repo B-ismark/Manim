@@ -100,7 +100,11 @@ async function ensureHost(env, roomService, room, token) {
   const identity = await verifyCaller(env, token, room)
   if (!identity) return false
   const flags = await getRoomFlags(roomService, room)
-  return Boolean(flags.hostId) && flags.hostId === identity
+  // The primary host OR a promoted co-host. Co-hosts pass moderation/admit
+  // checks; the server performs the privileged action with its own admin creds,
+  // so co-hosts never need roomAdmin in their own join token.
+  if (Boolean(flags.hostId) && flags.hostId === identity) return true
+  return Array.isArray(flags.coHosts) && flags.coHosts.includes(identity)
 }
 
 export function handleHealth(env) {
@@ -235,12 +239,27 @@ export async function handleModerate(env, body, token) {
 
 export async function handleRoomflags(env, body, token) {
   const { roomService } = services(env)
-  const { room, locked, waiting } = body ?? {}
+  const { room, locked, waiting, coHosts } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
-  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
+  const identity = await verifyCaller(env, token, room)
+  if (!identity) return { status: 403, body: { error: 'host only' } }
+  const flags = await getRoomFlags(roomService, room)
+  const isPrimary = Boolean(flags.hostId) && flags.hostId === identity
+  const isCo = Array.isArray(flags.coHosts) && flags.coHosts.includes(identity)
+  if (!isPrimary && !isCo) return { status: 403, body: { error: 'host only' } }
+
   const patch = {}
   if (typeof locked === 'boolean') patch.locked = locked
   if (typeof waiting === 'boolean') patch.waiting = waiting
+  if (coHosts !== undefined) {
+    // Only the primary host may change the co-host roster — otherwise a co-host
+    // could demote the host or promote allies.
+    if (!isPrimary) return { status: 403, body: { error: 'only the host can change co-hosts' } }
+    if (!Array.isArray(coHosts)) return { status: 400, body: { error: 'coHosts must be an array' } }
+    patch.coHosts = coHosts
+      .filter((x) => typeof x === 'string' && x && x !== flags.hostId)
+      .slice(0, 20)
+  }
   if (Object.keys(patch).length === 0) return { status: 400, body: { error: 'nothing to update' } }
   await mergeRoomFlags(roomService, room, patch)
   return { status: 200, body: { ok: true, ...patch } }
