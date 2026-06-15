@@ -61,7 +61,7 @@ export function ChatPanel() {
           <div className="grid h-full place-items-center text-center">
             <div>
               <p className="text-sm font-medium">No messages yet</p>
-              <p className="mt-1 text-xs text-ink-muted">Say hello, share a file or a GIF.</p>
+              <p className="mt-1 text-xs text-ink-muted">Say hi or share a file.</p>
             </div>
           </div>
         ) : (

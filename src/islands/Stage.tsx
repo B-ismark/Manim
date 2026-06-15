@@ -155,7 +155,7 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
         // Touch: a tall portrait card (Discord/Snapchat self-view). Desktop:
         // a wider landscape thumbnail.
         'w-24 aspect-[3/4] pointer-fine:w-52 pointer-fine:aspect-video',
-        'shadow-raised rounded-tile',
+        'overflow-hidden rounded-tile shadow-raised ring-1 ring-white/10',
       )}
     >
       <Tile trackRef={trackRef} fill />

@@ -209,9 +209,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
               autoComplete="off"
               className="mt-2 h-10 w-full rounded-field bg-surface px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
             />
-            <p className="mt-1.5 text-xs text-ink-subtle">
-              Everyone must enter the same passphrase to see and hear each other.
-            </p>
+            <p className="mt-1.5 text-xs text-ink-subtle">Everyone needs the same passphrase.</p>
           </details>
 
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={onJoin}>

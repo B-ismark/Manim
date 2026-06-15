@@ -34,7 +34,22 @@ Typecheck + build green at each checkpoint.
   bottom **sheet** on mobile (was a popover that drifted off-screen), popover on desktop. `GifPicker`
   root width → `w-full` so it fills the sheet.
 
-## ⏳ Remaining (picked, not yet built)
+## ✅ Session 3 — remaining backlog now built (on `main`)
+
+All five items below shipped:
+1. **Full-screen incoming call (1:1) on mobile** — `IncomingCallBanner.tsx` renders a full-screen
+   ringing overlay (big Accept/Decline) on `useIsTouch()`, banner on desktop.
+2. **Pending-invite roster** — `store/useInviteStore.ts` (device-local); `ParticipantsPanel` adds
+   "Invited · waiting" ghost rows on email/ring/mailto, auto-dropped after 3 min or on join.
+3. **Host mute-all + stop-all-video** — `ParticipantsPanel` footer loops `/api/moderate`. (The
+   attendee-unmute permission lock is still deferred — needs a server endpoint.)
+4. **Promote to co-host** — `server/core.mjs` (`ensureHost` + `handleRoomflags` coHosts patch,
+   primary-host-only), `useSessionControl` (isPrimaryHost / setCoHost / toast), `ParticipantsPanel`
+   per-row Make/Remove co-host + badge.
+5. **Cleanup** — touch layout chip (`LayoutChip.tsx`, hides with chrome), self-view ring, PinCoachmark
+   mentions swipe, trimmed copy (BackgroundEffects / NoiseSuppression / ChatPanel / PreJoin).
+
+## ⏳ Original backlog spec (now built — kept for reference)
 
 ### 1. Full-screen incoming call (1:1) on mobile
 - File: `src/islands/IncomingCallBanner.tsx` (idle/not-in-call surface).

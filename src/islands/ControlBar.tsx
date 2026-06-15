@@ -556,7 +556,7 @@ function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
         className="w-full justify-between"
       />
       <p className="mt-1 text-xs text-ink-subtle">
-        Strips keyboard, fans, and background voices the mic picks up.
+        Removes keyboard, fan, and background noise.
       </p>
     </div>
   )
