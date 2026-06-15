@@ -164,7 +164,7 @@ All presets are just token sets → fits §6 perfectly.
 ### 8.1 Differentiators (the reason this exists)
 - **Lightweight + low-latency** — managed SFU, simulcast, adaptive bitrate, lean React.
 - **Call merging** — active call + incoming call → merge into one room. UI model: [TextNow merge](https://mobbin.com/screens/89220001-0d3e-41f2-91b8-2e81b12dc675), incoming banner [WhatsApp](https://mobbin.com/screens/015c34fb-3854-43a9-b803-c9171ce6ac9b).
-- **Multi-device handoff** — transfer a call from one device to another (`userId#deviceId` identity). Simultaneous mode is a future extension the identity model already supports.
+- **Multi-device handoff** — transfer a call from one device to another (`userId#deviceId` identity). **Simultaneous mode shipped:** the same user can hold several live sessions at once; own other-device tiles/roster rows are labelled "(your device)" and an echo hint covers the co-located case.
 - **Picture-in-Picture** — native browser PiP for tiles + when tab backgrounded.
 
 ### 8.2 Core call (table stakes — all in scope)
@@ -220,7 +220,7 @@ Per-room toggle (balances E2EE vs features):
 - **Live captions / transcription** — deferred (needs STT; conflicts with E2EE like recording). Accessibility focus now = keyboard/ARIA/vision themes.
 - **Recording** — deferred (v1 decision unchanged).
 - **Whiteboard / collaborative canvas** — out of scope. A **modular island slot is reserved** so it can be added later without rework.
-- **Simultaneous multi-device** — future; identity model already supports it.
+- ~~**Simultaneous multi-device**~~ — ✅ shipped (see §8.1).
 
 ---
 
@@ -277,15 +277,18 @@ No architecture rework to scale — only a plan upgrade.
   broadcast → auto-rejoin). **Deferred to Phase 5:** the *incoming-call/ringing
   trigger* ("someone calls while you're in a call") — needs cross-room presence.
 
-### Phase 5 — Security, presence, theming, polish
-- **Auth + presence (Supabase):** real `userId` (refines handoff "same user"
+### Phase 5 — Security, presence, theming, polish ✅ (shipped)
+- ✅ **Auth + presence (Supabase):** real `userId` (refines handoff "same user"
   beyond display-name match), Realtime presence → ringing / incoming-call banner
-  → merge prompt. **Real email invites** (Resend / Supabase Edge) — replaces the
-  current free `mailto:` compose.
-- Waiting room + lock, moderation controls (force-mute / remove), E2EE toggle.
-- Slack-model theming custom-token tab + vision-assistive themes (presets done).
-- Accessibility pass (keyboard/ARIA), mobile sheet layouts, reconnection handling.
+  → merge prompt. **Real email invites** (Resend / Supabase Edge) — replaced the
+  free `mailto:` compose (host-authority + per-host rate limit).
+- ✅ Waiting room + lock, moderation controls (force-mute / disable-video /
+  remove), E2EE toggle (VP9 SVC + insertable streams).
+- ✅ Slack-model theming custom-token tab + vision-assistive themes.
+- ✅ Accessibility pass (keyboard/ARIA via Radix), mobile sheet layouts +
+  gesture controls, reconnection handling.
 
-> **Status:** Phases 0–4 implemented (foundation, working call, group features,
-> differentiators). Next: Phase 5 — auth + presence unlock ringing-triggered
-> merge and true multi-user handoff, plus security/moderation and real email.
+> **Status:** Phases 0–5 implemented, plus simultaneous multi-device (§8.1).
+> Remaining work is the explicitly deferred set (§8.9): live
+> captions/transcription, recording, and the whiteboard island. Plus an open
+> polish item: true hair-matting background-blur mode (blocked on model hosting).

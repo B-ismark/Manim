@@ -10,6 +10,7 @@ import { useRoomStore } from '@/store/useRoomStore'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
+import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
 
@@ -149,6 +150,8 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
 function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholder; fill?: boolean }) {
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
+  const myUserId = useMyUserId()
+  const myOtherDevice = isMyOtherDevice(p, myUserId)
   const isScreen = trackRef.source === Track.Source.ScreenShare
   // For the local participant we are never "subscribed" to our own track, so
   // gate only on presence + mute; remote tiles still require a subscription.
@@ -213,7 +216,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
           {micOff && <MicOffIcon className="size-3" />}
           <span className="max-w-40 truncate">
             {name}
-            {p.isLocal ? ' (you)' : ''}
+            {p.isLocal ? ' (you)' : myOtherDevice ? ' (your device)' : ''}
             {isScreen ? ' — screen' : ''}
           </span>
         </span>
