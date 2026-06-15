@@ -3,13 +3,24 @@
   Feature/capability based — no brittle UA sniffing.
 */
 
-/** Touch-primary, phone-sized viewport — drives portrait-intentional mobile UI. */
+/**
+ * Touch-primary, phone-sized viewport — used for PERF choices (capture
+ * resolution, blur quality) where the small screen is the relevant signal.
+ * For touch-UX behaviours (auto-hide chrome, gestures, portrait tiles, compact
+ * control bar) use isTouch() instead, so wide foldables/tablets are covered.
+ */
 export function isMobile(): boolean {
   if (typeof window === 'undefined' || !window.matchMedia) return false
   return (
     window.matchMedia('(pointer: coarse)').matches &&
     window.matchMedia('(max-width: 768px)').matches
   )
+}
+
+/** Touch-primary device (any size) — the signal for touch-UX layout/gestures. */
+export function isTouch(): boolean {
+  if (typeof window === 'undefined' || !window.matchMedia) return false
+  return window.matchMedia('(pointer: coarse)').matches
 }
 
 /** Likely to struggle with per-frame ML (segmentation/blur). Conservative. */

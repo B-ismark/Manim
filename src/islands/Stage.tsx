@@ -15,42 +15,33 @@ import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
 
 /**
- * Modular grid that scales with the participant count instead of stepping through
- * fixed breakpoints. Columns target a roughly square layout (√n) so tiles stay as
- * large as possible, capped tighter on narrow screens. Beyond the cap the grid
- * scrolls rather than shrinking tiles into unreadable thumbnails.
- */
-function useGridColumns(n: number): number {
-  const [narrow, setNarrow] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(max-width: 640px)').matches,
-  )
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 640px)')
-    const onChange = () => setNarrow(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  if (n <= 1) return 1
-  // Phones cap at 2 columns (portrait tiles stay legible); desktops fan to 5.
-  return Math.min(Math.ceil(Math.sqrt(n)), narrow ? 2 : 5)
-}
-
-/**
- * True on touch devices (phones/tablets) — the signal that drives the mobile
- * tile layout (portrait fill + self-PiP), mirroring the control bar. Width
- * breakpoints miss wide foldables that are still hand-held in portrait.
+ * True on touch devices (phones/tablets) — the single signal that drives the
+ * mobile tile layout (portrait fill + self-PiP), column cap, and compact control
+ * bar. Width breakpoints miss wide foldables that are still hand-held in portrait.
  */
 function useCoarsePointer(): boolean {
   const [coarse, setCoarse] = useState(
     () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
   )
   useEffect(() => {
+    if (typeof window === 'undefined') return
     const mq = window.matchMedia('(pointer: coarse)')
     const onChange = () => setCoarse(mq.matches)
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
   return coarse
+}
+
+/**
+ * Modular grid that scales with the participant count instead of stepping through
+ * fixed breakpoints. Columns target a roughly square layout (√n) so tiles stay as
+ * large as possible. Touch devices cap at 2 columns so portrait tiles stay
+ * legible; beyond the cap the grid scrolls rather than shrinking tiles.
+ */
+function useGridColumns(n: number, coarse: boolean): number {
+  if (n <= 1) return 1
+  return Math.min(Math.ceil(Math.sqrt(n)), coarse ? 2 : 5)
 }
 
 export function Stage() {
@@ -66,8 +57,8 @@ export function Stage() {
     { onlySubscribed: false },
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
-  const columns = useGridColumns(tracks.length)
   const coarse = useCoarsePointer()
+  const columns = useGridColumns(tracks.length, coarse)
 
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />

@@ -7,13 +7,22 @@ export interface DropdownMenuProps {
   children: ReactNode
   side?: 'top' | 'right' | 'bottom' | 'left'
   align?: 'start' | 'center' | 'end'
+  /** Fires on open/close — e.g. to pin auto-hiding chrome while the menu shows. */
+  onOpenChange?: (open: boolean) => void
   className?: string
 }
 
 /** Action menu (per-participant moderation, device pickers). Radix handles a11y + keyboard. */
-export function DropdownMenu({ trigger, children, side = 'bottom', align = 'end', className }: DropdownMenuProps) {
+export function DropdownMenu({
+  trigger,
+  children,
+  side = 'bottom',
+  align = 'end',
+  onOpenChange,
+  className,
+}: DropdownMenuProps) {
   return (
-    <RDM.Root>
+    <RDM.Root onOpenChange={onOpenChange}>
       <RDM.Trigger asChild>{trigger}</RDM.Trigger>
       <RDM.Portal>
         <RDM.Content
