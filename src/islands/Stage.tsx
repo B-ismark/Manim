@@ -164,6 +164,21 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
   )
 }
 
+/** Tiny animated equalizer — a non-color "speaking" cue (paired with the ring). */
+function SpeakingBars() {
+  return (
+    <span className="flex items-end gap-[2px]" aria-hidden>
+      {[0, 0.15, 0.3].map((delay) => (
+        <span
+          key={delay}
+          className="mn-eq w-[2px] rounded-full bg-current"
+          style={{ animationDelay: `${delay}s` }}
+        />
+      ))}
+    </span>
+  )
+}
+
 function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholder; fill?: boolean }) {
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
@@ -248,7 +263,11 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
 
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 p-2">
         <span className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-white">
-          {micOff && <MicOffIcon className="size-3" />}
+          {micOff ? (
+            <MicOffIcon className="size-3" />
+          ) : (
+            speaking && <SpeakingBars />
+          )}
           <span className="max-w-40 truncate">
             {name}
             {p.isLocal ? ' (you)' : myOtherDevice ? ' (your device)' : ''}

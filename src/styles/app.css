@@ -171,6 +171,21 @@
     animation: mn-fade-in var(--dur-base) var(--ease-island);
   }
 
+  /* Speaking equalizer bars — a non-color cue paired with the speaking ring. */
+  @keyframes mn-eq {
+    0%,
+    100% {
+      height: 4px;
+    }
+    50% {
+      height: 11px;
+    }
+  }
+  .mn-eq {
+    height: 4px;
+    animation: mn-eq 0.9s var(--ease-island) infinite;
+  }
+
   /* Floating reaction: rises and fades. Resting state is visible (no `forwards`)
      so it survives reduced-motion — see the override below. */
   @keyframes mn-float-up {

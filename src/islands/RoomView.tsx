@@ -159,6 +159,16 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     <>
       <RoomAudioRenderer />
       <CallAnnouncer />
+      {/* Faint top scrim: visually groups the floating top chrome (layout chip /
+          timer / participants) and guarantees their contrast over bright video.
+          Hides with the chrome. */}
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none fixed inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-black/30 to-transparent transition-opacity duration-[var(--dur-base)]',
+          !chromeVisible && 'opacity-0',
+        )}
+      />
       <ConnectionBanner />
       <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
       <LayoutChip visible={chromeVisible} />

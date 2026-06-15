@@ -14,6 +14,7 @@ import {
   Avatar,
   Badge,
   Button,
+  Dialog,
   DropdownMenu,
   DropdownItem,
   DropdownSeparator,
@@ -109,6 +110,20 @@ export function ParticipantsPanel() {
       await setRoomFlags({ room: room.name, token: roomToken, coHosts: next })
     } catch {
       /* surfaced via thrown error elsewhere */
+    }
+  }
+
+  // Removing someone is disruptive + can't be undone → confirm first.
+  const [removeTarget, setRemoveTarget] = useState<{ identity: string; name: string } | null>(null)
+  async function confirmRemove() {
+    const target = removeTarget
+    setRemoveTarget(null)
+    if (!target || !roomToken) return
+    try {
+      await moderate({ room: room.name, token: roomToken, target: target.identity, action: 'remove' })
+      toast(`Removed ${target.name}`, 'neutral')
+    } catch {
+      /* surfaced elsewhere */
     }
   }
 
@@ -253,6 +268,7 @@ export function ParticipantsPanel() {
             canManageCoHost={isPrimaryHost && p.identity !== localParticipant.identity}
             isCoHost={coHosts.includes(p.identity)}
             onToggleCoHost={toggleCoHost}
+            onRequestRemove={(identity, name) => setRemoveTarget({ identity, name })}
             room={room.name}
             token={roomToken}
             onReport={reportUser}
@@ -290,6 +306,22 @@ export function ParticipantsPanel() {
           </Button>
         </div>
       )}
+
+      <Dialog
+        open={removeTarget !== null}
+        onOpenChange={(o) => !o && setRemoveTarget(null)}
+        title={`Remove ${removeTarget?.name ?? ''}?`}
+        description="They'll be disconnected from the call. They can rejoin unless you lock the room."
+      >
+        <div className="flex justify-end gap-2">
+          <Button variant="neutral" onClick={() => setRemoveTarget(null)}>
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={confirmRemove}>
+            <LeaveIcon /> Remove
+          </Button>
+        </div>
+      </Dialog>
     </div>
   )
 }
@@ -302,6 +334,7 @@ function ParticipantRow({
   canManageCoHost,
   isCoHost,
   onToggleCoHost,
+  onRequestRemove,
   room,
   token,
   onReport,
@@ -313,6 +346,7 @@ function ParticipantRow({
   canManageCoHost: boolean
   isCoHost: boolean
   onToggleCoHost: (identity: string, on: boolean) => void
+  onRequestRemove: (identity: string, name: string) => void
   room: string
   token: string | null
   onReport: (targetName: string) => void
@@ -336,6 +370,7 @@ function ParticipantRow({
     if (!trackSid || !token) return
     try {
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
+      toast(`Muted ${name}`, 'neutral')
     } catch {
       /* surfaced elsewhere; ignore here */
     }
@@ -346,15 +381,7 @@ function ParticipantRow({
     if (!trackSid || !token) return
     try {
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
-    } catch {
-      /* ignore */
-    }
-  }
-
-  async function remove() {
-    if (!token) return
-    try {
-      await moderate({ room, token, target: participant.identity, action: 'remove' })
+      toast(`Turned off ${name}'s video`, 'neutral')
     } catch {
       /* ignore */
     }
@@ -440,7 +467,7 @@ function ParticipantRow({
                 {isCoHost ? 'Remove co-host' : 'Make co-host'}
               </DropdownItem>
             )}
-            <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={remove}>
+            <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={() => onRequestRemove(participant.identity, name)}>
               Remove from call
             </DropdownItem>
           </>

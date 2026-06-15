@@ -238,6 +238,7 @@ export function ControlBar({
         </div>
       </div>
 
+      <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Quick actions</p>
       <div className="grid grid-cols-4 gap-1">
         <GridTile
           className="pointer-fine:hidden"
