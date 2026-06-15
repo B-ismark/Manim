@@ -200,6 +200,12 @@ export const CrownIcon = (p: P) => (
   </svg>
 )
 
+export const CloseIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M6 6l12 12M18 6L6 18" />
+  </svg>
+)
+
 export const GifIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="2.5" y="6" width="19" height="12" rx="2.5" />
