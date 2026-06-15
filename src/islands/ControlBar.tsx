@@ -45,6 +45,8 @@ import { cn } from '@/lib/cn'
 export interface ControlBarProps {
   /** When false (mobile auto-hide), the bar slides out of the thumb zone. */
   chromeVisible: boolean
+  /** Pin/unpin the auto-hiding chrome — held open while a menu is showing. */
+  onMenuOpenChange?: (open: boolean) => void
   /** Leave the call yourself (call continues for others). */
   onLeave: () => void
   /** Host-only: end the call for everyone. */
@@ -73,6 +75,7 @@ export interface ControlBarProps {
  */
 export function ControlBar({
   chromeVisible,
+  onMenuOpenChange,
   onLeave,
   onEndForEveryone,
   isHost,
@@ -91,6 +94,7 @@ export function ControlBar({
     useLocalParticipant()
   const [pipActive, setPipActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [moreOpen, setMoreOpen] = useState(false)
   const { isFullscreen, toggleFullscreen } = useFullscreen()
 
   const panel = useRoomStore((s) => s.panel)
@@ -129,6 +133,13 @@ export function ControlBar({
   }, [])
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
+
+  // Programmatic close of the More menu — must also release the chrome hold,
+  // since changing the controlled `open` prop doesn't fire Radix's onOpenChange.
+  const closeMore = useCallback(() => {
+    setMoreOpen(false)
+    onMenuOpenChange?.(false)
+  }, [onMenuOpenChange])
 
   // Mobile front/rear flip — restart the camera track with the opposite facing
   // mode. (Desktops use the device picker in More → Devices instead.)
@@ -236,18 +247,8 @@ export function ControlBar({
           </span>
         </Tooltip>
 
-        {/* Desktop-inline Tier-1 group (mouse only; folded into More on touch). */}
-        <Tooltip content="Participants">
-          <IconButton
-            label="Show participants"
-            icon={<PeopleIcon />}
-            tone="neutral"
-            active={panel === 'people'}
-            className="hidden pointer-fine:inline-flex"
-            onClick={() => togglePanel('people')}
-          />
-        </Tooltip>
-
+        {/* Desktop-inline Tier-1 group (mouse only; folded into More on touch).
+            Participants lives only in More on every device — see below. */}
         <span className="hidden pointer-fine:inline-flex">
           <ReactionButton onPick={sendReaction} />
         </span>
@@ -272,6 +273,11 @@ export function ControlBar({
         <Popover
           side="top"
           align="end"
+          open={moreOpen}
+          onOpenChange={(o) => {
+            setMoreOpen(o)
+            onMenuOpenChange?.(o)
+          }}
           trigger={<IconButton label="More options" icon={<MoreIcon />} tone="neutral" />}
         >
           <div className="max-h-[min(70vh,32rem)] w-72 max-w-[80vw] overflow-y-auto p-1">
@@ -288,14 +294,19 @@ export function ControlBar({
                   active={isScreenShareEnabled}
                 />
               </div>
-              {/* Participants / hand / layout leave the bar on touch devices. */}
+              {/* Participants lives only here (every device) to keep the bar slim.
+                  Close More on open so the panel/sheet isn't stacked under it. */}
+              <MenuRow
+                icon={<PeopleIcon />}
+                label="Participants"
+                onClick={() => {
+                  togglePanel('people')
+                  closeMore()
+                }}
+                active={panel === 'people'}
+              />
+              {/* Hand / layout leave the bar on touch devices. */}
               <div className="pointer-fine:hidden">
-                <MenuRow
-                  icon={<PeopleIcon />}
-                  label="Participants"
-                  onClick={() => togglePanel('people')}
-                  active={panel === 'people'}
-                />
                 <MenuRow
                   icon={<HandIcon />}
                   label={handRaised ? 'Lower hand' : 'Raise hand'}
@@ -384,7 +395,10 @@ export function ControlBar({
               <MenuRow
                 icon={<SettingsIcon />}
                 label="Settings"
-                onClick={() => setSettingsOpen(true)}
+                onClick={() => {
+                  setSettingsOpen(true)
+                  closeMore()
+                }}
               />
             </Section>
           </div>
@@ -413,6 +427,7 @@ export function ControlBar({
             <DropdownMenu
               side="top"
               align="end"
+              onOpenChange={onMenuOpenChange}
               trigger={
                 <button
                   type="button"

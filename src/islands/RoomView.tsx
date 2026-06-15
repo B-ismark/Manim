@@ -20,7 +20,7 @@ import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
-import { isMobile } from '@/lib/device'
+import { isTouch } from '@/lib/device'
 import { cn } from '@/lib/cn'
 
 /**
@@ -31,15 +31,20 @@ import { cn } from '@/lib/cn'
  * Desktop keeps controls always visible (hover model) and ignores gestures.
  */
 function useStageChrome() {
-  const mobile = useMemo(() => isMobile(), [])
+  // Touch-UX (auto-hide / gestures) keys off pointer type, matching the compact
+  // bar and portrait tiles — so wide foldables behave consistently.
+  const mobile = useMemo(() => isTouch(), [])
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
   const [visible, setVisible] = useState(true)
   const hideTimer = useRef<number | undefined>(undefined)
+  const held = useRef(false)
   const down = useRef<{ x: number; y: number; t: number } | null>(null)
 
   const scheduleHide = useCallback(() => {
-    if (!mobile) return
+    // Don't auto-hide while a menu is open (held) — the control bar must stay
+    // put or the open popover loses its anchor.
+    if (!mobile || held.current) return
     window.clearTimeout(hideTimer.current)
     hideTimer.current = window.setTimeout(() => setVisible(false), 4000)
   }, [mobile])
@@ -48,6 +53,21 @@ function useStageChrome() {
     setVisible(true)
     scheduleHide()
   }, [scheduleHide])
+
+  // Pin the chrome open (e.g. while the More menu is showing); release resumes
+  // the auto-hide countdown.
+  const setHold = useCallback(
+    (hold: boolean) => {
+      held.current = hold
+      if (hold) {
+        window.clearTimeout(hideTimer.current)
+        setVisible(true)
+      } else {
+        scheduleHide()
+      }
+    },
+    [scheduleHide],
+  )
 
   useEffect(() => {
     if (mobile) scheduleHide()
@@ -78,7 +98,7 @@ function useStageChrome() {
     [mobile, layout, setLayout, scheduleHide],
   )
 
-  return { chromeVisible: visible, show, stageHandlers: { onPointerDown, onPointerUp } }
+  return { chromeVisible: visible, show, setChromeHold: setHold, stageHandlers: { onPointerDown, onPointerUp } }
 }
 
 // The chat/participants panel is only needed once opened — defer its chunk.
@@ -119,7 +139,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
   const connState = useConnectionState()
-  const { chromeVisible, stageHandlers } = useStageChrome()
+  const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
 
   // Cover the initial connect (before media + roster arrive) with the joining
   // screen. Reconnects after that are handled by ConnectionBanner, not here.
@@ -148,6 +168,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       <ControlBar
         chromeVisible={chromeVisible}
+        onMenuOpenChange={setChromeHold}
         onLeave={doLeave}
         onEndForEveryone={endForEveryone}
         isHost={isHost}
