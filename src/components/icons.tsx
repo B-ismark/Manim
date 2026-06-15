@@ -206,6 +206,12 @@ export const CloseIcon = (p: P) => (
   </svg>
 )
 
+export const ChevronDownIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M6 9l6 6 6-6" />
+  </svg>
+)
+
 export const GifIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="2.5" y="6" width="19" height="12" rx="2.5" />

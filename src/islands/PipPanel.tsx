@@ -34,7 +34,9 @@ export function PipPanel({ onLeave }: { onLeave: () => void }) {
   const focus = focusTrack(others, pinned) ?? localCam
   const p = focus?.participant
   const name = p ? p.name || p.identity.split('#')[0] : ''
-  const mirror = focus ? isLocalCam(focus) : false
+  const selfFacing = useRoomStore((s) => s.selfFacing)
+  // Mirror the front self camera only (rear camera mirrored = flipped world).
+  const mirror = focus ? isLocalCam(focus) && selfFacing === 'user' : false
   const showVideo = focus ? hasVideo(focus) : false
 
   return (
