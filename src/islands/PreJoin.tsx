@@ -23,8 +23,68 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 'prompt' → we can prime; 'denied' → guide to OS settings; 'granted'/unknown → nothing.
+  const [permission, setPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>(
+    'unknown',
+  )
+  const [priming, setPriming] = useState(false)
 
   const cameraOn = prejoin.cameraEnabled && !prejoin.lowBandwidth
+
+  // Best-effort read of the current camera/mic grant so we can show a rationale
+  // *before* the OS prompt (priming) instead of a bare browser dialog. The
+  // Permissions API is absent on some browsers (notably older Safari) — there we
+  // stay 'unknown' and simply don't nag.
+  useEffect(() => {
+    let cancelled = false
+    async function probe() {
+      const perms = navigator.permissions as
+        | (Permissions & { query: Permissions['query'] })
+        | undefined
+      if (!perms?.query) return
+      try {
+        const [cam, mic] = await Promise.all([
+          perms.query({ name: 'camera' as PermissionName }),
+          perms.query({ name: 'microphone' as PermissionName }),
+        ])
+        if (cancelled) return
+        const states = [cam.state, mic.state]
+        setPermission(
+          states.includes('denied')
+            ? 'denied'
+            : states.includes('prompt')
+              ? 'prompt'
+              : 'granted',
+        )
+      } catch {
+        /* unsupported permission name — leave unknown */
+      }
+    }
+    void probe()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Pre-warm both camera and mic so the in-call connect doesn't re-prompt
+  // mid-join. We immediately stop the tracks — the preview effect re-acquires
+  // video on its own; this only moves the OS prompt to an intentional tap.
+  async function requestAccess() {
+    setPriming(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+      stream.getTracks().forEach((t) => t.stop())
+      setPermission('granted')
+      setError(null)
+    } catch {
+      setPermission('denied')
+      setError('Camera and microphone access was blocked. Enable it in your browser settings.')
+    } finally {
+      setPriming(false)
+    }
+  }
+
+  const showPriming = permission === 'prompt'
 
   // Preview only needs video — the mic isn't monitored here, so toggling it is a
   // pure intent flag (applied at connect) and must not restart the stream, which
@@ -77,7 +137,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
         <p className="text-xs font-medium text-ink-subtle">Joining</p>
         <h1 className="text-xl font-semibold">{room}</h1>
 
-        <div className="relative mt-4 aspect-video w-full overflow-hidden rounded-tile bg-sunken">
+        <div className="mt-4 aspect-video w-full overflow-hidden rounded-tile bg-sunken">
           {cameraOn ? (
             <video ref={videoRef} autoPlay muted playsInline className="size-full object-cover [transform:scaleX(-1)]" />
           ) : (
@@ -85,25 +145,38 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
               {prejoin.lowBandwidth ? 'Audio-only / low bandwidth' : 'Camera off'}
             </div>
           )}
-
-          <div className="absolute inset-x-0 bottom-0 flex justify-center gap-2 p-3">
-            <IconButton
-              label={prejoin.micEnabled ? 'Mute microphone' : 'Unmute microphone'}
-              icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
-              tone={prejoin.micEnabled ? 'neutral' : 'danger'}
-              active={!prejoin.micEnabled}
-              onClick={() => setPrejoin({ micEnabled: !prejoin.micEnabled })}
-            />
-            <IconButton
-              label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-              icon={prejoin.cameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
-              tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
-              active={!prejoin.cameraEnabled}
-              disabled={prejoin.lowBandwidth}
-              onClick={() => setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })}
-            />
-          </div>
         </div>
+
+        {/* Device toggles sit below the preview (not floating over it) so the
+            keyboard never covers them once the name field is focused. */}
+        <div className="mt-3 flex justify-center gap-3">
+          <IconButton
+            label={prejoin.micEnabled ? 'Mute microphone' : 'Unmute microphone'}
+            icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
+            tone={prejoin.micEnabled ? 'neutral' : 'danger'}
+            active={!prejoin.micEnabled}
+            onClick={() => setPrejoin({ micEnabled: !prejoin.micEnabled })}
+          />
+          <IconButton
+            label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+            icon={prejoin.cameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
+            tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
+            active={!prejoin.cameraEnabled}
+            disabled={prejoin.lowBandwidth}
+            onClick={() => setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })}
+          />
+        </div>
+
+        {showPriming && (
+          <div className="mt-3 rounded-field bg-sunken p-3 text-center">
+            <p className="text-sm text-ink">
+              We'll ask for camera and microphone access so others can see and hear you.
+            </p>
+            <Button variant="accent" className="mt-2" disabled={priming} onClick={requestAccess}>
+              {priming ? 'Requesting…' : 'Allow camera & microphone'}
+            </Button>
+          </div>
+        )}
 
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 

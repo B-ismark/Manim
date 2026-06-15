@@ -15,7 +15,7 @@ export function ConnectionBanner() {
   if (!reconnecting) return null
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-40 flex justify-center px-4">
+    <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-40 flex justify-center px-4">
       <Island elevation="raised" pad="sm" className="pointer-events-auto flex items-center gap-2.5">
         <span className="size-2 animate-pulse rounded-full bg-warning" aria-hidden />
         <p className="text-sm text-ink">Reconnecting…</p>

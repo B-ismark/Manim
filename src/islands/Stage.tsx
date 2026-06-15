@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { useTracks, VideoTrack, useParticipants } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -11,27 +10,9 @@ import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
+import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
-
-/**
- * True on touch devices (phones/tablets) — the single signal that drives the
- * mobile tile layout (portrait fill + self-PiP), column cap, and compact control
- * bar. Width breakpoints miss wide foldables that are still hand-held in portrait.
- */
-function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches,
-  )
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const mq = window.matchMedia('(pointer: coarse)')
-    const onChange = () => setCoarse(mq.matches)
-    mq.addEventListener('change', onChange)
-    return () => mq.removeEventListener('change', onChange)
-  }, [])
-  return coarse
-}
 
 /**
  * Modular grid that scales with the participant count instead of stepping through
@@ -57,7 +38,7 @@ export function Stage() {
     { onlySubscribed: false },
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
-  const coarse = useCoarsePointer()
+  const coarse = useIsTouch()
   const columns = useGridColumns(tracks.length, coarse)
 
   if (participants.length <= 1 && tracks.length <= 1) {
@@ -125,7 +106,7 @@ export function Stage() {
 /** Alone in the call: show your own camera (like Teams/Meet) + an invite hint. */
 function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useCopyLink()
-  const coarse = useCoarsePointer()
+  const coarse = useIsTouch()
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28">
       {/* Touch (phones): a tall portrait card that fills the available height
@@ -234,8 +215,9 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         </div>
       )}
 
-      {/* Pin toggle — reveals on hover/focus; always available via keyboard. */}
-      <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
+      {/* Pin toggle — reveals on hover/focus on pointer devices, but stays
+          visible on touch (no hover; double-tap to pin isn't discoverable). */}
+      <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
         <IconButton
           size="sm"
           label={pinned ? `Unpin ${name}` : `Pin ${name}`}
