@@ -100,9 +100,11 @@ export interface RoomFlagsRequest {
   token: string
   locked?: boolean
   waiting?: boolean
+  /** Co-host identities. Only the primary host may change this (server-enforced). */
+  coHosts?: string[]
 }
 
-/** Host: set room flags (lock / waiting room). */
+/** Host: set room flags (lock / waiting room / co-hosts). */
 export function setRoomFlags({ token, ...body }: RoomFlagsRequest): Promise<void> {
   return postJson<{ ok: boolean }>('/api/roomflags', body, token).then(() => undefined)
 }

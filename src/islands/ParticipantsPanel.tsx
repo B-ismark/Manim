@@ -25,6 +25,7 @@ import {
   CheckIcon,
   CloseIcon,
   CopyIcon,
+  CrownIcon,
   FlagIcon,
   HandIcon,
   LeaveIcon,
@@ -44,7 +45,7 @@ import { useInviteStore } from '@/store/useInviteStore'
 import { toast } from '@/store/useToastStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
-import { moderate, sendEmailInvite } from '@/lib/orchestrator'
+import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
@@ -85,15 +86,31 @@ export function ParticipantsPanel() {
     )
   }, [pendingInvites, participants])
 
-  // Host authority is the server-written room hostId (not forgeable participant
-  // metadata). UI only — the server re-checks every moderation call.
-  const isHost = useMemo(() => {
+  // Host authority is the server-written room hostId / coHosts (not forgeable
+  // participant metadata). UI only — the server re-checks every privileged call.
+  const { isPrimaryHost, coHosts } = useMemo(() => {
     try {
-      return JSON.parse(roomMetadata || '{}').hostId === localParticipant.identity
+      const f = JSON.parse(roomMetadata || '{}')
+      return {
+        isPrimaryHost: f.hostId === localParticipant.identity,
+        coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
+      }
     } catch {
-      return false
+      return { isPrimaryHost: false, coHosts: [] as string[] }
     }
   }, [roomMetadata, localParticipant.identity])
+  // Co-hosts get the moderation UI too; only the primary host manages the roster.
+  const isHost = isPrimaryHost || coHosts.includes(localParticipant.identity)
+
+  async function toggleCoHost(identity: string, on: boolean) {
+    if (!roomToken || !isPrimaryHost) return
+    const next = on ? [...coHosts, identity] : coHosts.filter((id) => id !== identity)
+    try {
+      await setRoomFlags({ room: room.name, token: roomToken, coHosts: next })
+    } catch {
+      /* surfaced via thrown error elsewhere */
+    }
+  }
 
   function mailtoHref(to: string): string {
     const subject = encodeURIComponent("You're invited to a Manim call")
@@ -233,6 +250,9 @@ export function ParticipantsPanel() {
             isLocal={p.identity === localParticipant.identity}
             myOtherDevice={isMyOtherDevice(p, myUserId)}
             canModerate={isHost && p.identity !== localParticipant.identity}
+            canManageCoHost={isPrimaryHost && p.identity !== localParticipant.identity}
+            isCoHost={coHosts.includes(p.identity)}
+            onToggleCoHost={toggleCoHost}
             room={room.name}
             token={roomToken}
             onReport={reportUser}
@@ -279,6 +299,9 @@ function ParticipantRow({
   isLocal,
   myOtherDevice,
   canModerate,
+  canManageCoHost,
+  isCoHost,
+  onToggleCoHost,
   room,
   token,
   onReport,
@@ -287,6 +310,9 @@ function ParticipantRow({
   isLocal: boolean
   myOtherDevice: boolean
   canModerate: boolean
+  canManageCoHost: boolean
+  isCoHost: boolean
+  onToggleCoHost: (identity: string, on: boolean) => void
   room: string
   token: string | null
   onReport: (targetName: string) => void
@@ -356,11 +382,18 @@ function ParticipantRow({
           {isLocal && <span className="text-ink-subtle"> (you)</span>}
           {myOtherDevice && <span className="text-ink-subtle"> (your device)</span>}
         </p>
-        {pinned && (
-          <Badge tone="accent" className="mt-0.5">
-            <PinIcon className="size-3" /> Pinned
-          </Badge>
-        )}
+        <div className="flex flex-wrap gap-1">
+          {isCoHost && (
+            <Badge tone="accent" className="mt-0.5">
+              <CrownIcon className="size-3" /> Co-host
+            </Badge>
+          )}
+          {pinned && (
+            <Badge tone="accent" className="mt-0.5">
+              <PinIcon className="size-3" /> Pinned
+            </Badge>
+          )}
+        </div>
       </div>
 
       <span className="text-ink-muted [&_svg]:size-4" title={micMuted ? 'Muted' : 'Unmuted'}>
@@ -398,6 +431,15 @@ function ParticipantRow({
             <DropdownItem icon={<CameraOffIcon />} disabled={!hasCamera} onSelect={disableVideo}>
               Turn off camera
             </DropdownItem>
+            {/* Promote/demote — primary host only (server-enforced). */}
+            {canManageCoHost && (
+              <DropdownItem
+                icon={<CrownIcon />}
+                onSelect={() => onToggleCoHost(participant.identity, !isCoHost)}
+              >
+                {isCoHost ? 'Remove co-host' : 'Make co-host'}
+              </DropdownItem>
+            )}
             <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={remove}>
               Remove from call
             </DropdownItem>
