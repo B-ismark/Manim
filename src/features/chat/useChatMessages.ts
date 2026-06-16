@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@livekit/components-react'
-import type { ByteStreamHandler } from 'livekit-client'
+import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
@@ -107,6 +107,32 @@ export function useChatMessages() {
   const { localParticipant } = useLocalParticipant()
   const { chatMessages, send: sendChatText, isSending } = useChat()
   const [files, setFiles] = useState<FileItem[]>([])
+
+  // Guarded data-channel publish. The chat hooks mount during the Connecting
+  // phase (RoomView runs its hooks before the connected gate renders the call),
+  // so the join-time sync-request timers below can fire before the transport is
+  // up — and LiveKit's publishData throws ("Cannot read properties of undefined
+  // (reading 'next')") when the engine isn't ready. Gate every broadcast on the
+  // connected state and swallow any transient failure: the periodic sync-requests
+  // and live resends recover, so a dropped not-ready publish is harmless and must
+  // never surface as an unhandled error.
+  const publish = useCallback(
+    (
+      send: (payload: Uint8Array, options: { reliable: boolean; topic: string }) => unknown,
+      topic: string,
+      data: object,
+      reliable = true,
+    ) => {
+      if (room.state !== ConnectionState.Connected) return
+      try {
+        const r = send(new TextEncoder().encode(JSON.stringify(data)), { reliable, topic })
+        if (r && typeof (r as Promise<unknown>).then === 'function') (r as Promise<unknown>).catch(() => {})
+      } catch {
+        /* transport not ready / mid-reconnect — recovered by later sync + resends */
+      }
+    },
+    [room],
+  )
 
   const bumpUnread = useRoomStore((s) => s.bumpUnread)
   const panel = useRoomStore((s) => s.panel)
@@ -248,11 +274,7 @@ export function useChatMessages() {
     }
   })
 
-  const broadcastEdit = useCallback(
-    (data: object) =>
-      void sendEdit(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: EDIT_TOPIC }),
-    [sendEdit],
-  )
+  const broadcastEdit = useCallback((data: object) => publish(sendEdit, EDIT_TOPIC, data), [publish, sendEdit])
   sendEditRef.current = broadcastEdit
 
   useEffect(() => {
@@ -336,9 +358,8 @@ export function useChatMessages() {
   })
 
   const broadcastHistory = useCallback(
-    (data: object) =>
-      void sendHistory(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: HISTORY_TOPIC }),
-    [sendHistory],
+    (data: object) => publish(sendHistory, HISTORY_TOPIC, data),
+    [publish, sendHistory],
   )
   sendHistoryRef.current = broadcastHistory
 
@@ -376,11 +397,7 @@ export function useChatMessages() {
     }
   })
 
-  const broadcastPin = useCallback(
-    (data: object) =>
-      void sendPin(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: PIN_TOPIC }),
-    [sendPin],
-  )
+  const broadcastPin = useCallback((data: object) => publish(sendPin, PIN_TOPIC, data), [publish, sendPin])
   sendPinRef.current = broadcastPin
 
   // On entry, ask peers to replay their pins so the pinned bar isn't empty for
@@ -454,9 +471,8 @@ export function useChatMessages() {
   })
 
   const broadcastReaction = useCallback(
-    (data: object) =>
-      void sendReactionMsg(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: REACTION_TOPIC }),
-    [sendReactionMsg],
+    (data: object) => publish(sendReactionMsg, REACTION_TOPIC, data),
+    [publish, sendReactionMsg],
   )
   sendReactionRef.current = broadcastReaction
 
@@ -526,11 +542,8 @@ export function useChatMessages() {
   const stopTypingTimer = useRef<number | undefined>(undefined)
   const broadcastTyping = useCallback(
     (isTyping: boolean) =>
-      void sendTypingMsg(
-        new TextEncoder().encode(JSON.stringify({ identity: myIdentity, name: myName, typing: isTyping })),
-        { reliable: false, topic: TYPING_TOPIC },
-      ),
-    [sendTypingMsg, myIdentity, myName],
+      publish(sendTypingMsg, TYPING_TOPIC, { identity: myIdentity, name: myName, typing: isTyping }, false),
+    [publish, sendTypingMsg, myIdentity, myName],
   )
 
   const notifyTyping = useCallback(() => {

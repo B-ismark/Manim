@@ -37,6 +37,26 @@ function gridColumns(n: number, coarse: boolean): number {
   return Math.min(Math.ceil(Math.sqrt(n)), 4)
 }
 
+/**
+ * Upper bound on rendered grid tiles — a safety valve for very large rooms, NOT
+ * a normal-call limit. Below it the grid scrolls every tile (the WhatsApp /
+ * Discord / Messenger model). adaptiveStream already pauses decode for tiles
+ * scrolled out of view, so the *decode* cost is bounded by what's visible; this
+ * caps the DOM/subscription cost so a 100-person room can't mount 100 live
+ * <video> placeholders. The last cell becomes a "+N more" tile (Google Meet
+ * model). Thresholds sit far above any realistic call, so typical calls are
+ * untouched. Phones cap lower — a 2-col grid of dozens is unusable anyway.
+ */
+const maxGridTiles = (coarse: boolean) => (coarse ? 16 : 49)
+
+/** Keep screen shares first, then your own camera, then everyone else — used
+ *  only to decide which tiles survive the overflow cut in very large rooms. */
+function tilePriority(t: TrackReferenceOrPlaceholder): number {
+  if (t.source === Track.Source.ScreenShare) return 0
+  if (isLocalCam(t)) return 1
+  return 2
+}
+
 export function Stage() {
   const layout = useRoomStore((s) => s.layout)
   const pinned = useRoomStore((s) => s.pinned)
@@ -68,10 +88,22 @@ export function Stage() {
     // tile, so the grid never goes empty.
     const gridTracks =
       selfViewHidden && tracks.some((t) => !isLocalCam(t)) ? tracks.filter((t) => !isLocalCam(t)) : tracks
-    const cols = gridColumns(gridTracks.length, coarse)
+    // Safety valve for huge rooms only (see maxGridTiles). When it engages, keep
+    // screen shares + your own camera in the visible set (sorted to the front)
+    // so they're never the ones hidden behind "+N more"; the last cell collapses
+    // the rest into a count. Untouched for any normal-size call.
+    const MAX = maxGridTiles(coarse)
+    const overflowing = gridTracks.length > MAX
+    const ordered = overflowing
+      ? [...gridTracks].sort((a, b) => tilePriority(a) - tilePriority(b))
+      : gridTracks
+    const shown = overflowing ? ordered.slice(0, MAX - 1) : gridTracks
+    const hiddenCount = gridTracks.length - shown.length
+    const cellCount = shown.length + (overflowing ? 1 : 0)
+    const cols = gridColumns(cellCount, coarse)
     // Centre when the tiles fit; otherwise scroll from the top (so nothing is
     // ever clipped above the fold — the 3+-on-mobile breakage).
-    const many = gridTracks.length > cols * 2
+    const many = cellCount > cols * 2
     return (
       <div
         className={cn(
@@ -80,13 +112,20 @@ export function Stage() {
         )}
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
-        {gridTracks.map((ref) => (
+        {shown.map((ref) => (
           // Portrait 3:4 tile; fills its column, object-cover. Grid scrolls past
           // the fold for large calls rather than shrinking tiles to dots.
           <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-[3/4] min-h-0">
             <Tile trackRef={ref} fill />
           </div>
         ))}
+        {overflowing && (
+          <div className="aspect-[3/4] min-h-0">
+            <div className="grid size-full place-items-center rounded-tile bg-sunken text-center text-sm font-medium text-ink-muted">
+              +{hiddenCount} more
+            </div>
+          </div>
+        )}
       </div>
     )
   }
