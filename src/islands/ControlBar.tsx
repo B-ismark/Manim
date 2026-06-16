@@ -18,6 +18,7 @@ import {
   ChatIcon,
   ChevronUpIcon,
   FullscreenIcon,
+  ExitFullscreenIcon,
   GridIcon,
   HandIcon,
   LeaveIcon,
@@ -282,7 +283,7 @@ export function ControlBar({
           />
         )}
         <GridTile
-          icon={<FullscreenIcon />}
+          icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
           label={isFullscreen ? 'Exit' : 'Full'}
           active={isFullscreen}
           onClick={() => {
