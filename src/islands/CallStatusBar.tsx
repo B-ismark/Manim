@@ -66,7 +66,11 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
             <span className="h-3 w-px bg-white/30" aria-hidden />
             <span className="flex items-center gap-1.5">
               <ConnectionQuality participant={localParticipant} />
-              <span>{quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}</span>
+              {/* Label only where there's room — the bars carry the meaning on
+                  narrow phones (avoids the top pill overflowing). */}
+              <span className="hidden min-[380px]:inline">
+                {quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}
+              </span>
             </span>
           </>
         )}

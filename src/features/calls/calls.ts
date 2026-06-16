@@ -32,6 +32,22 @@ export async function ringUser(
   return null
 }
 
+/** Fire a system notification for an incoming call when the tab is backgrounded
+ *  (the in-app banner covers the focused case). Best-effort; silent if blocked. */
+function notifyIncoming(fromName: string, room: string) {
+  try {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
+    if (typeof document !== 'undefined' && !document.hidden) return
+    const n = new Notification(`${fromName} is calling`, { body: `Room ${room}`, tag: 'mn-incoming' })
+    n.onclick = () => {
+      window.focus()
+      n.close()
+    }
+  } catch {
+    /* notifications unsupported / blocked */
+  }
+}
+
 /**
  * Subscribe to this user's personal channel for incoming calls. Mount once,
  * app-wide (CallController). No-op for guests / unconfigured Supabase.
@@ -46,11 +62,23 @@ export function useIncomingCalls() {
   useEffect(() => {
     const sb = supabase
     if (!sb || !signedIn) return
+    // Ask once (best-effort) so backgrounded-tab rings can surface a system
+    // notification; browsers may defer this until a user gesture.
+    try {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        void Notification.requestPermission().catch(() => {})
+      }
+    } catch {
+      /* ignore */
+    }
     const channel = sb.channel(`user:${userId}`, { config: { broadcast: { self: false } } })
     channel
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
         const p = payload as IncomingCall
-        if (p?.room) setIncoming({ room: p.room, fromName: p.fromName || 'Someone' })
+        if (p?.room) {
+          setIncoming({ room: p.room, fromName: p.fromName || 'Someone' })
+          notifyIncoming(p.fromName || 'Someone', p.room)
+        }
       })
       .subscribe()
     return () => {
