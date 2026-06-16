@@ -19,6 +19,7 @@ import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { useChatMessages } from '@/features/chat/useChatMessages'
+import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useAdaptiveQuality } from '@/features/effects/useAdaptiveQuality'
@@ -191,6 +192,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.
   useSoloAutoLeave(doLeave)
+  // Advertise this call to the user's other signed-in devices (quick-join).
+  usePublishMeetingPresence(room.name)
 
   // Cover the initial connect with the joining screen (same label as RoomRoute's
   // so the knock→connect handoff doesn't jump). Reconnects after that are handled

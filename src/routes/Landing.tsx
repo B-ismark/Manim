@@ -1,11 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, IconButton } from '@/components/primitives'
-import { SettingsIcon, GoogleIcon } from '@/components/icons'
+import { SettingsIcon, GoogleIcon, CameraIcon } from '@/components/icons'
 import { SettingsDialog } from '@/islands/Settings'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 
 function randomRoom(): string {
   // friendly, readable room code
@@ -51,6 +52,8 @@ export function Landing() {
 
       <SetupBanner />
 
+      <OtherDeviceMeetings onJoin={go} />
+
       <div className="flex items-center gap-2.5">
         <span className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink font-bold">
           M
@@ -87,6 +90,30 @@ export function Landing() {
 
       <p className="text-xs text-ink-subtle">No download. Works in your browser.</p>
     </main>
+  )
+}
+
+/** Quick-join meetings the signed-in user already has open on another device. */
+function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string) => void }) {
+  const meetings = useOtherDeviceMeetings()
+  if (meetings.length === 0) return null
+  return (
+    <Island pad="none" className="w-full max-w-md p-3">
+      <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">On your other devices</p>
+      <ul className="flex flex-col gap-1.5">
+        {meetings.map((m) => (
+          <li key={m.room} className="flex items-center gap-2">
+            <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent [&_svg]:size-4">
+              <CameraIcon />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.room}</span>
+            <Button variant="accent" size="sm" onClick={() => onJoin(m.room)}>
+              Join
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Island>
   )
 }
 
