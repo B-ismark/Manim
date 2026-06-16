@@ -133,7 +133,8 @@ export function ParticipantsPanel() {
   const isHost = isPrimaryHost || coHosts.includes(localParticipant.identity)
 
   async function toggleCoHost(identity: string, on: boolean) {
-    if (!roomToken || !isPrimaryHost) return
+    if (!isPrimaryHost) return
+    if (!roomToken) return toast('Reconnecting — try again in a moment', 'neutral')
     const next = on ? [...coHosts, identity] : coHosts.filter((id) => id !== identity)
     try {
       await setRoomFlags({ room: room.name, token: roomToken, coHosts: next })
@@ -147,7 +148,8 @@ export function ParticipantsPanel() {
   async function confirmRemove() {
     const target = removeTarget
     setRemoveTarget(null)
-    if (!target || !roomToken) return
+    if (!target) return
+    if (!roomToken) return toast('Reconnecting — try again in a moment', 'neutral')
     try {
       await moderate({ room: room.name, token: roomToken, target: target.identity, action: 'remove' })
       toast(`Removed ${target.name}`, 'neutral')
@@ -419,7 +421,8 @@ function ParticipantRow({
 
   async function forceMute() {
     const trackSid = participant.getTrackPublication(Track.Source.Microphone)?.trackSid
-    if (!trackSid || !token) return
+    if (!trackSid) return
+    if (!token) return toast('Reconnecting — try again in a moment', 'neutral')
     try {
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
       toast(`Muted ${name}`, 'neutral')

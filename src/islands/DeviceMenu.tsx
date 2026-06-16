@@ -43,7 +43,8 @@ function DeviceRow({ kind, label }: RowProps) {
             icon={d.deviceId === active?.deviceId ? <CheckIcon /> : <span className="size-4" />}
             onSelect={() => {
               void setActiveMediaDevice(d.deviceId)
-              toast(`${label}: ${d.label || 'changed'}`, 'neutral')
+                .then(() => toast(`${label}: ${d.label || 'changed'}`, 'neutral'))
+                .catch(() => toast(`Couldn't switch ${label.toLowerCase()}`, 'danger'))
             }}
           >
             <span className="truncate">{d.label || 'Unnamed device'}</span>
