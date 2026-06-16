@@ -117,10 +117,12 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           landscape card — full height would waste the wide canvas. */}
       <div
         className={cn(
-          'overflow-hidden rounded-tile',
+          'shrink-0 overflow-hidden rounded-tile',
+          // Touch: a tall portrait card, but height-capped so the invite below
+          // stays on-screen (flex-1 ate the whole viewport and pushed it off).
           coarse
-            ? 'min-h-0 w-full flex-1'
-            : 'aspect-video w-full max-w-3xl max-h-[55dvh] shrink-0',
+            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh]'
+            : 'aspect-video w-full max-w-3xl max-h-[55dvh]',
         )}
       >
         {selfTrack ? (
@@ -258,10 +260,11 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
       )}
 
       {/* Flip camera + effects, anchored to your own tile (Snapchat/WhatsApp).
-          Touch only — keeps the control bar lean. */}
+          Touch only. Bottom-right (above the name row) so they clear the
+          screen-level participants chip in the top-right corner. */}
       {showSelfTools && (
         <div
-          className="absolute right-2 top-2 z-10 flex flex-col gap-1.5"
+          className="absolute bottom-12 right-2 z-10 flex flex-col gap-1.5"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <IconButton

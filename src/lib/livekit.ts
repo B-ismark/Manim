@@ -46,18 +46,14 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   // VP9 SVC on mobile HW encoders is the discoloration/heat offender — pin phones
   // (and every E2EE room) to color-faithful VP8 simulcast.
   const useVp8 = e2ee || mobile
-  // Top capture layer. Phones cap at 720p (1080p phone encode throttles → worse);
-  // desktop goes 1080p. lowBandwidth forces the floor.
-  const capturePreset = lowBandwidth
-    ? VideoPresets.h360
-    : mobile
-      ? VideoPresets.h720
-      : VideoPresets.h1080
+  // Capture at 720p (not 1080p) even on desktop: requesting a 1080p getUserMedia
+  // makes the camera visibly slow to start — both on join and on mid-call toggle —
+  // as the sensor negotiates its high mode, for quality a video tile barely shows.
+  // 720p starts fast and stays crisp; lowBandwidth forces the floor.
+  const capturePreset = lowBandwidth ? VideoPresets.h360 : VideoPresets.h720
   const layers = lowBandwidth
     ? [VideoPresets.h180, VideoPresets.h360]
-    : mobile
-      ? [VideoPresets.h180, VideoPresets.h360, VideoPresets.h720]
-      : [VideoPresets.h360, VideoPresets.h720, VideoPresets.h1080]
+    : [VideoPresets.h180, VideoPresets.h360, VideoPresets.h720]
   const options: RoomOptions = {
     adaptiveStream: true,
     dynacast: true,
@@ -112,12 +108,9 @@ export function captureTiers(lowBandwidth: boolean): {
   reduced: CaptureTier
   floor: CaptureTier
 } {
-  const mobile = isMobile()
   const full: CaptureTier = lowBandwidth
     ? { resolution: VideoPresets.h360.resolution, label: '360p' }
-    : mobile
-      ? { resolution: VideoPresets.h720.resolution, label: '720p' }
-      : { resolution: VideoPresets.h1080.resolution, label: '1080p' }
+    : { resolution: VideoPresets.h720.resolution, label: '720p' }
   return {
     full,
     reduced: { resolution: VideoPresets.h360.resolution, label: '360p' },
