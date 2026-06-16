@@ -54,12 +54,13 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
   const showVideo = focus ? hasVideo(focus) : false
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-stage text-ink">
-      {/* Video / avatar fills the whole frame. */}
+    <div className="relative h-screen w-screen overflow-hidden bg-black text-ink">
+      {/* Fit the whole video into the window (letterboxed) rather than cropping
+          to fill — you see the full feed, like Meet/Teams PiP. */}
       {focus && showVideo ? (
         <VideoTrack
           trackRef={focus as Parameters<typeof VideoTrack>[0]['trackRef']}
-          className={cn('absolute inset-0 size-full object-cover', mirror && '[transform:scaleX(-1)]')}
+          className={cn('absolute inset-0 size-full object-contain', mirror && '[transform:scaleX(-1)]')}
         />
       ) : (
         <div className="absolute inset-0 grid place-items-center">

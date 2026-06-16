@@ -72,7 +72,9 @@ export function useDocumentPip(autoArm = false): DocumentPipControls {
     const dpip = api()
     if (!dpip || winRef.current) return
     try {
-      const win = await dpip.requestWindow({ width: 360, height: 540 })
+      // Landscape default — desktop camera/screen-share feeds are landscape, so
+      // this fills the window instead of letterboxing a tall portrait frame.
+      const win = await dpip.requestWindow({ width: 480, height: 320 })
       copyStyles(win)
       win.addEventListener('pagehide', () => setPipWindow(null))
       winRef.current = win
