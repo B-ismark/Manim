@@ -2,12 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Avatar, IconButton, Popover, Sheet } from '@/components/primitives'
 import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReplyIcon, SendIcon } from '@/components/icons'
 import {
-  useChatMessages,
+  type useChatMessages,
   type ChatItem,
   type FileItem,
   type ReplyRef,
   type PinnedMessage,
 } from '@/features/chat/useChatMessages'
+
+/** Chat state lives in RoomView (persists across panel open/close) and is passed in. */
+export type ChatApi = ReturnType<typeof useChatMessages>
 import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, uploadError } from '@/features/chat/limits'
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
@@ -30,8 +33,8 @@ function timeOf(ts: number): string {
 }
 
 /** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
-export function ChatPanel() {
-  const { items, sendText, sendFile, pinned, togglePin } = useChatMessages()
+export function ChatPanel({ chat }: { chat: ChatApi }) {
+  const { items, sendText, sendFile, pinned, togglePin } = chat
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
