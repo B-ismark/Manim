@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState } from '@livekit/components-react'
 import { ConnectionState } from 'livekit-client'
 import { Stage } from '@/islands/Stage'
+import { JoiningScreen } from '@/islands/JoiningScreen'
 import { PipPanel } from '@/islands/PipPanel'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
@@ -120,7 +121,7 @@ const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ defaul
  * blur, session control) and reflows the stage when the side panel docks on
  * desktop (STYLE.md §4).
  */
-export function RoomView({ onLeave, onConnected }: { onLeave: () => void; onConnected?: () => void }) {
+export function RoomView({ onLeave }: { onLeave: () => void }) {
   const room = useRoomContext()
   const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
@@ -163,18 +164,12 @@ export function RoomView({ onLeave, onConnected }: { onLeave: () => void; onConn
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
 
-  // Signal the route once connected so its single joining overlay can lift — the
-  // initial-connect cover is owned by RoomRoute now (one instance, no remount
-  // flash). Reconnects after that are handled by ConnectionBanner.
-  useEffect(() => {
-    if (connState === ConnectionState.Connected) onConnected?.()
-  }, [connState, onConnected])
-
-  // Don't mount the full call tree (Stage / tracks / processors) until the room
-  // is actually connected — pre-connect the participant/track APIs aren't ready,
-  // and the RoomRoute overlay is covering anyway. Avoids a half-initialised
-  // render during the connect window.
-  if (connState === ConnectionState.Connecting) return null
+  // Cover the initial connect with the joining screen (same label as RoomRoute's
+  // so the knock→connect handoff doesn't jump). Reconnects after that are handled
+  // by ConnectionBanner, not here.
+  if (connState === ConnectionState.Connecting) {
+    return <JoiningScreen room={room.name} />
+  }
 
   return (
     <>
