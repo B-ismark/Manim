@@ -1,58 +1,81 @@
-import { type RoomOptions, VideoPresets, ExternalE2EEKeyProvider } from 'livekit-client'
+import {
+  type RoomOptions,
+  type VideoResolution,
+  VideoPresets,
+  ExternalE2EEKeyProvider,
+} from 'livekit-client'
 import E2EEWorker from 'livekit-client/e2ee-worker?worker'
 import { isMobile } from '@/lib/device'
 
 /**
- * Room options tuned for our goals: simulcast + adaptive stream + dynacast keep
- * bandwidth/CPU low (lightweight goal). Low-bandwidth mode caps resolution and
- * (optionally) disables video entirely at the UI layer.
+ * Room options tuned for high perceptual quality with graceful degradation:
+ * simulcast + adaptiveStream + dynacast let each subscriber pull only the layer
+ * it needs, while a network-driven LOD (useAdaptiveQuality) steps the *capture*
+ * down only when the uplink is genuinely poor — so the default is "as sharp as
+ * the device can do", not a permanent low cap.
  *
- * Codec: VP9 (with an automatic VP8 backup). VP9 carries ~30-50% less bitrate
- * than VP8 at the same perceptual quality; picking it makes LiveKit publish a
- * single SVC stream (it disables simulcast internally and layers via SVC).
- * `backupCodec` re-publishes VP8 for subscribers that can't decode VP9 (Safari,
- * older clients) — that costs extra upstream only while such a subscriber is
- * present. CPU cost of VP9 encode is higher than VP8; acceptable for our ≤20 size.
+ * Capture: 1080p on desktop, 720p on phones. We deliberately do NOT push 1080p
+ * encode on a phone — sustained 1080p VP-encode thermally throttles the SoC and
+ * drops frames (which reads as *worse* quality, plus banding), so 720p is the
+ * real-world sweet spot for a portrait tile. Low-bandwidth mode (or a poor live
+ * connection, via the LOD hook) drops this further.
  *
- * E2EE guard: VP9 SVC + end-to-end encryption (insertable streams) is solid on
- * Chromium but flaky elsewhere, and a re-encoded backup codec complicates the
- * encrypted pipeline. When a passphrase is set we drop to plain VP8 + simulcast —
- * universally decodable, no SVC/backup edge cases — trading some bitrate for
- * reliable encrypted playback. E2EE rooms are the smaller-call case anyway.
+ * Codec:
+ * - Desktop, no E2EE → VP9 + VP8 backup. VP9 carries ~30-50% less bitrate at the
+ *   same quality; LiveKit publishes a single SVC stream and re-publishes VP8 only
+ *   while a non-VP9 subscriber (Safari/old) is present.
+ * - Phones / E2EE → plain VP8 + simulcast. VP9 *SVC* on mobile hardware encoders
+ *   is the usual culprit behind the washed-out / tinted "discoloration" on calls
+ *   (buggy HW color paths + starved SVC base layer), and it runs hot. VP8 is the
+ *   universally hardware-accelerated, color-faithful path; it costs a little more
+ *   bitrate, which the higher capture + LOD comfortably absorb. E2EE keeps VP8
+ *   too (insertable streams + VP9 SVC/backup is flaky off-Chromium).
  *
- * Audio: DTX drops to near-zero bitrate during silence (big win in group calls);
- * RED (kept on, LiveKit default) adds packet-loss resilience at a small cost.
+ * degradationPreference 'maintain-resolution': when the encoder is constrained it
+ * sheds frame RATE before resolution, keeping faces/text crisp rather than going
+ * blocky+discolored. Sustained constraint is handled higher up by the LOD hook,
+ * which lowers the actual capture instead of letting WebRTC smear it.
  *
- * When an E2EE passphrase is supplied, the room is configured for end-to-end
- * encryption (insertable streams via a worker). All participants must use the
- * same passphrase to decode each other. Enabling happens in-room (RoomView).
+ * Audio: DTX → near-zero bitrate during silence; RED → packet-loss resilience.
+ * When an E2EE passphrase is supplied the room enables end-to-end encryption
+ * (insertable streams via a worker); all participants need the same passphrase.
  */
 export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): RoomOptions {
   const e2ee = Boolean(e2eePassphrase)
-  // Phones publish into small portrait tiles and pay the most for per-frame work
-  // (encode + background-blur segmentation). Capping capture/top-layer to 360p
-  // there cuts CPU, battery, and blur cost with no visible loss at tile size.
-  const light = lowBandwidth || isMobile()
+  const mobile = isMobile()
+  // VP9 SVC on mobile HW encoders is the discoloration/heat offender — pin phones
+  // (and every E2EE room) to color-faithful VP8 simulcast.
+  const useVp8 = e2ee || mobile
+  // Top capture layer. Phones cap at 720p (1080p phone encode throttles → worse);
+  // desktop goes 1080p. lowBandwidth forces the floor.
+  const capturePreset = lowBandwidth
+    ? VideoPresets.h360
+    : mobile
+      ? VideoPresets.h720
+      : VideoPresets.h1080
+  const layers = lowBandwidth
+    ? [VideoPresets.h180, VideoPresets.h360]
+    : mobile
+      ? [VideoPresets.h180, VideoPresets.h360, VideoPresets.h720]
+      : [VideoPresets.h360, VideoPresets.h720, VideoPresets.h1080]
   const options: RoomOptions = {
     adaptiveStream: true,
     dynacast: true,
     publishDefaults: {
-      // VP9/SVC normally; plain VP8 under E2EE (see guard note above).
-      videoCodec: e2ee ? 'vp8' : 'vp9',
-      // VP8 backup for non-VP9 clients (Safari). Omitted under E2EE — already VP8.
-      ...(e2ee ? {} : { backupCodec: { codec: 'vp8' as const } }),
-      // Active for the VP8 paths; ignored once VP9/SVC takes over.
+      videoCodec: useVp8 ? 'vp8' : 'vp9',
+      // VP8 backup only matters for the VP9 path; omit when already VP8.
+      ...(useVp8 ? {} : { backupCodec: { codec: 'vp8' as const } }),
       simulcast: true,
-      videoSimulcastLayers: light
-        ? [VideoPresets.h180, VideoPresets.h360]
-        : [VideoPresets.h360, VideoPresets.h720],
+      videoSimulcastLayers: layers,
+      // Keep the picture sharp under load; drop fps before resolution.
+      degradationPreference: 'maintain-resolution',
       // Opus discontinuous transmission: near-silent frames cost ~nothing.
       dtx: true,
       // Redundant audio encoding for loss resilience (LiveKit-recommended default).
       red: true,
     },
     videoCaptureDefaults: {
-      resolution: light ? VideoPresets.h360.resolution : VideoPresets.h720.resolution,
+      resolution: capturePreset.resolution,
     },
     // Always-on baseline audio cleanup (browser WebRTC DSP). The opt-in Krisp
     // filter (useNoiseFilter) layers stronger AI suppression on top of this.
@@ -70,4 +93,34 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   }
 
   return options
+}
+
+/** A network-quality LOD step: the level it applies at and the capture it forces. */
+export interface CaptureTier {
+  resolution: VideoResolution
+  label: string
+}
+
+/**
+ * Capture ladder for the network-driven LOD (useAdaptiveQuality). `full` mirrors
+ * the resolution roomOptions captured at, so restoring after a recovery lands the
+ * device back at its native quality. `reduced`/`floor` are the degraded rungs the
+ * hook restarts the camera at when the live connection goes Poor / Lost.
+ */
+export function captureTiers(lowBandwidth: boolean): {
+  full: CaptureTier
+  reduced: CaptureTier
+  floor: CaptureTier
+} {
+  const mobile = isMobile()
+  const full: CaptureTier = lowBandwidth
+    ? { resolution: VideoPresets.h360.resolution, label: '360p' }
+    : mobile
+      ? { resolution: VideoPresets.h720.resolution, label: '720p' }
+      : { resolution: VideoPresets.h1080.resolution, label: '1080p' }
+  return {
+    full,
+    reduced: { resolution: VideoPresets.h360.resolution, label: '360p' },
+    floor: { resolution: VideoPresets.h180.resolution, label: '180p' },
+  }
 }

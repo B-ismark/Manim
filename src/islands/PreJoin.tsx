@@ -124,8 +124,10 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
   const canJoin = displayName.trim().length > 0
 
   return (
-    <main className="min-h-dvh flex items-center justify-center p-4">
-      <Island pad="lg" className="w-full max-w-lg">
+    // items-start + scroll so a tall card on a short phone stays reachable
+    // (items-center would strand the top off-screen with no way to scroll).
+    <main className="min-h-dvh flex items-start justify-center overflow-y-auto p-4 sm:items-center">
+      <Island pad="none" className="my-auto w-full max-w-lg p-4 sm:p-6">
         <button
           type="button"
           onClick={() => navigate('/')}
@@ -137,8 +139,10 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
         <p className="text-xs font-medium text-ink-subtle">Joining</p>
         <h1 className="text-xl font-semibold">{room}</h1>
 
-        {/* Portrait on touch (matches the in-call tiles), landscape on desktop. */}
-        <div className="mx-auto mt-4 aspect-[3/4] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken pointer-fine:aspect-video pointer-fine:max-w-none">
+        {/* Portrait on touch (matches the in-call tiles), landscape on desktop.
+            Height is capped (max-h) so the preview never pushes the name field and
+            Join button off a short viewport — the real cause of pre-join scrolling. */}
+        <div className="mx-auto mt-3 aspect-[3/4] max-h-[38dvh] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken pointer-fine:mt-4 pointer-fine:aspect-video pointer-fine:max-h-none pointer-fine:max-w-none">
           {cameraOn ? (
             <video ref={videoRef} autoPlay muted playsInline className="size-full object-cover [transform:scaleX(-1)]" />
           ) : (
@@ -181,7 +185,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
 
         {error && <p className="mt-2 text-sm text-danger">{error}</p>}
 
-        <div className="mt-4 flex flex-col gap-3">
+        <div className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3">
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
