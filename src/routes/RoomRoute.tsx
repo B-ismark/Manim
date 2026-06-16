@@ -30,6 +30,10 @@ export function RoomRoute() {
     return () => setRoomToken(null)
   }, [token, setRoomToken])
   const [connecting, setConnecting] = useState(false)
+  // True once the LiveKit room is actually connected. The joining overlay stays
+  // up — as a SINGLE persistent instance — from knock through connect, so there's
+  // no remount flash between the "Joining" and "Connecting" screens.
+  const [connected, setConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [waitingId, setWaitingId] = useState<string | null>(null)
 
@@ -100,6 +104,7 @@ export function RoomRoute() {
       prevRoom.current = room
       setToken(null)
       setConnecting(false)
+      setConnected(false)
       setWaitingId(null)
     }
     if (autojoin && displayName && joinedFor.current !== room) {
@@ -111,58 +116,60 @@ export function RoomRoute() {
   function leave() {
     setToken(null)
     setConnecting(false)
+    setConnected(false)
     setWaitingId(null)
     navigate('/')
   }
 
-  if (token && LIVEKIT_URL) {
-    return (
-      <LiveKitRoom
-        serverUrl={LIVEKIT_URL}
-        token={token}
-        connect
-        audio={prejoin.micEnabled}
-        video={prejoin.cameraEnabled && !prejoin.lowBandwidth}
-        options={options}
-        onDisconnected={leave}
-        onError={(e) => {
-          setError(e.message)
-          setToken(null)
-          setConnecting(false)
-        }}
-        className="relative flex min-h-dvh flex-col"
-      >
-        <RoomView onLeave={leave} />
-      </LiveKitRoom>
-    )
-  }
-
-  if (waitingId) {
-    return (
-      <main className="grid min-h-dvh place-items-center p-4">
-        <Island pad="lg" className="w-full max-w-sm text-center">
-          <h1 className="text-lg font-semibold">Waiting to be let in</h1>
-          <p className="mt-1 text-sm text-ink-muted">
-            The host has been notified. You'll join {room} as soon as they admit you.
-          </p>
-          <Button variant="neutral" className="mt-4" onClick={leave}>
-            Cancel
-          </Button>
-        </Island>
-      </main>
-    )
-  }
-
-  // Connecting (knock in flight) with no error yet → full joining experience.
-  if (connecting && !error) {
-    return <JoiningScreen room={room} />
-  }
+  // One overlay instance from knock → fully connected (no remount between the
+  // "Joining" and "Connecting" screens). Suppressed in the waiting room / on error.
+  const showJoining = !error && !waitingId && (token ? !connected : connecting)
 
   return (
-    <div className="relative">
-      <PreJoin room={room} onJoin={handleJoin} />
+    <div className="relative flex min-h-dvh flex-col">
+      {token && LIVEKIT_URL ? (
+        <LiveKitRoom
+          serverUrl={LIVEKIT_URL}
+          token={token}
+          connect
+          audio={prejoin.micEnabled}
+          video={prejoin.cameraEnabled && !prejoin.lowBandwidth}
+          options={options}
+          onDisconnected={leave}
+          onError={(e) => {
+            setError(e.message)
+            setToken(null)
+            setConnecting(false)
+            setConnected(false)
+          }}
+          className="relative flex min-h-dvh flex-col"
+        >
+          <RoomView onLeave={leave} onConnected={() => setConnected(true)} />
+        </LiveKitRoom>
+      ) : waitingId ? (
+        <main className="grid min-h-dvh place-items-center p-4">
+          <Island pad="lg" className="w-full max-w-sm text-center">
+            <h1 className="text-lg font-semibold">Waiting to be let in</h1>
+            <p className="mt-1 text-sm text-ink-muted">
+              The host has been notified. You'll join {room} as soon as they admit you.
+            </p>
+            <Button variant="neutral" className="mt-4" onClick={leave}>
+              Cancel
+            </Button>
+          </Island>
+        </main>
+      ) : !connecting ? (
+        <PreJoin room={room} onJoin={handleJoin} />
+      ) : null}
+
+      {showJoining && (
+        <div className="fixed inset-0 z-40 bg-stage">
+          <JoiningScreen room={room} />
+        </div>
+      )}
+
       {error && (
-        <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+        <div className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
           <Island elevation="raised" className="max-w-md">
             <div className="flex flex-col gap-2">
               <p className="text-sm text-danger">{error}</p>

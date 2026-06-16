@@ -28,22 +28,21 @@ type TrackProcessorsModule = typeof import('@livekit/track-processors')
 type Processor = ReturnType<TrackProcessorsModule['BackgroundBlur']>
 
 /**
- * Paint a simple gradient into an offscreen canvas and return it as a data URL.
- * Avoids shipping image assets — presets are generated at runtime, once.
+ * Build a gradient as an SVG data URL. Deliberately NOT canvas.toDataURL — that
+ * readback is blocked/farbled by anti-fingerprinting browsers (Brave), which
+ * left the preset thumbnails blank and the background unset. An SVG data URL
+ * renders reliably both as a CSS thumbnail and as the VirtualBackground source.
  */
 function gradientDataUrl(stops: Array<[number, string]>, diagonal = true): string {
-  const c = document.createElement('canvas')
-  c.width = 640
-  c.height = 360
-  const ctx = c.getContext('2d')
-  if (!ctx) return ''
-  const grd = diagonal
-    ? ctx.createLinearGradient(0, 0, c.width, c.height)
-    : ctx.createLinearGradient(0, 0, 0, c.height)
-  for (const [offset, color] of stops) grd.addColorStop(offset, color)
-  ctx.fillStyle = grd
-  ctx.fillRect(0, 0, c.width, c.height)
-  return c.toDataURL('image/png')
+  const x2 = diagonal ? 1 : 0
+  const stopsSvg = stops
+    .map(([offset, color]) => `<stop offset="${offset * 100}%" stop-color="${color}"/>`)
+    .join('')
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="${x2}" y2="1">${stopsSvg}</linearGradient></defs>` +
+    `<rect width="640" height="360" fill="url(#g)"/></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
 
 let cachedPresets: BackgroundPreset[] | null = null
