@@ -317,7 +317,7 @@ function RaisedHandPill({
       className={cn(
         'fixed inset-x-0 top-[max(3.5rem,calc(env(safe-area-inset-top)+3rem))] z-20 flex justify-center px-4',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        !visible && '-translate-y-[200%] opacity-0',
+        !visible && 'pointer-events-none -translate-y-[200%] opacity-0',
       )}
     >
       <button

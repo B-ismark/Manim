@@ -367,7 +367,12 @@ export function ControlBar({
       <Island
         pad="none"
         elevation="raised"
-        className="pointer-events-auto flex items-center gap-1.5 rounded-control px-3 py-2 sm:gap-2"
+        className={cn(
+          'flex items-center gap-1.5 rounded-control px-3 py-2 sm:gap-2',
+          // Only interactive while shown — otherwise the off-screen bar still
+          // caught taps/focus.
+          chromeVisible ? 'pointer-events-auto' : 'pointer-events-none',
+        )}
       >
         {locked && (
           <Tooltip content="Room is locked">
