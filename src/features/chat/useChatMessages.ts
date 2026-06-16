@@ -7,8 +7,10 @@ import { useRoomStore } from '@/store/useRoomStore'
 const FILE_TOPIC = 'mn.file'
 /** Pin broadcast topic — pins are shared across the room (Slack model). */
 const PIN_TOPIC = 'mn.pin'
-/** Emoji-reaction broadcast topic — per-message reactions, shared room-wide. */
-const REACTION_TOPIC = 'mn.reaction'
+/** Per-message chat reactions. DISTINCT from the in-call floating-reaction topic
+ *  ('mn.reaction' in useReactions) — sharing it made every chat reaction (and
+ *  un-reaction) spawn a floating emoji + sound on the main stage. */
+const REACTION_TOPIC = 'mn.chat-reaction'
 /** Message-edit topic — author edits broadcast to everyone (overlay on the body). */
 const EDIT_TOPIC = 'mn.edit'
 /** Chat-history sync topic — peers replay the timeline to a (re)joiner. */
