@@ -215,7 +215,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       />
       <ConnectionBanner />
       <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
-      <LayoutChip visible={chromeVisible} />
+      <LayoutChip visible={chromeVisible} onMenuOpenChange={setChromeHold} />
       <StageTopBar visible={chromeVisible} />
       <PinCoachmark />
       <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />

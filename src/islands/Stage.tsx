@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef } from 'react'
 import { useTracks, VideoTrack, useParticipants } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -17,46 +17,15 @@ import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
 
-/** Portrait tiles (3:4) show more of each person than a 16:9 letterbox. */
-const TILE_ASPECT = 3 / 4
-
-/** Observe an element's content box (drives the tile-packing math). */
-function useElementSize() {
-  const ref = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ w: 0, h: 0 })
-  useEffect(() => {
-    const el = ref.current
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver((entries) => {
-      const r = entries[0].contentRect
-      setSize({ w: r.width, h: r.height })
-    })
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  return [ref, size] as const
-}
-
 /**
- * Pick the column count that makes portrait (3:4) tiles as LARGE as possible for
- * the actual stage size — the Meet/Zoom tile-packing approach. Fills the space
- * and adapts to any screen (tall phone → 1–2 cols; wide desktop → more) instead
- * of a fixed √n that leaves margins.
+ * Column count for the tile grid. Phones cap at 2 (portrait tiles stay legible;
+ * the grid scrolls past the fold rather than shrinking to thumbnails). Desktop
+ * grows with √n up to 4. Tiles keep a 3:4 portrait aspect.
  */
-function bestColumns(n: number, w: number, h: number): number {
-  if (n <= 1 || w === 0 || h === 0) return 1
-  let best = 1
-  let bestArea = 0
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols)
-    const tileW = Math.min(w / cols, (h / rows) * TILE_ASPECT)
-    const area = tileW * (tileW / TILE_ASPECT)
-    if (area > bestArea) {
-      bestArea = area
-      best = cols
-    }
-  }
-  return best
+function gridColumns(n: number, coarse: boolean): number {
+  if (n <= 1) return 1
+  if (coarse) return 2
+  return Math.min(Math.ceil(Math.sqrt(n)), 4)
 }
 
 export function Stage() {
@@ -73,7 +42,6 @@ export function Stage() {
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
   const coarse = useIsTouch()
-  const [gridRef, gridSize] = useElementSize()
 
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />
@@ -85,27 +53,22 @@ export function Stage() {
   const phone1on1 = coarse && tracks.length === 2 && !screenShare
 
   if ((layout === 'grid' && !phone1on1) || tracks.length <= 1) {
-    // Pack portrait (3:4) tiles: pick the column count that makes them biggest,
-    // then size each to that exact width and CENTER them. Tiles keep a clean
-    // aspect (never stretched into a wide strip) while using the stage well.
-    const GAP = 12
-    const n = tracks.length
-    const cols = bestColumns(n, gridSize.w, gridSize.h)
-    const rows = Math.ceil(n / cols)
-    const byW = (gridSize.w - GAP * (cols + 1)) / cols
-    const byH = ((gridSize.h - GAP * (rows + 1)) / rows) * TILE_ASPECT
-    const tileW = gridSize.w && gridSize.h ? Math.max(96, Math.floor(Math.min(byW, byH))) : 0
+    const cols = gridColumns(tracks.length, coarse)
+    // Centre when the tiles fit; otherwise scroll from the top (so nothing is
+    // ever clipped above the fold — the 3+-on-mobile breakage).
+    const many = tracks.length > cols * 2
     return (
       <div
-        ref={gridRef}
-        className="flex min-h-0 flex-1 flex-wrap content-center items-center justify-center gap-3 overflow-y-auto p-2 sm:p-3"
+        className={cn(
+          'grid min-h-0 flex-1 justify-center gap-2 overflow-y-auto p-2 sm:gap-3 sm:p-3',
+          many ? 'content-start' : 'content-center',
+        )}
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
         {tracks.map((ref) => (
-          <div
-            key={`${ref.participant.identity}-${ref.source}`}
-            className="aspect-[3/4] max-h-full"
-            style={tileW ? { width: tileW } : undefined}
-          >
+          // Portrait 3:4 tile; fills its column, object-cover. Grid scrolls past
+          // the fold for large calls rather than shrinking tiles to dots.
+          <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-[3/4] min-h-0">
             <Tile trackRef={ref} fill />
           </div>
         ))}

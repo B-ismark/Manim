@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   useDataChannel,
   useLocalParticipant,
@@ -42,6 +42,8 @@ export function useReactions() {
   const [active, setActive] = useState<FloatingReaction[]>([])
   const counter = useRef(0)
   const timers = useRef<number[]>([])
+
+  useEffect(() => () => timers.current.forEach((t) => window.clearTimeout(t)), [])
 
   const push = useCallback((emoji: string, fromName: string) => {
     const n = counter.current++
