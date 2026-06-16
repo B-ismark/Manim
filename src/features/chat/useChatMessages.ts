@@ -7,6 +7,13 @@ import { useRoomStore } from '@/store/useRoomStore'
 const FILE_TOPIC = 'mn.file'
 /** Pin broadcast topic — pins are shared across the room (Slack model). */
 const PIN_TOPIC = 'mn.pin'
+/** Emoji-reaction broadcast topic — per-message reactions, shared room-wide. */
+const REACTION_TOPIC = 'mn.reaction'
+
+/** Reactions for one message: emoji → identities who reacted with it. */
+export type MessageReactions = Record<string, string[]>
+/** All reactions in the room: message id → its reactions. */
+export type ReactionMap = Record<string, MessageReactions>
 
 /** A quoted message a reply points at (denormalized so it renders without history). */
 export interface ReplyRef {
@@ -210,6 +217,74 @@ export function useChatMessages() {
     [broadcastPin],
   )
 
+  // Shared emoji reactions (Slack/Discord model): toggle events broadcast over the
+  // data channel; each client owns *its own* reactions and replays them when a
+  // late joiner asks (sync-request), so everyone converges. Ephemeral like chat.
+  const myIdentity = localParticipant.identity
+  const [reactions, setReactions] = useState<ReactionMap>({})
+  const reactionsRef = useRef<ReactionMap>({})
+  reactionsRef.current = reactions
+
+  // Pure add/remove of one identity from one (message, emoji) bucket.
+  function applyReaction(map: ReactionMap, messageId: string, emoji: string, identity: string, added: boolean): ReactionMap {
+    const forMsg = { ...(map[messageId] ?? {}) }
+    const by = new Set(forMsg[emoji] ?? [])
+    if (added) by.add(identity)
+    else by.delete(identity)
+    if (by.size > 0) forMsg[emoji] = [...by]
+    else delete forMsg[emoji]
+    const next = { ...map, [messageId]: forMsg }
+    if (Object.keys(forMsg).length === 0) delete next[messageId]
+    return next
+  }
+
+  const sendReactionRef = useRef<((data: object) => void) | null>(null)
+  const { send: sendReactionMsg } = useDataChannel(REACTION_TOPIC, (msg) => {
+    try {
+      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
+        | { kind: 'sync-request' }
+        | { kind?: 'react'; messageId: string; emoji: string; identity: string; added: boolean }
+      // Late joiner catching up — replay only the reactions I own.
+      if ('kind' in d && d.kind === 'sync-request') {
+        for (const [messageId, byEmoji] of Object.entries(reactionsRef.current)) {
+          for (const [emoji, ids] of Object.entries(byEmoji)) {
+            if (ids.includes(myIdentity)) {
+              sendReactionRef.current?.({ kind: 'react', messageId, emoji, identity: myIdentity, added: true })
+            }
+          }
+        }
+        return
+      }
+      if ('messageId' in d) {
+        setReactions((prev) => applyReaction(prev, d.messageId, d.emoji, d.identity, d.added))
+      }
+    } catch {
+      /* malformed — ignore */
+    }
+  })
+
+  const broadcastReaction = useCallback(
+    (data: object) =>
+      void sendReactionMsg(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: REACTION_TOPIC }),
+    [sendReactionMsg],
+  )
+  sendReactionRef.current = broadcastReaction
+
+  // Ask peers to replay their reactions on entry (same late-join handshake as pins).
+  useEffect(() => {
+    const t = window.setTimeout(() => broadcastReaction({ kind: 'sync-request' }), 800)
+    return () => window.clearTimeout(t)
+  }, [broadcastReaction])
+
+  const toggleReaction = useCallback(
+    (messageId: string, emoji: string) => {
+      const had = reactionsRef.current[messageId]?.[emoji]?.includes(myIdentity) ?? false
+      setReactions((prev) => applyReaction(prev, messageId, emoji, myIdentity, !had))
+      broadcastReaction({ kind: 'react', messageId, emoji, identity: myIdentity, added: !had })
+    },
+    [broadcastReaction, myIdentity],
+  )
+
   // Track remote-message count → bump unread badge while chat is closed.
   const prevRemote = useRef(0)
   useEffect(() => {
@@ -259,5 +334,5 @@ export function useChatMessages() {
     [localParticipant],
   )
 
-  return { items, sendText, sendFile, isSending, pinned, togglePin }
+  return { items, sendText, sendFile, isSending, pinned, togglePin, reactions, toggleReaction, myIdentity }
 }

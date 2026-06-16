@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Avatar, IconButton, Popover, Sheet } from '@/components/primitives'
-import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReplyIcon, SendIcon } from '@/components/icons'
+import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
+import { EmojiPicker } from '@/islands/EmojiPicker'
+import type { ReactionMap } from '@/features/chat/useChatMessages'
 import {
   type useChatMessages,
   type ChatItem,
@@ -32,9 +34,24 @@ function timeOf(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
+/** Consecutive messages from the same sender within a short window collapse into
+ *  one visual group (Meet / Slack / WhatsApp convention): the avatar + name +
+ *  time render once for the run, follow-ups are just the bubble. A reply always
+ *  breaks the group — it needs its own header for the quoted context to read. */
+const GROUP_WINDOW_MS = 5 * 60 * 1000
+function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
+  if (!prev) return false
+  if (item.kind === 'text' && item.replyTo) return false
+  return (
+    prev.fromIdentity === item.fromIdentity &&
+    prev.isLocal === item.isLocal &&
+    item.timestamp - prev.timestamp < GROUP_WINDOW_MS
+  )
+}
+
 /** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
 export function ChatPanel({ chat }: { chat: ChatApi }) {
-  const { items, sendText, sendFile, pinned, togglePin } = chat
+  const { items, sendText, sendFile, pinned, togglePin, reactions, toggleReaction, myIdentity } = chat
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
@@ -89,7 +106,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-3">
+      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {items.length === 0 ? (
           <div className="grid h-full place-items-center text-center">
             <div>
@@ -98,11 +115,15 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
             </div>
           </div>
         ) : (
-          items.map((item) => (
+          items.map((item, i) => (
             <MessageRow
               key={item.id}
               item={item}
+              grouped={continuesGroup(items[i - 1], item)}
               pinned={isPinned(item.id)}
+              reactions={reactions[item.id]}
+              myIdentity={myIdentity}
+              onReact={(emoji) => toggleReaction(item.id, emoji)}
               onReply={() => startReply(item)}
               onTogglePin={() => togglePin(item)}
             />
@@ -227,25 +248,43 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
 
 function MessageRow({
   item,
+  grouped,
   pinned,
+  reactions,
+  myIdentity,
+  onReact,
   onReply,
   onTogglePin,
 }: {
   item: ChatItem
+  /** True when this continues the previous sender's run — avatar/header collapse. */
+  grouped: boolean
   pinned: boolean
+  /** This message's reactions: emoji → identities who reacted. */
+  reactions?: ReactionMap[string]
+  myIdentity: string
+  onReact: (emoji: string) => void
   onReply: () => void
   onTogglePin: () => void
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
   return (
-    <div className="group relative flex gap-2.5">
-      <Avatar name={item.fromName} size="sm" />
+    <div className={cn('group relative flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3 first:mt-0')}>
+      {grouped ? (
+        // Keep the bubble aligned with the grouped run (matches Avatar sm = size-8).
+        <div className="w-8 shrink-0" aria-hidden />
+      ) : (
+        <Avatar name={item.fromName} size="sm" />
+      )}
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
-          <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
-          {pinned && <PinIcon className="size-3 text-accent" aria-label="Pinned" />}
-        </div>
+        {!grouped && (
+          <div className="flex items-baseline gap-2">
+            <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
+            <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
+            {pinned && <PinIcon className="size-3 text-accent" aria-label="Pinned" />}
+          </div>
+        )}
 
         {/* Quoted message this one replies to. */}
         {replyTo && (
@@ -264,10 +303,26 @@ function MessageRow({
         ) : (
           <FileMessage file={item} />
         )}
+
+        <ReactionChips reactions={reactions} myIdentity={myIdentity} onReact={onReact} />
       </div>
 
       {/* Hover (desktop) / always-on (touch) message actions. */}
       <div className="absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+        <Popover
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          side="top"
+          align="end"
+          trigger={<IconButton size="sm" tone="neutral" label="Add reaction" icon={<ReactionIcon />} active={pickerOpen} />}
+        >
+          <EmojiPicker
+            onSelect={(emoji) => {
+              onReact(emoji)
+              setPickerOpen(false)
+            }}
+          />
+        </Popover>
         <IconButton size="sm" tone="neutral" label="Reply" icon={<ReplyIcon />} onClick={onReply} />
         <IconButton
           size="sm"
@@ -278,6 +333,46 @@ function MessageRow({
           onClick={onTogglePin}
         />
       </div>
+    </div>
+  )
+}
+
+/** Reaction pills under a message. Each shows the emoji + count; your own
+ *  reactions are highlighted, and tapping a pill toggles yours (Slack/Discord). */
+function ReactionChips({
+  reactions,
+  myIdentity,
+  onReact,
+}: {
+  reactions?: ReactionMap[string]
+  myIdentity: string
+  onReact: (emoji: string) => void
+}) {
+  const entries = reactions ? Object.entries(reactions).filter(([, by]) => by.length > 0) : []
+  if (entries.length === 0) return null
+  return (
+    <div className="mt-1 flex flex-wrap gap-1">
+      {entries.map(([emoji, by]) => {
+        const mine = by.includes(myIdentity)
+        return (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => onReact(emoji)}
+            aria-pressed={mine}
+            aria-label={`${emoji} ${by.length}${mine ? ', you reacted' : ''}`}
+            className={cn(
+              'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs leading-none transition-colors',
+              mine
+                ? 'border-accent bg-accent-soft text-accent'
+                : 'border-line bg-sunken text-ink-muted hover:border-line-strong',
+            )}
+          >
+            <span className="text-sm">{emoji}</span>
+            <span className="tabular-nums">{by.length}</span>
+          </button>
+        )
+      })}
     </div>
   )
 }

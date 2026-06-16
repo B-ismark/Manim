@@ -88,6 +88,9 @@ export interface ModerateRequest {
   action: 'mute' | 'remove'
   /** Required for `mute` — the track to silence. */
   trackSid?: string
+  /** Track source for `mute` — lets the server resolve the *current* sid (so a
+   *  re-mute after the target self-unmutes targets the live track, not a stale sid). */
+  source?: 'microphone' | 'camera'
 }
 
 export function moderate({ token, ...body }: ModerateRequest): Promise<void> {

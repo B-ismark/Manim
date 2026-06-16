@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, ChevronLeftIcon, MicIcon, MicOffIcon } from '@/components/icons'
 import { useAppStore } from '@/store/useAppStore'
+import { prettyRoom } from '@/lib/roomName'
 
 export interface PreJoinProps {
   room: string
@@ -140,7 +141,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
           Back
         </button>
         <p className="text-xs font-medium text-ink-subtle">Joining</p>
-        <h1 className="text-xl font-semibold">{room}</h1>
+        <h1 className="text-xl font-semibold">{prettyRoom(room)}</h1>
 
         {/* Portrait on touch (matches the in-call tiles), landscape on desktop.
             Height is capped (max-h) so the preview never pushes the name field and

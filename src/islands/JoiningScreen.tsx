@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { prettyRoom } from '@/lib/roomName'
 
 /** Animated "broadcast" loader — SVG + CSS only (no Lottie dep / hosted asset). */
 function Loader() {
@@ -52,7 +53,7 @@ export function JoiningScreen({ room, label = 'Joining' }: { room?: string; labe
         <Loader />
         <div>
           <p className="text-xs font-medium text-ink-subtle">{label}</p>
-          {room && <h1 className="mt-0.5 text-xl font-semibold">{room}</h1>}
+          {room && <h1 className="mt-0.5 text-xl font-semibold">{prettyRoom(room)}</h1>}
           <p className="mt-2 text-sm text-ink-muted">{TIPS[i % TIPS.length]}</p>
         </div>
       </div>
