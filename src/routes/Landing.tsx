@@ -31,7 +31,9 @@ export function Landing() {
   }
 
   return (
-    <main className="min-h-dvh flex flex-col items-center justify-center gap-6 p-4">
+    // Top-align + scroll on phones so the keyboard can't bury the Join button
+    // (centering strands it behind the keyboard); centered on desktop.
+    <main className="min-h-dvh flex flex-col items-center justify-start gap-5 overflow-y-auto p-4 pt-20 sm:justify-center sm:gap-6 sm:pt-4">
       <header className="absolute inset-x-4 top-4 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
@@ -56,11 +58,11 @@ export function Landing() {
         <h1 className="text-2xl font-semibold tracking-tight">Manim</h1>
       </div>
 
-      <Island pad="lg" className="w-full max-w-md">
+      <Island pad="none" className="w-full max-w-md p-5 sm:p-6">
         <h2 className="text-lg font-semibold">Start or join a call</h2>
         <p className="mt-1 text-sm text-ink-muted">Free, secure, lightweight video.</p>
 
-        <form onSubmit={onJoin} className="mt-5 flex flex-col gap-3">
+        <form onSubmit={onJoin} className="mt-4 flex flex-col gap-3 sm:mt-5">
           <label htmlFor="room" className="text-sm font-medium">
             Room name or code
           </label>
