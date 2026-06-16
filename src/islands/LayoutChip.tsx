@@ -9,10 +9,10 @@ const LAYOUTS = [
 ] as const satisfies ReadonlyArray<{ value: LayoutMode; label: string; Icon: typeof GridIcon }>
 
 /**
- * Touch-only stage chip (top-left) showing the current layout, tap to switch.
- * Mobile already supports the swipe gesture + the named list in the More sheet;
- * this adds a discoverable affordance. Hides with the rest of the chrome.
- * Desktop switches layout from the More menu instead (pointer-fine:hidden here).
+ * Stage chip (top-left) showing the current layout, tap to switch (grid /
+ * speaker / spotlight) — the single layout affordance on every device now that
+ * the inline LayoutSwitcher is gone. On touch the swipe gesture also switches.
+ * Hides with the rest of the chrome.
  */
 export function LayoutChip({
   visible,
@@ -30,7 +30,7 @@ export function LayoutChip({
   return (
     <div
       className={cn(
-        'pointer-events-none fixed left-4 top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 pointer-fine:hidden',
+        'pointer-events-none fixed left-4 top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !visible && '-translate-y-[150%] opacity-0',
       )}
