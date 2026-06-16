@@ -31,6 +31,7 @@ function gridColumns(n: number, coarse: boolean): number {
 export function Stage() {
   const layout = useRoomStore((s) => s.layout)
   const pinned = useRoomStore((s) => s.pinned)
+  const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
   const tracks = useTracks(
@@ -98,7 +99,7 @@ export function Stage() {
         </div>
       )}
 
-      {localCam && focus !== localCam && <SelfViewCard trackRef={localCam} />}
+      {localCam && focus !== localCam && !selfViewHidden && <SelfViewCard trackRef={localCam} />}
     </div>
   )
 }
@@ -189,7 +190,11 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
   // For the local participant we are never "subscribed" to our own track, so
   // gate only on presence + mute; remote tiles still require a subscription.
   const pub = trackRef.publication
-  const hasVideo = !!pub && !pub.isMuted && (p.isLocal || !!pub.isSubscribed)
+  // Audio-only mode renders avatars instead of decoding camera video (screen
+  // share still shows — it's the point of sharing).
+  const audioOnly = useRoomStore((s) => s.audioOnly)
+  const hasVideo =
+    !!pub && !pub.isMuted && (p.isLocal || !!pub.isSubscribed) && (isScreen || !audioOnly)
   const speaking = p.isSpeaking
   const micOff = !p.isMicrophoneEnabled
   const handRaised = useHandRaised(p)

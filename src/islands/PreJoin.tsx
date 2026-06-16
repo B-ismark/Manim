@@ -175,6 +175,10 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
           />
         </div>
 
+        {permission !== 'prompt' && permission !== 'denied' && (
+          <MicSpeakerTest micEnabled={prejoin.micEnabled} />
+        )}
+
         {showPriming && (
           <div className="mt-3 rounded-field bg-sunken p-3 text-center">
             <p className="text-sm text-ink">
@@ -226,5 +230,86 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
         </div>
       </Island>
     </main>
+  )
+}
+
+/** A live mic level bar + a speaker test tone, so users can verify audio before
+ *  joining (the camera already previews). Uses Web Audio; cleans up fully. */
+function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
+  const [level, setLevel] = useState(0)
+
+  useEffect(() => {
+    if (!micEnabled) {
+      setLevel(0)
+      return
+    }
+    let raf = 0
+    let ctx: AudioContext | null = null
+    let stream: MediaStream | null = null
+    let cancelled = false
+    navigator.mediaDevices
+      .getUserMedia({ audio: true })
+      .then((s) => {
+        if (cancelled) {
+          s.getTracks().forEach((t) => t.stop())
+          return
+        }
+        stream = s
+        const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+        ctx = new Ctx()
+        const analyser = ctx.createAnalyser()
+        analyser.fftSize = 256
+        ctx.createMediaStreamSource(s).connect(analyser)
+        const data = new Uint8Array(analyser.frequencyBinCount)
+        const tick = () => {
+          analyser.getByteTimeDomainData(data)
+          let peak = 0
+          for (const v of data) peak = Math.max(peak, Math.abs(v - 128))
+          setLevel(Math.min(1, peak / 64))
+          raf = requestAnimationFrame(tick)
+        }
+        tick()
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      cancelAnimationFrame(raf)
+      stream?.getTracks().forEach((t) => t.stop())
+      void ctx?.close().catch(() => {})
+    }
+  }, [micEnabled])
+
+  function testSpeaker() {
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+      const ctx = new Ctx()
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.frequency.value = 440
+      gain.gain.value = 0.08
+      osc.connect(gain).connect(ctx.destination)
+      osc.start()
+      osc.stop(ctx.currentTime + 0.35)
+      osc.onended = () => void ctx.close().catch(() => {})
+    } catch {
+      /* Web Audio unavailable */
+    }
+  }
+
+  return (
+    <div className="mt-3 flex items-center gap-3">
+      <div className="flex flex-1 items-center gap-2">
+        {micEnabled ? <MicIcon className="size-4 text-ink-muted" /> : <MicOffIcon className="size-4 text-ink-subtle" />}
+        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
+          <div
+            className="h-full rounded-full bg-success transition-[width] duration-75"
+            style={{ width: `${Math.round(level * 100)}%` }}
+          />
+        </div>
+      </div>
+      <Button type="button" variant="neutral" size="sm" onClick={testSpeaker}>
+        Test speaker
+      </Button>
+    </div>
   )
 }

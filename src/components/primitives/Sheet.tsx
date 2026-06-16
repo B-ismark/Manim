@@ -23,11 +23,11 @@ export interface SheetProps {
 // pb safe-area keeps the bottom-sheet content (e.g. chat input) above the iOS
 // home indicator; it resolves to 0 on the desktop docked variant.
 const sideClass: Record<NonNullable<SheetProps['side']>, string> = {
-  right: 'right-3 top-3 bottom-3 w-[min(92vw,22rem)] rounded-island',
+  right: 'right-3 top-3 bottom-3 w-[min(92vw,22rem)] rounded-island xl:w-[26rem]',
   bottom: 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-island pb-[env(safe-area-inset-bottom)]',
   responsive:
     'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-island pb-[env(safe-area-inset-bottom)] ' +
-    'md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[min(92vw,22rem)] md:max-h-none md:rounded-island md:pb-0',
+    'md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[min(92vw,22rem)] md:max-h-none md:rounded-island md:pb-0 xl:w-[26rem]',
 }
 
 /**

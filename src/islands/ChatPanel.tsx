@@ -206,7 +206,9 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           placeholder="Message"
           aria-label="Message"
           className={cn(
-            'max-h-28 min-h-9 flex-1 resize-none rounded-field bg-sunken px-3 py-2 text-sm',
+            // Cap relative to viewport on phones so a multi-line draft doesn't
+            // crowd out the timeline when the on-screen keyboard is up.
+            'max-h-[20dvh] min-h-9 flex-1 resize-none rounded-field bg-sunken px-3 py-2 text-sm sm:max-h-28',
             'placeholder:text-ink-subtle outline-none focus-visible:ring-2 focus-visible:ring-accent',
           )}
         />
