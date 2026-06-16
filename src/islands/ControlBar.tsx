@@ -657,9 +657,6 @@ function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
         label="Noise suppression"
         className="w-full justify-between"
       />
-      <p className="mt-1 text-xs text-ink-subtle">
-        Removes keyboard, fan, and background noise.
-      </p>
     </div>
   )
 }
