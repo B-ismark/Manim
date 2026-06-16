@@ -196,13 +196,15 @@ export function useBackgroundBlur() {
     setMode('image')
   }, [])
 
+  const customImageRef = useRef<string | null>(null)
   const addCustomImage = useCallback(
     (file: File) => {
       const url = URL.createObjectURL(file)
-      setCustomImage((prev) => {
-        if (prev) URL.revokeObjectURL(prev)
-        return url
-      })
+      // Revoke the previous custom URL via a ref (not inside setState, which can
+      // double-invoke and revoke the live URL).
+      if (customImageRef.current) URL.revokeObjectURL(customImageRef.current)
+      customImageRef.current = url
+      setCustomImage(url)
       setImageSrc(url)
       setMode('image')
     },

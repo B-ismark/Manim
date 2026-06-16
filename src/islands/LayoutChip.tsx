@@ -14,7 +14,14 @@ const LAYOUTS = [
  * this adds a discoverable affordance. Hides with the rest of the chrome.
  * Desktop switches layout from the More menu instead (pointer-fine:hidden here).
  */
-export function LayoutChip({ visible }: { visible: boolean }) {
+export function LayoutChip({
+  visible,
+  onMenuOpenChange,
+}: {
+  visible: boolean
+  /** Pin the auto-hiding chrome while the layout menu is open. */
+  onMenuOpenChange?: (open: boolean) => void
+}) {
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
   const current = LAYOUTS.find((l) => l.value === layout) ?? LAYOUTS[0]
@@ -31,6 +38,7 @@ export function LayoutChip({ visible }: { visible: boolean }) {
       <Popover
         side="bottom"
         align="start"
+        onOpenChange={onMenuOpenChange}
         trigger={
           <StageChip className="pointer-events-auto" aria-label={`Layout: ${current.label}. Tap to change.`}>
             <CurrentIcon />
