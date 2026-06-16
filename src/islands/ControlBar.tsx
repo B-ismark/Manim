@@ -102,9 +102,15 @@ export function ControlBar({
   const [effectsOpen, setEffectsOpen] = useState(false)
   const [endConfirmOpen, setEndConfirmOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [devicesOpen, setDevicesOpen] = useState(false)
   const [moreOpen, setMoreOpen] = useState(false)
   const touch = useIsTouch()
   const { isFullscreen, toggleFullscreen } = useFullscreen()
+  // Screen share needs getDisplayMedia — absent on iOS Safari (and iOS Chrome,
+  // which is WebKit underneath). Hide the control there instead of offering a
+  // button that silently fails.
+  const canScreenShare =
+    typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia)
 
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
@@ -229,16 +235,18 @@ export function ControlBar({
 
       <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Quick actions</p>
       <div className="grid grid-cols-4 gap-1">
-        <GridTile
-          className="pointer-fine:hidden"
-          icon={<ScreenShareIcon />}
-          label={isScreenShareEnabled ? 'Stop share' : 'Share'}
-          active={isScreenShareEnabled}
-          onClick={() => {
-            localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
-            closeMore()
-          }}
-        />
+        {canScreenShare && (
+          <GridTile
+            className="pointer-fine:hidden"
+            icon={<ScreenShareIcon />}
+            label={isScreenShareEnabled ? 'Stop share' : 'Share'}
+            active={isScreenShareEnabled}
+            onClick={() => {
+              localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
+              closeMore()
+            }}
+          />
+        )}
         {/* People lives in the top-right StageTopBar, not here. Layout switching
             lives here on every device now (the inline desktop switcher is gone). */}
         <GridTile
@@ -300,44 +308,45 @@ export function ControlBar({
         )}
       </div>
 
-      <div className="mt-1 border-t border-line pt-1">
-        <Section label="Effects">
+      {/* A short action list (Google model) — heavy controls live in dialogs, so
+          the menu never needs to scroll. */}
+      <div className="mt-1 flex flex-col border-t border-line pt-1">
+        <MenuRow
+          icon={<EffectsIcon />}
+          label="Backgrounds & effects"
+          onClick={() => {
+            setEffectsOpen(true)
+            closeMore()
+          }}
+        />
+        <MenuRow
+          icon={<MicIcon />}
+          label="Audio & video"
+          onClick={() => {
+            setDevicesOpen(true)
+            closeMore()
+          }}
+        />
+        <div className="my-1 border-t border-line" />
+        <MenuRow
+          icon={<SettingsIcon />}
+          label="Settings"
+          onClick={() => {
+            setSettingsOpen(true)
+            closeMore()
+          }}
+        />
+        {/* Keyboard shortcuts — desktop (mouse) only. */}
+        <div className="hidden pointer-fine:block">
           <MenuRow
-            icon={<EffectsIcon />}
-            label="Background effects"
+            icon={<KeyboardIcon />}
+            label="Keyboard shortcuts"
             onClick={() => {
-              setEffectsOpen(true)
+              setShortcutsOpen(true)
               closeMore()
             }}
           />
-        </Section>
-        <Section label="Audio">
-          <NoiseSuppression controls={noise} />
-        </Section>
-        <Section label="Devices">
-          <DeviceSettings />
-        </Section>
-        <Section label="Preferences" last>
-          <MenuRow
-            icon={<SettingsIcon />}
-            label="Settings"
-            onClick={() => {
-              setSettingsOpen(true)
-              closeMore()
-            }}
-          />
-          {/* Keyboard shortcuts — desktop (mouse) only. */}
-          <div className="hidden pointer-fine:block">
-            <MenuRow
-              icon={<KeyboardIcon />}
-              label="Keyboard shortcuts"
-              onClick={() => {
-                setShortcutsOpen(true)
-                closeMore()
-              }}
-            />
-          </div>
-        </Section>
+        </div>
       </div>
     </div>
   )
@@ -389,17 +398,20 @@ export function ControlBar({
           />
         </Tooltip>
 
-        {/* Screen share — desktop (mouse) only; folded into More on touch. */}
-        <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
-          <IconButton
-            label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
-            icon={<ScreenShareIcon />}
-            tone="neutral"
-            active={isScreenShareEnabled}
-            className="hidden pointer-fine:inline-flex"
-            onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
-          />
-        </Tooltip>
+        {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
+            where getDisplayMedia is unavailable (iOS). */}
+        {canScreenShare && (
+          <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
+            <IconButton
+              label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
+              icon={<ScreenShareIcon />}
+              tone="neutral"
+              active={isScreenShareEnabled}
+              className="hidden pointer-fine:inline-flex"
+              onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+            />
+          </Tooltip>
+        )}
 
         {/* Chat — always visible (Tier-1 primary), with unread badge. */}
         <Tooltip content="Chat">
@@ -458,6 +470,19 @@ export function ControlBar({
 
         <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         <EffectsDialog open={effectsOpen} onOpenChange={setEffectsOpen} controls={blur} />
+        <Dialog
+          open={devicesOpen}
+          onOpenChange={setDevicesOpen}
+          title="Audio & video"
+          description="Choose your camera, microphone and speaker, and tune noise suppression."
+        >
+          <div className="flex flex-col gap-4">
+            <DeviceSettings />
+            <div className="border-t border-line pt-1">
+              <NoiseSuppression controls={noise} />
+            </div>
+          </div>
+        </Dialog>
         <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
         <Dialog
           open={endConfirmOpen}
@@ -698,12 +723,3 @@ function GridTile({
   )
 }
 
-/** Labeled group inside the More menu — a hairline-separated section header. */
-function Section({ label, last, children }: { label: string; last?: boolean; children: ReactNode }) {
-  return (
-    <div className={cn(!last && 'mb-1 border-b border-line pb-1')}>
-      <p className="px-2 pb-0.5 pt-1.5 text-xs font-medium text-ink-subtle">{label}</p>
-      {children}
-    </div>
-  )
-}
