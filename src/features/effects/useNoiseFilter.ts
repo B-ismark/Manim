@@ -63,7 +63,13 @@ export function useNoiseFilter() {
         if (cancelled) return
         await procRef.current.setEnabled(true)
       } catch {
-        setEnabled(false)
+        // Krisp couldn't load/init on this device (e.g. WASM/SharedArrayBuffer
+        // unavailable). Don't silently revert a dead toggle — mark it
+        // unsupported so the control honestly says so.
+        if (!cancelled) {
+          setSupported(false)
+          setEnabled(false)
+        }
       }
     }
 
