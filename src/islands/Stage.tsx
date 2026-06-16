@@ -1,9 +1,9 @@
 import { useRef } from 'react'
-import { useTracks, VideoTrack, useParticipants } from '@livekit/components-react'
+import { useTracks, VideoTrack, useParticipants, useLocalParticipant } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Avatar, Button, IconButton } from '@/components/primitives'
-import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicOffIcon, PinIcon } from '@/components/icons'
+import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicIcon, MicOffIcon, PinIcon } from '@/components/icons'
 import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
@@ -184,6 +184,7 @@ function SpeakingBars() {
 function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholder; fill?: boolean }) {
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
+  const { localParticipant } = useLocalParticipant()
   const myUserId = useMyUserId()
   const myOtherDevice = isMyOtherDevice(p, myUserId)
   const isScreen = trackRef.source === Track.Source.ScreenShare
@@ -253,13 +254,47 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         </div>
       )}
 
-      {handRaised && (
-        <div className="absolute left-2 top-2">
+      {/* Top-left cluster — opposing the pin (top-right). Your own tile gets a
+          working mic toggle (reveals on hover/focus like the pin, and stays
+          pinned visible while muted since that's status, not just an
+          affordance). Remote tiles show a muted indicator only — you can't
+          unmute someone else. The hand-raised badge stacks underneath. */}
+      <div
+        className="absolute left-2 top-2 z-10 flex flex-col items-start gap-1.5"
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        {p.isLocal ? (
+          <IconButton
+            size="sm"
+            label={micOff ? 'Unmute microphone' : 'Mute microphone'}
+            icon={micOff ? <MicOffIcon /> : <MicIcon />}
+            tone={micOff ? 'danger' : 'neutral'}
+            active={micOff}
+            className={cn(
+              'transition-opacity duration-[var(--dur-fast)]',
+              micOff
+                ? 'opacity-100'
+                : 'bg-overlay text-white opacity-0 hover:bg-overlay focus-visible:opacity-100 group-hover:opacity-100',
+            )}
+            onClick={() => void localParticipant.setMicrophoneEnabled(micOff)}
+          />
+        ) : (
+          micOff && (
+            <span
+              role="img"
+              aria-label={`${name} is muted`}
+              className="grid size-9 place-items-center rounded-control bg-overlay text-white [&_svg]:size-4"
+            >
+              <MicOffIcon />
+            </span>
+          )
+        )}
+        {handRaised && (
           <span className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-warning">
             <HandIcon className="size-3" /> Hand
           </span>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Flip camera + effects, anchored to your own tile (Snapchat/WhatsApp).
           Touch only. Bottom-right (above the name row) so they clear the

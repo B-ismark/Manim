@@ -7,6 +7,7 @@ import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
+import { prettyRoom } from '@/lib/roomName'
 
 function randomRoom(): string {
   // friendly, readable room code
@@ -106,7 +107,7 @@ function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string) => void }) {
             <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent [&_svg]:size-4">
               <CameraIcon />
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{m.room}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{prettyRoom(m.room)}</span>
             <Button variant="accent" size="sm" onClick={() => onJoin(m.room)}>
               Join
             </Button>

@@ -236,6 +236,7 @@ export function ParticipantsPanel() {
           target: p.identity,
           action: 'mute',
           trackSid: pub.trackSid,
+          source: kind === 'camera' ? 'camera' : 'microphone',
         }).catch(() => {})
       }),
     )
@@ -424,7 +425,7 @@ function ParticipantRow({
     if (!trackSid) return
     if (!token) return toast('Reconnecting — try again in a moment', 'neutral')
     try {
-      await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
+      await moderate({ room, token, target: participant.identity, action: 'mute', trackSid, source: 'microphone' })
       toast(`Muted ${name}`, 'neutral')
     } catch {
       /* surfaced elsewhere; ignore here */
@@ -435,7 +436,7 @@ function ParticipantRow({
     const trackSid = camPub?.trackSid
     if (!trackSid || !token) return
     try {
-      await moderate({ room, token, target: participant.identity, action: 'mute', trackSid })
+      await moderate({ room, token, target: participant.identity, action: 'mute', trackSid, source: 'camera' })
       toast(`Turned off ${name}'s video`, 'neutral')
     } catch {
       /* ignore */

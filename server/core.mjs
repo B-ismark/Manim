@@ -7,7 +7,7 @@
   process.env locally and the Worker's `env` binding in production. Uses only
   Web-standard APIs (global fetch, global crypto) so it runs on Workers.
 */
-import { AccessToken, RoomServiceClient, TokenVerifier } from 'livekit-server-sdk'
+import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -51,6 +51,26 @@ async function listParticipants(roomService, room) {
     return await roomService.listParticipants(room)
   } catch {
     return []
+  }
+}
+
+/**
+ * Resolve a participant's CURRENT published track sid for a given source by
+ * asking the server for live participant info. The client passes a trackSid, but
+ * after an admin-mute + the participant unmuting themselves that client-side sid
+ * goes stale (the publication is re-keyed), so a second mute would target a dead
+ * sid and silently no-op — that's the "can't mute them again" bug. The live sid
+ * from getParticipant is always current. Returns null if it can't be resolved
+ * (caller falls back to the client-supplied sid).
+ */
+async function resolveTrackSid(roomService, room, identity, source) {
+  const want = source === 'camera' ? TrackSource.CAMERA : TrackSource.MICROPHONE
+  try {
+    const p = await roomService.getParticipant(room, identity)
+    const track = (p?.tracks || []).find((t) => t.source === want)
+    return track?.sid ?? null
+  } catch {
+    return null
   }
 }
 
@@ -222,7 +242,7 @@ export async function handleAdmit(env, body, token) {
 
 export async function handleModerate(env, body, token) {
   const { roomService } = services(env)
-  const { room, target, action, trackSid } = body ?? {}
+  const { room, target, action, trackSid, source } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   if (!room || !target || !action) return { status: 400, body: { error: 'missing fields' } }
   const modIdentity = await verifyCaller(env, token, room)
@@ -235,8 +255,11 @@ export async function handleModerate(env, body, token) {
   if (action === 'remove') {
     await roomService.removeParticipant(room, target)
   } else if (action === 'mute') {
-    if (!trackSid) return { status: 400, body: { error: 'trackSid required' } }
-    await roomService.mutePublishedTrack(room, target, trackSid, true)
+    // Prefer the live sid (handles the stale-sid re-mute bug); fall back to the
+    // client-supplied one if we couldn't look it up.
+    const sid = (await resolveTrackSid(roomService, room, target, source)) || trackSid
+    if (!sid) return { status: 400, body: { error: 'trackSid required' } }
+    await roomService.mutePublishedTrack(room, target, sid, true)
   } else {
     return { status: 400, body: { error: 'unknown action' } }
   }

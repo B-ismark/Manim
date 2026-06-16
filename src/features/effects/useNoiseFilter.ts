@@ -42,10 +42,20 @@ export function useNoiseFilter() {
   // **off once Krisp is carrying it** — stacking two suppressors over-processes
   // and muddies soft speech, so we let Krisp be the sole filter when active.
   // applyConstraints flips it live; Safari may reject it — degrade silently.
+  // CRITICAL: applyConstraints REPLACES the whole constraint set, so we must
+  // re-assert echoCancellation + autoGainControl here too. Passing only
+  // noiseSuppression drops them back to device default (off) — which is what
+  // turned every call into an "echo room".
   useEffect(() => {
     const mst = track?.mediaStreamTrack
     if (!mst) return
-    void mst.applyConstraints({ noiseSuppression: enabled && !usingKrisp }).catch(() => {})
+    void mst
+      .applyConstraints({
+        echoCancellation: true,
+        autoGainControl: true,
+        noiseSuppression: enabled && !usingKrisp,
+      })
+      .catch(() => {})
   }, [enabled, usingKrisp, trackSid])
 
   // Krisp = the strongest filter. Engage it when enabled + mic live + supported;

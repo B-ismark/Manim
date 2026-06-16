@@ -44,6 +44,7 @@ import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useCameraToggle } from '@/lib/useCameraToggle'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { cn } from '@/lib/cn'
@@ -98,8 +99,9 @@ export function ControlBar({
   noise,
   docPip,
 }: ControlBarProps) {
-  const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
-    useLocalParticipant()
+  const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant()
+  // Camera toggle goes through the warm-then-release path (fast re-enable).
+  const { isCameraEnabled, toggleCamera } = useCameraToggle()
   const [pipActive, setPipActive] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [effectsOpen, setEffectsOpen] = useState(false)
@@ -184,7 +186,7 @@ export function ControlBar({
           void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
           break
         case 'v':
-          void localParticipant.setCameraEnabled(!isCameraEnabled)
+          void toggleCamera()
           break
         case 'c':
           togglePanel('chat')
@@ -205,7 +207,7 @@ export function ControlBar({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [touch, localParticipant, isMicrophoneEnabled, isCameraEnabled, toggleFullscreen, setPanel, panel])
+  }, [touch, localParticipant, isMicrophoneEnabled, toggleCamera, toggleFullscreen, setPanel, panel])
 
   // Shared "More" body — rendered in a bottom sheet on mobile, a popover on
   // desktop. A reaction strip headlines the sheet; quick toggles fill a grid;
@@ -384,7 +386,11 @@ export function ControlBar({
     <div
       className={cn(
         'pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4',
-        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        'transition-[transform,opacity,padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        // Reflow left of the docked side panel on desktop — same inset the stage
+        // uses (RoomView) — so the bar centres in the visible area instead of
+        // sliding under the chat/people panel.
+        panel && 'md:pr-[23rem] xl:pr-[27rem]',
         !chromeVisible && 'translate-y-[150%] opacity-0',
       )}
     >
@@ -426,7 +432,7 @@ export function ControlBar({
             icon={isCameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
             tone={isCameraEnabled ? 'neutral' : 'danger'}
             active={!isCameraEnabled}
-            onClick={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
+            onClick={() => void toggleCamera()}
           />
         </Tooltip>
 
@@ -674,7 +680,7 @@ function ReactionButton({
 /** Background-noise suppression: a single on/off toggle. When on, the best filter
  *  the device can run is used (AI/Krisp, else the browser's built-in filter). */
 function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
-  const { enabled, setEnabled, usingKrisp } = controls
+  const { enabled, setEnabled } = controls
   return (
     <div className="px-2.5 py-1.5">
       <Toggle
@@ -683,9 +689,6 @@ function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
         label="Noise suppression"
         className="w-full justify-between"
       />
-      {enabled && usingKrisp && (
-        <p className="mt-1 text-xs text-ink-subtle">AI filtering active.</p>
-      )}
     </div>
   )
 }
