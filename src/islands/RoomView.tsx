@@ -16,6 +16,7 @@ import { StageTopBar } from '@/islands/StageTopBar'
 import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
+import { useChatMessages } from '@/features/chat/useChatMessages'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useAdaptiveQuality } from '@/features/effects/useAdaptiveQuality'
@@ -123,6 +124,9 @@ export function RoomView({ onLeave, onConnected }: { onLeave: () => void; onConn
   const room = useRoomContext()
   const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
+  // Chat state is owned here (persists across the side panel opening/closing —
+  // LiveKit chat history is transient and would otherwise reset on remount).
+  const chat = useChatMessages()
   const lowBandwidth = useAppStore((s) => s.prejoin.lowBandwidth)
   const blur = useBackgroundBlur()
   const noise = useNoiseFilter()
@@ -165,6 +169,12 @@ export function RoomView({ onLeave, onConnected }: { onLeave: () => void; onConn
   useEffect(() => {
     if (connState === ConnectionState.Connected) onConnected?.()
   }, [connState, onConnected])
+
+  // Don't mount the full call tree (Stage / tracks / processors) until the room
+  // is actually connected — pre-connect the participant/track APIs aren't ready,
+  // and the RoomRoute overlay is covering anyway. Avoids a half-initialised
+  // render during the connect window.
+  if (connState === ConnectionState.Connecting) return null
 
   return (
     <>
@@ -225,7 +235,7 @@ export function RoomView({ onLeave, onConnected }: { onLeave: () => void; onConn
 
       {panel !== null && (
         <Suspense fallback={null}>
-          <SidePanel />
+          <SidePanel chat={chat} />
         </Suspense>
       )}
 

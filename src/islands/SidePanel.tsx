@@ -1,14 +1,15 @@
 import { Sheet, Tabs, TabPanel } from '@/components/primitives'
 import { ChatIcon, PeopleIcon } from '@/components/icons'
-import { ChatPanel } from '@/islands/ChatPanel'
+import { ChatPanel, type ChatApi } from '@/islands/ChatPanel'
 import { ParticipantsPanel } from '@/islands/ParticipantsPanel'
 import { useRoomStore } from '@/store/useRoomStore'
 
 /**
  * The unified Chat / People panel (Slack model): one docked island / mobile
- * sheet, tabbed. Lazy-loaded — see RoomRoute.
+ * sheet, tabbed. Lazy-loaded — see RoomRoute. Chat state is owned by RoomView
+ * (so it survives this panel closing) and passed in.
  */
-export function SidePanel() {
+export function SidePanel({ chat }: { chat: ChatApi }) {
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
   const value = panel ?? 'chat'
@@ -31,7 +32,7 @@ export function SidePanel() {
         className="min-h-0 flex-1 px-3 pt-1"
       >
         <TabPanel value="chat" className="-mx-3 mt-2 flex min-h-0 flex-col">
-          <ChatPanel />
+          <ChatPanel chat={chat} />
         </TabPanel>
         <TabPanel value="people" className="-mx-3 mt-2 flex min-h-0 flex-col">
           <ParticipantsPanel />

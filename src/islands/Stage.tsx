@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTracks, VideoTrack, useParticipants } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -17,15 +17,46 @@ import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { cn } from '@/lib/cn'
 
+/** Portrait tiles (3:4) show more of each person than a 16:9 letterbox. */
+const TILE_ASPECT = 3 / 4
+
+/** Observe an element's content box (drives the tile-packing math). */
+function useElementSize() {
+  const ref = useRef<HTMLDivElement>(null)
+  const [size, setSize] = useState({ w: 0, h: 0 })
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver((entries) => {
+      const r = entries[0].contentRect
+      setSize({ w: r.width, h: r.height })
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  return [ref, size] as const
+}
+
 /**
- * Modular grid that scales with the participant count instead of stepping through
- * fixed breakpoints. Columns target a roughly square layout (√n) so tiles stay as
- * large as possible. Touch devices cap at 2 columns so portrait tiles stay
- * legible; beyond the cap the grid scrolls rather than shrinking tiles.
+ * Pick the column count that makes portrait (3:4) tiles as LARGE as possible for
+ * the actual stage size — the Meet/Zoom tile-packing approach. Fills the space
+ * and adapts to any screen (tall phone → 1–2 cols; wide desktop → more) instead
+ * of a fixed √n that leaves margins.
  */
-function useGridColumns(n: number, coarse: boolean): number {
-  if (n <= 1) return 1
-  return Math.min(Math.ceil(Math.sqrt(n)), coarse ? 2 : 5)
+function bestColumns(n: number, w: number, h: number): number {
+  if (n <= 1 || w === 0 || h === 0) return 1
+  let best = 1
+  let bestArea = 0
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols)
+    const tileW = Math.min(w / cols, (h / rows) * TILE_ASPECT)
+    const area = tileW * (tileW / TILE_ASPECT)
+    if (area > bestArea) {
+      bestArea = area
+      best = cols
+    }
+  }
+  return best
 }
 
 export function Stage() {
@@ -42,7 +73,8 @@ export function Stage() {
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
 
   const coarse = useIsTouch()
-  const columns = useGridColumns(tracks.length, coarse)
+  const [gridRef, gridSize] = useElementSize()
+  const columns = bestColumns(tracks.length, gridSize.w, gridSize.h)
 
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />
@@ -54,26 +86,16 @@ export function Stage() {
   const phone1on1 = coarse && tracks.length === 2 && !screenShare
 
   if ((layout === 'grid' && !phone1on1) || tracks.length <= 1) {
-    // Many tiles → top-align and scroll so each stays readable; few → center.
-    const many = tracks.length > columns * 3
     return (
       <div
-        className={cn(
-          'grid min-h-0 flex-1 gap-2 p-2 sm:gap-3 sm:p-3',
-          // Touch: equal rows fill the stage so tiles are portrait (object-cover),
-          // edge-to-edge like Patreon/Messenger. Desktop: aspect-video tiles,
-          // centered when few / scrolling when many.
-          coarse ? 'auto-rows-fr' : many ? 'content-start overflow-y-auto' : 'content-center',
-          coarse && many && 'overflow-y-auto',
-        )}
+        ref={gridRef}
+        className="grid min-h-0 flex-1 auto-rows-fr gap-2 overflow-y-auto p-2 sm:gap-3 sm:p-3"
         style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
       >
         {tracks.map((ref) => (
-          <Tile
-            key={`${ref.participant.identity}-${ref.source}`}
-            trackRef={ref}
-            fill={coarse}
-          />
+          // Fill tiles in a grid packed to portrait-ish cells — uses the whole
+          // stage and shows more of each person than a 16:9 letterbox.
+          <Tile key={`${ref.participant.identity}-${ref.source}`} trackRef={ref} fill />
         ))}
       </div>
     )
