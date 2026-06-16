@@ -31,7 +31,8 @@ import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
 import { useAppStore } from '@/store/useAppStore'
-import { HandIcon } from '@/components/icons'
+import { Button } from '@/components/primitives'
+import { HandIcon, PipIcon } from '@/components/icons'
 import { isTouch } from '@/lib/device'
 import { cn } from '@/lib/cn'
 
@@ -205,7 +206,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           panel && 'md:pr-[23rem]',
         )}
       >
-        <Stage />
+        {/* While the call is in the floating PiP window, don't also render the
+            stage here — it would decode every video twice. Show a placeholder
+            with a way back. */}
+        {docPip.active ? <PipPlaceholder onBack={docPip.toggle} /> : <Stage />}
       </div>
 
       <ControlBar
@@ -236,8 +240,30 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       {/* Document PiP: the panel lives in its own OS window but stays in the
           React/LiveKit tree via a portal, so its controls drive this session. */}
-      {docPip.pipWindow && createPortal(<PipPanel onLeave={doLeave} />, docPip.pipWindow.document.body)}
+      {docPip.pipWindow &&
+        createPortal(
+          <PipPanel onLeave={doLeave} onClose={docPip.toggle} />,
+          docPip.pipWindow.document.body,
+        )}
     </>
+  )
+}
+
+/** Shown on the main window while the call is floating in Document PiP. */
+function PipPlaceholder({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-6 text-center">
+      <div className="grid size-16 place-items-center rounded-island bg-sunken text-ink-muted [&_svg]:size-7">
+        <PipIcon />
+      </div>
+      <div>
+        <p className="text-sm font-medium">Your call is in picture-in-picture</p>
+        <p className="mt-1 text-xs text-ink-muted">It's playing in the floating window.</p>
+      </div>
+      <Button variant="accent" onClick={onBack}>
+        Bring back to window
+      </Button>
+    </div>
   )
 }
 

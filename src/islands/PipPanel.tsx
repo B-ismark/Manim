@@ -6,7 +6,7 @@ import {
 } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import { Avatar, IconButton } from '@/components/primitives'
-import { CameraIcon, CameraOffIcon, LeaveIcon, MicIcon, MicOffIcon } from '@/components/icons'
+import { CameraIcon, CameraOffIcon, ExitFullscreenIcon, LeaveIcon, MicIcon, MicOffIcon } from '@/components/icons'
 import { focusTrack, hasVideo, isLocalCam } from '@/lib/focusTrack'
 import { useRoomStore } from '@/store/useRoomStore'
 import { cn } from '@/lib/cn'
@@ -16,7 +16,7 @@ import { cn } from '@/lib/cn'
  * speaker/screen-share fills the frame, with live mic/camera/leave controls —
  * so the call stays usable while the main tab is hidden (Meet/Teams style).
  */
-export function PipPanel({ onLeave }: { onLeave: () => void }) {
+export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: () => void }) {
   const participants = useParticipants()
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
   const pinned = useRoomStore((s) => s.pinned)
@@ -79,6 +79,15 @@ export function PipPanel({ onLeave }: { onLeave: () => void }) {
           active={!isCameraEnabled}
           onClick={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
         />
+        {onClose && (
+          <IconButton
+            size="sm"
+            label="Back to window"
+            icon={<ExitFullscreenIcon />}
+            tone="neutral"
+            onClick={onClose}
+          />
+        )}
         <IconButton
           size="sm"
           label="Leave call"
