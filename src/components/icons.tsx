@@ -271,6 +271,12 @@ export const EditIcon = (p: P) => (
   </svg>
 )
 
+export const ReplyIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9 17l-5-5 5-5M4 12h11a5 5 0 0 1 5 5v2" />
+  </svg>
+)
+
 export const SoundOnIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 9v6h4l5 4V5L8 9H4z" />

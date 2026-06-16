@@ -1,10 +1,47 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useChat, useLocalParticipant, useRoomContext } from '@livekit/components-react'
+import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@livekit/components-react'
 import type { ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
+/** Pin broadcast topic — pins are shared across the room (Slack model). */
+const PIN_TOPIC = 'mn.pin'
+
+/** A quoted message a reply points at (denormalized so it renders without history). */
+export interface ReplyRef {
+  name: string
+  text: string
+}
+
+/** A pinned message snapshot (shared via PIN_TOPIC). */
+export interface PinnedMessage {
+  id: string
+  name: string
+  text: string
+  timestamp: number
+}
+
+// Reply envelope: encoded inline in the chat text (LiveKit useChat only carries a
+// string), parsed back on receive so every client renders the quote. Control
+// chars users won't type delimit it.
+const REPLY_START = ''
+const REPLY_END = ''
+function encodeText(text: string, replyTo?: ReplyRef): string {
+  if (!replyTo) return text
+  return REPLY_START + JSON.stringify({ n: replyTo.name, t: replyTo.text.slice(0, 160) }) + REPLY_END + text
+}
+function decodeText(raw: string): { text: string; replyTo?: ReplyRef } {
+  if (!raw.startsWith(REPLY_START)) return { text: raw }
+  const end = raw.indexOf(REPLY_END)
+  if (end < 0) return { text: raw }
+  try {
+    const meta = JSON.parse(raw.slice(REPLY_START.length, end)) as { n?: string; t?: string }
+    return { text: raw.slice(end + 1), replyTo: { name: meta.n ?? '', text: meta.t ?? '' } }
+  } catch {
+    return { text: raw }
+  }
+}
 
 export interface TextItem {
   kind: 'text'
@@ -14,6 +51,7 @@ export interface TextItem {
   fromName: string
   isLocal: boolean
   text: string
+  replyTo?: ReplyRef
 }
 
 export interface FileItem {
@@ -102,17 +140,49 @@ export function useChatMessages() {
 
   const items = useMemo<ChatItem[]>(() => {
     const localId = localParticipant.identity
-    const text: TextItem[] = chatMessages.map((m) => ({
-      kind: 'text',
-      id: m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`,
-      timestamp: m.timestamp,
-      fromIdentity: m.from?.identity ?? '',
-      fromName: displayName(m.from?.identity ?? '', m.from?.name),
-      isLocal: m.from?.identity === localId,
-      text: m.message,
-    }))
+    const text: TextItem[] = chatMessages.map((m) => {
+      const decoded = decodeText(m.message)
+      return {
+        kind: 'text',
+        id: m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`,
+        timestamp: m.timestamp,
+        fromIdentity: m.from?.identity ?? '',
+        fromName: displayName(m.from?.identity ?? '', m.from?.name),
+        isLocal: m.from?.identity === localId,
+        text: decoded.text,
+        replyTo: decoded.replyTo,
+      }
+    })
     return [...text, ...files].sort((a, b) => a.timestamp - b.timestamp)
   }, [chatMessages, files, localParticipant.identity])
+
+  // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
+  // pinned bar matches for everyone. Ephemeral, like the rest of chat.
+  const [pinned, setPinned] = useState<PinnedMessage[]>([])
+  const { send: sendPin } = useDataChannel(PIN_TOPIC, (msg) => {
+    try {
+      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as PinnedMessage & { pinned: boolean }
+      setPinned((prev) => {
+        if (!d.pinned) return prev.filter((p) => p.id !== d.id)
+        if (prev.some((p) => p.id === d.id)) return prev
+        return [...prev, { id: d.id, name: d.name, text: d.text, timestamp: d.timestamp }]
+      })
+    } catch {
+      /* malformed — ignore */
+    }
+  })
+
+  const togglePin = useCallback(
+    (item: ChatItem) => {
+      const isPinned = pinned.some((p) => p.id === item.id)
+      const text = item.kind === 'text' ? item.text : item.fileName
+      const entry: PinnedMessage = { id: item.id, name: item.fromName, text, timestamp: item.timestamp }
+      setPinned((prev) => (isPinned ? prev.filter((p) => p.id !== item.id) : [...prev, entry]))
+      const payload = new TextEncoder().encode(JSON.stringify({ ...entry, pinned: !isPinned }))
+      void sendPin(payload, { reliable: true, topic: PIN_TOPIC })
+    },
+    [pinned, sendPin],
+  )
 
   // Track remote-message count → bump unread badge while chat is closed.
   const prevRemote = useRef(0)
@@ -125,9 +195,9 @@ export function useChatMessages() {
   }, [items, bumpUnread])
 
   const sendText = useCallback(
-    (text: string) => {
+    (text: string, replyTo?: ReplyRef) => {
       const trimmed = text.trim()
-      if (trimmed) void sendChatText(trimmed)
+      if (trimmed) void sendChatText(encodeText(trimmed, replyTo))
     },
     [sendChatText],
   )
@@ -163,5 +233,5 @@ export function useChatMessages() {
     [localParticipant],
   )
 
-  return { items, sendText, sendFile, isSending }
+  return { items, sendText, sendFile, isSending, pinned, togglePin }
 }
