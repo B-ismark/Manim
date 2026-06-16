@@ -8,6 +8,32 @@ powers accounts + presence; Resend (optional) sends email invites.
 Config lives in `wrangler.toml` (Worker entry + `[assets]` for the built site +
 `nodejs_compat`). Deploy runs `npx wrangler deploy`.
 
+## 0. Deploy flow — READ THIS FIRST (how to actually ship)
+
+Cloudflare Workers Builds is git-connected with **two** commands:
+- **Production branch = `main`** → runs **`npx wrangler deploy`** → goes **live**.
+- **Any other branch** → runs **`npx wrangler versions upload`** → creates a
+  **preview** version + a `<branch>-manim.i-ai.workers.dev` URL, but **does NOT
+  touch production**.
+
+So **to ship: merge to `main` and push.** Work pushed to a feature branch builds
+and previews but will *never* appear on the live URL — that mismatch caused real
+confusion once. Develop on `main` (or merge promptly); don't sit on long-lived
+feature branches expecting production to update.
+
+**Never `wrangler deploy` from a dev machine.** The `VITE_*` values
+(`VITE_LIVEKIT_URL`, Supabase, Giphy) live **only** in Cloudflare → Settings →
+Build → Variables. A local `.env` is intentionally empty, so a local build bakes
+an empty `VITE_LIVEKIT_URL`; `LIVEKIT_URL` then folds to falsy, the entire
+in-call UI becomes dead code and is tree-shaken out, and you ship a bundle that
+builds fine but can't run a call. `vite.config.ts` now **hard-fails** a build
+with an empty `VITE_LIVEKIT_URL` to stop this. Let Cloudflare build.
+
+If a good version was uploaded but isn't live (e.g. built on a branch), promote
+it without rebuilding: `npx wrangler versions deploy <version-id>@100% --yes`
+(or the dashboard → Deployments → Promote). Roll back a bad deploy with
+`npx wrangler rollback <version-id>`.
+
 ## 1. Push is already set up
 The repo lives at `github.com/B-ismark/Manim`. Cloudflare builds from it.
 
