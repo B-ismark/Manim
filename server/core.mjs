@@ -167,12 +167,19 @@ export async function handleKnock(env, body) {
   const participants = await listParticipants(roomService, room)
   const alreadyIn = participants.some((p) => p.identity === identity)
   const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
+  const queue = Array.isArray(flags.queue) ? flags.queue : []
+  // Already admitted this session? Someone the host let in, who then left, should
+  // walk straight back in rather than re-queueing in the lobby (the "can't rejoin
+  // after being allowed in" bug). Match on the stable name+device identity.
+  const wasApproved = queue.some(
+    (e) => e.name === name && (e.deviceId || '') === (deviceId || '') && e.status === 'approved',
+  )
 
   if (!isHost && !alreadyIn && flags.locked) {
     return { status: 403, body: { error: 'This room is locked by the host.' } }
   }
 
-  if (isHost || alreadyIn || !flags.waiting) {
+  if (isHost || alreadyIn || !flags.waiting || wasApproved) {
     // Record the authoritative host identity ONCE (only when unclaimed), server-side,
     // so it can't be forged via participant metadata (see ensureHost) and a second
     // simultaneous first-join can't overwrite it. At first-join the room doesn't
@@ -194,7 +201,6 @@ export async function handleKnock(env, body) {
   }
 
   const requestId = crypto.randomUUID()
-  const queue = Array.isArray(flags.queue) ? flags.queue : []
   queue.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending' })
   await mergeRoomFlags(roomService, room, { queue: queue.slice(-50) })
   return { status: 200, body: { pending: true, requestId } }

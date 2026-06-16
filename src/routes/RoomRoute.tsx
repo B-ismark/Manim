@@ -10,6 +10,27 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
 import { roomOptions } from '@/lib/livekit'
 
+/**
+ * Turn a raw LiveKit connection-error / disconnect string into something a user
+ * can act on. The headline offender was "Client initiated disconnect" surfacing
+ * verbatim when a mobile join was torn down (e.g. a duplicate session or the tab
+ * backgrounding mid-connect) — meaningless to the user. Map the known ones; pass
+ * anything genuinely unexpected through unchanged.
+ */
+function friendlyJoinError(raw: string): string {
+  const m = raw.toLowerCase()
+  if (m.includes('client initiated') || m.includes('duplicate identity')) {
+    return 'Connection closed — tap Join to reconnect.'
+  }
+  if (m.includes('timeout') || m.includes('could not establish') || m.includes('failed to connect')) {
+    return 'Couldn’t reach the call. Check your connection and tap Join to retry.'
+  }
+  if (m.includes('permission') || m.includes('notallowed') || m.includes('denied')) {
+    return 'Allow camera and microphone access, then tap Join.'
+  }
+  return raw
+}
+
 export function RoomRoute() {
   const { room = '' } = useParams()
   const navigate = useNavigate()
@@ -132,7 +153,7 @@ export function RoomRoute() {
         options={options}
         onDisconnected={leave}
         onError={(e) => {
-          setError(e.message)
+          setError(friendlyJoinError(e.message))
           setToken(null)
           setConnecting(false)
         }}

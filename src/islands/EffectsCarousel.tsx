@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { BanIcon, EffectsIcon } from '@/components/icons'
 import { IconButton } from '@/components/primitives'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
@@ -8,9 +7,9 @@ import { cn } from '@/lib/cn'
 /**
  * Snapchat-style lens carousel: a horizontal strip of circular effect thumbnails
  * that sits just above the control bar and applies live on tap. Opened from the
- * Effects button on the self-view tile. The full controls (blur strength, high
- * quality, custom upload preview) still live in the Effects dialog under More —
- * this is the quick, tactile picker. Mobile-first; hides with the chrome.
+ * Effects button on the self-view tile. Blur strength + high quality live in the
+ * Effects dialog under More — this is the quick, tactile picker. (Image
+ * backgrounds were removed; they kept breaking the feed.) Hides with the chrome.
  */
 export function EffectsCarousel({
   controls,
@@ -20,13 +19,10 @@ export function EffectsCarousel({
   /** chromeVisible && the carousel is toggled open. */
   visible: boolean
 }) {
-  const { supported, mode, selectedImage, presets, customImage, useNone, useBlur, selectImage, addCustomImage } =
-    controls
+  const { supported, mode, useNone, useBlur } = controls
   const closeCarousel = useEffectsUi((s) => s.closeCarousel)
-  const fileRef = useRef<HTMLInputElement>(null)
 
   const open = visible && supported
-  const imageSelected = (src: string) => mode === 'image' && selectedImage === src
 
   return (
     <div
@@ -57,37 +53,6 @@ export function EffectsCarousel({
         <Lens label="Blur" selected={mode === 'blur'} onClick={useBlur}>
           <span className="size-full bg-gradient-to-br from-ink-subtle to-line-strong blur-[1.5px]" />
         </Lens>
-        {presets.map((p) => (
-          <Lens key={p.id} label={p.label} selected={imageSelected(p.src)} onClick={() => selectImage(p.src)}>
-            <span className="size-full bg-cover bg-center" style={{ backgroundImage: `url(${p.src})` }} />
-          </Lens>
-        ))}
-        {customImage && (
-          <Lens label="Custom" selected={imageSelected(customImage)} onClick={() => selectImage(customImage)}>
-            <span className="size-full bg-cover bg-center" style={{ backgroundImage: `url(${customImage})` }} />
-          </Lens>
-        )}
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          aria-label="Upload a background image"
-          className="grid size-12 shrink-0 place-items-center rounded-full border border-dashed border-white/40 text-white/80 hover:bg-white/10 [&_svg]:size-5"
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-            <path d="M12 5v14M5 12h14" />
-          </svg>
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) addCustomImage(file)
-            e.target.value = ''
-          }}
-        />
 
         <span className="mx-0.5 h-8 w-px shrink-0 bg-white/20" aria-hidden />
         <IconButton

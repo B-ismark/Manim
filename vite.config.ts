@@ -45,6 +45,13 @@ export default defineConfig(({ command, mode }) => {
     },
     server: {
       port: 5173,
+      // Cross-origin isolation so SharedArrayBuffer exists in dev too — the Krisp
+      // AI noise filter needs it (prod sets the same headers in worker/index.js).
+      // `credentialless` keeps cross-origin assets (Giphy, MediaPipe wasm) working.
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'credentialless',
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:3001',

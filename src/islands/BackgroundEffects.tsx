@@ -1,4 +1,3 @@
-import { useRef } from 'react'
 import { useLocalParticipant, VideoTrack } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -27,8 +26,8 @@ export function EffectsDialog({
     <Dialog
       open={open}
       onOpenChange={onOpenChange}
-      title="Background effects"
-      description="Blur or replace your background. Changes preview live before they apply."
+      title="Background blur"
+      description="Blur your background. Changes preview live before they apply."
     >
       <BackgroundEffects controls={controls} previewSize="lg" />
     </Dialog>
@@ -36,9 +35,9 @@ export function EffectsDialog({
 }
 
 /**
- * Background effects picker: none / blur / preset images / custom upload —
- * a thumbnail strip (the Teams/Meet convention), with a blur-strength slider
- * and a high-quality toggle when blur is active.
+ * Background blur picker: none / blur, with a blur-strength slider and a
+ * high-quality toggle when blur is active. (Image replacement was removed — it
+ * kept breaking the live feed; blur is the reliable effect.)
  */
 export function BackgroundEffects({
   controls,
@@ -57,15 +56,9 @@ export function BackgroundEffects({
     quality,
     setQuality,
     allowHighQuality,
-    selectedImage,
-    presets,
-    customImage,
     useNone,
     useBlur,
-    selectImage,
-    addCustomImage,
   } = controls
-  const fileRef = useRef<HTMLInputElement>(null)
   const { localParticipant, isCameraEnabled } = useLocalParticipant()
 
   if (!supported) {
@@ -77,7 +70,6 @@ export function BackgroundEffects({
   }
 
   const lowPower = isLowPowerDevice()
-  const imageSelected = (src: string) => mode === 'image' && selectedImage === src
   const selfFacing = useRoomStore((s) => s.selfFacing)
   const camPub = localParticipant.getTrackPublication(Track.Source.Camera)
   const previewRef = camPub
@@ -128,54 +120,6 @@ export function BackgroundEffects({
           {/* A frosted preview — evokes blur without running the processor. */}
           <span className="size-full bg-gradient-to-br from-ink-subtle to-line-strong blur-[1.5px]" />
         </Thumb>
-
-        {presets.map((p) => (
-          <Thumb
-            key={p.id}
-            label={p.label}
-            selected={imageSelected(p.src)}
-            onClick={() => selectImage(p.src)}
-          >
-            <span
-              className="size-full bg-cover bg-center"
-              style={{ backgroundImage: `url(${p.src})` }}
-            />
-          </Thumb>
-        ))}
-
-        {customImage && (
-          <Thumb label="Custom" selected={imageSelected(customImage)} onClick={() => selectImage(customImage)}>
-            <span
-              className="size-full bg-cover bg-center"
-              style={{ backgroundImage: `url(${customImage})` }}
-            />
-          </Thumb>
-        )}
-
-        <button
-          type="button"
-          onClick={() => fileRef.current?.click()}
-          aria-label="Upload a background image"
-          className="flex flex-col items-center gap-1"
-        >
-          <span className="grid size-14 place-items-center rounded-tile border border-dashed border-line-strong text-ink-muted hover:bg-sunken [&_svg]:size-5">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <path d="M12 5v14M5 12h14" />
-            </svg>
-          </span>
-          <span className="text-[11px] leading-none text-ink-muted">Upload</span>
-        </button>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0]
-            if (file) addCustomImage(file)
-            e.target.value = ''
-          }}
-        />
       </div>
 
       {lowPower && (

@@ -1,9 +1,18 @@
-import { useRef } from 'react'
-import { useTracks, VideoTrack, useParticipants, useLocalParticipant } from '@livekit/components-react'
+import { useMemo, useRef } from 'react'
+import {
+  useTracks,
+  VideoTrack,
+  useParticipants,
+  useLocalParticipant,
+  useRoomContext,
+  useRoomInfo,
+} from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Avatar, Button, IconButton } from '@/components/primitives'
-import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicIcon, MicOffIcon, PinIcon } from '@/components/icons'
+import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicOffIcon, PinIcon } from '@/components/icons'
+import { moderate } from '@/lib/orchestrator'
+import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
@@ -185,7 +194,32 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
   const { localParticipant } = useLocalParticipant()
+  const room = useRoomContext()
+  const { metadata: roomMetadata } = useRoomInfo()
+  const roomToken = useAppStore((s) => s.roomToken)
   const myUserId = useMyUserId()
+
+  // Am I allowed to moderate? (primary host or co-host — same rule the server
+  // re-checks.) Drives the per-tile mute affordance on *other* people's tiles.
+  const canModerate = useMemo(() => {
+    try {
+      const f = JSON.parse(roomMetadata || '{}')
+      const me = localParticipant.identity
+      return f.hostId === me || (Array.isArray(f.coHosts) && f.coHosts.includes(me))
+    } catch {
+      return false
+    }
+  }, [roomMetadata, localParticipant.identity])
+
+  async function forceMute() {
+    if (!roomToken) return
+    const trackSid = p.getTrackPublication(Track.Source.Microphone)?.trackSid
+    try {
+      await moderate({ room: room.name, token: roomToken, target: p.identity, action: 'mute', trackSid, source: 'microphone' })
+    } catch {
+      /* surfaced elsewhere */
+    }
+  }
   const myOtherDevice = isMyOtherDevice(p, myUserId)
   const isScreen = trackRef.source === Track.Source.ScreenShare
   // For the local participant we are never "subscribed" to our own track, so
@@ -254,40 +288,24 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         </div>
       )}
 
-      {/* Top-left cluster — opposing the pin (top-right). Your own tile gets a
-          working mic toggle (reveals on hover/focus like the pin, and stays
-          pinned visible while muted since that's status, not just an
-          affordance). Remote tiles show a muted indicator only — you can't
-          unmute someone else. The hand-raised badge stacks underneath. */}
+      {/* Top-left cluster — opposing the pin (top-right). On *other* people's
+          tiles a host gets a quick mute button (hover/focus reveal, like the
+          pin). You can't unmute someone else (LiveKit/privacy), so once they're
+          muted the affordance drops and the name-row mic-off icon carries the
+          status. Mute yourself from the bottom control bar. Hand badge stacks
+          underneath. */}
       <div
         className="absolute left-2 top-2 z-10 flex flex-col items-start gap-1.5"
         onPointerDown={(e) => e.stopPropagation()}
       >
-        {p.isLocal ? (
+        {!p.isLocal && canModerate && !micOff && (
           <IconButton
             size="sm"
-            label={micOff ? 'Unmute microphone' : 'Mute microphone'}
-            icon={micOff ? <MicOffIcon /> : <MicIcon />}
-            tone={micOff ? 'danger' : 'neutral'}
-            active={micOff}
-            className={cn(
-              'transition-opacity duration-[var(--dur-fast)]',
-              micOff
-                ? 'opacity-100'
-                : 'bg-overlay text-white opacity-0 hover:bg-overlay focus-visible:opacity-100 group-hover:opacity-100',
-            )}
-            onClick={() => void localParticipant.setMicrophoneEnabled(micOff)}
+            label={`Mute ${name}`}
+            icon={<MicOffIcon />}
+            className="bg-overlay text-white opacity-0 transition-opacity duration-[var(--dur-fast)] hover:bg-overlay focus-visible:opacity-100 group-hover:opacity-100"
+            onClick={() => void forceMute()}
           />
-        ) : (
-          micOff && (
-            <span
-              role="img"
-              aria-label={`${name} is muted`}
-              className="grid size-9 place-items-center rounded-control bg-overlay text-white [&_svg]:size-4"
-            >
-              <MicOffIcon />
-            </span>
-          )
         )}
         {handRaised && (
           <span className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-warning">
