@@ -671,16 +671,10 @@ function ReactionButton({
   )
 }
 
-/** Tier-2 audio: AI background-noise suppression toggle (Krisp). */
+/** Background-noise suppression: a single on/off toggle. When on, the best filter
+ *  the device can run is used (AI/Krisp, else the browser's built-in filter). */
 function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
-  const { supported, enabled, setEnabled } = controls
-  if (!supported) {
-    return (
-      <p className="px-2.5 py-2 text-xs text-ink-subtle">
-        Noise suppression isn't supported on this browser.
-      </p>
-    )
-  }
+  const { enabled, setEnabled, usingKrisp } = controls
   return (
     <div className="px-2.5 py-1.5">
       <Toggle
@@ -689,6 +683,9 @@ function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
         label="Noise suppression"
         className="w-full justify-between"
       />
+      {enabled && usingKrisp && (
+        <p className="mt-1 text-xs text-ink-subtle">AI filtering active.</p>
+      )}
     </div>
   )
 }

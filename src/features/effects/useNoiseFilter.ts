@@ -6,34 +6,57 @@ type KrispModule = typeof import('@livekit/krisp-noise-filter')
 type KrispProcessor = ReturnType<KrispModule['KrispNoiseFilter']>
 
 /**
- * AI background-noise suppression via @livekit/krisp-noise-filter.
+ * Background-noise suppression: a single on/off control that always engages the
+ * best filter the device can run.
  *
- * The browser's own noiseSuppression (set in roomOptions audioCaptureDefaults) is
- * the always-on baseline. Krisp is the stronger, opt-in filter — it strips
- * keyboard, fans, background voices, etc. that the native filter leaves through.
+ *  - **on**  → @livekit/krisp-noise-filter (AI) — strips keyboard, fans,
+ *              background voices. If Krisp can't load/init on this device, we
+ *              silently fall back to the browser's built-in WebRTC filter.
+ *  - **off** → both disabled (browser constraint flipped off via applyConstraints).
  *
- * The model is a heavy WASM bundle, so it is **dynamically imported only when the
- * user first turns suppression on** — keeping the room bundle light (mirrors
- * useBackgroundBlur). Owned by RoomView so it persists across menu open/close.
+ * Krisp is a heavy WASM bundle, dynamically imported only when first turned on.
+ * It's also **suspended while the mic is muted** so we only pay its CPU cost
+ * while the user is actually transmitting. The expected weight when speaking is
+ * an accepted tradeoff for the cleaner audio.
+ *
+ * Owned by RoomView so it persists across menu open/close.
  */
 export function useNoiseFilter() {
   const { localParticipant } = useLocalParticipant()
 
-  // Optimistic: show the control; verified against the module on first enable.
-  const [supported, setSupported] = useState(true)
-  const [enabled, setEnabled] = useState(false)
+  // Default on — matches the previous always-on browser baseline.
+  const [enabled, setEnabled] = useState(true)
+  // True once Krisp is the active engine (vs the browser-native fallback).
+  const [usingKrisp, setUsingKrisp] = useState(false)
   const procRef = useRef<KrispProcessor | null>(null)
   const modRef = useRef<KrispModule | null>(null)
+  // Krisp proven unavailable on this device — don't retry, stay on the fallback.
+  const krispFailedRef = useRef(false)
 
   const micPub = localParticipant.getTrackPublication(Track.Source.Microphone)
   const track = micPub?.track as LocalAudioTrack | undefined
   const trackSid = micPub?.trackSid
+  const muted = micPub?.isMuted ?? false
 
+  // Browser-native noiseSuppression: the fallback filter, on when enabled but
+  // **off once Krisp is carrying it** — stacking two suppressors over-processes
+  // and muddies soft speech, so we let Krisp be the sole filter when active.
+  // applyConstraints flips it live; Safari may reject it — degrade silently.
+  useEffect(() => {
+    const mst = track?.mediaStreamTrack
+    if (!mst) return
+    void mst.applyConstraints({ noiseSuppression: enabled && !usingKrisp }).catch(() => {})
+  }, [enabled, usingKrisp, trackSid])
+
+  // Krisp = the strongest filter. Engage it when enabled + mic live + supported;
+  // suspend it while muted to reclaim CPU; fall back to the browser filter if it
+  // can't load/init.
   useEffect(() => {
     let cancelled = false
 
     async function sync() {
-      if (!enabled) {
+      const wantKrisp = enabled && !muted && !krispFailedRef.current
+      if (!wantKrisp) {
         if (procRef.current) {
           try {
             await procRef.current.setEnabled(false)
@@ -49,12 +72,12 @@ export function useNoiseFilter() {
         const mod = modRef.current
         if (cancelled) return
         if (!mod.isKrispNoiseFilterSupported()) {
-          setSupported(false)
-          setEnabled(false)
+          // Browser-native filter (set above) carries it from here.
+          krispFailedRef.current = true
+          setUsingKrisp(false)
           return
         }
         if (!procRef.current) procRef.current = mod.KrispNoiseFilter()
-        // Attach to the current mic track (a no-op if already attached) and turn on.
         try {
           await track.setProcessor(procRef.current)
         } catch {
@@ -62,13 +85,13 @@ export function useNoiseFilter() {
         }
         if (cancelled) return
         await procRef.current.setEnabled(true)
+        if (!cancelled) setUsingKrisp(true)
       } catch {
-        // Krisp couldn't load/init on this device (e.g. WASM/SharedArrayBuffer
-        // unavailable). Don't silently revert a dead toggle — mark it
-        // unsupported so the control honestly says so.
+        // WASM/SharedArrayBuffer unavailable, etc. Fall back to the browser tier
+        // rather than leaving suppression dead.
         if (!cancelled) {
-          setSupported(false)
-          setEnabled(false)
+          krispFailedRef.current = true
+          setUsingKrisp(false)
         }
       }
     }
@@ -77,11 +100,11 @@ export function useNoiseFilter() {
     return () => {
       cancelled = true
     }
-  }, [enabled, trackSid])
+  }, [enabled, muted, trackSid])
 
   const toggle = useCallback(() => setEnabled((v) => !v), [])
 
-  return { supported, enabled, setEnabled, toggle }
+  return { enabled, setEnabled, toggle, usingKrisp }
 }
 
 export type NoiseFilterControls = ReturnType<typeof useNoiseFilter>
