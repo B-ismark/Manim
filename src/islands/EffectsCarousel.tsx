@@ -40,7 +40,11 @@ export function EffectsCarousel({
     >
       <div
         className={cn(
-          'pointer-events-auto flex max-w-full items-center gap-2 overflow-x-auto rounded-control bg-overlay px-2 py-2 backdrop-blur',
+          'flex max-w-full items-center gap-2 overflow-x-auto rounded-control bg-overlay px-2 py-2 backdrop-blur',
+          // Only catch clicks when open — it stays in place (opacity-0) when
+          // closed, which otherwise left invisible-but-clickable lenses over the
+          // control bar.
+          open ? 'pointer-events-auto' : 'pointer-events-none',
           // Hide the scrollbar — the strip scrolls by drag/swipe like Snapchat.
           '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
         )}

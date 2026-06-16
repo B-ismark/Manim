@@ -26,7 +26,7 @@ export function StageTopBar({ visible }: { visible: boolean }) {
       className={cn(
         'fixed right-4 top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 flex items-center gap-2',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        !visible && '-translate-y-[150%] opacity-0',
+        !visible && 'pointer-events-none -translate-y-[150%] opacity-0',
       )}
     >
       {isFullscreen && (

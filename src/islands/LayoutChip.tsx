@@ -40,7 +40,10 @@ export function LayoutChip({
         align="start"
         onOpenChange={onMenuOpenChange}
         trigger={
-          <StageChip className="pointer-events-auto" aria-label={`Layout: ${current.label}. Tap to change.`}>
+          <StageChip
+            className={cn('pointer-events-auto', !visible && 'pointer-events-none')}
+            aria-label={`Layout: ${current.label}. Tap to change.`}
+          >
             <CurrentIcon />
             {current.label}
           </StageChip>
