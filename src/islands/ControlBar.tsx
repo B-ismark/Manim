@@ -171,6 +171,8 @@ export function ControlBar({
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
       const el = e.target as HTMLElement | null
       if (el?.closest('input, textarea, [contenteditable="true"], select')) return
+      // Don't hijack keys while a dialog/menu is open (e.g. the shortcuts dialog).
+      if (document.querySelector('[role="dialog"], [role="menu"]')) return
       switch (e.key.toLowerCase()) {
         case 'm':
           void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)

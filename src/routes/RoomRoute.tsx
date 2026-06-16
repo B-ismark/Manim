@@ -79,6 +79,7 @@ export function RoomRoute() {
         setWaitingId(null)
       } else if (s.status === 'expired') {
         setWaitingId(null)
+        setError(null)
       }
     }, 2000)
     return () => {
@@ -101,6 +102,7 @@ export function RoomRoute() {
       setToken(null)
       setConnecting(false)
       setWaitingId(null)
+      setError(null)
     }
     if (autojoin && displayName && joinedFor.current !== room) {
       joinedFor.current = room
