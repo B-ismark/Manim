@@ -368,7 +368,18 @@ function MessageRow({
           <div className="mt-0.5 flex flex-col gap-1.5">
             <textarea
               value={editDraft}
-              onChange={(e) => setEditDraft(e.target.value)}
+              ref={(el) => {
+                // Size to content on open so the whole message is visible.
+                if (el) {
+                  el.style.height = 'auto'
+                  el.style.height = `${el.scrollHeight}px`
+                }
+              }}
+              onChange={(e) => {
+                setEditDraft(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = `${e.target.scrollHeight}px`
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault()
@@ -381,7 +392,7 @@ function MessageRow({
               rows={1}
               autoFocus
               aria-label="Edit message"
-              className="max-h-28 min-h-9 w-full resize-none rounded-field bg-sunken px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-field bg-sunken px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
             />
             <div className="flex items-center gap-2 text-xs">
               <button type="button" onClick={saveEdit} className="font-medium text-accent hover:underline">
@@ -406,8 +417,14 @@ function MessageRow({
         <ReactionChips reactions={reactions} myIdentity={myIdentity} onReact={onReact} />
       </div>
 
-      {/* Hover (desktop) / always-on (touch) message actions. */}
-      <div className="absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+      {/* Hover (desktop) / always-on (touch) message actions. Hidden while
+          editing so the toolbar never overlaps the edit field. */}
+      <div
+        className={cn(
+          'absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
+          editing && 'hidden',
+        )}
+      >
         {narrow ? (
           <>
             <IconButton
