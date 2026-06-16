@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
-import { isMobile } from '@/lib/device'
+import { isLowPowerDevice } from '@/lib/device'
 
 const DEFAULT_RADIUS = 12
 
@@ -71,10 +71,13 @@ function buildPresets(): BackgroundPreset[] {
 export function useBackgroundBlur() {
   const { localParticipant } = useLocalParticipant()
 
-  // The GPU "high" delegate runs hot — fine on a plugged-in desktop, but on phones
-  // it spikes battery/thermals (and the camera is already capped to 360p, so the
-  // edge gain is marginal). Hide it on mobile and pin quality to standard there.
-  const allowHighQuality = !isMobile()
+  // The GPU "high" delegate gives sharp, low-flicker edges but runs hot. Now that
+  // the camera captures at 720p+ on phones, the standard (CPU/auto) delegate
+  // segmenting that larger frame is where the "terrible blur" came from — soft,
+  // crawling edges. Allow GPU on any device that can take it (gate only the truly
+  // low-power ones: ≤4 cores / ≤4GB), and default to it so blur looks good
+  // out-of-the-box. Construction failure still falls back to standard.
+  const allowHighQuality = !isLowPowerDevice()
 
   // Optimistic: show the controls; verified against the module on first enable.
   const [supported, setSupported] = useState(true)
@@ -83,7 +86,12 @@ export function useBackgroundBlur() {
   const [busy, setBusy] = useState(false)
   const [mode, setMode] = useState<EffectMode>('none')
   const [radius, setRadius] = useState(DEFAULT_RADIUS)
-  const [quality, setQuality] = useState<BlurQuality>('standard')
+  // Default to the GPU delegate where the device can take it — that's the
+  // difference between crisp and crawling edges. Falls back to standard on init
+  // failure (see build()) or on low-power devices (setQualityGated pins it).
+  const [quality, setQuality] = useState<BlurQuality>(() =>
+    isLowPowerDevice() ? 'standard' : 'high',
+  )
   const [imageSrc, setImageSrc] = useState<string>('')
   const [customImage, setCustomImage] = useState<string | null>(null)
   const [presets] = useState<BackgroundPreset[]>(() => buildPresets())

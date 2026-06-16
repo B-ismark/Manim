@@ -29,17 +29,22 @@ export function Dialog({
         <RD.Overlay className="fixed inset-0 z-40 bg-scrim mn-pop" />
         <RD.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2',
-            'bg-surface text-ink rounded-island shadow-raised p-6 mn-pop',
+            'fixed left-1/2 top-1/2 z-50 flex w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 flex-col',
+            // Bound to the viewport so tall bodies (effects preview + controls)
+            // never run off a short screen with no way to scroll. Title/desc stay
+            // pinned; only the body scrolls.
+            'max-h-[88dvh] bg-surface text-ink rounded-island shadow-raised p-5 mn-pop sm:p-6',
             'focus:outline-none',
             className,
           )}
         >
-          <RD.Title className={cn('text-lg font-semibold', hideTitle && 'sr-only')}>{title}</RD.Title>
+          <RD.Title className={cn('shrink-0 text-lg font-semibold', hideTitle && 'sr-only')}>{title}</RD.Title>
           {description ? (
-            <RD.Description className="mt-1 text-sm text-ink-muted">{description}</RD.Description>
+            <RD.Description className="mt-1 shrink-0 text-sm text-ink-muted">{description}</RD.Description>
           ) : null}
-          <div className={cn(!hideTitle && 'mt-4')}>{children}</div>
+          <div className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain', !hideTitle && 'mt-4')}>
+            {children}
+          </div>
         </RD.Content>
       </RD.Portal>
     </RD.Root>

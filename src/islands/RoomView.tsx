@@ -18,9 +18,11 @@ import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
+import { useAdaptiveQuality } from '@/features/effects/useAdaptiveQuality'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
+import { useAutoBackgroundPip } from '@/features/pip/useAutoBackgroundPip'
 import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
@@ -119,8 +121,11 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const room = useRoomContext()
   const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
+  const lowBandwidth = useAppStore((s) => s.prejoin.lowBandwidth)
   const blur = useBackgroundBlur()
   const noise = useNoiseFilter()
+  // Network-driven LOD: drop capture only when the live uplink is struggling.
+  useAdaptiveQuality(lowBandwidth)
   const docPip = useDocumentPip()
   useCallSounds()
   useApplyBlocks()
@@ -145,6 +150,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
   const connState = useConnectionState()
+  // Mobile: float the call into OS PiP when the app is backgrounded, restore on return.
+  useAutoBackgroundPip(connState === ConnectionState.Connected)
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
