@@ -66,7 +66,16 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/')) return handleApi(request, env, url)
-    // Static assets (SPA fallback handled by [assets] not_found_handling).
-    return env.ASSETS.fetch(request)
+    // Static assets (SPA fallback handled by [assets] not_found_handling). We
+    // re-emit them cross-origin isolated so SharedArrayBuffer is available — the
+    // @livekit/krisp-noise-filter (the strong AI noise suppression) needs it;
+    // without isolation it silently falls back to the weak browser filter.
+    // `credentialless` is the least-breaking isolation mode: cross-origin no-cors
+    // subresources (Giphy GIF previews, MediaPipe CDN wasm for blur) still load.
+    const res = await env.ASSETS.fetch(request)
+    const headers = new Headers(res.headers)
+    headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+    headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
+    return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
   },
 }

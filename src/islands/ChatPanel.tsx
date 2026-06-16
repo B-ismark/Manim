@@ -16,6 +16,7 @@ export type ChatApi = ReturnType<typeof useChatMessages>
 import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, uploadError } from '@/features/chat/limits'
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { renderMarkdown } from '@/lib/formatText'
 import { cn } from '@/lib/cn'
 
 /** Short label for what a chat item contains — used in reply chips + pins. */
@@ -51,7 +52,7 @@ function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
 
 /** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
 export function ChatPanel({ chat }: { chat: ChatApi }) {
-  const { items, sendText, sendFile, pinned, togglePin, reactions, toggleReaction, myIdentity } = chat
+  const { items, sendText, sendFile, pinned, togglePin, reactions, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
@@ -65,11 +66,60 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [items.length])
 
+  // Grow the composer to fit the draft (up to the CSS max-height, after which it
+  // scrolls). A rows=1 textarea otherwise stays one line tall and the rest
+  // scrolls hidden inside it.
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [draft])
+
   function submit() {
     if (!draft.trim()) return
     sendText(draft, replyTo ?? undefined)
     setDraft('')
     setReplyTo(null)
+    stopTyping()
+  }
+
+  function onDraftChange(value: string) {
+    setDraft(value)
+    if (value.trim()) notifyTyping()
+    else stopTyping()
+  }
+
+  // Wrap the current selection (or caret) in a markdown marker — the Cmd/Ctrl+B
+  // (bold), +I (italic), +E (code) shortcuts. Restores the selection around the
+  // wrapped text so you can keep typing.
+  function wrapSelection(marker: string) {
+    const el = inputRef.current
+    if (!el) return
+    const start = el.selectionStart ?? draft.length
+    const end = el.selectionEnd ?? draft.length
+    const next = draft.slice(0, start) + marker + draft.slice(start, end) + marker + draft.slice(end)
+    onDraftChange(next)
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(start + marker.length, end + marker.length)
+    })
+  }
+
+  function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey) {
+      const k = e.key.toLowerCase()
+      const marker = k === 'b' ? '**' : k === 'i' ? '_' : k === 'e' ? '`' : null
+      if (marker) {
+        e.preventDefault()
+        wrapSelection(marker)
+        return
+      }
+    }
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      submit()
+    }
   }
 
   function startReply(item: ChatItem) {
@@ -126,6 +176,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
               onReact={(emoji) => toggleReaction(item.id, emoji)}
               onReply={() => startReply(item)}
               onTogglePin={() => togglePin(item)}
+              onEdit={item.kind === 'text' && item.isLocal ? (text) => editMessage(item.id, text) : undefined}
             />
           ))
         )}
@@ -140,6 +191,8 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           </button>
         </div>
       )}
+
+      <TypingIndicator names={typingNames} />
 
       {replyTo && (
         <div className="mx-3 mb-1 flex items-center gap-2 rounded-field border-l-2 border-accent bg-sunken px-3 py-1.5">
@@ -216,13 +269,8 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
         <textarea
           ref={inputRef}
           value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
-              e.preventDefault()
-              submit()
-            }
-          }}
+          onChange={(e) => onDraftChange(e.target.value)}
+          onKeyDown={onComposerKeyDown}
           rows={1}
           placeholder="Message"
           aria-label="Message"
@@ -255,6 +303,7 @@ function MessageRow({
   onReact,
   onReply,
   onTogglePin,
+  onEdit,
 }: {
   item: ChatItem
   /** True when this continues the previous sender's run — avatar/header collapse. */
@@ -266,9 +315,27 @@ function MessageRow({
   onReact: (emoji: string) => void
   onReply: () => void
   onTogglePin: () => void
+  /** Defined only for your own text messages — edits the body in place. */
+  onEdit?: (text: string) => void
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [editDraft, setEditDraft] = useState('')
+  const narrow = useIsTouch()
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
+  const react = (emoji: string) => {
+    onReact(emoji)
+    setPickerOpen(false)
+  }
+  const startEdit = () => {
+    if (item.kind !== 'text') return
+    setEditDraft(item.text)
+    setEditing(true)
+  }
+  const saveEdit = () => {
+    if (editDraft.trim()) onEdit?.(editDraft)
+    setEditing(false)
+  }
   return (
     <div className={cn('group relative flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3 first:mt-0')}>
       {grouped ? (
@@ -282,6 +349,9 @@ function MessageRow({
           <div className="flex items-baseline gap-2">
             <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
             <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
+            {item.kind === 'text' && item.edited && (
+              <span className="text-[11px] text-ink-subtle">(edited)</span>
+            )}
             {pinned && <PinIcon className="size-3 text-accent" aria-label="Pinned" />}
           </div>
         )}
@@ -294,11 +364,40 @@ function MessageRow({
           </div>
         )}
 
-        {item.kind === 'text' ? (
+        {editing && item.kind === 'text' ? (
+          <div className="mt-0.5 flex flex-col gap-1.5">
+            <textarea
+              value={editDraft}
+              onChange={(e) => setEditDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  saveEdit()
+                } else if (e.key === 'Escape') {
+                  e.preventDefault()
+                  setEditing(false)
+                }
+              }}
+              rows={1}
+              autoFocus
+              aria-label="Edit message"
+              className="max-h-28 min-h-9 w-full resize-none rounded-field bg-sunken px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <div className="flex items-center gap-2 text-xs">
+              <button type="button" onClick={saveEdit} className="font-medium text-accent hover:underline">
+                Save
+              </button>
+              <button type="button" onClick={() => setEditing(false)} className="text-ink-muted hover:text-ink">
+                Cancel
+              </button>
+              <span className="text-ink-subtle">Enter to save · Esc to cancel</span>
+            </div>
+          </div>
+        ) : item.kind === 'text' ? (
           looksLikeImageUrl(item.text) ? (
             <ImageBubble src={item.text} />
           ) : (
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{item.text}</p>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderMarkdown(item.text)}</p>
           )
         ) : (
           <FileMessage file={item} />
@@ -309,21 +408,46 @@ function MessageRow({
 
       {/* Hover (desktop) / always-on (touch) message actions. */}
       <div className="absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-        <Popover
-          open={pickerOpen}
-          onOpenChange={setPickerOpen}
-          side="top"
-          align="end"
-          trigger={<IconButton size="sm" tone="neutral" label="Add reaction" icon={<ReactionIcon />} active={pickerOpen} />}
-        >
-          <EmojiPicker
-            onSelect={(emoji) => {
-              onReact(emoji)
-              setPickerOpen(false)
-            }}
-          />
-        </Popover>
+        {narrow ? (
+          <>
+            <IconButton
+              size="sm"
+              tone="neutral"
+              label="Add reaction"
+              icon={<ReactionIcon />}
+              active={pickerOpen}
+              onClick={() => setPickerOpen(true)}
+            />
+            <Sheet open={pickerOpen} onOpenChange={setPickerOpen} side="bottom" title="Add reaction">
+              <EmojiPicker onSelect={react} />
+            </Sheet>
+          </>
+        ) : (
+          <Popover
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            side="top"
+            align="end"
+            trigger={<IconButton size="sm" tone="neutral" label="Add reaction" icon={<ReactionIcon />} active={pickerOpen} />}
+          >
+            <EmojiPicker onSelect={react} />
+          </Popover>
+        )}
         <IconButton size="sm" tone="neutral" label="Reply" icon={<ReplyIcon />} onClick={onReply} />
+        {onEdit && (
+          <IconButton
+            size="sm"
+            tone="neutral"
+            label="Edit message"
+            icon={
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+              </svg>
+            }
+            onClick={startEdit}
+          />
+        )}
         <IconButton
           size="sm"
           tone={pinned ? 'accent' : 'neutral'}
@@ -333,6 +457,32 @@ function MessageRow({
           onClick={onTogglePin}
         />
       </div>
+    </div>
+  )
+}
+
+/** "… is typing" line above the composer. Names collapse past two so it never
+ *  grows unbounded. Three pulsing dots cue live activity (WhatsApp/Messenger). */
+function TypingIndicator({ names }: { names: string[] }) {
+  if (names.length === 0) return null
+  const label =
+    names.length === 1
+      ? `${names[0]} is typing`
+      : names.length === 2
+        ? `${names[0]} and ${names[1]} are typing`
+        : 'Several people are typing'
+  return (
+    <div className="flex items-center gap-1.5 px-3 pb-1 text-xs text-ink-subtle" aria-live="polite">
+      <span className="flex items-center gap-[3px]" aria-hidden>
+        {[0, 0.2, 0.4].map((delay) => (
+          <span
+            key={delay}
+            className="size-[4px] animate-pulse rounded-full bg-current"
+            style={{ animationDelay: `${delay}s` }}
+          />
+        ))}
+      </span>
+      <span className="truncate">{label}</span>
     </div>
   )
 }

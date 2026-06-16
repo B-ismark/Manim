@@ -30,6 +30,10 @@ export function useNoiseFilter() {
   const [usingKrisp, setUsingKrisp] = useState(false)
   const procRef = useRef<KrispProcessor | null>(null)
   const modRef = useRef<KrispModule | null>(null)
+  // Which mic track sid the processor is currently attached to — so a reconnect
+  // that republishes the mic (new sid) rebuilds the filter instead of stranding
+  // the new track behind a dead processor.
+  const attachedSidRef = useRef<string | undefined>(undefined)
   // Krisp proven unavailable on this device — don't retry, stay on the fallback.
   const krispFailedRef = useRef(false)
 
@@ -77,28 +81,43 @@ export function useNoiseFilter() {
         return
       }
       if (!track) return
+      // A reconnect republished the mic under a new sid — the old processor is
+      // bound to a dead track, so drop it and build a fresh one for the new track.
+      if (procRef.current && attachedSidRef.current !== trackSid) {
+        procRef.current = null
+      }
       try {
         if (!modRef.current) modRef.current = await import('@livekit/krisp-noise-filter')
         const mod = modRef.current
         if (cancelled) return
         if (!mod.isKrispNoiseFilterSupported()) {
-          // Browser-native filter (set above) carries it from here.
+          // Browser-native filter (applyConstraints above) carries it from here.
           krispFailedRef.current = true
           setUsingKrisp(false)
           return
         }
         if (!procRef.current) procRef.current = mod.KrispNoiseFilter()
-        try {
+        // Attach only when not already on this track (re-setProcessor throws).
+        if (attachedSidRef.current !== trackSid) {
           await track.setProcessor(procRef.current)
-        } catch {
-          /* already attached to this track */
+          attachedSidRef.current = trackSid
         }
         if (cancelled) return
         await procRef.current.setEnabled(true)
         if (!cancelled) setUsingKrisp(true)
       } catch {
-        // WASM/SharedArrayBuffer unavailable, etc. Fall back to the browser tier
-        // rather than leaving suppression dead.
+        // WASM/SharedArrayBuffer unavailable, or attach failed mid-reconnect.
+        // CRITICAL: never leave the mic routed through a half-attached/stalled
+        // processor — that's a silent mic. Strip it so raw audio passes through,
+        // then fall back to the browser filter (usingKrisp:false re-enables the
+        // native noiseSuppression constraint).
+        try {
+          await track.stopProcessor()
+        } catch {
+          /* nothing attached */
+        }
+        procRef.current = null
+        attachedSidRef.current = undefined
         if (!cancelled) {
           krispFailedRef.current = true
           setUsingKrisp(false)

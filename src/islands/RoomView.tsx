@@ -13,7 +13,6 @@ import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { CallStatusBar } from '@/islands/CallStatusBar'
 import { CallAnnouncer } from '@/islands/CallAnnouncer'
-import { LayoutChip } from '@/islands/LayoutChip'
 import { StageTopBar } from '@/islands/StageTopBar'
 import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
@@ -160,7 +159,11 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const noise = useNoiseFilter()
   // Network-driven LOD: drop capture only when the live uplink is struggling.
   useAdaptiveQuality(lowBandwidth)
-  const docPip = useDocumentPip()
+  const connState = useConnectionState()
+  const connected = connState === ConnectionState.Connected
+  // Desktop auto-PiP: float the app into a Document-PiP window when the tab is
+  // backgrounded (mobile uses element PiP via useAutoBackgroundPip below).
+  const docPip = useDocumentPip(connected)
   useCallSounds()
   useApplyBlocks()
 
@@ -184,9 +187,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
   const carouselOpen = useEffectsUi((s) => s.carouselOpen)
-  const connState = useConnectionState()
   // Mobile: float the call into OS PiP when the app is backgrounded, restore on return.
-  useAutoBackgroundPip(connState === ConnectionState.Connected)
+  useAutoBackgroundPip(connected)
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
@@ -218,7 +220,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       />
       <ConnectionBanner />
       <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
-      <LayoutChip visible={chromeVisible} onMenuOpenChange={setChromeHold} />
       <StageTopBar visible={chromeVisible} />
       <PinCoachmark />
       <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
@@ -315,7 +316,7 @@ function RaisedHandPill({
   return (
     <div
       className={cn(
-        'fixed inset-x-0 top-[max(3.5rem,calc(env(safe-area-inset-top)+3rem))] z-20 flex justify-center px-4',
+        'fixed inset-x-0 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-20 flex justify-center px-4',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !visible && 'pointer-events-none -translate-y-[200%] opacity-0',
       )}

@@ -9,6 +9,12 @@ const FILE_TOPIC = 'mn.file'
 const PIN_TOPIC = 'mn.pin'
 /** Emoji-reaction broadcast topic — per-message reactions, shared room-wide. */
 const REACTION_TOPIC = 'mn.reaction'
+/** Message-edit topic — author edits broadcast to everyone (overlay on the body). */
+const EDIT_TOPIC = 'mn.edit'
+/** Typing-indicator topic — ephemeral "X is typing" pings. */
+const TYPING_TOPIC = 'mn.typing'
+/** A typing ping is considered stale (typer stopped / left) after this long. */
+const TYPING_TTL_MS = 4000
 
 /** Reactions for one message: emoji → identities who reacted with it. */
 export type MessageReactions = Record<string, string[]>
@@ -59,6 +65,8 @@ export interface TextItem {
   isLocal: boolean
   text: string
   replyTo?: ReplyRef
+  /** True once the author has edited this message. */
+  edited?: boolean
 }
 
 export interface FileItem {
@@ -145,23 +153,89 @@ export function useChatMessages() {
     }
   }, [])
 
+  const myIdentity = localParticipant.identity
+
+  // Author edits: an overlay keyed by message id (the LiveKit chat history is
+  // immutable, so we layer the new body on top at render). Broadcast like pins,
+  // with the same late-joiner replay so everyone converges.
+  const [edits, setEdits] = useState<Record<string, string>>({})
+  const editsRef = useRef<Record<string, string>>({})
+  editsRef.current = edits
+  // id → author identity, so the receiver can reject an edit that isn't from the
+  // original author. Kept independent of `edits` to avoid a render cycle.
+  const authorRef = useRef<Record<string, string>>({})
+  useEffect(() => {
+    const map: Record<string, string> = {}
+    for (const m of chatMessages) map[m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`] = m.from?.identity ?? ''
+    for (const f of files) map[f.id] = f.fromIdentity
+    authorRef.current = map
+  }, [chatMessages, files])
+
   const items = useMemo<ChatItem[]>(() => {
-    const localId = localParticipant.identity
     const text: TextItem[] = chatMessages.map((m) => {
       const decoded = decodeText(m.message)
+      const id = m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`
+      const edited = edits[id]
       return {
         kind: 'text',
-        id: m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`,
+        id,
         timestamp: m.timestamp,
         fromIdentity: m.from?.identity ?? '',
         fromName: displayName(m.from?.identity ?? '', m.from?.name),
-        isLocal: m.from?.identity === localId,
-        text: decoded.text,
+        isLocal: m.from?.identity === myIdentity,
+        text: edited ?? decoded.text,
         replyTo: decoded.replyTo,
+        edited: edited !== undefined,
       }
     })
     return [...text, ...files].sort((a, b) => a.timestamp - b.timestamp)
-  }, [chatMessages, files, localParticipant.identity])
+  }, [chatMessages, files, myIdentity, edits])
+
+  const sendEditRef = useRef<((data: object) => void) | null>(null)
+  const { send: sendEdit } = useDataChannel(EDIT_TOPIC, (msg) => {
+    try {
+      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
+        | { kind: 'sync-request' }
+        | { kind?: 'edit'; id: string; text: string }
+      if ('kind' in d && d.kind === 'sync-request') {
+        for (const [id, text] of Object.entries(editsRef.current)) {
+          if (authorRef.current[id] === myIdentity) sendEditRef.current?.({ kind: 'edit', id, text })
+        }
+        return
+      }
+      if ('id' in d) {
+        // Only honor an edit from the message's original author.
+        const author = authorRef.current[d.id]
+        if (author && msg.from?.identity && author !== msg.from.identity) return
+        setEdits((prev) => ({ ...prev, [d.id]: d.text }))
+      }
+    } catch {
+      /* malformed — ignore */
+    }
+  })
+
+  const broadcastEdit = useCallback(
+    (data: object) =>
+      void sendEdit(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: EDIT_TOPIC }),
+    [sendEdit],
+  )
+  sendEditRef.current = broadcastEdit
+
+  useEffect(() => {
+    const t = window.setTimeout(() => broadcastEdit({ kind: 'sync-request' }), 800)
+    return () => window.clearTimeout(t)
+  }, [broadcastEdit])
+
+  /** Author edits the body of their own text message (reply quote is preserved). */
+  const editMessage = useCallback(
+    (id: string, text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed) return
+      setEdits((prev) => ({ ...prev, [id]: trimmed }))
+      broadcastEdit({ kind: 'edit', id, text: trimmed })
+    },
+    [broadcastEdit],
+  )
 
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
@@ -220,7 +294,6 @@ export function useChatMessages() {
   // Shared emoji reactions (Slack/Discord model): toggle events broadcast over the
   // data channel; each client owns *its own* reactions and replays them when a
   // late joiner asks (sync-request), so everyone converges. Ephemeral like chat.
-  const myIdentity = localParticipant.identity
   const [reactions, setReactions] = useState<ReactionMap>({})
   const reactionsRef = useRef<ReactionMap>({})
   reactionsRef.current = reactions
@@ -285,6 +358,90 @@ export function useChatMessages() {
     [broadcastReaction, myIdentity],
   )
 
+  // Typing indicator: ephemeral pings broadcast while composing, others render
+  // "… is typing". Each ping carries a fresh timestamp; entries self-expire after
+  // TYPING_TTL_MS so a typer who closes their tab doesn't get stuck "typing".
+  const myName = displayName(localParticipant.identity, localParticipant.name)
+  const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({})
+
+  const { send: sendTypingMsg } = useDataChannel(TYPING_TOPIC, (msg) => {
+    try {
+      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as {
+        identity: string
+        name: string
+        typing: boolean
+      }
+      if (d.identity === myIdentity) return
+      setTyping((prev) => {
+        if (!d.typing) {
+          if (!prev[d.identity]) return prev
+          const next = { ...prev }
+          delete next[d.identity]
+          return next
+        }
+        return { ...prev, [d.identity]: { name: d.name, at: Date.now() } }
+      })
+    } catch {
+      /* malformed — ignore */
+    }
+  })
+
+  // Drop stale typers (no fresh ping within the TTL) on a slow tick.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setTyping((prev) => {
+        const now = Date.now()
+        let changed = false
+        const next: typeof prev = {}
+        for (const [id2, v] of Object.entries(prev)) {
+          if (now - v.at < TYPING_TTL_MS) next[id2] = v
+          else changed = true
+        }
+        return changed ? next : prev
+      })
+    }, 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // Throttle outgoing "typing: true" pings (~1.5s) and auto-send "typing: false"
+  // after a short idle so the indicator clears on its own.
+  const lastTypingSent = useRef(0)
+  const stopTypingTimer = useRef<number | undefined>(undefined)
+  const broadcastTyping = useCallback(
+    (isTyping: boolean) =>
+      void sendTypingMsg(
+        new TextEncoder().encode(JSON.stringify({ identity: myIdentity, name: myName, typing: isTyping })),
+        { reliable: false, topic: TYPING_TOPIC },
+      ),
+    [sendTypingMsg, myIdentity, myName],
+  )
+
+  const notifyTyping = useCallback(() => {
+    const now = Date.now()
+    if (now - lastTypingSent.current > 1500) {
+      lastTypingSent.current = now
+      broadcastTyping(true)
+    }
+    window.clearTimeout(stopTypingTimer.current)
+    stopTypingTimer.current = window.setTimeout(() => {
+      lastTypingSent.current = 0
+      broadcastTyping(false)
+    }, 3000)
+  }, [broadcastTyping])
+
+  const stopTyping = useCallback(() => {
+    window.clearTimeout(stopTypingTimer.current)
+    if (lastTypingSent.current) {
+      lastTypingSent.current = 0
+      broadcastTyping(false)
+    }
+  }, [broadcastTyping])
+
+  const typingNames = useMemo(
+    () => Object.values(typing).map((v) => v.name),
+    [typing],
+  )
+
   // Track remote-message count → bump unread badge while chat is closed.
   const prevRemote = useRef(0)
   useEffect(() => {
@@ -334,5 +491,19 @@ export function useChatMessages() {
     [localParticipant],
   )
 
-  return { items, sendText, sendFile, isSending, pinned, togglePin, reactions, toggleReaction, myIdentity }
+  return {
+    items,
+    sendText,
+    sendFile,
+    isSending,
+    pinned,
+    togglePin,
+    reactions,
+    toggleReaction,
+    myIdentity,
+    typingNames,
+    notifyTyping,
+    stopTyping,
+    editMessage,
+  }
 }

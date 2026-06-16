@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /*
   Document Picture-in-Picture — pops the *app UI* into a floating OS window (like
@@ -34,6 +34,9 @@ function copyStyles(win: Window) {
   doc.body.style.background = 'var(--color-stage)'
   doc.body.style.color = 'var(--color-ink)'
   doc.body.style.fontFamily = 'var(--font-sans)'
+  // No stray scrollbars in the little window — the panel manages its own layout.
+  doc.documentElement.style.overflow = 'hidden'
+  doc.body.style.overflow = 'hidden'
 }
 
 export interface DocumentPipControls {
@@ -43,22 +46,36 @@ export interface DocumentPipControls {
   toggle: () => void
 }
 
-export function useDocumentPip(): DocumentPipControls {
+/**
+ * @param autoArm when true (in an active call), auto-pop the Document-PiP window
+ *   as the tab goes to the background. Desktop counterpart to mobile element-PiP
+ *   (useAutoBackgroundPip). Driven by the MediaSession `enterpictureinpicture`
+ *   action — Chromium fires it *with* user activation when you switch away from a
+ *   media page, which is what lets `requestWindow` succeed without an explicit
+ *   click. The bubble we auto-opened is closed again when you return.
+ */
+export function useDocumentPip(autoArm = false): DocumentPipControls {
   const [pipWindow, setPipWindow] = useState<Window | null>(null)
   const supported = typeof window !== 'undefined' && Boolean(api())
+  // Mirror state for listeners (avoids stale closures); track auto-opened bubbles
+  // so returning to the tab only closes one we opened, not a manual one.
+  const winRef = useRef<Window | null>(null)
+  winRef.current = pipWindow
+  const autoOpened = useRef(false)
 
   const close = useCallback(() => {
-    pipWindow?.close()
+    winRef.current?.close()
     setPipWindow(null)
-  }, [pipWindow])
+  }, [])
 
   const open = useCallback(async () => {
     const dpip = api()
-    if (!dpip) return
+    if (!dpip || winRef.current) return
     try {
       const win = await dpip.requestWindow({ width: 360, height: 540 })
       copyStyles(win)
       win.addEventListener('pagehide', () => setPipWindow(null))
+      winRef.current = win
       setPipWindow(win)
     } catch {
       /* user dismissed / blocked — stay inline */
@@ -66,16 +83,47 @@ export function useDocumentPip(): DocumentPipControls {
   }, [])
 
   const toggle = useCallback(() => {
-    if (pipWindow) close()
+    if (winRef.current) close()
     else void open()
-  }, [pipWindow, open, close])
+  }, [open, close])
+
+  // Auto-enter on tab-away (desktop). Register the MediaSession action handler so
+  // Chromium can invoke it with activation; close our auto-bubble on return.
+  useEffect(() => {
+    if (!autoArm || !supported || typeof navigator === 'undefined' || !navigator.mediaSession) return
+    const ms = navigator.mediaSession
+    try {
+      ms.setActionHandler('enterpictureinpicture' as MediaSessionAction, () => {
+        autoOpened.current = true
+        void open()
+      })
+    } catch {
+      // Action unsupported on this browser — no desktop auto-PiP, manual button still works.
+      return
+    }
+    const onVisibility = () => {
+      if (!document.hidden && autoOpened.current) {
+        autoOpened.current = false
+        close()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      try {
+        ms.setActionHandler('enterpictureinpicture' as MediaSessionAction, null)
+      } catch {
+        /* ignore */
+      }
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [autoArm, supported, open, close])
 
   // Close the PiP window if the component unmounts (e.g. leaving the call).
   useEffect(() => {
     return () => {
-      pipWindow?.close()
+      winRef.current?.close()
     }
-  }, [pipWindow])
+  }, [])
 
   return { supported, active: Boolean(pipWindow), pipWindow, toggle }
 }

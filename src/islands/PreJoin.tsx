@@ -197,6 +197,13 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
+            onKeyDown={(e) => {
+              // Enter = the primary action (Join), the expected keyboard flow.
+              if (e.key === 'Enter' && canJoin) {
+                e.preventDefault()
+                onJoin()
+              }
+            }}
             placeholder="Your name"
             aria-label="Your name"
             autoComplete="name"
