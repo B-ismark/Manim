@@ -265,6 +265,12 @@ export const KeyboardIcon = (p: P) => (
   </svg>
 )
 
+export const EditIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+  </svg>
+)
+
 export const SoundOnIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 9v6h4l5 4V5L8 9H4z" />

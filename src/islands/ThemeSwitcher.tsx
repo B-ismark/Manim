@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { accentPresets } from '@/styles/themes'
 import { useThemeStore, type ThemeMode } from '@/store/useThemeStore'
 import { Button, Tabs, TabPanel, Toggle } from '@/components/primitives'
+import { EditIcon } from '@/components/icons'
 import { cn } from '@/lib/cn'
 
 const MODES: { id: ThemeMode; label: string }[] = [
@@ -100,12 +101,13 @@ export function ThemeSwitcher() {
   )
 }
 
+// Slack's custom-theme model: a small, named set mapped onto our design tokens
+// (not raw token names). Each maps the Slack concept to the app token it drives.
 const CUSTOM_FIELDS = [
-  { token: '--color-accent', label: 'Accent', fallback: '#6d5efc' },
-  { token: '--color-accent-hover', label: 'Accent (hover)', fallback: '#5b4ee0' },
-  { token: '--color-surface', label: 'Panel', fallback: '#ffffff' },
-  { token: '--color-stage', label: 'Background', fallback: '#f4f4f7' },
-  { token: '--color-ink', label: 'Text', fallback: '#1c1c22' },
+  { token: '--color-stage', label: 'System navigation', hint: 'App background & chrome', fallback: '#1c1c22' },
+  { token: '--color-accent', label: 'Selected items', hint: 'Active & highlighted', fallback: '#6d5efc' },
+  { token: '--color-success', label: 'Presence indication', hint: 'Online / speaking', fallback: '#20a271' },
+  { token: '--color-danger', label: 'Notifications', hint: 'Badges & alerts', fallback: '#ef3e75' },
 ] as const
 
 /** Power-user overrides applied on top of the chosen preset (STYLE.md §9). */
@@ -116,22 +118,63 @@ function CustomTokens() {
 
   return (
     <div className="flex flex-col gap-3">
-      {CUSTOM_FIELDS.map((f) => (
-        <label key={f.token} className="flex items-center justify-between text-sm">
-          <span className="text-ink-muted">{f.label}</span>
-          <input
-            type="color"
-            aria-label={f.label}
+      <div className="grid grid-cols-2 gap-2">
+        {CUSTOM_FIELDS.map((f) => (
+          <TokenCard
+            key={f.token}
+            label={f.label}
+            hint={f.hint}
             value={custom[f.token] ?? f.fallback}
-            onChange={(e) => setCustomToken(f.token, e.target.value)}
-            className="size-7 cursor-pointer rounded-field border border-line bg-transparent"
+            onChange={(v) => setCustomToken(f.token, v)}
           />
-        </label>
-      ))}
+        ))}
+      </div>
       <Button variant="neutral" size="sm" onClick={clearCustom} disabled={Object.keys(custom).length === 0}>
-        Reset custom colors
+        Reset to preset
       </Button>
       <p className="text-xs text-ink-subtle">Overrides apply on top of the selected theme.</p>
+    </div>
+  )
+}
+
+/** Slack-style token card: label, then a swatch + hex pill that opens the picker. */
+function TokenCard({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string
+  hint: string
+  value: string
+  onChange: (value: string) => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  return (
+    <div className="rounded-field border border-line bg-sunken p-2.5">
+      <p className="text-xs font-semibold text-ink">{label}</p>
+      <p className="mb-2 text-[11px] leading-tight text-ink-subtle">{hint}</p>
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        className="flex w-full items-center gap-2 rounded-control bg-surface px-2 py-1.5 text-left transition-colors hover:bg-line/40"
+      >
+        <span
+          className="size-5 shrink-0 rounded-full border border-line"
+          style={{ backgroundColor: value }}
+          aria-hidden
+        />
+        <span className="flex-1 font-mono text-xs uppercase tracking-wide text-ink">{value}</span>
+        <EditIcon className="size-3.5 shrink-0 text-ink-subtle" />
+      </button>
+      <input
+        ref={inputRef}
+        type="color"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="sr-only"
+      />
     </div>
   )
 }

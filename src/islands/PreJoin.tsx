@@ -104,6 +104,9 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
         streamRef.current = stream
         if (videoRef.current) videoRef.current.srcObject = stream
         setError(null)
+        // A successful preview means access is already granted — never show the
+        // priming card (esp. on browsers without the Permissions API).
+        setPermission('granted')
       } catch {
         setError('Camera permission denied or unavailable.')
       }
