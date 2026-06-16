@@ -1,4 +1,5 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import QRCode from 'qrcode'
 import {
   useLocalParticipant,
   useParticipants,
@@ -34,6 +35,8 @@ import {
   MicOffIcon,
   MoreIcon,
   PinIcon,
+  QrIcon,
+  ShareIcon,
 } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
@@ -55,6 +58,22 @@ function displayName(p: Participant): string {
   return p.name || p.identity.split('#')[0] || 'Guest'
 }
 
+/** Room join URL as a scannable QR. Rendered as SVG (not canvas — that readback
+ *  is blocked on anti-fingerprinting browsers). */
+function QrCode({ value }: { value: string }) {
+  const [svg, setSvg] = useState('')
+  useEffect(() => {
+    let live = true
+    QRCode.toString(value, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
+      .then((s) => live && setSvg(s))
+      .catch(() => {})
+    return () => {
+      live = false
+    }
+  }, [value])
+  return <div className="size-40 [&>svg]:size-full" aria-label="QR code" dangerouslySetInnerHTML={{ __html: svg }} />
+}
+
 /** Roster with live state (speaking / mic / hand / connection) and per-row actions. */
 export function ParticipantsPanel() {
   const participants = useParticipants()
@@ -73,6 +92,16 @@ export function ParticipantsPanel() {
   const canRing = authEnabled && signedIn
   const roomToken = useAppStore((s) => s.roomToken)
   const { metadata: roomMetadata } = useRoomInfo()
+  const [showQr, setShowQr] = useState(false)
+  const joinUrl = typeof window !== 'undefined' ? window.location.href : ''
+  const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
+  async function nativeShare() {
+    try {
+      await navigator.share({ title: `Join the call`, url: joinUrl })
+    } catch {
+      /* user cancelled / unsupported */
+    }
+  }
   const pendingInvites = useInviteStore((s) => s.pending)
   const addInvite = useInviteStore((s) => s.addInvite)
   const clearInvite = useInviteStore((s) => s.clearInvite)
@@ -214,10 +243,33 @@ export function ParticipantsPanel() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-3 pt-3">
-        <Button variant="neutral" block onClick={copy}>
-          {copied ? <CheckIcon /> : <CopyIcon />}
-          {copied ? 'Invite link copied' : 'Copy invite link'}
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="neutral" block onClick={copy}>
+            {copied ? <CheckIcon /> : <CopyIcon />}
+            {copied ? 'Copied' : 'Copy link'}
+          </Button>
+          {canNativeShare && (
+            <Button variant="neutral" onClick={nativeShare} aria-label="Share invite">
+              <ShareIcon />
+            </Button>
+          )}
+          <Button
+            variant={showQr ? 'accent' : 'neutral'}
+            onClick={() => setShowQr((v) => !v)}
+            aria-label="Show QR code"
+          >
+            <QrIcon />
+          </Button>
+        </div>
+
+        {showQr && (
+          <div className="mt-2 flex flex-col items-center gap-1.5 rounded-field bg-sunken p-3">
+            <div className="rounded-field bg-white p-2">
+              <QrCode value={joinUrl} />
+            </div>
+            <p className="text-xs text-ink-subtle">Scan to join this call</p>
+          </div>
+        )}
 
         <form onSubmit={emailInvite} className="mt-2 flex gap-2">
           <input
@@ -423,9 +475,22 @@ function ParticipantRow({
         </div>
       </div>
 
-      <span className="text-ink-muted [&_svg]:size-4" title={micMuted ? 'Muted' : 'Unmuted'}>
-        {micMuted ? <MicOffIcon className="text-danger" /> : <MicIcon />}
-      </span>
+      {canModerate && !micMuted ? (
+        // Host: tap a live mic to mute it. (You can't force-unmute someone —
+        // turning on another person's mic is a privacy no-no, so a muted mic is
+        // just an indicator.)
+        <IconButton
+          size="sm"
+          tone="neutral"
+          label={`Mute ${name}`}
+          icon={<MicIcon />}
+          onClick={forceMute}
+        />
+      ) : (
+        <span className="text-ink-muted [&_svg]:size-4" title={micMuted ? 'Muted' : 'Unmuted'}>
+          {micMuted ? <MicOffIcon className="text-danger" /> : <MicIcon />}
+        </span>
+      )}
 
       <ConnectionQuality participant={participant} />
 
