@@ -11,6 +11,10 @@ const PIN_TOPIC = 'mn.pin'
 const REACTION_TOPIC = 'mn.reaction'
 /** Message-edit topic — author edits broadcast to everyone (overlay on the body). */
 const EDIT_TOPIC = 'mn.edit'
+/** Chat-history sync topic — peers replay the timeline to a (re)joiner. */
+const HISTORY_TOPIC = 'mn.chat-history'
+/** Cap how many past messages we replay/keep, to bound the data-channel payload. */
+const HISTORY_LIMIT = 200
 /** Typing-indicator topic — ephemeral "X is typing" pings. */
 const TYPING_TOPIC = 'mn.typing'
 /** A typing ping is considered stale (typer stopped / left) after this long. */
@@ -161,20 +165,29 @@ export function useChatMessages() {
   const [edits, setEdits] = useState<Record<string, string>>({})
   const editsRef = useRef<Record<string, string>>({})
   editsRef.current = edits
+
+  // Chat history replayed by peers on (re)join (text messages sent before we were
+  // connected). Disjoint by id from the live `chatMessages` we receive directly.
+  const [history, setHistory] = useState<TextItem[]>([])
   // id → author identity for every message THIS session has. Reaction/edit
   // handlers gate on it: anything for an unknown id (e.g. a message from before
   // we rejoined) is dropped, so stale overlays can't bleed across sessions.
   // Populated synchronously in the items memo (not an effect) so a reaction that
   // lands right after its message isn't wrongly dropped by a stale map.
   const authorRef = useRef<Record<string, string>>({})
+  // Full text timeline (history + live, edits applied) — read by the history
+  // responder so it can replay everything it knows, not just its own messages.
+  const replayRef = useRef<TextItem[]>([])
 
   const items = useMemo<ChatItem[]>(() => {
     const authors: Record<string, string> = {}
+    const liveIds = new Set<string>()
     const text: TextItem[] = chatMessages.map((m) => {
       const decoded = decodeText(m.message)
       const id = m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`
       const edited = edits[id]
       authors[id] = m.from?.identity ?? ''
+      liveIds.add(id)
       return {
         kind: 'text',
         id,
@@ -187,10 +200,25 @@ export function useChatMessages() {
         edited: edited !== undefined,
       }
     })
+    // Replayed history, minus anything we also have live; edits overlay here too.
+    const hist: TextItem[] = history
+      .filter((h) => !liveIds.has(h.id))
+      .map((h) => {
+        const edited = edits[h.id]
+        authors[h.id] = h.fromIdentity
+        return {
+          ...h,
+          isLocal: h.fromIdentity === myIdentity,
+          text: edited ?? h.text,
+          edited: edited !== undefined || h.edited,
+        }
+      })
     for (const f of files) authors[f.id] = f.fromIdentity
     authorRef.current = authors
-    return [...text, ...files].sort((a, b) => a.timestamp - b.timestamp)
-  }, [chatMessages, files, myIdentity, edits])
+    const all = [...hist, ...text, ...files].sort((a, b) => a.timestamp - b.timestamp)
+    replayRef.current = all.filter((i): i is TextItem => i.kind === 'text').slice(-HISTORY_LIMIT)
+    return all
+  }, [chatMessages, files, myIdentity, edits, history])
 
   const sendEditRef = useRef<((data: object) => void) | null>(null)
   const { send: sendEdit } = useDataChannel(EDIT_TOPIC, (msg) => {
@@ -240,6 +268,83 @@ export function useChatMessages() {
     },
     [broadcastEdit],
   )
+
+  // Chat-history sync: on (re)join, ask the room to replay the timeline so you
+  // see what was said before you connected (the common "I left and came back"
+  // case). Peers still present replay the text messages they hold; we dedupe by
+  // id. No server storage — if the room is empty there's no one to replay, which
+  // keeps the "nothing stored at rest" property. Mirrors the pin/reaction sync.
+  interface HistoryWireItem {
+    id: string
+    identity: string
+    name: string
+    ts: number
+    text: string
+    replyName?: string
+    replyText?: string
+    edited?: boolean
+  }
+  const sendHistoryRef = useRef<((data: object) => void) | null>(null)
+  const { send: sendHistory } = useDataChannel(HISTORY_TOPIC, (msg) => {
+    try {
+      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
+        | { kind: 'request' }
+        | { kind: 'history'; items: HistoryWireItem[] }
+      if (d.kind === 'request') {
+        if (replayRef.current.length === 0) return
+        const items: HistoryWireItem[] = replayRef.current.map((it) => ({
+          id: it.id,
+          identity: it.fromIdentity,
+          name: it.fromName,
+          ts: it.timestamp,
+          text: it.text,
+          replyName: it.replyTo?.name,
+          replyText: it.replyTo?.text,
+          edited: it.edited,
+        }))
+        sendHistoryRef.current?.({ kind: 'history', items })
+        return
+      }
+      if (d.kind === 'history' && Array.isArray(d.items)) {
+        setHistory((prev) => {
+          const have = new Set(prev.map((h) => h.id))
+          const additions: TextItem[] = []
+          for (const e of d.items) {
+            if (!e.id || have.has(e.id)) continue
+            have.add(e.id)
+            additions.push({
+              kind: 'text',
+              id: e.id,
+              timestamp: e.ts,
+              fromIdentity: e.identity,
+              fromName: e.name,
+              isLocal: e.identity === myIdentity,
+              text: e.text,
+              replyTo: e.replyName || e.replyText ? { name: e.replyName ?? '', text: e.replyText ?? '' } : undefined,
+              edited: e.edited,
+            })
+          }
+          if (additions.length === 0) return prev
+          return [...prev, ...additions].slice(-HISTORY_LIMIT)
+        })
+      }
+    } catch {
+      /* malformed — ignore */
+    }
+  })
+
+  const broadcastHistory = useCallback(
+    (data: object) =>
+      void sendHistory(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: HISTORY_TOPIC }),
+    [sendHistory],
+  )
+  sendHistoryRef.current = broadcastHistory
+
+  // Request a replay shortly after join (let the data channel settle first).
+  useEffect(() => {
+    const t = window.setTimeout(() => broadcastHistory({ kind: 'request' }), 900)
+    return () => window.clearTimeout(t)
+  }, [broadcastHistory])
 
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
