@@ -74,7 +74,6 @@ export function Stage() {
 
   const coarse = useIsTouch()
   const [gridRef, gridSize] = useElementSize()
-  const columns = bestColumns(tracks.length, gridSize.w, gridSize.h)
 
   if (participants.length <= 1 && tracks.length <= 1) {
     return <SoloStage selfTrack={tracks[0]} />
@@ -86,16 +85,29 @@ export function Stage() {
   const phone1on1 = coarse && tracks.length === 2 && !screenShare
 
   if ((layout === 'grid' && !phone1on1) || tracks.length <= 1) {
+    // Pack portrait (3:4) tiles: pick the column count that makes them biggest,
+    // then size each to that exact width and CENTER them. Tiles keep a clean
+    // aspect (never stretched into a wide strip) while using the stage well.
+    const GAP = 12
+    const n = tracks.length
+    const cols = bestColumns(n, gridSize.w, gridSize.h)
+    const rows = Math.ceil(n / cols)
+    const byW = (gridSize.w - GAP * (cols + 1)) / cols
+    const byH = ((gridSize.h - GAP * (rows + 1)) / rows) * TILE_ASPECT
+    const tileW = gridSize.w && gridSize.h ? Math.max(96, Math.floor(Math.min(byW, byH))) : 0
     return (
       <div
         ref={gridRef}
-        className="grid min-h-0 flex-1 auto-rows-fr gap-2 overflow-y-auto p-2 sm:gap-3 sm:p-3"
-        style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+        className="flex min-h-0 flex-1 flex-wrap content-center items-center justify-center gap-3 overflow-y-auto p-2 sm:p-3"
       >
         {tracks.map((ref) => (
-          // Fill tiles in a grid packed to portrait-ish cells — uses the whole
-          // stage and shows more of each person than a 16:9 letterbox.
-          <Tile key={`${ref.participant.identity}-${ref.source}`} trackRef={ref} fill />
+          <div
+            key={`${ref.participant.identity}-${ref.source}`}
+            className="aspect-[3/4] max-h-full"
+            style={tileW ? { width: tileW } : undefined}
+          >
+            <Tile trackRef={ref} fill />
+          </div>
         ))}
       </div>
     )
