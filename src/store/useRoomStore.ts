@@ -2,14 +2,14 @@ import { create } from 'zustand'
 import { isMobile } from '@/lib/device'
 
 /** Stage layout modes (STYLE.md §5 layout switch). */
-export type LayoutMode = 'grid' | 'speaker' | 'spotlight'
+export type LayoutMode = 'grid' | 'speaker'
 
 /** Which side panel tab is open, or null when the panel is closed. */
 export type PanelTab = 'chat' | 'people' | null
 
 interface RoomState {
   layout: LayoutMode
-  /** Identity of a pinned/spotlit participant, or null. Drives speaker/spotlight focus. */
+  /** Identity of a pinned participant, or null. Drives the speaker-layout focus. */
   pinned: string | null
   panel: PanelTab
   /** Unread chat count while the chat panel is closed (cleared on open). */
@@ -30,7 +30,7 @@ interface RoomState {
 export const useRoomStore = create<RoomState>((set) => ({
   // Portrait phones default to active-speaker (one large feed + filmstrip) — the
   // mobile convention. A √n grid on a tall narrow screen makes every tile tiny.
-  // Desktop keeps the grid. User can switch either way via the LayoutSwitcher.
+  // Desktop keeps the grid. User can switch either way (layout chip / More).
   layout: isMobile() ? 'speaker' : 'grid',
   pinned: null,
   panel: null,
@@ -43,7 +43,7 @@ export const useRoomStore = create<RoomState>((set) => ({
     set((s) => {
       const pinned = s.pinned === identity ? null : identity
       // Pinning from the grid implies the user wants a focused view.
-      const layout = pinned && s.layout === 'grid' ? 'spotlight' : s.layout
+      const layout = pinned && s.layout === 'grid' ? 'speaker' : s.layout
       return { pinned, layout }
     }),
   setPanel: (panel) => set((s) => ({ panel, unread: panel === 'chat' ? 0 : s.unread })),

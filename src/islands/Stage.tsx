@@ -3,10 +3,12 @@ import { useTracks, VideoTrack, useParticipants } from '@livekit/components-reac
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Avatar, Button, IconButton } from '@/components/primitives'
-import { CopyIcon, CheckIcon, HandIcon, MicOffIcon, PinIcon } from '@/components/icons'
+import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicOffIcon, PinIcon } from '@/components/icons'
+import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useEffectsUi } from '@/store/useEffectsUi'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
@@ -77,7 +79,7 @@ export function Stage() {
     )
   }
 
-  // Speaker / spotlight (and phone 1-on-1): a focused remote (or screen share)
+  // Speaker (and phone 1-on-1): a focused remote (or screen share)
   // fills the stage and the local camera floats as a draggable self-view
   // (STYLE.md §2 island model).
   const localCam = tracks.find(isLocalCam)
@@ -141,7 +143,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   )
 }
 
-/** Floating, draggable local camera shown in speaker / spotlight layouts. */
+/** Floating, draggable local camera shown in the speaker layout. */
 function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
   const { style, handlers } = useDraggable()
   return (
@@ -200,6 +202,14 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
   const selfFacing = useRoomStore((s) => s.selfFacing)
   const mirror = p.isLocal && !isScreen && selfFacing === 'user'
 
+  // Self-view tile controls (flip camera / effects) live ON the tile now, like
+  // WhatsApp/Snapchat — keeps them off the control bar. Touch only (desktop uses
+  // the device picker + the More menu).
+  const coarse = useIsTouch()
+  const flipCamera = useFlipCamera()
+  const toggleEffects = useEffectsUi((s) => s.toggleCarousel)
+  const showSelfTools = p.isLocal && !isScreen && hasVideo && coarse
+
   // Long-press to pin (touch) — a second, more discoverable gesture alongside
   // double-tap. A drag (swipe to switch layout) cancels it.
   const pressTimer = useRef<number | undefined>(undefined)
@@ -210,7 +220,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
 
   return (
     <div
-      // Double-tap (or long-press) a tile to pin/spotlight it; single tap bubbles
+      // Double-tap (or long-press) a tile to pin it; single tap bubbles
       // to the stage chrome toggle on mobile. Mirrors Zoom/Telegram/Discord.
       onDoubleClick={() => togglePin(p.identity)}
       onPointerDown={startPress}
@@ -244,6 +254,30 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
           <span className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-warning">
             <HandIcon className="size-3" /> Hand
           </span>
+        </div>
+      )}
+
+      {/* Flip camera + effects, anchored to your own tile (Snapchat/WhatsApp).
+          Touch only — keeps the control bar lean. */}
+      {showSelfTools && (
+        <div
+          className="absolute right-2 top-2 z-10 flex flex-col gap-1.5"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <IconButton
+            size="sm"
+            label="Flip camera"
+            icon={<FlipCameraIcon />}
+            className="bg-overlay text-white hover:bg-overlay"
+            onClick={() => void flipCamera()}
+          />
+          <IconButton
+            size="sm"
+            label="Effects"
+            icon={<EffectsIcon />}
+            className="bg-overlay text-white hover:bg-overlay"
+            onClick={toggleEffects}
+          />
         </div>
       )}
 

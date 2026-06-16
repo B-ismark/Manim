@@ -14,6 +14,7 @@ import { CallStatusBar } from '@/islands/CallStatusBar'
 import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { LayoutChip } from '@/islands/LayoutChip'
 import { StageTopBar } from '@/islands/StageTopBar'
+import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { useReactions } from '@/features/reactions/useReactions'
@@ -27,7 +28,9 @@ import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useEffectsUi } from '@/store/useEffectsUi'
 import { useAppStore } from '@/store/useAppStore'
+import { HandIcon } from '@/components/icons'
 import { isTouch } from '@/lib/device'
 import { cn } from '@/lib/cn'
 
@@ -149,6 +152,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
+  const carouselOpen = useEffectsUi((s) => s.carouselOpen)
   const connState = useConnectionState()
   // Mobile: float the call into OS PiP when the app is backgrounded, restore on return.
   useAutoBackgroundPip(connState === ConnectionState.Connected)
@@ -181,6 +185,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <LayoutChip visible={chromeVisible} />
       <StageTopBar visible={chromeVisible} />
       <PinCoachmark />
+      <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
 
       {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
       <WaitingRoomBanner active={isHost && waiting} />
@@ -215,6 +220,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         noise={noise}
         docPip={{ supported: docPip.supported, active: docPip.active, toggle: docPip.toggle }}
       />
+      <EffectsCarousel controls={blur} visible={chromeVisible && carouselOpen} />
       <ReactionsOverlay reactions={active} />
 
       {panel !== null && (
@@ -227,5 +233,39 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           React/LiveKit tree via a portal, so its controls drive this session. */}
       {docPip.pipWindow && createPortal(<PipPanel onLeave={doLeave} />, docPip.pipWindow.document.body)}
     </>
+  )
+}
+
+/**
+ * Top-center "✋ Lower hand" pill while your hand is raised (WhatsApp convention):
+ * a persistent, one-tap way to lower it and a clear status cue, since the raise
+ * action itself now lives in the reactions picker rather than on the bar.
+ */
+function RaisedHandPill({
+  raised,
+  onLower,
+  visible,
+}: {
+  raised: boolean
+  onLower: () => void
+  visible: boolean
+}) {
+  if (!raised) return null
+  return (
+    <div
+      className={cn(
+        'fixed inset-x-0 top-[max(3.5rem,calc(env(safe-area-inset-top)+3rem))] z-20 flex justify-center px-4',
+        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        !visible && '-translate-y-[200%] opacity-0',
+      )}
+    >
+      <button
+        type="button"
+        onClick={onLower}
+        className="pointer-events-auto flex items-center gap-2 rounded-control bg-overlay px-4 py-2 text-sm font-medium text-warning shadow-raised backdrop-blur [&_svg]:size-4"
+      >
+        <HandIcon /> Lower hand
+      </button>
+    </div>
   )
 }
