@@ -106,8 +106,6 @@ export function ThemeSwitcher() {
 const CUSTOM_FIELDS = [
   { token: '--color-stage', label: 'System navigation', hint: 'App background & chrome', fallback: '#1c1c22' },
   { token: '--color-accent', label: 'Selected items', hint: 'Active & highlighted', fallback: '#6d5efc' },
-  { token: '--color-success', label: 'Presence indication', hint: 'Online / speaking', fallback: '#20a271' },
-  { token: '--color-danger', label: 'Notifications', hint: 'Badges & alerts', fallback: '#ef3e75' },
 ] as const
 
 /** Power-user overrides applied on top of the chosen preset (STYLE.md §9). */

@@ -69,10 +69,12 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
   const shown = results ?? byGroup[active] ?? []
   const loading = emojis.length === 0
 
+  const activeGroup = results ? null : groups.find((g) => g.group === active) ?? groups[0]
+
   return (
-    // Bounded column: search + tabs are fixed, only the grid scrolls. w-full so it
-    // fills a mobile sheet; capped width keeps the desktop popover tidy.
-    <div className="flex w-full max-w-[20rem] flex-col gap-2">
+    // Bounded column: search + tabs are fixed, only the grid scrolls. Fills a
+    // mobile sheet; ~22rem on desktop so 8 columns fit with no horizontal scroll.
+    <div className="flex w-full flex-col gap-2 sm:w-[22rem]">
       <input
         value={query}
         onChange={(e) => setQuery(e.target.value)}
@@ -93,7 +95,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
               title={g.group}
               onClick={() => setActive(g.group)}
               className={cn(
-                'grid flex-1 place-items-center rounded-control py-1 text-base',
+                'grid flex-1 place-items-center rounded-control py-1.5 text-lg leading-none',
                 active === g.group ? 'bg-accent-soft' : 'hover:bg-sunken',
               )}
             >
@@ -103,11 +105,25 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
         </div>
       )}
 
-      <div className="grid h-56 grid-cols-8 content-start gap-0.5 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
+      {/* Section label so you know where you are while scrolling. */}
+      <p className="shrink-0 px-0.5 text-[11px] font-medium uppercase tracking-wide text-ink-subtle">
+        {results ? 'Search results' : activeGroup?.group}
+      </p>
+
+      {/* auto-fill columns sized to fit the width → never a horizontal scrollbar,
+          whatever the container width. Only vertical (mouse wheel) scroll. */}
+      <div
+        className="h-56 gap-0.5 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(2.25rem, 1fr))', alignContent: 'start' }}
+      >
         {loading ? (
-          <p className="col-span-8 py-6 text-center text-xs text-ink-subtle">Loading emoji…</p>
+          <p className="py-6 text-center text-xs text-ink-subtle" style={{ gridColumn: '1 / -1' }}>
+            Loading emoji…
+          </p>
         ) : shown.length === 0 ? (
-          <p className="col-span-8 py-6 text-center text-xs text-ink-subtle">No emoji found</p>
+          <p className="py-6 text-center text-xs text-ink-subtle" style={{ gridColumn: '1 / -1' }}>
+            No emoji found
+          </p>
         ) : (
           shown.map((d) => (
             <button
@@ -116,7 +132,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
               aria-label={d.name}
               title={d.name}
               onClick={() => onSelect(d.e)}
-              className="grid aspect-square place-items-center rounded-control text-xl hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
+              className="grid aspect-square place-items-center overflow-hidden rounded-control text-xl leading-none hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
             >
               {d.e}
             </button>

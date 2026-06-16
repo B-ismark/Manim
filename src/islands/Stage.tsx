@@ -63,10 +63,15 @@ export function Stage() {
   const phone1on1 = coarse && tracks.length === 2 && !screenShare
 
   if ((layout === 'grid' && !phone1on1) || tracks.length <= 1) {
-    const cols = gridColumns(tracks.length, coarse)
+    // "Hide self view" drops your own camera tile from the grid too (it only hid
+    // the floating self-card in speaker layout before). Keep it if it's the only
+    // tile, so the grid never goes empty.
+    const gridTracks =
+      selfViewHidden && tracks.some((t) => !isLocalCam(t)) ? tracks.filter((t) => !isLocalCam(t)) : tracks
+    const cols = gridColumns(gridTracks.length, coarse)
     // Centre when the tiles fit; otherwise scroll from the top (so nothing is
     // ever clipped above the fold — the 3+-on-mobile breakage).
-    const many = tracks.length > cols * 2
+    const many = gridTracks.length > cols * 2
     return (
       <div
         className={cn(
@@ -75,7 +80,7 @@ export function Stage() {
         )}
         style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
       >
-        {tracks.map((ref) => (
+        {gridTracks.map((ref) => (
           // Portrait 3:4 tile; fills its column, object-cover. Grid scrolls past
           // the fold for large calls rather than shrinking tiles to dots.
           <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-[3/4] min-h-0">

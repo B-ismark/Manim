@@ -224,6 +224,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           size="sm"
           label="Attach a file"
           icon={<AttachIcon />}
+          className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
           onClick={() => fileInputRef.current?.click()}
         />
         {gifEnabled &&
@@ -235,6 +236,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                 label="Send a GIF"
                 icon={<GifIcon />}
                 active={gifOpen}
+                className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
                 onClick={() => setGifOpen(true)}
               />
               <Sheet open={gifOpen} onOpenChange={setGifOpen} side="bottom" title="Send a GIF">
@@ -253,7 +255,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
               side="top"
               align="start"
               trigger={
-                <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} />
+                <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
               }
             >
               <div className="w-72">

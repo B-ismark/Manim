@@ -349,7 +349,7 @@ export function ControlBar({
         />
         <MenuRow
           icon={<SoundOnIcon />}
-          label="Audio-only mode"
+          label={audioOnly ? 'Audio-only on — switch to video' : 'Audio-only mode'}
           active={audioOnly}
           onClick={() => {
             toggleAudioOnly()
