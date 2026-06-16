@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalVideoTrack } from 'livekit-client'
 import {
   Button,
   Dialog,
@@ -23,7 +22,6 @@ import {
   HandIcon,
   LeaveIcon,
   LockIcon,
-  FlipCameraIcon,
   MicIcon,
   MicOffIcon,
   MoreIcon,
@@ -33,11 +31,9 @@ import {
   ScreenShareIcon,
   SettingsIcon,
   SpeakerLayoutIcon,
-  SpotlightIcon,
   EffectsIcon,
   KeyboardIcon,
 } from '@/components/icons'
-import { LayoutSwitcher } from '@/islands/LayoutSwitcher'
 import { DeviceSettings } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
 import { SettingsDialog } from '@/islands/Settings'
@@ -76,9 +72,11 @@ export interface ControlBarProps {
 }
 
 /**
- * Tier-0 controls always visible (mic, camera, leave). Tier-1 (chat, people,
- * reactions, hand, layout, share) inline on desktop, folded into More on mobile.
- * Tier-2 (devices, theme) lives in More. STYLE.md §4/§5.
+ * Lean control bar. Mobile shows only the essentials — mic, camera, chat, More,
+ * leave — with everything secondary folded into More (WhatsApp/Snapchat model).
+ * Desktop additionally inlines screen-share and a single reaction button (which
+ * also carries raise-hand). Camera flip + background effects live on the
+ * self-view tile; layout switching lives in More / the top chip. STYLE.md §4/§5.
  */
 export function ControlBar({
   chromeVisible,
@@ -113,7 +111,6 @@ export function ControlBar({
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
-  const setSelfFacing = useRoomStore((s) => s.setSelfFacing)
 
   useEffect(() => {
     const onLeavePip = () => setPipActive(false)
@@ -145,25 +142,6 @@ export function ControlBar({
   }, [])
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
-
-  // Mobile front/rear flip — restart the camera track with the opposite facing
-  // mode. (Desktops use the device picker in More → Devices instead.) Record the
-  // facing so the self-view mirror only applies to the front camera — the rear
-  // camera mirrored would show the world flipped.
-  const flipCamera = useCallback(async () => {
-    const track = localParticipant.getTrackPublication(Track.Source.Camera)?.track as
-      | LocalVideoTrack
-      | undefined
-    if (!track) return
-    const facing = track.mediaStreamTrack.getSettings().facingMode
-    const next = facing === 'environment' ? 'user' : 'environment'
-    try {
-      await track.restartTrack({ facingMode: next })
-      setSelfFacing(next)
-    } catch {
-      /* device can't switch facing — ignore */
-    }
-  }, [localParticipant, setSelfFacing])
 
   // Single open/close path for the More menu so the chrome hold always tracks
   // it — including programmatic closes (controlled prop changes don't fire the
@@ -223,7 +201,7 @@ export function ControlBar({
     <div className="flex flex-col">
       <div className="mb-2 pointer-fine:hidden">
         <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">React</p>
-        <div className="flex justify-between gap-1">
+        <div className="flex items-center justify-between gap-1">
           {REACTION_EMOJI.map((e) => (
             <IconButton
               key={e}
@@ -235,6 +213,17 @@ export function ControlBar({
               }}
             />
           ))}
+          {/* Raise hand = a sticky reaction, so it sits with the others. */}
+          <IconButton
+            label={handRaised ? 'Lower hand' : 'Raise hand'}
+            icon={<HandIcon />}
+            tone={handRaised ? 'accent' : 'neutral'}
+            active={handRaised}
+            onClick={() => {
+              toggleHand()
+              closeMore()
+            }}
+          />
         </div>
       </div>
 
@@ -250,19 +239,9 @@ export function ControlBar({
             closeMore()
           }}
         />
-        {/* People lives in the top-right StageTopBar, not here. */}
+        {/* People lives in the top-right StageTopBar, not here. Layout switching
+            lives here on every device now (the inline desktop switcher is gone). */}
         <GridTile
-          className="pointer-fine:hidden"
-          icon={<HandIcon />}
-          label={handRaised ? 'Lower' : 'Raise'}
-          active={handRaised}
-          onClick={() => {
-            toggleHand()
-            closeMore()
-          }}
-        />
-        <GridTile
-          className="pointer-fine:hidden"
           icon={<GridIcon />}
           label="Grid"
           active={layout === 'grid'}
@@ -272,7 +251,6 @@ export function ControlBar({
           }}
         />
         <GridTile
-          className="pointer-fine:hidden"
           icon={<SpeakerLayoutIcon />}
           label="Speaker"
           active={layout === 'speaker'}
@@ -281,26 +259,20 @@ export function ControlBar({
             closeMore()
           }}
         />
-        <GridTile
-          className="pointer-fine:hidden"
-          icon={<SpotlightIcon />}
-          label="Spotlight"
-          active={layout === 'spotlight'}
-          onClick={() => {
-            setLayout('spotlight')
-            closeMore()
-          }}
-        />
-        <GridTile
-          icon={<PipIcon />}
-          label="PiP"
-          active={docPip.supported ? docPip.active : pipActive}
-          onClick={() => {
-            if (docPip.supported) docPip.toggle()
-            else void togglePip()
-            closeMore()
-          }}
-        />
+        {/* PiP — desktop only. On mobile auto-PiP floats the call when the app is
+            backgrounded, so a manual tile would be redundant. */}
+        {!touch && (
+          <GridTile
+            icon={<PipIcon />}
+            label="PiP"
+            active={docPip.supported ? docPip.active : pipActive}
+            onClick={() => {
+              if (docPip.supported) docPip.toggle()
+              else void togglePip()
+              closeMore()
+            }}
+          />
+        )}
         <GridTile
           icon={<FullscreenIcon />}
           label={isFullscreen ? 'Exit' : 'Full'}
@@ -417,19 +389,6 @@ export function ControlBar({
           />
         </Tooltip>
 
-        {/* Flip front/rear — touch devices only, and only while the camera is on. */}
-        {isCameraEnabled && (
-          <Tooltip content="Flip camera">
-            <IconButton
-              label="Flip camera"
-              icon={<FlipCameraIcon />}
-              tone="neutral"
-              className="pointer-fine:hidden"
-              onClick={() => void flipCamera()}
-            />
-          </Tooltip>
-        )}
-
         {/* Screen share — desktop (mouse) only; folded into More on touch. */}
         <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
           <IconButton
@@ -460,25 +419,10 @@ export function ControlBar({
           </span>
         </Tooltip>
 
-        {/* Desktop-inline Tier-1 group (mouse only; folded into More on touch).
-            Participants lives only in More on every device — see moreContent. */}
+        {/* Reactions (desktop inline; folded into More on touch). One button —
+            it also carries raise-hand. Layout switching lives in More / top chip. */}
         <span className="hidden pointer-fine:inline-flex">
-          <ReactionButton onPick={sendReaction} />
-        </span>
-
-        <Tooltip content={handRaised ? 'Lower hand' : 'Raise hand'}>
-          <IconButton
-            label={handRaised ? 'Lower hand' : 'Raise hand'}
-            icon={<HandIcon />}
-            tone={handRaised ? 'accent' : 'neutral'}
-            active={handRaised}
-            className="hidden pointer-fine:inline-flex"
-            onClick={toggleHand}
-          />
-        </Tooltip>
-
-        <span className="hidden pointer-fine:inline-flex">
-          <LayoutSwitcher />
+          <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
         </span>
 
         {/* More — bottom sheet on mobile (thumb-reachable), popover on desktop.
@@ -612,8 +556,20 @@ function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   )
 }
 
-/** Inline reaction picker (desktop). Opens a small emoji grid. */
-function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
+/**
+ * Inline reaction picker (desktop). Emoji grid plus a raise/lower-hand toggle —
+ * hand is just a sticky reaction, so it lives here rather than as its own bar
+ * button. Active state reflects a raised hand so the bar shows the cue.
+ */
+function ReactionButton({
+  onPick,
+  handRaised,
+  onToggleHand,
+}: {
+  onPick: (emoji: string) => void
+  handRaised: boolean
+  onToggleHand: () => void
+}) {
   const [open, setOpen] = useState(false)
   return (
     <Popover
@@ -621,9 +577,16 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
       onOpenChange={setOpen}
       side="top"
       align="center"
-      trigger={<IconButton label="Send a reaction" icon={<ReactionIcon />} tone="neutral" active={open} />}
+      trigger={
+        <IconButton
+          label="Reactions and raise hand"
+          icon={<ReactionIcon />}
+          tone={handRaised ? 'accent' : 'neutral'}
+          active={open || handRaised}
+        />
+      }
     >
-      <div className="flex gap-1">
+      <div className="flex items-center gap-1">
         {REACTION_EMOJI.map((e) => (
           <IconButton
             key={e}
@@ -635,6 +598,17 @@ function ReactionButton({ onPick }: { onPick: (emoji: string) => void }) {
             }}
           />
         ))}
+        <span className="mx-0.5 h-7 w-px bg-line" aria-hidden />
+        <IconButton
+          label={handRaised ? 'Lower hand' : 'Raise hand'}
+          icon={<HandIcon />}
+          tone={handRaised ? 'accent' : 'neutral'}
+          active={handRaised}
+          onClick={() => {
+            onToggleHand()
+            setOpen(false)
+          }}
+        />
       </div>
     </Popover>
   )

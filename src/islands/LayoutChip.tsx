@@ -1,19 +1,18 @@
 import { Popover, StageChip } from '@/components/primitives'
-import { GridIcon, SpeakerLayoutIcon, SpotlightIcon } from '@/components/icons'
+import { GridIcon, SpeakerLayoutIcon } from '@/components/icons'
 import { useRoomStore, type LayoutMode } from '@/store/useRoomStore'
 import { cn } from '@/lib/cn'
 
 const LAYOUTS = [
   { value: 'grid', label: 'Grid', Icon: GridIcon },
   { value: 'speaker', label: 'Speaker', Icon: SpeakerLayoutIcon },
-  { value: 'spotlight', label: 'Spotlight', Icon: SpotlightIcon },
 ] as const satisfies ReadonlyArray<{ value: LayoutMode; label: string; Icon: typeof GridIcon }>
 
 /**
  * Touch-only stage chip (top-left) showing the current layout, tap to switch.
  * Mobile already supports the swipe gesture + the named list in the More sheet;
  * this adds a discoverable affordance. Hides with the rest of the chrome.
- * Desktop uses the inline LayoutSwitcher instead (pointer-fine:hidden here).
+ * Desktop switches layout from the More menu instead (pointer-fine:hidden here).
  */
 export function LayoutChip({ visible }: { visible: boolean }) {
   const layout = useRoomStore((s) => s.layout)
