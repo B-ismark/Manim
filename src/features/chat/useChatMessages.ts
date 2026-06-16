@@ -159,9 +159,21 @@ export function useChatMessages() {
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
   const [pinned, setPinned] = useState<PinnedMessage[]>([])
+  // Mirror for the data-channel handler (avoids a stale closure on `pinned`).
+  const pinnedRef = useRef<PinnedMessage[]>([])
+  pinnedRef.current = pinned
+
+  const sendPinRef = useRef<((data: object) => void) | null>(null)
   const { send: sendPin } = useDataChannel(PIN_TOPIC, (msg) => {
     try {
-      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as PinnedMessage & { pinned: boolean }
+      const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
+        | { kind: 'sync-request' }
+        | (PinnedMessage & { kind?: 'pin'; pinned: boolean })
+      // A late joiner asked for the current pins — replay mine so they catch up.
+      if ('kind' in d && d.kind === 'sync-request') {
+        for (const p of pinnedRef.current) sendPinRef.current?.({ kind: 'pin', ...p, pinned: true })
+        return
+      }
       setPinned((prev) => {
         if (!d.pinned) return prev.filter((p) => p.id !== d.id)
         if (prev.some((p) => p.id === d.id)) return prev
@@ -172,16 +184,30 @@ export function useChatMessages() {
     }
   })
 
+  const broadcastPin = useCallback(
+    (data: object) =>
+      void sendPin(new TextEncoder().encode(JSON.stringify(data)), { reliable: true, topic: PIN_TOPIC }),
+    [sendPin],
+  )
+  sendPinRef.current = broadcastPin
+
+  // On entry, ask peers to replay their pins so the pinned bar isn't empty for
+  // someone who joined after the pins were set. (Small delay lets the data
+  // channel settle after connect.)
+  useEffect(() => {
+    const t = window.setTimeout(() => broadcastPin({ kind: 'sync-request' }), 800)
+    return () => window.clearTimeout(t)
+  }, [broadcastPin])
+
   const togglePin = useCallback(
     (item: ChatItem) => {
-      const isPinned = pinned.some((p) => p.id === item.id)
+      const isPinned = pinnedRef.current.some((p) => p.id === item.id)
       const text = item.kind === 'text' ? item.text : item.fileName
       const entry: PinnedMessage = { id: item.id, name: item.fromName, text, timestamp: item.timestamp }
       setPinned((prev) => (isPinned ? prev.filter((p) => p.id !== item.id) : [...prev, entry]))
-      const payload = new TextEncoder().encode(JSON.stringify({ ...entry, pinned: !isPinned }))
-      void sendPin(payload, { reliable: true, topic: PIN_TOPIC })
+      broadcastPin({ kind: 'pin', ...entry, pinned: !isPinned })
     },
-    [pinned, sendPin],
+    [broadcastPin],
   )
 
   // Track remote-message count → bump unread badge while chat is closed.

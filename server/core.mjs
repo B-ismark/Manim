@@ -225,7 +225,13 @@ export async function handleModerate(env, body, token) {
   const { room, target, action, trackSid } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   if (!room || !target || !action) return { status: 400, body: { error: 'missing fields' } }
-  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
+  const modIdentity = await verifyCaller(env, token, room)
+  if (!modIdentity) return { status: 401, body: { error: 'Your session expired — rejoin to moderate.' } }
+  const modFlags = await getRoomFlags(roomService, room)
+  const modIsHost =
+    modFlags.hostId === modIdentity ||
+    (Array.isArray(modFlags.coHosts) && modFlags.coHosts.includes(modIdentity))
+  if (!modIsHost) return { status: 403, body: { error: 'Host only.' } }
   if (action === 'remove') {
     await roomService.removeParticipant(room, target)
   } else if (action === 'mute') {
@@ -242,11 +248,11 @@ export async function handleRoomflags(env, body, token) {
   const { room, locked, waiting, coHosts } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const identity = await verifyCaller(env, token, room)
-  if (!identity) return { status: 403, body: { error: 'host only' } }
+  if (!identity) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
   const flags = await getRoomFlags(roomService, room)
   const isPrimary = Boolean(flags.hostId) && flags.hostId === identity
   const isCo = Array.isArray(flags.coHosts) && flags.coHosts.includes(identity)
-  if (!isPrimary && !isCo) return { status: 403, body: { error: 'host only' } }
+  if (!isPrimary && !isCo) return { status: 403, body: { error: 'Host only.' } }
 
   const patch = {}
   if (typeof locked === 'boolean') patch.locked = locked
