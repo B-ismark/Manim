@@ -17,6 +17,16 @@ export interface SheetProps {
   flush?: boolean
   /** When true, only the close button shows in the header; title is ARIA-only. */
   hideTitle?: boolean
+  /**
+   * Modal (default) traps focus, scrims + inerts the rest of the page, and closes
+   * on outside click — right for a true dialog (Settings, GIF, More) and the
+   * mobile bottom sheet. Set false for the desktop DOCKED panel (chat / people):
+   * the call must stay fully operable beside it — you have to be able to mute,
+   * stop video, or leave while chat is open, and assistive tech must still reach
+   * the control bar (a modal sheet `aria-hidden`s it). Non-modal stays open while
+   * you click the stage / controls; Esc still closes it.
+   */
+  modal?: boolean
   className?: string
 }
 
@@ -43,13 +53,19 @@ export function Sheet({
   side = 'responsive',
   flush = false,
   hideTitle = false,
+  modal = true,
   className,
 }: SheetProps) {
   return (
-    <RD.Root open={open} onOpenChange={onOpenChange}>
+    <RD.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <RD.Portal>
-        <RD.Overlay className="fixed inset-0 z-40 bg-scrim mn-pop md:bg-transparent" />
+        {/* The scrim/inert layer only belongs to a modal sheet. A docked,
+            non-modal panel must not cover (and pointer-block) the call behind it. */}
+        {modal && <RD.Overlay className="fixed inset-0 z-40 bg-scrim mn-pop md:bg-transparent" />}
         <RD.Content
+          // Non-modal: keep the panel open when the user clicks the stage or the
+          // control bar (mute / leave / etc.) — only Esc or the close button shuts it.
+          onInteractOutside={modal ? undefined : (e) => e.preventDefault()}
           className={cn(
             'fixed z-50 flex flex-col bg-surface text-ink shadow-raised focus:outline-none',
             sideClass[side],

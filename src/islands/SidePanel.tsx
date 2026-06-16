@@ -3,6 +3,7 @@ import { ChatIcon, PeopleIcon } from '@/components/icons'
 import { ChatPanel, type ChatApi } from '@/islands/ChatPanel'
 import { ParticipantsPanel } from '@/islands/ParticipantsPanel'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useIsTouch } from '@/lib/useIsTouch'
 
 /**
  * The unified Chat / People panel (Slack model): one docked island / mobile
@@ -13,6 +14,11 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
   const value = panel ?? 'chat'
+  // Desktop docks this panel beside the live stage (the stage + control bar
+  // reflow for it), so it must be NON-modal — you keep muting / leaving / using
+  // the call while it's open. Mobile shows it as a modal bottom sheet (scrim +
+  // focus trap + tap-to-dismiss), which is right for a small screen.
+  const coarse = useIsTouch()
 
   return (
     <Sheet
@@ -21,6 +27,7 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
       title={value === 'chat' ? 'Chat' : 'Participants'}
       flush
       hideTitle
+      modal={coarse}
     >
       <Tabs
         items={[
