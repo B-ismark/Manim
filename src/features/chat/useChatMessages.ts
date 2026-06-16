@@ -161,21 +161,20 @@ export function useChatMessages() {
   const [edits, setEdits] = useState<Record<string, string>>({})
   const editsRef = useRef<Record<string, string>>({})
   editsRef.current = edits
-  // id → author identity, so the receiver can reject an edit that isn't from the
-  // original author. Kept independent of `edits` to avoid a render cycle.
+  // id → author identity for every message THIS session has. Reaction/edit
+  // handlers gate on it: anything for an unknown id (e.g. a message from before
+  // we rejoined) is dropped, so stale overlays can't bleed across sessions.
+  // Populated synchronously in the items memo (not an effect) so a reaction that
+  // lands right after its message isn't wrongly dropped by a stale map.
   const authorRef = useRef<Record<string, string>>({})
-  useEffect(() => {
-    const map: Record<string, string> = {}
-    for (const m of chatMessages) map[m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`] = m.from?.identity ?? ''
-    for (const f of files) map[f.id] = f.fromIdentity
-    authorRef.current = map
-  }, [chatMessages, files])
 
   const items = useMemo<ChatItem[]>(() => {
+    const authors: Record<string, string> = {}
     const text: TextItem[] = chatMessages.map((m) => {
       const decoded = decodeText(m.message)
       const id = m.id ?? `${m.timestamp}-${m.from?.identity ?? ''}`
       const edited = edits[id]
+      authors[id] = m.from?.identity ?? ''
       return {
         kind: 'text',
         id,
@@ -188,6 +187,8 @@ export function useChatMessages() {
         edited: edited !== undefined,
       }
     })
+    for (const f of files) authors[f.id] = f.fromIdentity
+    authorRef.current = authors
     return [...text, ...files].sort((a, b) => a.timestamp - b.timestamp)
   }, [chatMessages, files, myIdentity, edits])
 
@@ -204,9 +205,12 @@ export function useChatMessages() {
         return
       }
       if ('id' in d) {
-        // Only honor an edit from the message's original author.
+        // Ignore edits for messages we don't have this session (same cross-rejoin
+        // ghost problem as reactions), and only honor an edit from the message's
+        // original author.
         const author = authorRef.current[d.id]
-        if (author && msg.from?.identity && author !== msg.from.identity) return
+        if (author === undefined) return
+        if (msg.from?.identity && author !== msg.from.identity) return
         setEdits((prev) => ({ ...prev, [d.id]: d.text }))
       }
     } catch {
@@ -329,6 +333,12 @@ export function useChatMessages() {
         return
       }
       if ('messageId' in d) {
+        // Only apply reactions to messages THIS session actually received. A
+        // reaction to a chat from before we (re)joined references a message we
+        // don't have — applying it leaves a ghost that bleeds across rejoins
+        // (you rejoin under a new name, have no history, yet keep getting
+        // reactions for your old messages). Drop those.
+        if (!(d.messageId in authorRef.current)) return
         setReactions((prev) => applyReaction(prev, d.messageId, d.emoji, d.identity, d.added))
       }
     } catch {
