@@ -17,8 +17,14 @@ interface RoomState {
   /** Facing mode of the local camera. Front ('user') is mirrored like a selfie;
    *  rear ('environment') must NOT be mirrored or the world looks flipped. */
   selfFacing: 'user' | 'environment'
+  /** Hide your own floating self-view (you still send video; you just don't see it). */
+  selfViewHidden: boolean
+  /** Audio-only / low-bandwidth: render avatars instead of decoding remote video. */
+  audioOnly: boolean
 
   setLayout: (layout: LayoutMode) => void
+  toggleSelfView: () => void
+  toggleAudioOnly: () => void
   /** Toggle pin for an identity; pinning auto-switches to speaker layout if in grid. */
   togglePin: (identity: string) => void
   setPanel: (panel: PanelTab) => void
@@ -36,9 +42,13 @@ export const useRoomStore = create<RoomState>((set) => ({
   panel: null,
   unread: 0,
   selfFacing: 'user',
+  selfViewHidden: false,
+  audioOnly: false,
 
   setLayout: (layout) => set({ layout }),
   setSelfFacing: (selfFacing) => set({ selfFacing }),
+  toggleSelfView: () => set((s) => ({ selfViewHidden: !s.selfViewHidden })),
+  toggleAudioOnly: () => set((s) => ({ audioOnly: !s.audioOnly })),
   togglePin: (identity) =>
     set((s) => {
       const pinned = s.pinned === identity ? null : identity

@@ -29,7 +29,7 @@ export function Dialog({
         <RD.Overlay className="fixed inset-0 z-40 bg-scrim mn-pop" />
         <RD.Content
           className={cn(
-            'fixed left-1/2 top-1/2 z-50 flex w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 flex-col',
+            'fixed left-1/2 top-1/2 z-50 flex w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 flex-col lg:w-[min(90vw,38rem)]',
             // Bound to the viewport so tall bodies (effects preview + controls)
             // never run off a short screen with no way to scroll. Title/desc stay
             // pinned; only the body scrolls.

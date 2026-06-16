@@ -277,6 +277,13 @@ export const ReplyIcon = (p: P) => (
   </svg>
 )
 
+export const EyeOffIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c7 0 10 8 10 8a18 18 0 0 1-2.16 3.19M6.6 6.6A18 18 0 0 0 2 12s3 8 10 8a9 9 0 0 0 5.4-1.8" />
+    <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24M3 3l18 18" />
+  </svg>
+)
+
 export const ShareIcon = (p: P) => (
   <svg {...base(p)}>
     <circle cx="18" cy="5" r="3" />

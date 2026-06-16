@@ -34,6 +34,8 @@ import {
   SpeakerLayoutIcon,
   EffectsIcon,
   KeyboardIcon,
+  EyeOffIcon,
+  SoundOnIcon,
 } from '@/components/icons'
 import { DeviceSettings } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
@@ -118,6 +120,10 @@ export function ControlBar({
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
+  const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
+  const toggleSelfView = useRoomStore((s) => s.toggleSelfView)
+  const audioOnly = useRoomStore((s) => s.audioOnly)
+  const toggleAudioOnly = useRoomStore((s) => s.toggleAudioOnly)
 
   useEffect(() => {
     const onLeavePip = () => setPipActive(false)
@@ -327,6 +333,24 @@ export function ControlBar({
           label="Audio & video"
           onClick={() => {
             setDevicesOpen(true)
+            closeMore()
+          }}
+        />
+        <MenuRow
+          icon={<EyeOffIcon />}
+          label={selfViewHidden ? 'Show self view' : 'Hide self view'}
+          active={selfViewHidden}
+          onClick={() => {
+            toggleSelfView()
+            closeMore()
+          }}
+        />
+        <MenuRow
+          icon={<SoundOnIcon />}
+          label="Audio-only mode"
+          active={audioOnly}
+          onClick={() => {
+            toggleAudioOnly()
             closeMore()
           }}
         />
