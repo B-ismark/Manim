@@ -1,7 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { RoomAudioRenderer, useRoomContext, useConnectionState } from '@livekit/components-react'
+import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
 import { ConnectionState } from 'livekit-client'
+import { toast } from '@/store/useToastStore'
 import { Stage } from '@/islands/Stage'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { PipPanel } from '@/islands/PipPanel'
@@ -117,6 +118,30 @@ function useStageChrome() {
 // The chat/participants panel is only needed once opened — defer its chunk.
 const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ default: m.SidePanel })))
 
+/** Minutes alone before the call auto-ends (a forgotten-open-call guard). */
+const SOLO_TIMEOUT_MS = 10 * 60 * 1000
+/**
+ * Auto-leave when you've been the only one in the room for a long time — stops a
+ * forgotten call running forever. A warning toast fires a minute before. The
+ * timers reset the moment anyone else is present.
+ */
+function useSoloAutoLeave(onLeave: () => void) {
+  const participants = useParticipants()
+  const alone = participants.length <= 1
+  useEffect(() => {
+    if (!alone) return
+    const warn = window.setTimeout(
+      () => toast('You’re alone — the call will end soon', 'neutral'),
+      SOLO_TIMEOUT_MS - 60_000,
+    )
+    const end = window.setTimeout(onLeave, SOLO_TIMEOUT_MS)
+    return () => {
+      window.clearTimeout(warn)
+      window.clearTimeout(end)
+    }
+  }, [alone, onLeave])
+}
+
 /**
  * Everything inside the LiveKitRoom provider. Owns shared hooks (reactions,
  * blur, session control) and reflows the stage when the side panel docks on
@@ -164,6 +189,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
+  // End a forgotten call left running alone.
+  useSoloAutoLeave(doLeave)
 
   // Cover the initial connect with the joining screen (same label as RoomRoute's
   // so the knock→connect handoff doesn't jump). Reconnects after that are handled
