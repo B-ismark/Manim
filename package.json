@@ -10,9 +10,12 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
-    "test": "playwright test --project=desktop",
+    "test": "playwright test --project=desktop --grep-invert @heavy",
     "test:ui": "playwright test --project=desktop --ui",
+    "test:a11y": "playwright test 08-a11y --project=desktop",
+    "test:visual": "playwright test --project=desktop --grep @heavy --workers=1",
     "test:stress": "cross-env STRESS=1 playwright test 07-capacity --project=desktop --workers=1",
+    "loadtest": "bash scripts/load-test.sh",
     "lighthouse": "lhci autorun"
   },
   "dependencies": {
@@ -39,6 +42,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.61.0",
     "@tailwindcss/vite": "^4.0.9",
@@ -47,6 +51,7 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
+    "axe-core": "^4.12.1",
     "concurrently": "^9.1.2",
     "cors": "^2.8.5",
     "cross-env": "^10.1.0",

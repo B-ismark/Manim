@@ -13,6 +13,9 @@ dist-ssr
 playwright-report
 test-results
 
-# Local audit artifacts (script is tracked; output is not)
+# Local audit artifacts (scripts are tracked; output is not)
 audit/shots
+audit/scenarios
 audit/responsive-audit.json
+audit/loadtest-*.txt
+.lighthouseci

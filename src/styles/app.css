@@ -29,7 +29,8 @@
   /* ── Ink (text) ───────────────────────────────────────────── */
   --color-ink: oklch(0.22 0.01 270);
   --color-ink-muted: oklch(0.5 0.012 270);
-  --color-ink-subtle: oklch(0.65 0.012 270);
+  /* L=0.52 so subtle text clears AA (4.5:1) on light surfaces — 0.65 was 3.2:1. */
+  --color-ink-subtle: oklch(0.52 0.012 270);
 
   /* ── Accent ───────────────────────────────────────────────── */
   /* L=0.55 so white accent-ink clears WCAG AA (4.5:1) on accent fills in BOTH

@@ -5,6 +5,17 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      publishers:
+        description: 'load-test: simulated video publishers'
+        default: '20'
+      subscribers:
+        description: 'load-test: simulated subscribers'
+        default: '50'
+      duration:
+        description: 'load-test: duration (e.g. 60s)'
+        default: '60s'
 
 jobs:
   # Always runs — no secrets needed. Gates every push/PR.
@@ -68,14 +79,25 @@ jobs:
             sleep 1
           done
           echo "vite did not come up" && exit 1
-      - name: Run E2E (functional suite)
+      - name: Run E2E (functional + a11y)
         if: steps.guard.outputs.run == 'true'
-        run: npm test
+        # Serial — concurrent WebRTC contexts saturate the runner and flake.
+        run: npm test -- --workers=1
+      - name: Run visual scenarios (screenshots + edge cases)
+        if: steps.guard.outputs.run == 'true'
+        run: npm run test:visual
       - uses: actions/upload-artifact@v4
         if: ${{ always() && steps.guard.outputs.run == 'true' }}
         with:
           name: playwright-report
           path: playwright-report/
+          retention-days: 7
+      - name: Upload scenario screenshots
+        uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.guard.outputs.run == 'true' }}
+        with:
+          name: scenario-screenshots
+          path: audit/scenarios/
           retention-days: 7
 
   # Lighthouse budgets on landing + prejoin (the routes that render without a live
@@ -111,3 +133,73 @@ jobs:
       - name: Lighthouse CI
         if: steps.guard.outputs.run == 'true'
         run: npm run lighthouse
+
+  # Scale stress — manual (workflow_dispatch). Floods a TEST room with lk
+  # load-test sim participants (server-side, no browsers) while one Playwright
+  # host observes the UI. Uploads the host screenshot + load-test stats. Uses the
+  # same LiveKit secrets (point them at a TEST project, never prod).
+  loadtest:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    needs: typecheck
+    env:
+      LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+      LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+      LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+      VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL }}
+      ROOM: stress-${{ github.run_id }}
+      PUBLISHERS: ${{ github.event.inputs.publishers }}
+      SUBSCRIBERS: ${{ github.event.inputs.subscribers }}
+      DURATION: ${{ github.event.inputs.duration }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard on creds
+        id: guard
+        run: |
+          if [ -z "$LIVEKIT_API_KEY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::LiveKit secrets absent — cannot load-test."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with: { node-version: 20, cache: npm }
+      - run: npm ci
+        if: steps.guard.outputs.run == 'true'
+      - name: Install livekit-cli
+        if: steps.guard.outputs.run == 'true'
+        run: curl -sSL https://get.livekit.io/cli | bash
+      - name: Install Playwright Chromium
+        if: steps.guard.outputs.run == 'true'
+        run: npx playwright install --with-deps chromium
+      - name: Start app
+        if: steps.guard.outputs.run == 'true'
+        run: npm run dev &
+      - name: Wait for vite
+        if: steps.guard.outputs.run == 'true'
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173 >/dev/null; then exit 0; fi
+            sleep 1
+          done
+          exit 1
+      - name: Flood the room (background)
+        if: steps.guard.outputs.run == 'true'
+        run: npm run loadtest &
+      - name: Observe host UI under load
+        if: steps.guard.outputs.run == 'true'
+        env:
+          LOADTEST_ROOM: ${{ env.ROOM }}
+        run: |
+          sleep 10   # let publishers ramp into the room first
+          npx playwright test 10-loadtest-observe --project=desktop --workers=1
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() && steps.guard.outputs.run == 'true' }}
+        with:
+          name: loadtest-results
+          path: |
+            audit/scenarios/
+            audit/loadtest-*.txt
+            playwright-report/
+          retention-days: 14
