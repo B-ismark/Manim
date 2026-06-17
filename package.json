@@ -12,6 +12,7 @@
     "typecheck": "tsc -b --noEmit",
     "test": "playwright test --project=desktop --grep-invert @heavy",
     "test:mobile": "playwright test --project=mobile --grep-invert @heavy",
+    "test:mobile-sm": "playwright test 11-mobile-fit --project=mobile-sm",
     "test:ui": "playwright test --project=desktop --ui",
     "test:a11y": "playwright test 08-a11y --project=desktop",
     "test:visual": "playwright test --project=desktop --grep @heavy --workers=1",

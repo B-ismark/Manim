@@ -87,6 +87,9 @@ jobs:
         if: steps.guard.outputs.run == 'true'
         # Touch layouts (bottom sheets, auto-hide chrome, portrait tiles).
         run: npm run test:mobile -- --workers=1
+      - name: Run real-estate fit checks — small phone (iPhone SE size)
+        if: steps.guard.outputs.run == 'true'
+        run: npm run test:mobile-sm -- --workers=1
       - name: Run visual scenarios (screenshots + edge cases)
         if: steps.guard.outputs.run == 'true'
         run: npm run test:visual

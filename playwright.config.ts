@@ -40,5 +40,17 @@ export default defineConfig({
   projects: [
     { name: 'desktop', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 }, launchOptions: { args: FAKE_MEDIA } } },
     { name: 'mobile', use: { ...devices['Pixel 7'], launchOptions: { args: FAKE_MEDIA } } },
+    // Short phone (375x667, iPhone-SE size) — used for the real-estate / no-scroll
+    // fit checks (11-mobile-fit), which a tall Pixel 7 can mask. Chromium (not the
+    // WebKit 'iPhone SE' device) so it reuses the fake-media flags; just the small
+    // touch viewport. Not the full suite (behaviour is identical) — CI cost stays low.
+    {
+      name: 'mobile-sm',
+      use: {
+        ...devices['Pixel 7'],
+        viewport: { width: 375, height: 667 },
+        launchOptions: { args: FAKE_MEDIA },
+      },
+    },
   ],
 })
