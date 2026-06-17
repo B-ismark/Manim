@@ -185,7 +185,15 @@ function GridStage({
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col p-2 sm:p-3">
+    <div
+      className={cn(
+        'flex min-h-0 flex-1 flex-col p-2 sm:p-3',
+        // When the pager shows, reserve space at the bottom so it clears the
+        // floating control bar (fixed, ~4.5rem from the bottom) instead of
+        // rendering behind it — otherwise pages 2+ are unreachable in big rooms.
+        paged && 'pb-[4.75rem] sm:pb-20',
+      )}
+    >
       <div
         ref={ref}
         className="grid min-h-0 flex-1 justify-center gap-2 sm:gap-3"
