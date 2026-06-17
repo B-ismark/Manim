@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "test": "playwright test --project=desktop",
     "test:ui": "playwright test --project=desktop --ui",
-    "test:stress": "cross-env STRESS=1 playwright test 07-capacity --project=desktop --workers=1"
+    "test:stress": "cross-env STRESS=1 playwright test 07-capacity --project=desktop --workers=1",
+    "lighthouse": "lhci autorun"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.9",
@@ -38,6 +39,7 @@
     "zustand": "^5.0.3"
   },
   "devDependencies": {
+    "@lhci/cli": "^0.15.1",
     "@playwright/test": "^1.61.0",
     "@tailwindcss/vite": "^4.0.9",
     "@types/node": "^22.19.21",
