@@ -43,8 +43,10 @@
   --color-accent-soft: color-mix(in oklch, var(--color-accent) 16%, var(--color-surface));
 
   /* ── Status ───────────────────────────────────────────────── */
-  --color-danger: oklch(0.58 0.21 25);
-  --color-danger-hover: oklch(0.52 0.22 25);
+  /* L=0.55 so white danger-ink clears AA on danger fills (Leave / mute-off
+     buttons) in BOTH modes — 0.58 was a borderline 4.6 in light, 3.4 in dark. */
+  --color-danger: oklch(0.55 0.21 25);
+  --color-danger-hover: oklch(0.49 0.22 25);
   --color-danger-ink: oklch(0.99 0 0);
   --color-success: oklch(0.66 0.16 150);
   --color-warning: oklch(0.78 0.15 80);

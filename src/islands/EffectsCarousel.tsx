@@ -32,7 +32,10 @@ export function EffectsCarousel({
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !open && 'translate-y-4 opacity-0',
       )}
-      aria-hidden={!open}
+      // inert (not bare aria-hidden) when closed: also pulls the lens buttons out
+      // of the tab order, so axe's "aria-hidden element must not contain focusable
+      // elements" passes and keyboard users can't tab into the invisible strip.
+      inert={!open}
     >
       <div
         className={cn(

@@ -23,7 +23,7 @@ export function attachErrorSink(page: Page): ErrorSink {
 
 /** Noise we tolerate (third-party / environmental, not app bugs). */
 const IGNORED_ERROR_RE =
-  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|net::ERR_|datachannel|publishing rejected|insertable streams|the user aborted a request/i
+  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|net::ERR_|datachannel|publishing rejected|insertable streams|the user aborted a request|abort handler called|ConnectionError/i
 
 export function appErrors(sink: ErrorSink): string[] {
   return [...sink.pageErrors, ...sink.consoleErrors].filter((e) => !IGNORED_ERROR_RE.test(e))
@@ -101,14 +101,25 @@ export async function pageMetrics(page: Page) {
   })
 }
 
-/** Detect visually-colliding interactive elements (true overlaps, not nesting). */
+/** Detect visually-colliding interactive elements (true overlaps, not nesting).
+ *  Parks the mouse first so hover-revealed tile controls (pin/mute/flip, which
+ *  stack by design) retract — we measure the resting layout, not a hover state. */
 export async function overlaps(page: Page) {
+  await page.mouse.move(0, 0)
+  await page.waitForTimeout(400) // > --dur-base (220ms) so hover controls fully fade out
   return page.evaluate(() => {
     const sel = 'button, a, input, select, textarea, [role="button"]'
     const els = Array.from(document.querySelectorAll<HTMLElement>(sel)).filter((e) => {
       const r = e.getBoundingClientRect()
-      const s = getComputedStyle(e)
-      return r.width > 4 && r.height > 4 && s.visibility !== 'hidden' && Number(s.opacity) > 0.05
+      if (r.width <= 4 || r.height <= 4) return false
+      // checkVisibility walks ANCESTORS — so a button inside an opacity-0 / hidden
+      // container (closed effects carousel, retracted hover controls) is correctly
+      // treated as invisible. Element-only opacity checks missed those.
+      return e.checkVisibility({
+        opacityProperty: true,
+        visibilityProperty: true,
+        contentVisibilityAuto: true,
+      } as CheckVisibilityOptions)
     })
     const out: { a: string; b: string; frac: number }[] = []
     const desc = (e: HTMLElement) =>
