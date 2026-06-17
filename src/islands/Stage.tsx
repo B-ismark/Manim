@@ -70,7 +70,12 @@ function gridCapacity(
   const bySqrt = Math.ceil(Math.sqrt(n))
   const cols = Math.max(1, Math.min(maxCols, byWidth, bySqrt))
   const rows = Math.max(1, Math.floor((height + gap) / (minH + gap)))
-  return { cols, perPage: Math.max(1, cols * rows) }
+  // Hard cap so pagination ALWAYS engages for big rooms — independent of the
+  // measured height (a flex chain can briefly report an unbounded grid height,
+  // which would otherwise compute a perPage large enough to mount every tile).
+  // Also bounds mounted <video>/DOM per page (perf), the point of paging.
+  const MAX_PER_PAGE = coarse ? 9 : 20
+  return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) }
 }
 
 export function Stage() {
