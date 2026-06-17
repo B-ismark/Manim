@@ -146,7 +146,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
         {/* Portrait on touch (matches the in-call tiles), landscape on desktop.
             Height is capped (max-h) so the preview never pushes the name field and
             Join button off a short viewport — the real cause of pre-join scrolling. */}
-        <div className="mx-auto mt-3 aspect-[3/4] max-h-[38dvh] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken pointer-fine:mt-4 pointer-fine:aspect-video pointer-fine:max-h-none pointer-fine:max-w-none">
+        <div className="mx-auto mt-3 aspect-[3/4] max-h-[32dvh] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken pointer-fine:mt-4 pointer-fine:aspect-video pointer-fine:max-h-none pointer-fine:max-w-none">
           {cameraOn ? (
             <video ref={videoRef} autoPlay muted playsInline className="size-full object-cover [transform:scaleX(-1)]" />
           ) : (

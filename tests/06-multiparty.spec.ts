@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, newParticipant, appErrors, join, openChat } from './helpers'
+import { uniqueRoom, newParticipant, appErrors, join, openChat, revealChrome, closePanel } from './helpers'
 
 // Multi-participant flows need real LiveKit (creds in .env). Each participant is
 // its own browser context so they have independent camera/mic + identity.
@@ -39,11 +39,12 @@ test.describe('Multi-party', () => {
     await join(page, room, 'Host')
 
     // Host turns the lobby on (More → Lobby off→on toggle), then closes the menu
-    // — on mobile More is a modal bottom-sheet whose scrim would otherwise block
-    // the admit banner (on desktop it's a non-modal popover). Esc closes both.
+    // by TAPPING its X — on mobile More is a modal bottom-sheet whose scrim would
+    // otherwise block the admit banner (phones have no Esc key).
+    await revealChrome(page)
     await page.getByRole('button', { name: 'More options' }).click()
     await page.getByRole('button', { name: /Lobby/ }).click()
-    await page.keyboard.press('Escape')
+    await closePanel(page)
 
     // Guest tries to join → should land in the waiting screen.
     const ctx = await browser.newContext({ permissions: ['camera', 'microphone'] })
