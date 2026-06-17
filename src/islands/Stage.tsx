@@ -24,6 +24,7 @@ import { useDraggable } from '@/lib/useDraggable'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
+import { toast } from '@/store/useToastStore'
 import { cn } from '@/lib/cn'
 
 /**
@@ -261,7 +262,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
     try {
       await moderate({ room: room.name, token: roomToken, target: p.identity, action: 'mute', trackSid, source: 'microphone' })
     } catch {
-      /* surfaced elsewhere */
+      toast(`Couldn't mute ${name}`, 'danger')
     }
   }
   const myOtherDevice = isMyOtherDevice(p, myUserId)
@@ -320,6 +321,10 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
       {hasVideo && pub ? (
         <VideoTrack
           trackRef={trackRef as Parameters<typeof VideoTrack>[0]['trackRef']}
+          // Mark the local camera so PiP can pick a remote video off the model,
+          // not a fragile CSS-transform check (a remote with any transform used
+          // to be wrongly skipped). Set for front AND rear local cam.
+          data-local-cam={p.isLocal && !isScreen ? '' : undefined}
           className={cn(
             'mn-video-in size-full',
             isScreen ? 'bg-black object-contain' : 'object-cover',

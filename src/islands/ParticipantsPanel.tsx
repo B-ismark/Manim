@@ -191,6 +191,7 @@ export function ParticipantsPanel() {
         fallbackToMailto(to)
       }
     } catch {
+      toast("Couldn't auto-send the invite — use the mail link below", 'warning')
       fallbackToMailto(to)
     }
   }

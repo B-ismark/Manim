@@ -2,6 +2,7 @@ import { useCallback } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
+import { toast } from '@/store/useToastStore'
 
 /**
  * Mobile front/rear camera flip. Restarts the local camera track with the
@@ -25,7 +26,7 @@ export function useFlipCamera() {
       await track.restartTrack({ facingMode: next })
       setSelfFacing(next)
     } catch {
-      /* device can't switch facing — ignore */
+      toast("Couldn't switch camera", 'danger')
     }
   }, [localParticipant, setSelfFacing])
 }
