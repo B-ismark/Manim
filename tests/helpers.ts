@@ -55,19 +55,31 @@ export async function newParticipant(
   return { context, page, sink }
 }
 
-/** Wake the auto-hiding control chrome on touch. On mobile the control bar slides
- *  off-screen after ~4s; a single tap on the top scrim (above the tiles, so it
- *  never hits a tile's pin/double-tap) brings it back. No-op on desktop (controls
- *  always shown), and only taps when the Leave button is actually off-viewport. */
+/** Is this a touch device? (mobile project) — gates real tap gestures. */
+export async function isTouch(page: Page): Promise<boolean> {
+  return page.evaluate(() => matchMedia('(pointer: coarse)').matches)
+}
+
+/** Wake the auto-hiding control chrome on touch — exactly as a user would: a real
+ *  finger TAP on the top scrim (above the tiles, so it never hits a tile's
+ *  pin/double-tap). No keyboard, no hover. No-op on desktop (controls always
+ *  shown), and only taps when the control bar is actually off-viewport. */
 export async function revealChrome(page: Page) {
   const vp = page.viewportSize()
-  if (!vp) return
+  if (!vp || !(await isTouch(page))) return
   const box = await page.getByRole('button', { name: 'Leave call' }).boundingBox().catch(() => null)
   const hidden = !box || box.y > vp.height - 4
   if (hidden) {
-    await page.mouse.click(Math.round(vp.width / 2), 4)
+    await page.touchscreen.tap(Math.round(vp.width / 2), 4)
     await page.waitForTimeout(300)
   }
+}
+
+/** Close any open Sheet (chat / participants / More) the way a real user does:
+ *  TAP the "Close panel" X in the header. No Escape — phones have no Esc key. */
+export async function closePanel(page: Page) {
+  const x = page.getByRole('button', { name: 'Close panel' }).last()
+  if (await x.isVisible().catch(() => false)) await x.click()
 }
 
 /** Open the chat side panel and return the message composer. */

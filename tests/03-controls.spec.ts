@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join } from './helpers'
+import { uniqueRoom, attachErrorSink, appErrors, join, revealChrome, closePanel } from './helpers'
 
 test.describe('In-call controls', () => {
   test('mic + camera toggles flip state; chat panel opens and closes', async ({ page }) => {
@@ -15,13 +15,12 @@ test.describe('In-call controls', () => {
     await camOff.click()
     await expect(page.getByRole('button', { name: 'Turn on camera' })).toBeVisible()
 
-    const chat = page.getByRole('button', { name: 'Open chat' })
-    await chat.click()
+    await revealChrome(page)
+    await page.getByRole('button', { name: 'Open chat' }).click()
     await expect(page.getByText('Messages are visible only to people in this call.')).toBeVisible()
-    // Close with Escape — works for both the desktop docked panel and the mobile
-    // modal bottom-sheet (re-clicking "Open chat" can't reach it behind the sheet
-    // scrim on touch).
-    await page.keyboard.press('Escape')
+    // Close by tapping the panel's X — how a real user (esp. on touch, no Esc key)
+    // dismisses the sheet.
+    await closePanel(page)
     await expect(page.getByText('Messages are visible only to people in this call.')).toBeHidden()
 
     expect(appErrors(sink)).toEqual([])
