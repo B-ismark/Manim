@@ -23,6 +23,8 @@ export interface ContactRow {
   otherId: string
   email: string | null
   name: string
+  /** Profile photo URL, when the contact has one (else initials are shown). */
+  avatarUrl: string | null
   direction: ContactDirection
 }
 
@@ -64,10 +66,17 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       return
     }
     const rows: ContactRow[] = (data ?? []).map(
-      (r: { other_id: string; other_email: string | null; other_name: string | null; direction: ContactDirection }) => ({
+      (r: {
+        other_id: string
+        other_email: string | null
+        other_name: string | null
+        other_avatar?: string | null
+        direction: ContactDirection
+      }) => ({
         otherId: r.other_id,
         email: r.other_email,
         name: r.other_name?.trim() || r.other_email?.split('@')[0] || 'Contact',
+        avatarUrl: r.other_avatar ?? null,
         direction: r.direction,
       }),
     )

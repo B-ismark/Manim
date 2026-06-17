@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Island, Popover, IconButton } from '@/components/primitives'
+import { Button, Island, Popover, IconButton, Avatar } from '@/components/primitives'
 import { SettingsIcon, GoogleIcon, CameraIcon, PeopleIcon } from '@/components/icons'
 import { SettingsDialog } from '@/islands/Settings'
 import { ContactsDialog } from '@/islands/Contacts'
@@ -22,6 +22,8 @@ function randomRoom(): string {
   const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
   return `${pick(a)}-${pick(b)}-${Math.floor(100 + Math.random() * 900)}`
 }
+
+const HERO_FEATURES = ['No download', 'End-to-end ready', 'Free to use']
 
 export function Landing() {
   const navigate = useNavigate()
@@ -63,9 +65,12 @@ export function Landing() {
 
   return (
     // Top-align + scroll on phones so the keyboard can't bury the Join button
-    // (centering strands it behind the keyboard); centered on desktop.
-    <main className="min-h-dvh flex flex-col items-center justify-start gap-5 overflow-y-auto p-4 pt-20 sm:justify-center sm:gap-6 sm:pt-4">
-      <header className="absolute inset-x-4 top-4 flex items-center justify-between">
+    // (centering strands it behind the keyboard); centered on desktop. The hero's
+    // verbose copy is desktop-only so the mobile surface stays single-screen.
+    <main className="relative min-h-dvh overflow-y-auto p-4 pt-20 sm:pt-4 flex flex-col items-center justify-start lg:justify-center">
+      <GlowBackground />
+
+      <header className="absolute inset-x-4 top-4 z-20 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
           {signedIn && (
@@ -89,46 +94,88 @@ export function Landing() {
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <ContactsDialog open={contactsOpen} onOpenChange={setContactsOpen} onCall={callContact} />
 
-      <SetupBanner />
-
-      <OtherDeviceMeetings onJoin={go} />
-
-      <div className="flex items-center gap-2.5">
-        <span className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink font-bold">
-          M
-        </span>
-        <h1 className="text-2xl font-semibold tracking-tight">Manim</h1>
-      </div>
-
-      <Island pad="none" className="w-full max-w-md p-5 sm:p-6">
-        <h2 className="text-lg font-semibold">Start or join a call</h2>
-        <p className="mt-1 text-sm text-ink-muted">Free, secure, lightweight video.</p>
-
-        <form onSubmit={onJoin} className="mt-4 flex flex-col gap-3 sm:mt-5">
-          <label htmlFor="room" className="text-sm font-medium">
-            Room name or code
-          </label>
-          <input
-            id="room"
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            placeholder="e.g. team-standup"
-            autoComplete="off"
-            className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-          />
-          <div className="flex gap-2">
-            <Button type="submit" variant="accent" block disabled={!room.trim()}>
-              Join room
-            </Button>
-            <Button type="button" variant="neutral" onClick={() => go(randomRoom())}>
-              New call
-            </Button>
+      <div className="relative z-10 grid w-full max-w-5xl grid-cols-1 items-center gap-8 lg:grid-cols-2 lg:gap-14">
+        {/* Hero — full copy on desktop, compact brand + headline on mobile. */}
+        <div className="text-center lg:text-left">
+          <div className="flex items-center justify-center gap-2.5 lg:justify-start">
+            <span className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink font-bold">
+              M
+            </span>
+            <span className="text-xl font-semibold tracking-tight">Manim</span>
           </div>
-        </form>
-      </Island>
+          <h1 className="mt-5 text-2xl font-semibold tracking-tight sm:mt-6 sm:text-3xl lg:text-5xl lg:leading-[1.05]">
+            Video calls, <span className="text-accent">lightweight</span> and secure.
+          </h1>
+          <p className="mx-auto mt-3 hidden max-w-md text-base text-ink-muted lg:mx-0 lg:block">
+            Start or join a room in a single click — no downloads, no accounts required.
+            End-to-end encryption is one toggle away when the conversation matters.
+          </p>
+          <ul className="mt-6 hidden flex-wrap gap-2 lg:flex">
+            {HERO_FEATURES.map((f) => (
+              <li
+                key={f}
+                className="rounded-control bg-accent-soft px-3 py-1 text-xs font-medium text-accent"
+              >
+                {f}
+              </li>
+            ))}
+          </ul>
+        </div>
 
-      <p className="text-xs text-ink-subtle">No download. Works in your browser.</p>
+        {/* Action column — contextual cards stacked above the join card. */}
+        <div className="flex w-full max-w-md flex-col gap-4 justify-self-center lg:justify-self-end">
+          <SetupBanner />
+          <OtherDeviceMeetings onJoin={go} />
+
+          <Island pad="none" className="w-full p-5 sm:p-6">
+            <h2 className="text-lg font-semibold">Start or join a call</h2>
+            <p className="mt-1 text-sm text-ink-muted">Free, secure, lightweight video.</p>
+
+            <form onSubmit={onJoin} className="mt-4 flex flex-col gap-3 sm:mt-5">
+              <label htmlFor="room" className="text-sm font-medium">
+                Room name or code
+              </label>
+              <input
+                id="room"
+                value={room}
+                onChange={(e) => setRoom(e.target.value)}
+                placeholder="e.g. team-standup"
+                autoComplete="off"
+                className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+              />
+              <div className="flex gap-2">
+                <Button type="submit" variant="accent" block disabled={!room.trim()}>
+                  Join room
+                </Button>
+                <Button type="button" variant="neutral" onClick={() => go(randomRoom())}>
+                  New call
+                </Button>
+              </div>
+            </form>
+
+            <p className="mt-4 text-center text-xs text-ink-subtle">
+              No download. Works in your browser.
+            </p>
+          </Island>
+        </div>
+      </div>
     </main>
+  )
+}
+
+/** Ambient accent glow behind the hero — pure CSS, theme-aware (accent tokens). */
+function GlowBackground() {
+  return (
+    <div aria-hidden className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
+      <div
+        className="absolute -left-24 top-1/4 size-[34rem] rounded-full opacity-70 blur-3xl"
+        style={{ background: 'radial-gradient(closest-side, var(--color-accent-soft), transparent)' }}
+      />
+      <div
+        className="absolute -right-32 bottom-0 size-[30rem] rounded-full opacity-50 blur-3xl"
+        style={{ background: 'radial-gradient(closest-side, var(--color-accent-soft), transparent)' }}
+      />
+    </div>
   )
 }
 
@@ -137,7 +184,7 @@ function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string) => void }) {
   const meetings = useOtherDeviceMeetings()
   if (meetings.length === 0) return null
   return (
-    <Island pad="none" className="w-full max-w-md p-3">
+    <Island pad="none" className="w-full p-3">
       <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">On your other devices</p>
       <ul className="flex flex-col gap-1.5">
         {meetings.map((m) => (
@@ -160,6 +207,8 @@ function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string) => void }) {
 function AccountMenu() {
   const signedIn = useAuthStore((s) => s.signedIn)
   const email = useAuthStore((s) => s.email)
+  const avatarUrl = useAuthStore((s) => s.avatarUrl)
+  const name = useAppStore((s) => s.displayName)
   const signInWithEmail = useAuthStore((s) => s.signInWithEmail)
   const signInWithGoogle = useAuthStore((s) => s.signInWithGoogle)
   const signOut = useAuthStore((s) => s.signOut)
@@ -192,14 +241,33 @@ function AccountMenu() {
       side="bottom"
       align="start"
       trigger={
-        <Button variant="ghost" size="sm">
-          {signedIn ? (email ?? 'Account') : 'Sign in'}
-        </Button>
+        signedIn ? (
+          <button
+            type="button"
+            aria-label="Account"
+            className="flex items-center gap-2 rounded-control p-1 pr-2.5 text-sm hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Avatar size="sm" name={name || email || '?'} src={avatarUrl} />
+            <span className="hidden max-w-[12rem] truncate font-medium sm:inline">
+              {name || email}
+            </span>
+          </button>
+        ) : (
+          <Button variant="ghost" size="sm">
+            Sign in
+          </Button>
+        )
       }
     >
       {signedIn ? (
-        <div className="flex w-56 flex-col gap-2 p-1">
-          <p className="truncate px-2 py-1 text-sm text-ink-muted">{email}</p>
+        <div className="flex w-60 flex-col gap-2 p-1">
+          <div className="flex items-center gap-2.5 px-1 py-1">
+            <Avatar size="sm" name={name || email || '?'} src={avatarUrl} />
+            <div className="min-w-0">
+              {name && <p className="truncate text-sm font-medium">{name}</p>}
+              <p className="truncate text-xs text-ink-muted">{email}</p>
+            </div>
+          </div>
           <Button variant="neutral" size="sm" block onClick={() => void signOut()}>
             Sign out
           </Button>

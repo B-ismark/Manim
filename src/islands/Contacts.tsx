@@ -224,7 +224,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Row({ contact, children }: { contact: ContactRow; children: React.ReactNode }) {
   return (
     <li className="flex items-center gap-2.5 rounded-field px-1 py-1.5">
-      <Avatar name={contact.name} size="sm" />
+      <Avatar name={contact.name} src={contact.avatarUrl} size="sm" />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{contact.name}</p>
         {contact.email && <p className="truncate text-xs text-ink-subtle">{contact.email}</p>}
