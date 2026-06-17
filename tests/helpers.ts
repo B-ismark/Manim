@@ -55,8 +55,24 @@ export async function newParticipant(
   return { context, page, sink }
 }
 
+/** Wake the auto-hiding control chrome on touch. On mobile the control bar slides
+ *  off-screen after ~4s; a single tap on the top scrim (above the tiles, so it
+ *  never hits a tile's pin/double-tap) brings it back. No-op on desktop (controls
+ *  always shown), and only taps when the Leave button is actually off-viewport. */
+export async function revealChrome(page: Page) {
+  const vp = page.viewportSize()
+  if (!vp) return
+  const box = await page.getByRole('button', { name: 'Leave call' }).boundingBox().catch(() => null)
+  const hidden = !box || box.y > vp.height - 4
+  if (hidden) {
+    await page.mouse.click(Math.round(vp.width / 2), 4)
+    await page.waitForTimeout(300)
+  }
+}
+
 /** Open the chat side panel and return the message composer. */
 export async function openChat(page: Page) {
+  await revealChrome(page)
   await page.getByRole('button', { name: 'Open chat' }).click()
   const composer = page.getByRole('textbox', { name: 'Message', exact: true })
   await expect(composer).toBeVisible()

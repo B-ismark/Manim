@@ -17,7 +17,9 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 2,
-  retries: 0,
+  // One retry in CI — real LiveKit + WebRTC negotiation is occasionally flaky
+  // under load (and a fork PR can't change this). Local stays 0 for fast signal.
+  retries: process.env.CI ? 1 : 0,
   reporter: [
     ['list'],
     ['html', { open: 'never', outputFolder: 'playwright-report' }],

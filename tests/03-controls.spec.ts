@@ -18,7 +18,10 @@ test.describe('In-call controls', () => {
     const chat = page.getByRole('button', { name: 'Open chat' })
     await chat.click()
     await expect(page.getByText('Messages are visible only to people in this call.')).toBeVisible()
-    await chat.click() // toggle closed
+    // Close with Escape — works for both the desktop docked panel and the mobile
+    // modal bottom-sheet (re-clicking "Open chat" can't reach it behind the sheet
+    // scrim on touch).
+    await page.keyboard.press('Escape')
     await expect(page.getByText('Messages are visible only to people in this call.')).toBeHidden()
 
     expect(appErrors(sink)).toEqual([])
