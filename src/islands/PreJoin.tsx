@@ -127,6 +127,17 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
 
   const canJoin = displayName.trim().length > 0
 
+  // Free the preview camera the instant Join is tapped, before LiveKit acquires
+  // it on connect. On mobile a camera can't be opened twice at once — the overlap
+  // (preview still live while the call grabs it) is what flickered/blacked the
+  // first in-call frame. The unmount cleanup also stops it, but releasing here
+  // gives the OS a head start.
+  const join = () => {
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    onJoin()
+  }
+
   return (
     // items-start + scroll so a tall card on a short phone stays reachable
     // (items-center would strand the top off-screen with no way to scroll).
@@ -201,7 +212,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
               // Enter = the primary action (Join), the expected keyboard flow.
               if (e.key === 'Enter' && canJoin) {
                 e.preventDefault()
-                onJoin()
+                join()
               }
             }}
             placeholder="Your name"
@@ -232,7 +243,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
             <p className="mt-1.5 text-xs text-ink-subtle">Everyone needs the same passphrase.</p>
           </details>
 
-          <Button variant="accent" size="lg" block disabled={!canJoin} onClick={onJoin}>
+          <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now
           </Button>
         </div>

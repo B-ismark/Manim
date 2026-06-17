@@ -11,6 +11,17 @@ function loadDeviceId(): string {
   return id
 }
 
+/** Remembered display name so returning users (and signed-in ones, see useAuthStore)
+ *  skip retyping it at every prejoin. */
+const NAME_KEY = 'manim-display-name'
+function loadName(): string {
+  try {
+    return localStorage.getItem(NAME_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+
 interface AppState {
   displayName: string
   deviceId: string
@@ -34,7 +45,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  displayName: '',
+  displayName: loadName(),
   deviceId: loadDeviceId(),
   roomToken: null,
   prejoin: {
@@ -42,7 +53,14 @@ export const useAppStore = create<AppState>((set) => ({
     cameraEnabled: true,
     lowBandwidth: false,
   },
-  setDisplayName: (displayName) => set({ displayName }),
+  setDisplayName: (displayName) => {
+    try {
+      localStorage.setItem(NAME_KEY, displayName)
+    } catch {
+      /* private mode / storage full — keep the in-memory value */
+    }
+    set({ displayName })
+  },
   setPrejoin: (patch) => set((s) => ({ prejoin: { ...s.prejoin, ...patch } })),
   setRoomToken: (roomToken) => set({ roomToken }),
 }))
