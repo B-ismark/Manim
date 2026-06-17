@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
-import { isLowPowerDevice } from '@/lib/device'
+import { isLowPowerDevice, isMobile } from '@/lib/device'
 
 const DEFAULT_RADIUS = 12
 
@@ -9,11 +9,11 @@ const DEFAULT_RADIUS = 12
 export type EffectMode = 'none' | 'blur'
 
 /**
- * Edge quality (blur only):
- * - `standard` — MediaPipe segmentation on the default (CPU/auto) delegate.
- * - `high` — segmentation forced onto the **GPU** delegate: higher frame rate,
- *   less edge flicker, heavier on the GPU. Falls back to `standard` if the GPU
- *   delegate can't init, so it never breaks the call.
+ * Quality (blur only) — trades smoothness for power. The segmenter runs on the
+ * GPU delegate either way; the real lever is the processor's frame cap:
+ * - `standard` — segment at a modest rate (24fps desktop). Mobile is pinned here
+ *   at 15fps, where full-rate per-frame segmentation otherwise tanks performance.
+ * - `high` — segment at the full 30fps for smoother, lower-latency edges; heavier.
  */
 export type BlurQuality = 'standard' | 'high'
 
@@ -76,8 +76,15 @@ export function useBackgroundBlur() {
     }
 
     async function build(mod: TrackProcessorsModule) {
+      // The segmenter runs on the GPU delegate by default in track-processors, so
+      // the real perf lever is how OFTEN we segment, not which delegate. We cap
+      // the processor's frame rate: the background is near-static, so segmenting
+      // at a lower fps is visually imperceptible but roughly halves the per-frame
+      // ML + WebGL cost — the fix for blur tanking mobile. The published camera
+      // track keeps its full resolution/fps; only the mask refresh is throttled.
       const seg = quality === 'high' ? { delegate: 'GPU' as const } : undefined
-      const proc = mod.BackgroundBlur(radiusRef.current, seg)
+      const maxFps = isMobile() ? 15 : quality === 'high' ? 30 : 24
+      const proc = mod.BackgroundBlur(radiusRef.current, seg, undefined, { maxFps })
       await track!.setProcessor(proc)
       procRef.current = proc
     }

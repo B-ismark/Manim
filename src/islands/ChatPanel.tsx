@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useParticipants } from '@livekit/components-react'
 import { Avatar, IconButton, Popover, Sheet } from '@/components/primitives'
 import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
 import { EmojiPicker } from '@/islands/EmojiPicker'
+import { encodeMentions, mentionsIdentity, plainText, type MentionTarget } from '@/features/chat/mentions'
 import type { ReactionMap } from '@/features/chat/useChatMessages'
 import {
   type useChatMessages,
@@ -16,12 +18,34 @@ export type ChatApi = ReturnType<typeof useChatMessages>
 import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, uploadError } from '@/features/chat/limits'
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { renderMarkdown } from '@/lib/formatText'
+import { renderRichText } from '@/lib/formatText'
 import { cn } from '@/lib/cn'
 
-/** Short label for what a chat item contains — used in reply chips + pins. */
+/** A live mention candidate the composer can tag. */
+interface MentionMatch {
+  /** Index of the '@' that opened the query. */
+  start: number
+  /** Text typed after '@', up to the caret. */
+  query: string
+}
+
+/** If the caret sits inside an `@query` token, return it (so the picker can open).
+ *  The '@' must start the line or follow whitespace, and the query can't span a
+ *  newline — matches the Slack/Discord trigger rule. */
+function activeMention(value: string, caret: number): MentionMatch | null {
+  const upto = value.slice(0, caret)
+  const at = upto.lastIndexOf('@')
+  if (at < 0) return null
+  if (at > 0 && !/\s/.test(upto[at - 1])) return null
+  const query = upto.slice(at + 1)
+  if (query.includes('\n') || query.length > 40) return null
+  return { start: at, query }
+}
+
+/** Short label for what a chat item contains — used in reply chips + pins. Mentions
+ *  are flattened to readable `@Name` (these surfaces don't run the rich renderer). */
 function previewOf(item: ChatItem): string {
-  return item.kind === 'text' ? item.text : item.fileName
+  return item.kind === 'text' ? plainText(item.text) : item.fileName
 }
 
 function humanSize(bytes?: number): string {
@@ -62,6 +86,55 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
+  // Everyone else in the call is taggable. Memoized so the picker filter is cheap.
+  const participants = useParticipants()
+  const mentionTargets = useMemo<MentionTarget[]>(
+    () =>
+      participants
+        .filter((p) => p.identity !== myIdentity)
+        .map((p) => ({ identity: p.identity, name: p.name || p.identity.split('#')[0] || 'Guest' }))
+        .filter((t) => t.name),
+    [participants, myIdentity],
+  )
+
+  // @-autocomplete state: the active `@query` under the caret + which suggestion
+  // is highlighted for keyboard selection.
+  const [mention, setMention] = useState<MentionMatch | null>(null)
+  const [mentionIdx, setMentionIdx] = useState(0)
+  const suggestions = useMemo(() => {
+    if (!mention) return []
+    const q = mention.query.toLowerCase()
+    return mentionTargets.filter((t) => t.name.toLowerCase().includes(q)).slice(0, 6)
+  }, [mention, mentionTargets])
+  const showMentions = mention !== null && suggestions.length > 0
+
+  // Recompute the active mention from the live caret position (typing, clicks,
+  // arrow keys). Reset the highlighted index whenever the query changes.
+  function syncMention(el: HTMLTextAreaElement) {
+    const next = activeMention(el.value, el.selectionStart ?? el.value.length)
+    setMention(next)
+    setMentionIdx(0)
+  }
+
+  // Replace the `@query` under the caret with the picked participant's name. The
+  // wire-level encoding (identity) happens at send via encodeMentions.
+  function pickMention(target: MentionTarget) {
+    const el = inputRef.current
+    if (!el || !mention) return
+    const caret = el.selectionStart ?? draft.length
+    const before = draft.slice(0, mention.start)
+    const after = draft.slice(caret)
+    const insert = `@${target.name} `
+    const next = before + insert + after
+    setDraft(next)
+    setMention(null)
+    const pos = before.length + insert.length
+    requestAnimationFrame(() => {
+      el.focus()
+      el.setSelectionRange(pos, pos)
+    })
+  }
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [items.length])
@@ -78,9 +151,12 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
 
   function submit() {
     if (!draft.trim()) return
-    sendText(draft, replyTo ?? undefined)
+    // Encode @mentions against the current roster just before sending so each
+    // client can resolve who was tagged regardless of name changes.
+    sendText(encodeMentions(draft, mentionTargets), replyTo ?? undefined)
     setDraft('')
     setReplyTo(null)
+    setMention(null)
     stopTyping()
   }
 
@@ -107,6 +183,29 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   }
 
   function onComposerKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    // Mention picker owns the arrows / Enter / Tab / Esc while it's open.
+    if (showMentions) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault()
+        setMentionIdx((i) => (i + 1) % suggestions.length)
+        return
+      }
+      if (e.key === 'ArrowUp') {
+        e.preventDefault()
+        setMentionIdx((i) => (i - 1 + suggestions.length) % suggestions.length)
+        return
+      }
+      if (e.key === 'Enter' || e.key === 'Tab') {
+        e.preventDefault()
+        pickMention(suggestions[mentionIdx])
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setMention(null)
+        return
+      }
+    }
     if ((e.metaKey || e.ctrlKey) && !e.altKey) {
       const k = e.key.toLowerCase()
       const marker = k === 'b' ? '**' : k === 'i' ? '_' : k === 'e' ? '`' : null
@@ -195,23 +294,57 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       <TypingIndicator names={typingNames} />
 
       {replyTo && (
-        <div className="mx-3 mb-1 flex items-center gap-2 rounded-field border-l-2 border-accent bg-sunken px-3 py-1.5">
-          <ReplyIcon className="size-3.5 shrink-0 text-ink-subtle" />
-          <div className="min-w-0 flex-1 text-xs">
-            <span className="font-medium text-ink">Replying to {replyTo.name}</span>
-            <p className="truncate text-ink-subtle">{replyTo.text}</p>
+        <div className="mx-3 mb-1 flex items-stretch gap-2.5 overflow-hidden rounded-field bg-sunken pr-1">
+          {/* Full-height accent bar reads as a quote rail (Slack/WhatsApp). */}
+          <span aria-hidden className="w-1 shrink-0 self-stretch rounded-full bg-accent" />
+          <div className="min-w-0 flex-1 py-1.5">
+            <span className="flex items-center gap-1 text-xs font-medium text-accent [&_svg]:size-3.5">
+              <ReplyIcon />
+              Replying to {replyTo.name}
+            </span>
+            <p className="mt-0.5 truncate text-xs text-ink-subtle">{replyTo.text}</p>
           </div>
-          <IconButton size="sm" tone="neutral" label="Cancel reply" icon={<CloseIcon />} onClick={() => setReplyTo(null)} />
+          <IconButton size="sm" tone="neutral" label="Cancel reply" icon={<CloseIcon />} onClick={() => setReplyTo(null)} className="self-center" />
         </div>
       )}
 
       <form
-        className="flex shrink-0 items-end gap-2 border-t border-line p-3"
+        className="relative flex shrink-0 items-end gap-2 border-t border-line p-3"
         onSubmit={(e) => {
           e.preventDefault()
           submit()
         }}
       >
+        {showMentions && (
+          <ul
+            role="listbox"
+            aria-label="Mention a participant"
+            className="absolute inset-x-3 bottom-full z-10 mb-2 overflow-hidden rounded-field border border-line bg-surface py-1 shadow-pop"
+          >
+            {suggestions.map((t, i) => (
+              <li key={t.identity}>
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === mentionIdx}
+                  // onMouseDown (not onClick) so the pick fires before the textarea blurs.
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    pickMention(t)
+                  }}
+                  onMouseEnter={() => setMentionIdx(i)}
+                  className={cn(
+                    'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm',
+                    i === mentionIdx ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-sunken',
+                  )}
+                >
+                  <Avatar name={t.name} size="sm" />
+                  <span className="truncate">{t.name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <input
           ref={fileInputRef}
           type="file"
@@ -271,10 +404,16 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
         <textarea
           ref={inputRef}
           value={draft}
-          onChange={(e) => onDraftChange(e.target.value)}
+          onChange={(e) => {
+            onDraftChange(e.target.value)
+            syncMention(e.target)
+          }}
+          onKeyUp={(e) => syncMention(e.currentTarget)}
+          onClick={(e) => syncMention(e.currentTarget)}
+          onBlur={() => setMention(null)}
           onKeyDown={onComposerKeyDown}
           rows={1}
-          placeholder="Message"
+          placeholder="Message — @ to mention"
           aria-label="Message"
           className={cn(
             // Cap relative to viewport on phones so a multi-line draft doesn't
@@ -325,6 +464,9 @@ function MessageRow({
   const [editDraft, setEditDraft] = useState('')
   const narrow = useIsTouch()
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
+  // Highlight the whole row when you were tagged, so a mention is scannable in a
+  // busy timeline (Slack/Teams convention).
+  const mentionsMe = item.kind === 'text' && mentionsIdentity(item.text, myIdentity)
   const react = (emoji: string) => {
     onReact(emoji)
     setPickerOpen(false)
@@ -339,7 +481,13 @@ function MessageRow({
     setEditing(false)
   }
   return (
-    <div className={cn('group relative flex gap-2.5', grouped ? 'mt-0.5' : 'mt-3 first:mt-0')}>
+    <div
+      className={cn(
+        'group relative flex gap-2.5',
+        grouped ? 'mt-0.5' : 'mt-3 first:mt-0',
+        mentionsMe && '-mx-1.5 rounded-field border-l-2 border-accent bg-accent-soft/40 py-1 pl-2 pr-1.5',
+      )}
+    >
       {grouped ? (
         // Keep the bubble aligned with the grouped run (matches Avatar sm = size-8).
         <div className="w-8 shrink-0" aria-hidden />
@@ -358,11 +506,18 @@ function MessageRow({
           </div>
         )}
 
-        {/* Quoted message this one replies to. */}
+        {/* Quoted message this one replies to — a compact card with an accent rail
+            so the threaded context reads at a glance. */}
         {replyTo && (
-          <div className="mt-1 border-l-2 border-line-strong pl-2">
-            <p className="text-[11px] font-medium text-ink-muted">{replyTo.name}</p>
-            <p className="truncate text-xs text-ink-subtle">{replyTo.text}</p>
+          <div className="mt-1 flex items-stretch gap-2 overflow-hidden rounded-field bg-sunken/70 pr-2">
+            <span aria-hidden className="w-0.5 shrink-0 self-stretch bg-accent/60" />
+            <div className="min-w-0 flex-1 py-1">
+              <p className="flex items-center gap-1 text-[11px] font-medium text-ink-muted [&_svg]:size-3">
+                <ReplyIcon />
+                {replyTo.name}
+              </p>
+              <p className="truncate text-xs text-ink-subtle">{replyTo.text}</p>
+            </div>
           </div>
         )}
 
@@ -410,7 +565,7 @@ function MessageRow({
           looksLikeImageUrl(item.text) ? (
             <ImageBubble src={item.text} />
           ) : (
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderMarkdown(item.text)}</p>
+            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderRichText(item.text, myIdentity)}</p>
           )
         ) : (
           <FileMessage file={item} />
@@ -491,17 +646,17 @@ function TypingIndicator({ names }: { names: string[] }) {
         ? `${names[0]} and ${names[1]} are typing`
         : 'Several people are typing'
   return (
-    <div className="flex items-center gap-1.5 px-3 pb-1 text-xs text-ink-subtle" aria-live="polite">
-      <span className="flex items-center gap-[3px]" aria-hidden>
-        {[0, 0.2, 0.4].map((delay) => (
+    <div className="flex items-center gap-2 px-3 pb-1.5 pt-0.5" aria-live="polite">
+      <span className="flex items-center gap-[3px] rounded-full bg-sunken px-2 py-1.5" aria-hidden>
+        {[0, 0.15, 0.3].map((delay) => (
           <span
             key={delay}
-            className="size-[4px] animate-pulse rounded-full bg-current"
+            className="mn-typing-dot size-1.5 rounded-full bg-ink-subtle"
             style={{ animationDelay: `${delay}s` }}
           />
         ))}
       </span>
-      <span className="truncate">{label}</span>
+      <span className="truncate text-xs text-ink-muted">{label}</span>
     </div>
   )
 }

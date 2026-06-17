@@ -1,13 +1,17 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, IconButton } from '@/components/primitives'
-import { SettingsIcon, GoogleIcon, CameraIcon } from '@/components/icons'
+import { SettingsIcon, GoogleIcon, CameraIcon, PeopleIcon } from '@/components/icons'
 import { SettingsDialog } from '@/islands/Settings'
+import { ContactsDialog } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useAppStore } from '@/store/useAppStore'
+import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 import { prettyRoom } from '@/lib/roomName'
+import type { ContactRow } from '@/store/useContactsStore'
 
 function randomRoom(): string {
   // friendly, readable room code
@@ -21,6 +25,9 @@ export function Landing() {
   const navigate = useNavigate()
   const [room, setRoom] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [contactsOpen, setContactsOpen] = useState(false)
+  const signedIn = useAuthStore((s) => s.signedIn)
+  const myName = useAppStore((s) => s.displayName)
 
   function go(target: string) {
     const slug = target.trim().toLowerCase().replace(/\s+/g, '-')
@@ -32,6 +39,16 @@ export function Landing() {
     go(room)
   }
 
+  // Call a contact: spin up a fresh room, ring them into it, and join it
+  // ourselves so we're waiting when they accept.
+  function callContact(c: ContactRow) {
+    if (!c.email) return
+    const target = randomRoom()
+    void ringUser(c.email, target, myName || 'Someone')
+    setContactsOpen(false)
+    go(target)
+  }
+
   return (
     // Top-align + scroll on phones so the keyboard can't bury the Join button
     // (centering strands it behind the keyboard); centered on desktop.
@@ -39,6 +56,14 @@ export function Landing() {
       <header className="absolute inset-x-4 top-4 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
+          {signedIn && (
+            <IconButton
+              label="Contacts"
+              icon={<PeopleIcon />}
+              tone="neutral"
+              onClick={() => setContactsOpen(true)}
+            />
+          )}
           <SetupStatusButton />
           <IconButton
             label="Settings"
@@ -50,6 +75,7 @@ export function Landing() {
       </header>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      <ContactsDialog open={contactsOpen} onOpenChange={setContactsOpen} onCall={callContact} />
 
       <SetupBanner />
 

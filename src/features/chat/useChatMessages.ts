@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@livekit/components-react'
 import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
+import { plainText } from '@/features/chat/mentions'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
@@ -411,7 +412,7 @@ export function useChatMessages() {
   const togglePin = useCallback(
     (item: ChatItem) => {
       const isPinned = pinnedRef.current.some((p) => p.id === item.id)
-      const text = item.kind === 'text' ? item.text : item.fileName
+      const text = item.kind === 'text' ? plainText(item.text) : item.fileName
       const entry: PinnedMessage = { id: item.id, name: item.fromName, text, timestamp: item.timestamp }
       setPinned((prev) => (isPinned ? prev.filter((p) => p.id !== item.id) : [...prev, entry]))
       broadcastPin({ kind: 'pin', ...entry, pinned: !isPinned })

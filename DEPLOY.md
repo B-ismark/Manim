@@ -110,8 +110,11 @@ Two more gotchas:
 ```sql
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
-  email text unique
+  email text unique,
+  display_name text
 );
+-- Existing installs: add the column without recreating the table.
+alter table profiles add column if not exists display_name text;
 alter table profiles enable row level security;
 
 -- Read/write ONLY your own row. A `using (true)` select policy would let anyone
@@ -133,6 +136,66 @@ as $$
 $$;
 revoke all on function lookup_profile_id(text) from public;
 grant execute on function lookup_profile_id(text) to authenticated;
+```
+
+4. **Contacts** (optional — powers the consent-based contacts list + call-a-contact).
+   Run in the SQL editor:
+
+```sql
+-- One directed row per relationship: requester → addressee, with a status.
+-- 'pending' = awaiting the addressee's agreement; 'accepted' = mutual contact.
+create table if not exists contacts (
+  id uuid primary key default gen_random_uuid(),
+  requester uuid not null references auth.users(id) on delete cascade,
+  addressee uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending' check (status in ('pending','accepted')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  check (requester <> addressee),
+  unique (requester, addressee)
+);
+alter table contacts enable row level security;
+
+-- You can see any row you're a party to.
+create policy "read own contacts" on contacts for select
+  using (auth.uid() = requester or auth.uid() = addressee);
+-- You can only send a request AS yourself.
+create policy "send own request" on contacts for insert
+  with check (auth.uid() = requester);
+-- Only the addressee can accept (flip pending → accepted on their own row).
+create policy "addressee accepts" on contacts for update
+  using (auth.uid() = addressee) with check (auth.uid() = addressee);
+-- Either party can remove the relationship (decline / cancel / unfriend).
+create policy "either removes" on contacts for delete
+  using (auth.uid() = requester or auth.uid() = addressee);
+
+-- Joined read with names/emails. profiles isn't publicly readable, so this
+-- SECURITY DEFINER fn does the join — but only ever returns rows where the
+-- caller is one of the two parties, so it can't dump the table.
+create or replace function list_contacts()
+returns table (other_id uuid, other_email text, other_name text, status text, direction text)
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    case when c.requester = auth.uid() then c.addressee else c.requester end,
+    p.email,
+    p.display_name,
+    c.status,
+    case
+      when c.status = 'accepted' then 'accepted'
+      when c.requester = auth.uid() then 'outgoing'
+      else 'incoming'
+    end
+  from contacts c
+  join profiles p
+    on p.id = case when c.requester = auth.uid() then c.addressee else c.requester end
+  where auth.uid() = c.requester or auth.uid() = c.addressee
+  order by c.updated_at desc;
+$$;
+revoke all on function list_contacts() from public;
+grant execute on function list_contacts() to authenticated;
 ```
 
 ## 5. LiveKit Cloud

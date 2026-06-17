@@ -244,6 +244,25 @@
     animation: mn-breathe 1.9s var(--ease-island) infinite;
   }
 
+  /* Typing indicator: three dots bouncing in sequence (Messenger/WhatsApp). The
+     per-dot delay is set inline. Reduced-motion falls back to a static row via
+     the global rule below. */
+  @keyframes mn-typing {
+    0%,
+    60%,
+    100% {
+      transform: translateY(0);
+      opacity: 0.45;
+    }
+    30% {
+      transform: translateY(-3px);
+      opacity: 1;
+    }
+  }
+  .mn-typing-dot {
+    animation: mn-typing 1.2s var(--ease-island) infinite;
+  }
+
   /* Accessibility: honor reduced-motion globally. */
   @media (prefers-reduced-motion: reduce) {
     *,
