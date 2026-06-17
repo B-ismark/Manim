@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
+import { toast } from '@/store/useToastStore'
 import {
   Button,
   Dialog,
@@ -140,19 +141,21 @@ export function ControlBar({
         setPipActive(false)
         return
       }
-      // The local self-view is CSS-mirrored, but PiP shows raw (unmirrored)
-      // frames, so PiP-ing yourself looks flipped. Prefer a remote video —
-      // detected as one with no mirror transform — that's actually playing.
+      // PiP shows raw (unmirrored) frames, so PiP-ing your own self-view looks
+      // flipped. Prefer a remote video that's actually playing — keyed off the
+      // local-cam marker the tile sets, not a fragile CSS-transform check.
       const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('video'))
       const playing = videos.filter((v) => v.videoWidth > 0)
       const target =
-        playing.find((v) => getComputedStyle(v).transform === 'none') ?? playing[0] ?? videos[0]
+        playing.find((v) => !v.hasAttribute('data-local-cam')) ?? playing[0] ?? videos[0]
       if (target && document.pictureInPictureEnabled) {
         await target.requestPictureInPicture()
         setPipActive(true)
+      } else {
+        toast("Picture-in-Picture isn't available here", 'warning')
       }
     } catch {
-      /* user gesture / unsupported — ignore */
+      toast("Couldn't open Picture-in-Picture", 'warning')
     }
   }, [])
 

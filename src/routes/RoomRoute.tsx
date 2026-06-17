@@ -9,6 +9,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
 import { roomOptions } from '@/lib/livekit'
+import { toast } from '@/store/useToastStore'
 
 /**
  * Turn a raw LiveKit connection-error / disconnect string into something a user
@@ -101,6 +102,7 @@ export function RoomRoute() {
       } else if (s.status === 'expired') {
         setWaitingId(null)
         setError(null)
+        toast('Your request to join timed out — try again', 'warning')
       }
     }, 2000)
     return () => {

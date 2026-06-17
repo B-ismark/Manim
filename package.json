@@ -9,7 +9,10 @@
     "dev:token": "node server/token.mjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "test": "playwright test --project=desktop",
+    "test:ui": "playwright test --project=desktop --ui",
+    "test:stress": "cross-env STRESS=1 playwright test 07-capacity --project=desktop --workers=1"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.9",
@@ -44,6 +47,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.2",
     "cors": "^2.8.5",
+    "cross-env": "^10.1.0",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "livekit-server-sdk": "^2.10.2",
