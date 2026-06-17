@@ -32,8 +32,10 @@
   --color-ink-subtle: oklch(0.65 0.012 270);
 
   /* ── Accent ───────────────────────────────────────────────── */
-  --color-accent: oklch(0.62 0.18 275);
-  --color-accent-hover: oklch(0.56 0.19 275);
+  /* L=0.55 so white accent-ink clears WCAG AA (4.5:1) on accent fills in BOTH
+     modes — at 0.62 the primary buttons measured 3.7:1. */
+  --color-accent: oklch(0.55 0.18 275);
+  --color-accent-hover: oklch(0.49 0.19 275);
   --color-accent-ink: oklch(0.99 0 0);         /* text/icon on accent */
   /* Derived from accent + surface, so it stays correct in light AND dark and
      when a preset changes only --color-accent. */
