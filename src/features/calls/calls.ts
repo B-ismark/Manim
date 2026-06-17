@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCallStore, type IncomingCall } from '@/store/useCallStore'
+import { useNotifyStore } from '@/store/useNotifyStore'
 
 export type { IncomingCall }
 
@@ -36,6 +37,7 @@ export async function ringUser(
  *  (the in-app banner covers the focused case). Best-effort; silent if blocked. */
 function notifyIncoming(fromName: string, room: string) {
   try {
+    if (!useNotifyStore.getState().enabled) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     if (typeof document !== 'undefined' && !document.hidden) return
     const n = new Notification(`${fromName} is calling`, { body: `Room ${room}`, tag: 'mn-incoming' })
@@ -62,15 +64,9 @@ export function useIncomingCalls() {
   useEffect(() => {
     const sb = supabase
     if (!sb || !signedIn) return
-    // Ask once (best-effort) so backgrounded-tab rings can surface a system
-    // notification; browsers may defer this until a user gesture.
-    try {
-      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-        void Notification.requestPermission().catch(() => {})
-      }
-    } catch {
-      /* ignore */
-    }
+    // Notification permission is requested on a user gesture from Settings
+    // (useNotifyStore), never auto-prompted here — non-gesture requests get
+    // re-surfaced by browsers every session, which is the nag we're killing.
     const channel = sb.channel(`user:${userId}`, { config: { broadcast: { self: false } } })
     channel
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
