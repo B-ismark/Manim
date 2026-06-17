@@ -14,10 +14,12 @@ real LiveKit backend (the in-call UI only exists with creds), so there's a
    - `LIVEKIT_URL` (e.g. `wss://manim-test-xxxx.livekit.cloud`)
    - `VITE_LIVEKIT_URL` (same wss URL — the client needs it; also unblocks the
      Lighthouse build job)
-3. *(Optional, to run in-call tests locally)* create a gitignored `.env.test`
-   with the same four vars and `node server/token.mjs` will mint test tokens.
-   Without it, only the no-creds suites run locally (landing, prejoin, a11y of
-   those, the responsive audit, Lighthouse of the deployed site).
+3. *(Optional, to run in-call tests locally)* put the same four vars in your
+   gitignored local `.env` — `server/token.mjs` (dotenv) and Vite both read
+   `.env`. Caveat: a non-empty `VITE_LIVEKIT_URL` lets local `vite build`
+   succeed, so still never deploy a local build (push to main; Cloudflare builds).
+   Without local creds, only the no-creds suites run locally (landing, prejoin,
+   a11y of those, the responsive audit, Lighthouse of the deployed site).
 
 ## What runs where
 
