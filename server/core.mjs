@@ -8,6 +8,7 @@
   Web-standard APIs (global fetch, global crypto) so it runs on Workers.
 */
 import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
+import { sendPush, pushConfigured } from './webpush.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -343,4 +344,47 @@ export async function handleEmailInvite(env, body) {
   })
   if (!r.ok) return { status: 502, body: { error: 'email send failed' } }
   return { status: 200, body: { ok: true } }
+}
+
+/**
+ * Fan out a background Web Push to a contact's devices when ringing them (so the
+ * call reaches them even with the tab backgrounded / on mobile). The caller proves
+ * authorization with their OWN Supabase access token: we resolve the target's push
+ * subscriptions via the `get_push_targets` SECURITY DEFINER RPC, which only returns
+ * rows when the caller is an accepted contact. The VAPID private key never leaves
+ * the server. Best-effort + payload-less — the in-app Realtime ring carries the
+ * details; this just wakes the device. No-op when push/Supabase isn't configured.
+ */
+export async function handlePushRing(env, body) {
+  const { targetId, accessToken } = body ?? {}
+  if (!targetId || !accessToken) return { status: 400, body: { error: 'missing fields' } }
+  const url = env.SUPABASE_URL
+  const anon = env.SUPABASE_ANON_KEY
+  if (!url || !anon || !pushConfigured(env)) return { status: 200, body: { ok: false, sent: 0 } }
+
+  let subs = []
+  try {
+    const r = await fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/get_push_targets`, {
+      method: 'POST',
+      headers: { apikey: anon, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ target_id: targetId }),
+    })
+    if (r.ok) subs = await r.json()
+  } catch {
+    /* network / RPC error — nothing to push */
+  }
+  if (!Array.isArray(subs) || subs.length === 0) return { status: 200, body: { ok: true, sent: 0 } }
+
+  let sent = 0
+  await Promise.all(
+    subs.map(async (s) => {
+      try {
+        const st = await sendPush(env, s.endpoint)
+        if (st >= 200 && st < 300) sent++
+      } catch {
+        /* one dead endpoint shouldn't fail the others */
+      }
+    }),
+  )
+  return { status: 200, body: { ok: true, sent } }
 }

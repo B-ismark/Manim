@@ -16,6 +16,7 @@ import {
   handleModerate,
   handleRoomflags,
   handleEmailInvite,
+  handlePushRing,
 } from '../server/core.mjs'
 
 const json = (r) =>
@@ -56,6 +57,7 @@ async function handleApi(request, env, url) {
       }
       return json(await handleEmailInvite(env, await bodyOf()))
     }
+    if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
     return new Response('Not found', { status: 404 })
   } catch {
     return json({ status: 500, body: { error: 'server error' } })

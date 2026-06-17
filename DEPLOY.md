@@ -296,6 +296,47 @@ create policy "write own presence" on realtime.messages for insert to authentica
   );
 ```
 
+4c. **Background Web Push** (optional — true mobile / backgrounded / closed-tab
+    incoming-call notifications, on top of the foreground in-app banner). Needs the
+    VAPID env vars below. Run:
+
+```sql
+-- One row per browser push endpoint, owned by the subscriber.
+create table if not exists push_subscriptions (
+  endpoint text primary key,
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz not null default now()
+);
+alter table push_subscriptions enable row level security;
+create policy "own subs read"   on push_subscriptions for select using (auth.uid() = user_id);
+create policy "own subs insert" on push_subscriptions for insert with check (auth.uid() = user_id);
+create policy "own subs update" on push_subscriptions for update using (auth.uid() = user_id);
+create policy "own subs delete" on push_subscriptions for delete using (auth.uid() = user_id);
+
+-- Return a target's push subscriptions ONLY to one of their accepted contacts, so
+-- the push sender (the Worker) can fan out using the CALLER's token — no service
+-- role key, and endpoints aren't exposed to non-contacts.
+create or replace function get_push_targets(target_id uuid)
+returns table (endpoint text, p256dh text, auth text)
+language sql security definer set search_path = public as $$
+  select s.endpoint, s.p256dh, s.auth from push_subscriptions s
+  where s.user_id = target_id and exists (
+    select 1 from contacts c where c.status = 'accepted'
+      and ((c.requester = auth.uid() and c.addressee = target_id)
+        or (c.addressee = auth.uid() and c.requester = target_id))
+  );
+$$;
+revoke all on function get_push_targets(uuid) from public;
+grant execute on function get_push_targets(uuid) to authenticated;
+```
+
+**VAPID keys** — generate one keypair: `npx web-push generate-vapid-keys`.
+- Client/build var (Cloudflare → manim → Build): `VITE_VAPID_PUBLIC_KEY` = the public key.
+- Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (e.g. `mailto:you@domain.com`), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
+- iOS note: Web Push needs the PWA installed to the Home Screen (Add to Home Screen) — Safari only delivers push to installed web apps.
+
 ## 5. LiveKit Cloud
 Already configured for dev. The Worker needs the same key/secret/URL (step 3,
 runtime). No other setup.

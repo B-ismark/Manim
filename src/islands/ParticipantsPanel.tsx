@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import QRCode from 'qrcode'
+import { useMemo, useState, type FormEvent } from 'react'
 import {
   useLocalParticipant,
   useParticipants,
@@ -35,7 +34,6 @@ import {
   MicOffIcon,
   MoreIcon,
   PinIcon,
-  QrIcon,
   ShareIcon,
 } from '@/components/icons'
 import { PeopleIcon } from '@/components/icons'
@@ -59,22 +57,6 @@ import { cn } from '@/lib/cn'
 
 function displayName(p: Participant): string {
   return p.name || p.identity.split('#')[0] || 'Guest'
-}
-
-/** Room join URL as a scannable QR. Rendered as SVG (not canvas — that readback
- *  is blocked on anti-fingerprinting browsers). */
-function QrCode({ value }: { value: string }) {
-  const [svg, setSvg] = useState('')
-  useEffect(() => {
-    let live = true
-    QRCode.toString(value, { type: 'svg', margin: 0, errorCorrectionLevel: 'M' })
-      .then((s) => live && setSvg(s))
-      .catch(() => {})
-    return () => {
-      live = false
-    }
-  }, [value])
-  return <div className="size-40 [&>svg]:size-full" aria-label="QR code" dangerouslySetInnerHTML={{ __html: svg }} />
 }
 
 /** Roster with live state (speaking / mic / hand / connection) and per-row actions. */
@@ -106,7 +88,6 @@ export function ParticipantsPanel() {
   }, [participants])
   const roomToken = useAppStore((s) => s.roomToken)
   const { metadata: roomMetadata } = useRoomInfo()
-  const [showQr, setShowQr] = useState(false)
   const joinUrl = typeof window !== 'undefined' ? window.location.href : ''
   const canNativeShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function'
   async function nativeShare() {
@@ -282,23 +263,7 @@ export function ParticipantsPanel() {
               <ShareIcon />
             </Button>
           )}
-          <Button
-            variant={showQr ? 'accent' : 'neutral'}
-            onClick={() => setShowQr((v) => !v)}
-            aria-label="Show QR code"
-          >
-            <QrIcon />
-          </Button>
         </div>
-
-        {showQr && (
-          <div className="mt-2 flex flex-col items-center gap-1.5 rounded-field bg-sunken p-3">
-            <div className="rounded-field bg-white p-2">
-              <QrCode value={joinUrl} />
-            </div>
-            <p className="text-xs text-ink-subtle">Scan to join this call</p>
-          </div>
-        )}
 
         <form onSubmit={emailInvite} className="mt-2 flex gap-2">
           <input

@@ -25,7 +25,9 @@ export function IncomingCallBanner() {
   const accept = () => {
     const room = incoming.room
     dismiss()
-    navigate(`/r/${encodeURIComponent(room)}`)
+    // autojoin: you already consented by tapping Accept — skip the second prejoin
+    // and connect straight in (RoomRoute auto-joins on this nav state).
+    navigate(`/r/${encodeURIComponent(room)}`, { state: { autojoin: true } })
   }
 
   if (touch) {
