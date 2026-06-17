@@ -7,8 +7,9 @@ import { cn } from '@/lib/cn'
 export interface ContactsDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  /** Start a fresh call with a contact (landing page). */
-  onCall?: (c: ContactRow) => void
+  /** Start a fresh call with a contact (landing page). `roomName` is the optional
+   *  meeting name the user typed; empty → a random room. */
+  onCall?: (c: ContactRow, roomName: string) => void
   /** Ring a contact into the current room (in-call). Shown as "Add to call". */
   onAddToCall?: (c: ContactRow) => void
 }
@@ -28,6 +29,9 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
   // Removing an accepted contact is destructive (it drops you from each other's
   // lists) → confirm first. Declining/cancelling a pending request is routine.
   const [pendingRemove, setPendingRemove] = useState<ContactRow | null>(null)
+  // Calling a contact opens a quick "name the meeting" step before starting.
+  const [pendingCall, setPendingCall] = useState<ContactRow | null>(null)
+  const [callName, setCallName] = useState('')
 
   // Reload whenever the dialog opens so the lists are fresh (no realtime here —
   // requests are low-frequency; a pull on open is enough).
@@ -94,7 +98,10 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
                       label={c.email ? `Call ${c.name}` : `No email on file for ${c.name}`}
                       icon={<CameraIcon />}
                       disabled={!c.email}
-                      onClick={() => onCall(c)}
+                      onClick={() => {
+                        setCallName('')
+                        setPendingCall(c)
+                      }}
                     />
                   )}
                   <IconButton
@@ -143,6 +150,41 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
           <AddByEmail onAdded={() => setTab('requests')} />
         </TabPanel>
       </Tabs>
+
+      <Dialog
+        open={pendingCall !== null}
+        onOpenChange={(o) => !o && setPendingCall(null)}
+        title={`Call ${pendingCall?.name ?? ''}`}
+        description="Name the meeting (optional), then start the call."
+      >
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            const c = pendingCall
+            setPendingCall(null)
+            if (c) onCall?.(c, callName)
+          }}
+          className="flex flex-col gap-3"
+        >
+          <input
+            value={callName}
+            onChange={(e) => setCallName(e.target.value)}
+            placeholder="Meeting name (optional) — e.g. Design sync"
+            aria-label="Meeting name"
+            autoComplete="off"
+            autoFocus
+            className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+          />
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="neutral" onClick={() => setPendingCall(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="accent">
+              <CameraIcon /> Start call
+            </Button>
+          </div>
+        </form>
+      </Dialog>
 
       <Dialog
         open={pendingRemove !== null}

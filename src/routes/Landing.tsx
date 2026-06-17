@@ -8,6 +8,8 @@ import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useAppStore } from '@/store/useAppStore'
+import { useInviteStore } from '@/store/useInviteStore'
+import { toast } from '@/store/useToastStore'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 import { prettyRoom } from '@/lib/roomName'
@@ -28,6 +30,7 @@ export function Landing() {
   const [contactsOpen, setContactsOpen] = useState(false)
   const signedIn = useAuthStore((s) => s.signedIn)
   const myName = useAppStore((s) => s.displayName)
+  const addInvite = useInviteStore((s) => s.addInvite)
 
   function go(target: string) {
     const slug = target.trim().toLowerCase().replace(/\s+/g, '-')
@@ -39,12 +42,21 @@ export function Landing() {
     go(room)
   }
 
-  // Call a contact: spin up a fresh room, ring them into it, and join it
-  // ourselves so we're waiting when they accept.
-  function callContact(c: ContactRow) {
+  // Call a contact: use the typed meeting name (or a random room), ring them in,
+  // register a "waiting for them to join" hint, and join ourselves.
+  function callContact(c: ContactRow, roomName: string) {
     if (!c.email) return
-    const target = randomRoom()
+    const slug = roomName
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+    const target = slug || randomRoom()
     void ringUser(c.email, target, myName || 'Someone')
+    // Shows an "Invited · waiting" row in the in-call People panel; it clears when
+    // they join (their display name matches), so it doubles as a waiting indicator.
+    addInvite(c.name)
+    toast(`Ringing ${c.name}…`, 'info')
     setContactsOpen(false)
     go(target)
   }
