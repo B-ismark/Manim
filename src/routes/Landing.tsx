@@ -23,16 +23,16 @@ function randomRoom(): string {
   return `${pick(a)}-${pick(b)}-${Math.floor(100 + Math.random() * 900)}`
 }
 
-const HERO_FEATURES = ['No download', 'End-to-end ready', 'Free to use']
-
 export function Landing() {
   const navigate = useNavigate()
   const [room, setRoom] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [contactsOpen, setContactsOpen] = useState(false)
   const signedIn = useAuthStore((s) => s.signedIn)
+  const avatarUrl = useAuthStore((s) => s.avatarUrl)
   const myName = useAppStore((s) => s.displayName)
   const addInvite = useInviteStore((s) => s.addInvite)
+  const firstName = myName.trim().split(/\s+/)[0]
 
   function go(target: string) {
     const slug = target.trim().toLowerCase().replace(/\s+/g, '-')
@@ -64,12 +64,9 @@ export function Landing() {
   }
 
   return (
-    // Top-align + scroll on phones so the keyboard can't bury the Join button
-    // (centering strands it behind the keyboard); centered on desktop. The hero's
-    // verbose copy is desktop-only so the mobile surface stays single-screen.
-    <main className="relative min-h-dvh overflow-y-auto p-4 pt-20 sm:pt-4 flex flex-col items-center justify-start lg:justify-center">
-      <GlowBackground />
-
+    // Top-align + scroll on phones so the keyboard can't bury the inputs
+    // (centering strands them behind the keyboard); centered on desktop.
+    <main className="min-h-dvh overflow-y-auto p-4 pt-20 sm:pt-4 flex flex-col items-center justify-start sm:justify-center">
       <header className="absolute inset-x-4 top-4 z-20 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
@@ -94,88 +91,61 @@ export function Landing() {
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
       <ContactsDialog open={contactsOpen} onOpenChange={setContactsOpen} onCall={callContact} />
 
-      <div className="relative z-10 grid w-full max-w-5xl grid-cols-1 items-center gap-8 lg:grid-cols-2 lg:gap-14">
-        {/* Hero — full copy on desktop, compact brand + headline on mobile. */}
-        <div className="text-center lg:text-left">
-          <div className="flex items-center justify-center gap-2.5 lg:justify-start">
-            <span className="grid size-9 place-items-center rounded-control bg-accent text-accent-ink font-bold">
+      <div className="flex w-full max-w-sm flex-col items-center gap-6">
+        {/* Personal greeting when signed in (Whereby-style), else just the brand. */}
+        {signedIn ? (
+          <div className="flex flex-col items-center gap-3">
+            <Avatar size="lg" name={myName || '?'} src={avatarUrl} />
+            <h1 className="text-xl font-semibold tracking-tight">
+              {firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
+            </h1>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-8 place-items-center rounded-control bg-accent text-accent-ink font-bold">
               M
             </span>
-            <span className="text-xl font-semibold tracking-tight">Manim</span>
+            <h1 className="text-xl font-semibold tracking-tight">Manim</h1>
           </div>
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight sm:mt-6 sm:text-3xl lg:text-5xl lg:leading-[1.05]">
-            Video calls, <span className="text-accent">lightweight</span> and secure.
-          </h1>
-          <p className="mx-auto mt-3 hidden max-w-md text-base text-ink-muted lg:mx-0 lg:block">
-            Start or join a room in a single click — no downloads, no accounts required.
-            End-to-end encryption is one toggle away when the conversation matters.
-          </p>
-          <ul className="mt-6 hidden flex-wrap gap-2 lg:flex">
-            {HERO_FEATURES.map((f) => (
-              <li
-                key={f}
-                className="rounded-control bg-accent-soft px-3 py-1 text-xs font-medium text-accent"
-              >
-                {f}
-              </li>
-            ))}
-          </ul>
-        </div>
+        )}
 
-        {/* Action column — contextual cards stacked above the join card. */}
-        <div className="flex w-full max-w-md flex-col gap-4 justify-self-center lg:justify-self-end">
-          <SetupBanner />
-          <OtherDeviceMeetings onJoin={go} />
+        <SetupBanner />
+        <OtherDeviceMeetings onJoin={go} />
 
-          <Island pad="none" className="w-full p-5 sm:p-6">
-            <h2 className="text-lg font-semibold">Start or join a call</h2>
-            <p className="mt-1 text-sm text-ink-muted">Free, secure, lightweight video.</p>
+        <Island pad="none" className="w-full p-5 sm:p-6">
+          <Button
+            variant="accent"
+            block
+            size="lg"
+            onClick={() => go(randomRoom())}
+          >
+            <CameraIcon className="size-5" />
+            New meeting
+          </Button>
 
-            <form onSubmit={onJoin} className="mt-4 flex flex-col gap-3 sm:mt-5">
-              <label htmlFor="room" className="text-sm font-medium">
-                Room name or code
-              </label>
-              <input
-                id="room"
-                value={room}
-                onChange={(e) => setRoom(e.target.value)}
-                placeholder="e.g. team-standup"
-                autoComplete="off"
-                className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-              />
-              <div className="flex gap-2">
-                <Button type="submit" variant="accent" block disabled={!room.trim()}>
-                  Join room
-                </Button>
-                <Button type="button" variant="neutral" onClick={() => go(randomRoom())}>
-                  New call
-                </Button>
-              </div>
-            </form>
+          <div className="my-4 flex items-center gap-3 text-xs text-ink-subtle">
+            <span className="h-px flex-1 bg-line" />
+            or join with a code
+            <span className="h-px flex-1 bg-line" />
+          </div>
 
-            <p className="mt-4 text-center text-xs text-ink-subtle">
-              No download. Works in your browser.
-            </p>
-          </Island>
-        </div>
+          <form onSubmit={onJoin} className="flex gap-2">
+            <input
+              id="room"
+              value={room}
+              onChange={(e) => setRoom(e.target.value)}
+              placeholder="Enter a code"
+              aria-label="Room code"
+              autoComplete="off"
+              className="h-11 min-w-0 flex-1 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <Button type="submit" variant="neutral" disabled={!room.trim()}>
+              Join
+            </Button>
+          </form>
+        </Island>
       </div>
     </main>
-  )
-}
-
-/** Ambient accent glow behind the hero — pure CSS, theme-aware (accent tokens). */
-function GlowBackground() {
-  return (
-    <div aria-hidden className="pointer-events-none absolute inset-0 -z-0 overflow-hidden">
-      <div
-        className="absolute -left-24 top-1/4 size-[34rem] rounded-full opacity-70 blur-3xl"
-        style={{ background: 'radial-gradient(closest-side, var(--color-accent-soft), transparent)' }}
-      />
-      <div
-        className="absolute -right-32 bottom-0 size-[30rem] rounded-full opacity-50 blur-3xl"
-        style={{ background: 'radial-gradient(closest-side, var(--color-accent-soft), transparent)' }}
-      />
-    </div>
   )
 }
 

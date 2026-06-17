@@ -94,9 +94,7 @@ export function SettingsDialog({
                 <p className="text-xs text-ink-subtle">JPG, PNG or WebP, up to 8MB.</p>
               </>
             ) : (
-              <p className="text-xs text-ink-subtle">
-                Sign in to add a profile photo that follows you across devices.
-              </p>
+              <p className="text-xs text-ink-subtle">Sign in to add a profile photo.</p>
             )}
           </div>
         </div>
