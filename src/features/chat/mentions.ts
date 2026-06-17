@@ -11,7 +11,7 @@
  * resolve *who* was tagged (so "you were mentioned" works regardless of name).
  */
 // Unicode Private Use Area — never produced by a keyboard, safe as delimiters.
-const OPEN = ''
+export const OPEN = ''
 const SEP = ''
 const CLOSE = ''
 
@@ -35,12 +35,20 @@ function escapeRegExp(s: string): string {
  */
 export function encodeMentions(text: string, targets: MentionTarget[]): string {
   if (!targets.length || !text.includes('@')) return text
-  const sorted = [...targets].sort((a, b) => b.name.length - a.name.length)
+  // Drop ambiguous names: if two participants share a display name we can't know
+  // which one `@Name` means, so leave it as plain text rather than mis-tag the
+  // wrong identity.
+  const nameCounts = new Map<string, number>()
+  for (const t of targets) if (t.name) nameCounts.set(t.name, (nameCounts.get(t.name) ?? 0) + 1)
+  const sorted = [...targets]
+    .filter((t) => t.name && nameCounts.get(t.name) === 1)
+    .sort((a, b) => b.name.length - a.name.length)
   let out = text
   for (const t of sorted) {
-    if (!t.name) continue
-    const re = new RegExp(`@${escapeRegExp(t.name)}(?=$|[\\s.,!?;:'")\\]])`, 'g')
-    out = out.replace(re, `${OPEN}${t.identity}${SEP}${t.name}${CLOSE}`)
+    // Require a boundary on BOTH sides so `foo@Jane` mid-word doesn't encode and
+    // `@Jane` doesn't fire inside `@Janet`.
+    const re = new RegExp(`(^|\\s)@${escapeRegExp(t.name)}(?=$|[\\s.,!?;:'")\\]])`, 'g')
+    out = out.replace(re, `$1${OPEN}${t.identity}${SEP}${t.name}${CLOSE}`)
   }
   return out
 }

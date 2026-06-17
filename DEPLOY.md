@@ -198,6 +198,104 @@ revoke all on function list_contacts() from public;
 grant execute on function list_contacts() to authenticated;
 ```
 
+4b. **Contacts hardening + Realtime privacy** (run AFTER §4 — closes the audit
+    findings: reciprocal-add race, client-clock ordering, and the unauthenticated
+    ring/presence channels). **Required for calling once deployed** — the client
+    now uses private channels + the `ring` RPC; without these policies, incoming
+    calls won't be received.
+
+```sql
+-- (1) Canonical single-row-per-pair: blocks BOTH (A,B) and (B,A) coexisting,
+-- which the old same-direction unique couldn't. Drop the old constraint first.
+alter table contacts drop constraint if exists contacts_requester_addressee_key;
+create unique index if not exists contacts_pair_uniq
+  on contacts (least(requester, addressee), greatest(requester, addressee));
+
+-- (2) Server-owned updated_at so list ordering uses one clock, not the client's.
+create or replace function touch_updated_at() returns trigger
+  language plpgsql as $$ begin new.updated_at = now(); return new; end $$;
+drop trigger if exists contacts_touch on contacts;
+create trigger contacts_touch before update on contacts
+  for each row execute function touch_updated_at();
+
+-- (3) Atomic add: insert a request, or accept the reverse one if it already
+-- exists — race-safe (the unique index + exception handler converge instead of
+-- creating reciprocal-pending rows). Returns a status string for the UI.
+create or replace function add_contact(addressee_id uuid)
+returns text language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); existing contacts;
+begin
+  if me is null then return 'unauthenticated'; end if;
+  if addressee_id = me then return 'self'; end if;
+  select * into existing from contacts
+    where (requester = me and addressee = addressee_id)
+       or (requester = addressee_id and addressee = me)
+    limit 1;
+  if found then
+    if existing.status = 'accepted' then return 'already'; end if;
+    if existing.requester = addressee_id then
+      update contacts set status = 'accepted' where id = existing.id;
+      return 'accepted';
+    end if;
+    return 'pending';
+  end if;
+  insert into contacts(requester, addressee) values (me, addressee_id);
+  return 'requested';
+exception when unique_violation then
+  -- A reverse row landed between our select and insert — accept it if it's theirs.
+  select * into existing from contacts
+    where (requester = me and addressee = addressee_id)
+       or (requester = addressee_id and addressee = me)
+    limit 1;
+  if found and existing.requester = addressee_id and existing.status = 'pending' then
+    update contacts set status = 'accepted' where id = existing.id;
+    return 'accepted';
+  end if;
+  return 'pending';
+end $$;
+revoke all on function add_contact(uuid) from public;
+grant execute on function add_contact(uuid) to authenticated;
+
+-- (4) Ring a contact server-side: verifies the caller is an ACCEPTED contact of
+-- the target, then broadcasts into the target's PRIVATE user channel. The sender
+-- never joins the target's channel (no harvest), and non-contacts can't ring.
+create or replace function ring(target_id uuid, room text, from_name text)
+returns text language plpgsql security definer set search_path = public, realtime as $$
+declare me uuid := auth.uid();
+begin
+  if me is null then return 'unauthenticated'; end if;
+  if not exists (
+    select 1 from contacts c where c.status = 'accepted'
+      and ((c.requester = me and c.addressee = target_id)
+        or (c.addressee = me and c.requester = target_id))
+  ) then return 'not_contact'; end if;
+  perform realtime.send(
+    jsonb_build_object('room', room, 'fromName', from_name),
+    'ring', 'user:' || target_id::text, true);
+  return 'ok';
+end $$;
+revoke all on function ring(uuid, text, text) from public;
+grant execute on function ring(uuid, text, text) to authenticated;
+
+-- (5) Realtime Authorization: you may only RECEIVE on your own user:/presence:
+-- channel (kills online-harvest), and only WRITE to your own presence or — via
+-- the SECURITY DEFINER ring() above — to a contact. Direct client broadcast to
+-- someone else's channel is denied.
+alter table realtime.messages enable row level security;
+
+create policy "receive own channel" on realtime.messages for select to authenticated
+  using (
+    (realtime.topic() like 'user:%' or realtime.topic() like 'presence:%')
+    and split_part(realtime.topic(), ':', 2) = auth.uid()::text
+  );
+
+create policy "write own presence" on realtime.messages for insert to authenticated
+  with check (
+    realtime.topic() like 'presence:%'
+    and split_part(realtime.topic(), ':', 2) = auth.uid()::text
+  );
+```
+
 ## 5. LiveKit Cloud
 Already configured for dev. The Worker needs the same key/secret/URL (step 3,
 runtime). No other setup.

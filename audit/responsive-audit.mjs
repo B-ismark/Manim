@@ -34,6 +34,11 @@ const OVERLAP_FN = () => {
   const els = [...document.querySelectorAll(sel)].filter((e) => {
     const r = e.getBoundingClientRect()
     const s = getComputedStyle(e)
+    // checkVisibility() catches content-visibility / closed <details> (e.g. the
+    // collapsed E2EE password field), which still report stale geometry via
+    // getBoundingClientRect — matches the in-call overlaps() helper (QA-PLAYBOOK §3)
+    // and avoids the false "input over Join now" overlap on prejoin.
+    if (typeof e.checkVisibility === 'function' && !e.checkVisibility()) return false
     return r.width > 4 && r.height > 4 && s.visibility !== 'hidden' && s.display !== 'none' && Number(s.opacity) > 0.05
   })
   const rect = (e) => e.getBoundingClientRect()

@@ -79,6 +79,10 @@ async function syncProfile(session: Session) {
   if (!supabase) return
   const local = useAppStore.getState().displayName.trim()
 
+  // Distinguish "no profile row yet" (first sign-in → seed) from "row exists but
+  // has no name" (don't let a stale device name clobber a deliberately-cleared
+  // account name on another device).
+  let hasRow = false
   let accountName = ''
   try {
     const { data } = await supabase
@@ -86,22 +90,35 @@ async function syncProfile(session: Session) {
       .select('display_name')
       .eq('id', session.user.id)
       .maybeSingle()
+    hasRow = data !== null
     accountName = (data?.display_name ?? '').trim()
   } catch {
-    /* no profiles table / display_name column — fall back to device + provider */
+    /* no profiles table / display_name column — fall back to provider/device */
   }
 
-  // Account wins for a signed-in user; otherwise keep their device name, then the
-  // provider/email name as a last resort.
-  const resolved = accountName || local || nameFromSession(session)
-  if (resolved && resolved !== local) useAppStore.getState().setDisplayName(resolved)
+  // The account is authoritative when it has a name. Otherwise seed from the
+  // provider name (stable across devices) before the device-local name, so a
+  // stale localStorage value on one device can't overwrite the account.
+  const resolved = accountName || nameFromSession(session) || local
+
+  // Apply locally WITHOUT re-persisting (persist=false) — this value came from /
+  // is being written to the account here, so the debounced push would be a
+  // redundant double-write that races this upsert.
+  if (resolved && resolved !== local) useAppStore.getState().setDisplayName(resolved, false)
 
   try {
-    await supabase.from('profiles').upsert({
-      id: session.user.id,
-      ...(session.user.email ? { email: session.user.email } : {}),
-      ...(resolved ? { display_name: resolved } : {}),
-    })
+    if (resolved && resolved !== accountName) {
+      // Seeding or correcting the account name (also carries the email).
+      await supabase.from('profiles').upsert({
+        id: session.user.id,
+        ...(session.user.email ? { email: session.user.email } : {}),
+        display_name: resolved,
+      })
+    } else if (session.user.email && !hasRow) {
+      // Name already correct (or none to set) but no row yet — ensure the email
+      // exists for call-by-email lookup.
+      await supabase.from('profiles').upsert({ id: session.user.id, email: session.user.email })
+    }
   } catch {
     /* table/column absent — guest-grade experience, no account sync */
   }

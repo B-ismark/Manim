@@ -287,5 +287,10 @@
     .mn-core {
       animation: none !important;
     }
+    /* Typing dots: genuinely static (not one clamped cycle) under reduced-motion. */
+    .mn-typing-dot {
+      animation: none !important;
+      opacity: 1 !important;
+    }
   }
 }

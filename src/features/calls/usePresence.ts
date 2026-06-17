@@ -27,7 +27,9 @@ export function usePublishMeetingPresence(room: string) {
     const sb = supabase
     if (!sb || !signedIn || !room) return
     const channel = sb.channel(presenceChannelName(userId), {
-      config: { presence: { key: deviceId } },
+      // Private: Realtime RLS restricts presence:<id> to the owner, so only THIS
+      // user's other devices can see it (no cross-user online-harvest).
+      config: { presence: { key: deviceId }, private: true },
     })
     channel.subscribe((status) => {
       if (status === 'SUBSCRIBED') void channel.track({ room, deviceId })
@@ -55,7 +57,7 @@ export function useOtherDeviceMeetings(): DeviceMeeting[] {
       return
     }
     const channel = sb.channel(presenceChannelName(userId), {
-      config: { presence: { key: deviceId } },
+      config: { presence: { key: deviceId }, private: true },
     })
     const sync = () => {
       const state = channel.presenceState<{ room?: string; deviceId?: string }>()

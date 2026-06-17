@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParticipants } from '@livekit/components-react'
 import { Avatar, IconButton, Popover, Sheet } from '@/components/primitives'
 import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
@@ -15,7 +15,7 @@ import {
 
 /** Chat state lives in RoomView (persists across panel open/close) and is passed in. */
 export type ChatApi = ReturnType<typeof useChatMessages>
-import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, uploadError } from '@/features/chat/limits'
+import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, isAutoLoadImageUrl, uploadError } from '@/features/chat/limits'
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { renderRichText } from '@/lib/formatText'
@@ -221,12 +221,12 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     }
   }
 
-  function startReply(item: ChatItem) {
+  // Stable so the memoized MessageList isn't invalidated on every ChatPanel
+  // re-render (draft typing, participant speaking-state churn, etc.).
+  const startReply = useCallback((item: ChatItem) => {
     setReplyTo({ name: item.isLocal ? 'You' : item.fromName, text: previewOf(item) })
     inputRef.current?.focus()
-  }
-
-  const isPinned = (id: string) => pinned.some((p) => p.id === id)
+  }, [])
 
   function onPickFiles(files: FileList | null) {
     if (!files) return
@@ -256,29 +256,16 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {items.length === 0 ? (
-          <div className="grid h-full place-items-center text-center">
-            <div>
-              <p className="text-sm font-medium">No messages yet</p>
-              <p className="mt-1 text-xs text-ink-muted">Say hi or share a file.</p>
-            </div>
-          </div>
-        ) : (
-          items.map((item, i) => (
-            <MessageRow
-              key={item.id}
-              item={item}
-              grouped={continuesGroup(items[i - 1], item)}
-              pinned={isPinned(item.id)}
-              reactions={reactions[item.id]}
-              myIdentity={myIdentity}
-              onReact={(emoji) => toggleReaction(item.id, emoji)}
-              onReply={() => startReply(item)}
-              onTogglePin={() => togglePin(item)}
-              onEdit={item.kind === 'text' && item.isLocal ? (text) => editMessage(item.id, text) : undefined}
-            />
-          ))
-        )}
+        <MessageList
+          items={items}
+          reactions={reactions}
+          pinned={pinned}
+          myIdentity={myIdentity}
+          onReact={toggleReaction}
+          onReply={startReply}
+          onTogglePin={togglePin}
+          onEdit={editMessage}
+        />
         <div ref={endRef} />
       </div>
 
@@ -317,14 +304,16 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       >
         {showMentions && (
           <ul
+            id="mention-listbox"
             role="listbox"
             aria-label="Mention a participant"
-            className="absolute inset-x-3 bottom-full z-10 mb-2 overflow-hidden rounded-field border border-line bg-surface py-1 shadow-pop"
+            className="absolute inset-x-3 bottom-full z-10 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-surface py-1 shadow-pop"
           >
             {suggestions.map((t, i) => (
               <li key={t.identity}>
                 <button
                   type="button"
+                  id={`mention-opt-${i}`}
                   role="option"
                   aria-selected={i === mentionIdx}
                   // onMouseDown (not onClick) so the pick fires before the textarea blurs.
@@ -415,6 +404,11 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           rows={1}
           placeholder="Message — @ to mention"
           aria-label="Message"
+          role="combobox"
+          aria-expanded={showMentions}
+          aria-controls="mention-listbox"
+          aria-autocomplete="list"
+          aria-activedescendant={showMentions ? `mention-opt-${mentionIdx}` : undefined}
           className={cn(
             // Cap relative to viewport on phones so a multi-line draft doesn't
             // crowd out the timeline when the on-screen keyboard is up.
@@ -434,6 +428,62 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     </div>
   )
 }
+
+/**
+ * The scrolling timeline, memoized. Isolated from ChatPanel's high-frequency
+ * re-renders (draft typing, `useParticipants()` speaking-state churn) so the
+ * ~200-message list and its per-message `renderRichText` only re-run when chat
+ * state actually changes. All callbacks passed in are stable (hook `useCallback`s).
+ */
+const MessageList = memo(function MessageList({
+  items,
+  reactions,
+  pinned,
+  myIdentity,
+  onReact,
+  onReply,
+  onTogglePin,
+  onEdit,
+}: {
+  items: ChatItem[]
+  reactions: ReactionMap
+  pinned: PinnedMessage[]
+  myIdentity: string
+  onReact: (id: string, emoji: string) => void
+  onReply: (item: ChatItem) => void
+  onTogglePin: (item: ChatItem) => void
+  onEdit: (id: string, text: string) => void
+}) {
+  if (items.length === 0) {
+    return (
+      <div className="grid h-full place-items-center text-center">
+        <div>
+          <p className="text-sm font-medium">No messages yet</p>
+          <p className="mt-1 text-xs text-ink-muted">Say hi or share a file.</p>
+        </div>
+      </div>
+    )
+  }
+  const isPinned = (id: string) => pinned.some((p) => p.id === id)
+  return (
+    <>
+      {items.map((item, i) => (
+        <MessageRow
+          key={item.id}
+          item={item}
+          grouped={continuesGroup(items[i - 1], item)}
+          pinned={isPinned(item.id)}
+          reactions={reactions[item.id]}
+          myIdentity={myIdentity}
+          onReact={(emoji) => onReact(item.id, emoji)}
+          onReply={() => onReply(item)}
+          onTogglePin={() => onTogglePin(item)}
+          onEdit={item.kind === 'text' && item.isLocal ? (text) => onEdit(item.id, text) : undefined}
+        />
+      ))}
+    </>
+  )
+})
 
 function MessageRow({
   item,
@@ -724,6 +774,33 @@ function PinnedRow({ pin, onUnpin }: { pin: PinnedMessage; onUnpin: () => void }
 
 /** Inline image / GIF preview. `download` is set for received files (blob URLs). */
 function ImageBubble({ src, download }: { src: string; download?: string }) {
+  // Local files (blob URLs) and the GIF picker's own hosts auto-load; any other
+  // remote URL is click-to-load so a sender can't use it as an IP/tracking pixel.
+  const safeToAutoLoad = Boolean(download) || src.startsWith('blob:') || isAutoLoadImageUrl(src)
+  const [loaded, setLoaded] = useState(safeToAutoLoad)
+
+  if (!loaded) {
+    let host = src
+    try {
+      host = new URL(src).host
+    } catch {
+      /* keep raw src */
+    }
+    return (
+      <button
+        type="button"
+        onClick={() => setLoaded(true)}
+        className="mt-1 flex max-w-full items-center gap-2 rounded-field border border-line bg-sunken px-3 py-2 text-left text-sm text-ink-muted hover:border-line-strong hover:text-ink"
+      >
+        <DownloadIcon className="size-4 shrink-0" />
+        <span className="min-w-0">
+          <span className="block font-medium text-ink">Show image</span>
+          <span className="block truncate text-xs text-ink-subtle">{host}</span>
+        </span>
+      </button>
+    )
+  }
+
   return (
     <div className="mt-1">
       <a href={src} target="_blank" rel="noreferrer" className="inline-block">

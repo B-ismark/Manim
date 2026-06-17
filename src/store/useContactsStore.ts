@@ -85,19 +85,19 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     if (lookupErr) return 'Could not look up that user.'
     if (!id) return 'No Manim account with that email.'
     const otherId = id as string
-    if (otherId === myId) return "That's you."
 
-    // If they already asked you, agreeing is just accepting their request.
-    const existing = get().rows.find((r) => r.otherId === otherId)
-    if (existing?.direction === 'accepted') return 'Already in your contacts.'
-    if (existing?.direction === 'outgoing') return 'Request already sent.'
-    if (existing?.direction === 'incoming') {
-      await get().accept(otherId)
-      return null
-    }
-
-    const { error } = await sb.from('contacts').insert({ requester: myId, addressee: otherId })
+    // Atomic server-side add: inserts a request, or accepts a reverse one if it
+    // already exists — race-safe, unlike the old check-then-insert on stale rows.
+    const { data: status, error } = await sb.rpc('add_contact', { addressee_id: otherId })
     if (error) return 'Could not send the request.'
+    const result = String(status)
+    const message: Record<string, string> = {
+      self: "That's you.",
+      already: 'Already in your contacts.',
+      pending: 'Request already sent.',
+    }
+    if (result in message) return message[result]
+    // 'requested' / 'accepted' → success; reflect the new row (add is rare).
     await get().refresh()
     return null
   },
@@ -106,25 +106,40 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     const sb = supabase
     const myId = me()
     if (!sb || !myId) return
-    // Only the addressee may flip pending→accepted (enforced by RLS too).
-    await sb
+    // Optimistic: flip the incoming row to accepted locally (no refetch). Only the
+    // addressee may do this (RLS-enforced); resync from the server only on failure.
+    const before = get().rows
+    set({
+      rows: before.map((r) =>
+        r.otherId === otherId && r.direction === 'incoming' ? { ...r, direction: 'accepted' } : r,
+      ),
+    })
+    const { error } = await sb
       .from('contacts')
-      .update({ status: 'accepted', updated_at: new Date().toISOString() })
+      .update({ status: 'accepted' })
       .match({ requester: otherId, addressee: myId, status: 'pending' })
-    await get().refresh()
+    if (error) {
+      set({ rows: before, error: 'Could not accept the request.' })
+      await get().refresh()
+    }
   },
 
   remove: async (otherId) => {
     const sb = supabase
     const myId = me()
     if (!sb || !myId) return
-    // Delete the relationship from whichever side holds it (RLS lets either party).
-    await sb
+    // Optimistic drop; resync only if the delete fails.
+    const before = get().rows
+    set({ rows: before.filter((r) => r.otherId !== otherId) })
+    const { error } = await sb
       .from('contacts')
       .delete()
       .or(
         `and(requester.eq.${myId},addressee.eq.${otherId}),and(requester.eq.${otherId},addressee.eq.${myId})`,
       )
-    await get().refresh()
+    if (error) {
+      set({ rows: before, error: 'Could not remove the contact.' })
+      await get().refresh()
+    }
   },
 }))

@@ -94,6 +94,16 @@ export function ParticipantsPanel() {
   const signedIn = useAuthStore((s) => s.signedIn)
   const canRing = authEnabled && signedIn
   const [contactsOpen, setContactsOpen] = useState(false)
+  // Display names aren't unique (esp. guests). Flag the ones shared by >1 person
+  // so the roster can disambiguate them with a short id suffix.
+  const dupNames = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const p of participants) {
+      const n = displayName(p).toLowerCase()
+      counts.set(n, (counts.get(n) ?? 0) + 1)
+    }
+    return new Set([...counts].filter(([, c]) => c > 1).map(([n]) => n))
+  }, [participants])
   const roomToken = useAppStore((s) => s.roomToken)
   const { metadata: roomMetadata } = useRoomInfo()
   const [showQr, setShowQr] = useState(false)
@@ -343,6 +353,7 @@ export function ParticipantsPanel() {
           <ParticipantRow
             key={p.identity}
             participant={p}
+            ambiguous={dupNames.has(displayName(p).toLowerCase())}
             isLocal={p.identity === localParticipant.identity}
             myOtherDevice={isMyOtherDevice(p, myUserId)}
             canModerate={isHost && p.identity !== localParticipant.identity}
@@ -409,6 +420,7 @@ export function ParticipantsPanel() {
 
 function ParticipantRow({
   participant,
+  ambiguous,
   isLocal,
   myOtherDevice,
   canModerate,
@@ -421,6 +433,8 @@ function ParticipantRow({
   onReport,
 }: {
   participant: Participant
+  /** This display name is shared with another participant — show a short id suffix. */
+  ambiguous: boolean
   isLocal: boolean
   myOtherDevice: boolean
   canModerate: boolean
@@ -488,6 +502,9 @@ function ParticipantRow({
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">
           {name}
+          {ambiguous && !isLocal && (
+            <span className="text-ink-subtle"> ·{participant.identity.split('#')[1]?.slice(0, 4) ?? ''}</span>
+          )}
           {isLocal && <span className="text-ink-subtle"> (you)</span>}
           {myOtherDevice && <span className="text-ink-subtle"> (your device)</span>}
         </p>
