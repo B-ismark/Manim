@@ -107,7 +107,7 @@ export function SettingsDialog({
             placeholder="Your name"
             aria-label="Your name"
             autoComplete="name"
-            className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
           />
           <span className="text-xs text-ink-subtle">
             {signedIn
@@ -123,7 +123,7 @@ export function SettingsDialog({
               value={email}
               readOnly
               aria-label="Email"
-              className="h-11 cursor-default rounded-field bg-sunken px-3.5 text-sm text-ink-muted outline-none"
+              className="h-11 cursor-default rounded-field bg-sunken px-3.5 text-base text-ink-muted outline-none sm:text-sm"
             />
           </label>
         )}

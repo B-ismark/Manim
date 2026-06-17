@@ -48,7 +48,9 @@ export function ThemeSwitcher() {
                 aria-pressed={mode === m.id}
                 className={cn(
                   'rounded-control px-3 py-1.5 text-sm transition-colors duration-[var(--dur-fast)]',
-                  mode === m.id ? 'bg-surface text-ink shadow-pop' : 'text-ink-muted hover:text-ink',
+                  mode === m.id
+                    ? 'bg-surface text-ink shadow-pop ring-1 ring-inset ring-line-strong'
+                    : 'text-ink-muted hover:text-ink',
                 )}
               >
                 {m.label}

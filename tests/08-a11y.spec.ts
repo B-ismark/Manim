@@ -13,7 +13,7 @@ for (const scheme of ['light', 'dark'] as const) {
     test('landing has no WCAG violations', async ({ page }) => {
       await setColorScheme(page, scheme)
       await page.goto('/')
-      await expect(page.getByRole('heading', { name: 'Start or join a call' })).toBeVisible()
+      await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
       const v = await axeViolations(page)
       expect(v, JSON.stringify(v, null, 2)).toEqual([])
     })

@@ -18,7 +18,7 @@ test.describe('Mobile fit (no page scroll)', () => {
 
   test('landing fits', async ({ page }) => {
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Start or join a call' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
     expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
   })
 

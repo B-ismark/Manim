@@ -5,8 +5,8 @@ test.describe('Landing', () => {
   test('renders and Join is gated on a room name', async ({ page }) => {
     const sink = attachErrorSink(page)
     await page.goto('/')
-    await expect(page.getByRole('heading', { name: 'Start or join a call' })).toBeVisible()
-    const join = page.getByRole('button', { name: 'Join room' })
+    await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
+    const join = page.getByRole('button', { name: 'Join' })
     await expect(join).toBeDisabled()
     await page.locator('#room').fill('my-room')
     await expect(join).toBeEnabled()
@@ -16,16 +16,23 @@ test.describe('Landing', () => {
   test('Join navigates to a slugified room route', async ({ page }) => {
     await page.goto('/')
     await page.locator('#room').fill('Team Standup')
-    await page.getByRole('button', { name: 'Join room' }).click()
+    await page.getByRole('button', { name: 'Join' }).click()
     await expect(page).toHaveURL(/\/r\/team-standup$/)
     // Lands on prejoin.
     await expect(page.getByLabel('Your name')).toBeVisible({ timeout: 20_000 })
   })
 
-  test('New call generates a random room', async ({ page }) => {
+  test('New meeting generates a random room when no name is typed', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'New call' }).click()
+    await page.getByRole('button', { name: 'New meeting' }).click()
     await expect(page).toHaveURL(/\/r\/[a-z]+-[a-z]+-\d+$/)
+  })
+
+  test('New meeting uses a typed name', async ({ page }) => {
+    await page.goto('/')
+    await page.locator('#room').fill('Design Sync')
+    await page.getByRole('button', { name: 'New meeting' }).click()
+    await expect(page).toHaveURL(/\/r\/design-sync$/)
   })
 
   test('Settings dialog opens from landing', async ({ page }) => {
@@ -37,6 +44,6 @@ test.describe('Landing', () => {
   test('unknown route redirects home', async ({ page }) => {
     await page.goto('/totally/unknown/path')
     await expect(page).toHaveURL(/\/$/)
-    await expect(page.getByRole('heading', { name: 'Start or join a call' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
   })
 })
