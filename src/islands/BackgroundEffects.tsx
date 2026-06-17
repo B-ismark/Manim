@@ -142,7 +142,7 @@ export function BackgroundEffects({
                 label="High quality"
                 className="w-full justify-between"
               />
-              <p className="mt-1 text-xs text-ink-subtle">Sharper edges. Uses more power.</p>
+              <p className="mt-1 text-xs text-ink-subtle">Smoother edges (higher frame rate). Uses more power.</p>
             </div>
           )}
         </div>

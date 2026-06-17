@@ -53,7 +53,15 @@ export function Dialog({
           {description ? (
             <RD.Description className="mt-1 shrink-0 text-sm text-ink-muted">{description}</RD.Description>
           ) : null}
-          <div className={cn('min-h-0 flex-1 overflow-y-auto overscroll-contain', !hideTitle && 'mt-4')}>
+          {/* px-1/-mx-1: overflow-y-auto forces overflow-x to clip too, which would
+              shear the 2px focus ring off any input sitting at the body edge. The
+              padding gives the ring room; the negative margin keeps content aligned. */}
+          <div
+            className={cn(
+              'min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 -mx-1',
+              !hideTitle && 'mt-4',
+            )}
+          >
             {children}
           </div>
         </RD.Content>

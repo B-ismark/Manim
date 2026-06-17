@@ -67,6 +67,46 @@ function nameFromSession(session: Session): string {
   )
 }
 
+/**
+ * Sync the display name with the signed-in account: the account row is the source
+ * of truth (so the name follows the user across devices). If the account has no
+ * name yet, adopt what they typed on this device (or the provider/email name) and
+ * write it back. Also keeps the email on the row for call-by-email lookup. All
+ * best-effort — degrades silently without the `profiles` table / `display_name`
+ * column (see DEPLOY.md).
+ */
+async function syncProfile(session: Session) {
+  if (!supabase) return
+  const local = useAppStore.getState().displayName.trim()
+
+  let accountName = ''
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('display_name')
+      .eq('id', session.user.id)
+      .maybeSingle()
+    accountName = (data?.display_name ?? '').trim()
+  } catch {
+    /* no profiles table / display_name column — fall back to device + provider */
+  }
+
+  // Account wins for a signed-in user; otherwise keep their device name, then the
+  // provider/email name as a last resort.
+  const resolved = accountName || local || nameFromSession(session)
+  if (resolved && resolved !== local) useAppStore.getState().setDisplayName(resolved)
+
+  try {
+    await supabase.from('profiles').upsert({
+      id: session.user.id,
+      ...(session.user.email ? { email: session.user.email } : {}),
+      ...(resolved ? { display_name: resolved } : {}),
+    })
+  } catch {
+    /* table/column absent — guest-grade experience, no account sync */
+  }
+}
+
 function applySession(session: Session | null) {
   if (session?.user) {
     useAuthStore.setState({
@@ -74,23 +114,29 @@ function applySession(session: Session | null) {
       email: session.user.email ?? null,
       signedIn: true,
     })
-    // Prefill the prejoin name from the account, but never clobber a name the user
-    // has already chosen/typed (their override wins).
-    if (!useAppStore.getState().displayName.trim()) {
-      const name = nameFromSession(session)
-      if (name) useAppStore.getState().setDisplayName(name)
-    }
-    // Make this user reachable by email for calls (best-effort; needs a
-    // `profiles` table — see deploy docs). Degrades silently if absent.
-    if (supabase && session.user.email) {
-      void supabase
-        .from('profiles')
-        .upsert({ id: session.user.id, email: session.user.email })
-        .then(() => {})
-    }
+    void syncProfile(session)
   } else {
     useAuthStore.setState({ userId: guestId(), email: null, signedIn: false })
   }
+}
+
+let nameWriteTimer: ReturnType<typeof setTimeout> | undefined
+/**
+ * Persist the display name onto the signed-in user's account row so it follows
+ * them to other devices. Debounced (coalesces per-keystroke edits) and best-effort
+ * — a no-op for guests or when Supabase / the column isn't configured. Called by
+ * useAppStore.setDisplayName so every edit path stays in sync.
+ */
+export function persistNameToAccount(name: string): void {
+  const sb = supabase
+  const { signedIn, userId } = useAuthStore.getState()
+  if (!sb || !signedIn) return
+  const id = userId
+  const display_name = name.trim()
+  clearTimeout(nameWriteTimer)
+  nameWriteTimer = setTimeout(() => {
+    void sb.from('profiles').upsert({ id, display_name }).then(() => {})
+  }, 600)
 }
 
 /** Call once at startup: hydrate session + subscribe to auth changes. */

@@ -3,6 +3,7 @@ import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
 import { useSoundStore } from '@/store/useSoundStore'
 import { useAppStore } from '@/store/useAppStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
+import { useAuthStore } from '@/store/useAuthStore'
 
 /**
  * Settings home for personal preferences — your name, theme / color and UI
@@ -23,6 +24,7 @@ export function SettingsDialog({
   const notifyOn = useNotifyStore((s) => s.enabled)
   const enableNotify = useNotifyStore((s) => s.enable)
   const disableNotify = useNotifyStore((s) => s.disable)
+  const signedIn = useAuthStore((s) => s.signedIn)
   const notifSupported = typeof Notification !== 'undefined'
   const notifBlocked = notifSupported && Notification.permission === 'denied'
 
@@ -44,7 +46,11 @@ export function SettingsDialog({
             autoComplete="name"
             className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
-          <span className="text-xs text-ink-subtle">Saved on this device and used when you join a call.</span>
+          <span className="text-xs text-ink-subtle">
+            {signedIn
+              ? 'Synced to your account — used on every device you sign in on.'
+              : 'Saved on this device and used when you join a call.'}
+          </span>
         </label>
         <Toggle
           checked={soundOn}

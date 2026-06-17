@@ -38,7 +38,10 @@ import {
   QrIcon,
   ShareIcon,
 } from '@/components/icons'
+import { PeopleIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
+import { ContactsDialog } from '@/islands/Contacts'
+import type { ContactRow } from '@/store/useContactsStore'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { CONTROL_TOPIC } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
@@ -90,6 +93,7 @@ export function ParticipantsPanel() {
   const [mailto, setMailto] = useState<{ href: string; to: string } | null>(null)
   const signedIn = useAuthStore((s) => s.signedIn)
   const canRing = authEnabled && signedIn
+  const [contactsOpen, setContactsOpen] = useState(false)
   const roomToken = useAppStore((s) => s.roomToken)
   const { metadata: roomMetadata } = useRoomInfo()
   const [showQr, setShowQr] = useState(false)
@@ -207,6 +211,16 @@ export function ParticipantsPanel() {
     }
   }
 
+  // Ring a saved contact into THIS room (the in-call "add to call" path).
+  async function addContactToCall(c: ContactRow) {
+    setContactsOpen(false)
+    if (!c.email) return
+    setCallMsg('Ringing…')
+    const err = await ringUser(c.email, room.name, localParticipant.name || 'Someone')
+    setCallMsg(err ?? `Ringing ${c.name}…`)
+    if (!err) addInvite(c.email)
+  }
+
   // Report flags a participant to the host over the control channel (only the
   // host is notified). No central moderation backend — keeps it lightweight.
   async function reportUser(targetName: string) {
@@ -246,6 +260,7 @@ export function ParticipantsPanel() {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      <ContactsDialog open={contactsOpen} onOpenChange={setContactsOpen} onAddToCall={addContactToCall} />
       <div className="px-3 pt-3">
         <div className="flex gap-2">
           <Button variant="neutral" block onClick={copy}>
@@ -294,6 +309,16 @@ export function ParticipantsPanel() {
             Invite
           </Button>
         </form>
+        {canRing && (
+          <button
+            type="button"
+            onClick={() => setContactsOpen(true)}
+            className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-hover [&_svg]:size-3.5"
+          >
+            <PeopleIcon />
+            Add from contacts
+          </button>
+        )}
         {callMsg && <p className="mt-1 text-xs text-ink-muted">{callMsg}</p>}
         {mailto && (
           <p className="mt-1 text-xs text-ink-muted">

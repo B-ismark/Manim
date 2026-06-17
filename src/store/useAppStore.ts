@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persistNameToAccount } from '@/store/useAuthStore'
 
 /** Stable per-browser device id, used for multi-device identity (userId#deviceId). */
 function loadDeviceId(): string {
@@ -55,11 +56,14 @@ export const useAppStore = create<AppState>((set) => ({
   },
   setDisplayName: (displayName) => {
     try {
+      // Device fallback: keeps the name for guests + offline, and seeds the
+      // account on first sign-in. Signed-in users sync it to their profile too.
       localStorage.setItem(NAME_KEY, displayName)
     } catch {
       /* private mode / storage full — keep the in-memory value */
     }
     set({ displayName })
+    persistNameToAccount(displayName)
   },
   setPrejoin: (patch) => set((s) => ({ prejoin: { ...s.prejoin, ...patch } })),
   setRoomToken: (roomToken) => set({ roomToken }),
