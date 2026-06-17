@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { LiveKitRoom } from '@livekit/components-react'
 import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
-import { RoomView } from '@/islands/RoomView'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
-import { roomOptions } from '@/lib/livekit'
 import { toast } from '@/store/useToastStore'
+
+// The in-call subtree pulls livekit-client + the effects stack (~200KB). Defer it
+// to a lazy chunk so the prejoin screen doesn't download it before joining — it
+// loads on join (when a token exists). Keep this the ONLY path to that code.
+const CallRoom = lazy(() => import('@/islands/CallRoom'))
 
 /**
  * Turn a raw LiveKit connection-error / disconnect string into something a user
@@ -54,12 +56,6 @@ export function RoomRoute() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [waitingId, setWaitingId] = useState<string | null>(null)
-
-  // Build once per (bandwidth, passphrase) so the E2EE worker isn't recreated.
-  const options = useMemo(
-    () => roomOptions(prejoin.lowBandwidth, prejoin.e2ee),
-    [prejoin.lowBandwidth, prejoin.e2ee],
-  )
 
   const handleJoin = useCallback(async () => {
     setError(null)
@@ -146,23 +142,22 @@ export function RoomRoute() {
   // call hostage. Reverted: correctness over the small remount glitch.)
   if (token && LIVEKIT_URL) {
     return (
-      <LiveKitRoom
-        serverUrl={LIVEKIT_URL}
-        token={token}
-        connect
-        audio={prejoin.micEnabled}
-        video={prejoin.cameraEnabled && !prejoin.lowBandwidth}
-        options={options}
-        onDisconnected={leave}
-        onError={(e) => {
-          setError(friendlyJoinError(e.message))
-          setToken(null)
-          setConnecting(false)
-        }}
-        className="relative flex min-h-dvh flex-col"
-      >
-        <RoomView onLeave={leave} />
-      </LiveKitRoom>
+      <Suspense fallback={<JoiningScreen room={room} />}>
+        <CallRoom
+          serverUrl={LIVEKIT_URL}
+          token={token}
+          micEnabled={prejoin.micEnabled}
+          cameraEnabled={prejoin.cameraEnabled}
+          lowBandwidth={prejoin.lowBandwidth}
+          e2ee={prejoin.e2ee}
+          onLeave={leave}
+          onError={(e) => {
+            setError(friendlyJoinError(e.message))
+            setToken(null)
+            setConnecting(false)
+          }}
+        />
+      </Suspense>
     )
   }
 
