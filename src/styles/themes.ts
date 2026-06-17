@@ -21,7 +21,8 @@ export const baseLight: TokenMap = {
   '--color-line-strong': 'oklch(0.83 0.01 270)',
   '--color-ink': 'oklch(0.22 0.01 270)',
   '--color-ink-muted': 'oklch(0.5 0.012 270)',
-  '--color-ink-subtle': 'oklch(0.65 0.012 270)',
+  // L=0.52 so subtle text clears AA (4.5:1) on light surfaces — 0.65 was 3.2:1.
+  '--color-ink-subtle': 'oklch(0.52 0.012 270)',
   '--color-scrim': 'oklch(0.2 0.02 270 / 0.45)',
 }
 
