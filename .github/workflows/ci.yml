@@ -77,3 +77,37 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # Lighthouse budgets on landing + prejoin (the routes that render without a live
+  # room). Needs VITE_LIVEKIT_URL to build (the build aborts on empty), so it's
+  # gated on that secret and skips cleanly when it's absent. Asserts the budgets
+  # in lighthouserc.json — a perf/a11y/seo regression fails the build.
+  lighthouse:
+    runs-on: ubuntu-latest
+    needs: typecheck
+    env:
+      VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip if build var is not configured
+        id: guard
+        run: |
+          if [ -z "$VITE_LIVEKIT_URL" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VITE_LIVEKIT_URL absent — skipping Lighthouse."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-node@v4
+        if: steps.guard.outputs.run == 'true'
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+        if: steps.guard.outputs.run == 'true'
+      - name: Build
+        if: steps.guard.outputs.run == 'true'
+        run: npm run build
+      - name: Lighthouse CI
+        if: steps.guard.outputs.run == 'true'
+        run: npm run lighthouse
