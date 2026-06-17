@@ -4,10 +4,12 @@ import { BrowserRouter } from 'react-router-dom'
 import { App } from './App'
 import { initTheme } from '@/store/useThemeStore'
 import { initAuth } from '@/store/useAuthStore'
+import { initPush } from '@/store/useNotifyStore'
 import './styles/app.css'
 
 initTheme()
 initAuth()
+initPush()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

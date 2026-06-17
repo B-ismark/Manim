@@ -39,6 +39,24 @@ export async function ringUser(
   if (result === 'not_contact') {
     return 'You can only ring your contacts. Add them, or share the invite link instead.'
   }
+
+  // Best-effort background Web Push so the ring reaches a backgrounded / mobile /
+  // closed-tab device too (the Realtime broadcast above only lands on a live tab).
+  // The server re-checks accepted-contact via our access token; fire-and-forget.
+  void (async () => {
+    try {
+      const { data: session } = await supabase.auth.getSession()
+      const token = session.session?.access_token
+      if (!token) return
+      await fetch('/api/push', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ targetId: data as string, room, fromName, accessToken: token }),
+      })
+    } catch {
+      /* push is a bonus; the in-app ring already fired */
+    }
+  })()
   return null
 }
 

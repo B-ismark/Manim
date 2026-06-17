@@ -302,15 +302,6 @@ export const ShareIcon = (p: P) => (
   </svg>
 )
 
-export const QrIcon = (p: P) => (
-  <svg {...base(p)}>
-    <rect x="3" y="3" width="7" height="7" rx="1" />
-    <rect x="14" y="3" width="7" height="7" rx="1" />
-    <rect x="3" y="14" width="7" height="7" rx="1" />
-    <path d="M14 14h3v3M21 14v.01M21 21v-4M17 21h.01M14 21v-3" />
-  </svg>
-)
-
 export const SoundOnIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 9v6h4l5 4V5L8 9H4z" />

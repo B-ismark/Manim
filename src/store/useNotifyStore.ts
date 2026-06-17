@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { enablePush, disablePush } from '@/lib/push'
 
 /**
  * Incoming-call system notifications, opt-in. We no longer auto-prompt on load
@@ -48,6 +49,9 @@ export const useNotifyStore = create<NotifyState>((set) => ({
       /* private mode — keep the in-memory value */
     }
     set({ enabled: ok })
+    // Also subscribe to background Web Push (mobile / closed-tab). Best-effort —
+    // the foreground Notification path works regardless.
+    if (ok) void enablePush()
     return ok
   },
   disable: () => {
@@ -57,5 +61,13 @@ export const useNotifyStore = create<NotifyState>((set) => ({
       /* ignore */
     }
     set({ enabled: false })
+    void disablePush()
   },
 }))
+
+/** Call once at startup: if the user already opted in (and the browser still
+ *  grants it), ensure the service worker + push subscription are live, so a
+ *  reinstalled SW / rotated subscription is re-registered without re-toggling. */
+export function initPush(): void {
+  if (useNotifyStore.getState().enabled) void enablePush()
+}

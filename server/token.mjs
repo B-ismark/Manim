@@ -15,6 +15,7 @@ import {
   handleModerate,
   handleRoomflags,
   handleEmailInvite,
+  handlePushRing,
 } from './core.mjs'
 
 const PORT = process.env.TOKEN_SERVER_PORT || 3001
@@ -36,6 +37,7 @@ app.post('/api/admit', async (req, res) => send(res, await handleAdmit(env, req.
 app.post('/api/moderate', async (req, res) => send(res, await handleModerate(env, req.body, bearer(req))))
 app.post('/api/roomflags', async (req, res) => send(res, await handleRoomflags(env, req.body, bearer(req))))
 app.post('/api/email-invite', async (req, res) => send(res, await handleEmailInvite(env, req.body)))
+app.post('/api/push', async (req, res) => send(res, await handlePushRing(env, req.body)))
 
 app.listen(PORT, () => {
   const keys = env.LIVEKIT_API_KEY && env.LIVEKIT_API_SECRET ? 'keys loaded' : 'NO KEYS (set .env)'
