@@ -38,10 +38,11 @@ export const baseDark: TokenMap = {
   // L=0.65 so subtle text clears AA (4.5:1) on dark surfaces — 0.56 was 3.5:1.
   '--color-ink-subtle': 'oklch(0.65 0.012 270)',
   '--color-scrim': 'oklch(0.08 0.02 270 / 0.6)',
-  // Danger is a single light-mode value in @theme (dark red on white); on dark
-  // surfaces that same red only hit 3.5:1, so lighten it for dark mode only.
-  '--color-danger': 'oklch(0.65 0.2 25)',
-  '--color-danger-hover': 'oklch(0.59 0.21 25)',
+  // NOTE: danger stays the single @theme value (L=0.55) in both modes — it must
+  // be dark enough for white danger-ink on danger FILLS (Leave / mute-off), which
+  // are always on screen. The rarer case (danger as TEXT on a dark surface, e.g.
+  // a transient connect-error line) is the known trade-off; if that needs AA too
+  // it wants its own lighter --color-danger-text token, not a fill change.
 }
 
 /* ── High-contrast overrides (mode-aware) ──────────────────────────────────

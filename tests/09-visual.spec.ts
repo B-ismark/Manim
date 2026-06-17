@@ -26,13 +26,18 @@ test.describe('Visual scenarios @heavy', () => {
     expect(await overlaps(page)).toEqual([])
   })
 
-  test('paged grid ramps cleanly 2→7', async ({ page, browser }) => {
+  test('paged grid ramps cleanly 2→5', async ({ page, browser }) => {
+    // Each peer is a full browser context; one machine saturates ~8 (CPU-bound,
+    // a harness limit — see E2E-FINDINGS). Cap the browser ramp at 5 and leave
+    // real scale (20/50/100) to the lk load-test rig. Generous timeout for the
+    // serial connects.
+    test.setTimeout(180_000)
     const sink = attachErrorSink(page)
     const room = uniqueRoom()
     await join(page, room, 'Host')
     const peers = []
     const report: Record<string, unknown>[] = []
-    for (let n = 2; n <= 7; n++) {
+    for (let n = 2; n <= 5; n++) {
       peers.push(await newParticipant(browser, room, `P${n}`))
       await page.waitForTimeout(1500) // let the tile subscribe + lay out
       const m = await pageMetrics(page)
