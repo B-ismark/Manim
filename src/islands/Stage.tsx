@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -25,37 +25,52 @@ import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam } from '@/lib/focusTrack'
 import { toast } from '@/store/useToastStore'
+import { useElementSize } from '@/lib/useElementSize'
+import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { cn } from '@/lib/cn'
 
-/**
- * Column count for the tile grid. Phones cap at 2 (portrait tiles stay legible;
- * the grid scrolls past the fold rather than shrinking to thumbnails). Desktop
- * grows with √n up to 4. Tiles keep a 3:4 portrait aspect.
- */
-function gridColumns(n: number, coarse: boolean): number {
-  if (n <= 1) return 1
-  if (coarse) return 2
-  return Math.min(Math.ceil(Math.sqrt(n)), 4)
+/** Stable per-tile key (identity + source) — never reshuffles as people speak. */
+function tileKey(t: TrackReferenceOrPlaceholder): string {
+  return `${t.participant.identity}-${t.source}`
 }
 
-/**
- * Upper bound on rendered grid tiles — a safety valve for very large rooms, NOT
- * a normal-call limit. Below it the grid scrolls every tile (the WhatsApp /
- * Discord / Messenger model). adaptiveStream already pauses decode for tiles
- * scrolled out of view, so the *decode* cost is bounded by what's visible; this
- * caps the DOM/subscription cost so a 100-person room can't mount 100 live
- * <video> placeholders. The last cell becomes a "+N more" tile (Google Meet
- * model). Thresholds sit far above any realistic call, so typical calls are
- * untouched. Phones cap lower — a 2-col grid of dozens is unusable anyway.
- */
-const maxGridTiles = (coarse: boolean) => (coarse ? 16 : 49)
-
-/** Keep screen shares first, then your own camera, then everyone else — used
- *  only to decide which tiles survive the overflow cut in very large rooms. */
+/** Keep screen shares first, then your own camera, then everyone else — pins the
+ *  share + your self-view to the first page and gives a stable tile order. */
 function tilePriority(t: TrackReferenceOrPlaceholder): number {
   if (t.source === Track.Source.ScreenShare) return 0
   if (isLocalCam(t)) return 1
   return 2
+}
+
+/**
+ * How many legible tiles fit in the stage without scrolling — drives the paged
+ * grid. Columns are bounded by width at a minimum tile width (and √n so a
+ * 5-person call doesn't spread to 4 thin columns); rows by height at a minimum
+ * tile height. Recomputed on every resize so the layout adapts gracefully
+ * (window resize, side-panel dock, orientation) instead of clipping or shrinking
+ * tiles to dots. Returns {cols, perPage} — cols also drives the rendered grid.
+ */
+function gridCapacity(
+  width: number,
+  height: number,
+  n: number,
+  coarse: boolean,
+): { cols: number; perPage: number } {
+  const gap = coarse ? 8 : 12
+  const minW = coarse ? 132 : 200
+  const minH = coarse ? 116 : 150
+  const maxCols = coarse ? 2 : 4
+  // Before the first measure, fall back to a sane page so we don't flash a huge
+  // mount of every tile.
+  if (width < 2 || height < 2) {
+    const cols = Math.min(maxCols, Math.max(1, Math.ceil(Math.sqrt(n))))
+    return { cols, perPage: coarse ? 4 : 9 }
+  }
+  const byWidth = Math.floor((width + gap) / (minW + gap))
+  const bySqrt = Math.ceil(Math.sqrt(n))
+  const cols = Math.max(1, Math.min(maxCols, byWidth, bySqrt))
+  const rows = Math.max(1, Math.floor((height + gap) / (minH + gap)))
+  return { cols, perPage: Math.max(1, cols * rows) }
 }
 
 export function Stage() {
@@ -89,46 +104,7 @@ export function Stage() {
     // tile, so the grid never goes empty.
     const gridTracks =
       selfViewHidden && tracks.some((t) => !isLocalCam(t)) ? tracks.filter((t) => !isLocalCam(t)) : tracks
-    // Safety valve for huge rooms only (see maxGridTiles). When it engages, keep
-    // screen shares + your own camera in the visible set (sorted to the front)
-    // so they're never the ones hidden behind "+N more"; the last cell collapses
-    // the rest into a count. Untouched for any normal-size call.
-    const MAX = maxGridTiles(coarse)
-    const overflowing = gridTracks.length > MAX
-    const ordered = overflowing
-      ? [...gridTracks].sort((a, b) => tilePriority(a) - tilePriority(b))
-      : gridTracks
-    const shown = overflowing ? ordered.slice(0, MAX - 1) : gridTracks
-    const hiddenCount = gridTracks.length - shown.length
-    const cellCount = shown.length + (overflowing ? 1 : 0)
-    const cols = gridColumns(cellCount, coarse)
-    // Centre when the tiles fit; otherwise scroll from the top (so nothing is
-    // ever clipped above the fold — the 3+-on-mobile breakage).
-    const many = cellCount > cols * 2
-    return (
-      <div
-        className={cn(
-          'grid min-h-0 flex-1 justify-center gap-2 overflow-y-auto p-2 sm:gap-3 sm:p-3',
-          many ? 'content-start' : 'content-center',
-        )}
-        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-      >
-        {shown.map((ref) => (
-          // Portrait 3:4 tile; fills its column, object-cover. Grid scrolls past
-          // the fold for large calls rather than shrinking tiles to dots.
-          <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-[3/4] min-h-0">
-            <Tile trackRef={ref} fill />
-          </div>
-        ))}
-        {overflowing && (
-          <div className="aspect-[3/4] min-h-0">
-            <div className="grid size-full place-items-center rounded-tile bg-sunken text-center text-sm font-medium text-ink-muted">
-              +{hiddenCount} more
-            </div>
-          </div>
-        )}
-      </div>
-    )
+    return <GridStage tracks={gridTracks} coarse={coarse} />
   }
 
   // Speaker (and phone 1-on-1): a focused remote (or screen share)
@@ -154,6 +130,105 @@ export function Stage() {
       )}
 
       {localCam && focus !== localCam && !selfViewHidden && <SelfViewCard trackRef={localCam} />}
+    </div>
+  )
+}
+
+/**
+ * Fit-to-viewport tile grid with grouped pages (Meet/Teams model). When everyone
+ * fits on one page it renders exactly like a normal grid (no pager). When they
+ * don't, tiles are grouped into pages instead of scrolling a giant grid or
+ * shrinking to dots — and only the current page's tiles mount, so a 40-person
+ * room decodes one page's worth, not 40. Screen shares + your self-view are
+ * pinned to page 1; a stable order keeps tiles from reshuffling as people speak.
+ */
+function GridStage({
+  tracks,
+  coarse,
+}: {
+  tracks: TrackReferenceOrPlaceholder[]
+  coarse: boolean
+}) {
+  const { ref, size } = useElementSize<HTMLDivElement>()
+  const [page, setPage] = useState(0)
+
+  // Stable order: screen share → self → others, then by key. Never reorders on
+  // speech (that would make tiles jump between pages mid-sentence).
+  const ordered = useMemo(
+    () =>
+      [...tracks].sort(
+        (a, b) => tilePriority(a) - tilePriority(b) || tileKey(a).localeCompare(tileKey(b)),
+      ),
+    [tracks],
+  )
+
+  const { cols, perPage } = gridCapacity(size.width, size.height, ordered.length, coarse)
+  const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
+  // Clamp the page if the count shrank (resize, people left) — keep it in range.
+  const current = Math.min(page, pageCount - 1)
+  useEffect(() => {
+    if (page !== current) setPage(current)
+  }, [page, current])
+
+  const start = current * perPage
+  const shown = ordered.slice(start, start + perPage)
+  const shownCols = Math.max(1, Math.min(cols, shown.length))
+  const rows = Math.max(1, Math.ceil(shown.length / shownCols))
+  const paged = pageCount > 1
+
+  // If someone is speaking on a page you're not looking at, offer a one-tap jump
+  // (no auto-jump — that's jarring). Manual + clearly labelled.
+  const speakingPage = useMemo(() => {
+    const i = ordered.findIndex((t) => t.participant.isSpeaking)
+    return i >= 0 ? Math.floor(i / perPage) : -1
+  }, [ordered, perPage])
+  const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col p-2 sm:p-3">
+      <div
+        ref={ref}
+        className="grid min-h-0 flex-1 justify-center gap-2 sm:gap-3"
+        style={{
+          gridTemplateColumns: `repeat(${shownCols}, minmax(0, 1fr))`,
+          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+        }}
+      >
+        {shown.map((tref) => (
+          <div key={tileKey(tref)} className="min-h-0 min-w-0">
+            <Tile trackRef={tref} fill />
+          </div>
+        ))}
+      </div>
+
+      {paged && (
+        <div className="mt-2 flex shrink-0 items-center justify-center gap-3 sm:mt-3">
+          <IconButton
+            label="Previous page"
+            icon={<ChevronLeftIcon />}
+            disabled={current === 0}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          />
+          <span className="min-w-16 text-center text-sm font-medium tabular-nums text-ink-muted">
+            {current + 1} / {pageCount}
+          </span>
+          <IconButton
+            label="Next page"
+            icon={<ChevronRightIcon />}
+            disabled={current >= pageCount - 1}
+            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+          />
+          {speakerOffPage && (
+            <button
+              type="button"
+              onClick={() => setPage(speakingPage)}
+              className="flex items-center gap-1.5 rounded-control bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent"
+            >
+              <SpeakingBars /> Speaking
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -200,6 +275,10 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
 /** Floating, draggable local camera shown in the speaker layout. */
 function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
   const { style, handlers } = useDraggable()
+  // Until dragged, the card keeps its CSS anchor — dodge the docked side panel on
+  // desktop (same inset the stage/control bar use) so it never hides behind or
+  // overlaps the chat/people panel. Dragging takes over via inline style.
+  const panel = useRoomStore((s) => s.panel)
   return (
     <div
       role="group"
@@ -209,6 +288,8 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
       {...handlers}
       className={cn(
         'fixed bottom-24 right-4 z-20 cursor-grab touch-none select-none active:cursor-grabbing',
+        'transition-[right] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        panel && 'md:right-[23.5rem] xl:right-[27.5rem]',
         // Touch: a tall portrait card (Discord/Snapchat self-view). Desktop:
         // a wider landscape thumbnail.
         'w-24 aspect-[3/4] pointer-fine:w-52 pointer-fine:aspect-video',

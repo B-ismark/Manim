@@ -12,3 +12,7 @@ dist-ssr
 # Playwright
 playwright-report
 test-results
+
+# Local audit artifacts (script is tracked; output is not)
+audit/shots
+audit/responsive-audit.json
