@@ -10,7 +10,7 @@ import { uniqueRoom, join, newParticipant, revealChrome, closePanel } from './he
  */
 test.describe('Mobile fit (no page scroll)', () => {
   test.beforeEach(({}, testInfo) => {
-    test.skip(testInfo.project.name !== 'mobile', 'mobile-only')
+    test.skip(!testInfo.project.name.startsWith('mobile'), 'touch projects only (mobile, mobile-sm)')
   })
 
   const pageOverflow = (page: import('@playwright/test').Page) =>
