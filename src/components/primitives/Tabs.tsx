@@ -31,7 +31,11 @@ export function Tabs({ items, value, onValueChange, children, className }: TabsP
               'flex flex-1 items-center justify-center gap-1.5 rounded-control px-3 py-1.5 text-sm font-medium',
               'transition-colors duration-[var(--dur-fast)] outline-none',
               'text-ink-muted hover:text-ink',
+              // Active pill: lifted surface + an inset ring. The ring carries the
+              // contrast in dark mode, where surface↔sunken differ by ~ΔL 0.03 and
+              // the drop shadow is invisible against a dark track.
               'data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-pop',
+              'data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-line-strong',
               '[&_svg]:size-4',
             )}
           >

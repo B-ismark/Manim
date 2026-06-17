@@ -1,9 +1,9 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, IconButton, Avatar } from '@/components/primitives'
-import { SettingsIcon, GoogleIcon, CameraIcon, PeopleIcon } from '@/components/icons'
+import { SettingsIcon, GoogleIcon, CameraIcon } from '@/components/icons'
 import { SettingsDialog } from '@/islands/Settings'
-import { ContactsDialog } from '@/islands/Contacts'
+import { ContactsPopover } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -27,7 +27,6 @@ export function Landing() {
   const navigate = useNavigate()
   const [room, setRoom] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [contactsOpen, setContactsOpen] = useState(false)
   const signedIn = useAuthStore((s) => s.signedIn)
   const avatarUrl = useAuthStore((s) => s.avatarUrl)
   const myName = useAppStore((s) => s.displayName)
@@ -59,7 +58,6 @@ export function Landing() {
     // they join (their display name matches), so it doubles as a waiting indicator.
     addInvite(c.name)
     toast(`Ringing ${c.name}…`, 'info')
-    setContactsOpen(false)
     go(target)
   }
 
@@ -70,14 +68,7 @@ export function Landing() {
       <header className="absolute inset-x-4 top-4 z-20 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
-          {signedIn && (
-            <IconButton
-              label="Contacts"
-              icon={<PeopleIcon />}
-              tone="neutral"
-              onClick={() => setContactsOpen(true)}
-            />
-          )}
+          {signedIn && <ContactsPopover onCall={callContact} />}
           <SetupStatusButton />
           <IconButton
             label="Settings"
@@ -89,7 +80,6 @@ export function Landing() {
       </header>
 
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-      <ContactsDialog open={contactsOpen} onOpenChange={setContactsOpen} onCall={callContact} />
 
       <div className="flex w-full max-w-sm flex-col items-center gap-6">
         {/* Personal greeting when signed in (Whereby-style), else just the brand. */}
@@ -113,35 +103,34 @@ export function Landing() {
         <OtherDeviceMeetings onJoin={go} />
 
         <Island pad="none" className="w-full p-5 sm:p-6">
-          <Button
-            variant="accent"
-            block
-            size="lg"
-            onClick={() => go(randomRoom())}
-          >
-            <CameraIcon className="size-5" />
-            New meeting
-          </Button>
-
-          <div className="my-4 flex items-center gap-3 text-xs text-ink-subtle">
-            <span className="h-px flex-1 bg-line" />
-            or join with a code
-            <span className="h-px flex-1 bg-line" />
-          </div>
-
-          <form onSubmit={onJoin} className="flex gap-2">
+          <form onSubmit={onJoin} className="flex flex-col gap-3">
+            <label htmlFor="room" className="text-sm font-medium">
+              Meeting name or code
+            </label>
+            {/* text-base on mobile keeps the font ≥16px so iOS doesn't zoom on focus. */}
             <input
               id="room"
               value={room}
               onChange={(e) => setRoom(e.target.value)}
-              placeholder="Enter a code"
-              aria-label="Room code"
+              placeholder="e.g. team-standup"
               autoComplete="off"
-              className="h-11 min-w-0 flex-1 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+              className="h-11 w-full rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
             />
-            <Button type="submit" variant="neutral" disabled={!room.trim()}>
-              Join
-            </Button>
+            <div className="flex gap-2">
+              {/* New meeting: uses the typed name, or a random room when blank. */}
+              <Button
+                type="button"
+                variant="accent"
+                block
+                onClick={() => go(room.trim() || randomRoom())}
+              >
+                <CameraIcon />
+                New meeting
+              </Button>
+              <Button type="submit" variant="neutral" disabled={!room.trim()}>
+                Join
+              </Button>
+            </div>
           </form>
         </Island>
       </div>
@@ -263,7 +252,7 @@ function AccountMenu() {
               placeholder="you@email.com"
               aria-label="Email"
               autoComplete="email"
-              className="h-9 rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+              className="h-9 rounded-field bg-sunken px-3 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
             />
             <Button type="submit" variant="accent" size="sm" disabled={!value.trim()}>
               Send magic link
