@@ -185,15 +185,7 @@ function GridStage({
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
-    <div
-      className={cn(
-        'flex min-h-0 flex-1 flex-col p-2 sm:p-3',
-        // When the pager shows, reserve space at the bottom so it clears the
-        // floating control bar (fixed, ~4.5rem from the bottom) instead of
-        // rendering behind it — otherwise pages 2+ are unreachable in big rooms.
-        paged && 'pb-[4.75rem] sm:pb-20',
-      )}
-    >
+    <div className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
       <div
         ref={ref}
         className="grid min-h-0 flex-1 justify-center gap-2 sm:gap-3"
@@ -209,33 +201,46 @@ function GridStage({
         ))}
       </div>
 
+      {/* Paged-grid navigation. Arrows live on the left/right EDGES, vertically
+          centred (Zoom model) — clear of the top chrome and the floating control
+          bar, which a bottom-centre pager collided with. A small page pill +
+          off-page-speaker jump sit on the same shelf as the effects carousel
+          (above the control bar). */}
       {paged && (
-        <div className="mt-2 flex shrink-0 items-center justify-center gap-3 sm:mt-3">
-          <IconButton
-            label="Previous page"
-            icon={<ChevronLeftIcon />}
+        <>
+          <button
+            type="button"
+            aria-label="Previous page"
             disabled={current === 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
-          />
-          <span className="min-w-16 text-center text-sm font-medium tabular-nums text-ink-muted">
-            {current + 1} / {pageCount}
-          </span>
-          <IconButton
-            label="Next page"
-            icon={<ChevronRightIcon />}
+            className="absolute left-1 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-overlay text-white shadow-pop backdrop-blur transition-opacity hover:bg-overlay disabled:pointer-events-none disabled:opacity-0 [&_svg]:size-5"
+          >
+            <ChevronLeftIcon />
+          </button>
+          <button
+            type="button"
+            aria-label="Next page"
             disabled={current >= pageCount - 1}
             onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-          />
-          {speakerOffPage && (
-            <button
-              type="button"
-              onClick={() => setPage(speakingPage)}
-              className="flex items-center gap-1.5 rounded-control bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent"
-            >
-              <SpeakingBars /> Speaking
-            </button>
-          )}
-        </div>
+            className="absolute right-1 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-overlay text-white shadow-pop backdrop-blur transition-opacity hover:bg-overlay disabled:pointer-events-none disabled:opacity-0 [&_svg]:size-5"
+          >
+            <ChevronRightIcon />
+          </button>
+          <div className="absolute bottom-[max(5.25rem,calc(env(safe-area-inset-bottom)+4.75rem))] left-1/2 z-10 flex -translate-x-1/2 items-center gap-2">
+            <span className="rounded-control bg-overlay px-3 py-1 text-sm font-medium tabular-nums text-white backdrop-blur">
+              {current + 1} / {pageCount}
+            </span>
+            {speakerOffPage && (
+              <button
+                type="button"
+                onClick={() => setPage(speakingPage)}
+                className="flex items-center gap-1.5 rounded-control bg-accent px-3 py-1 text-sm font-medium text-accent-ink"
+              >
+                <SpeakingBars /> Speaking
+              </button>
+            )}
+          </div>
+        </>
       )}
     </div>
   )
