@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
 
 type Size = 'sm' | 'md' | 'lg' | 'xl'
@@ -26,12 +26,33 @@ function hueFromName(name: string): number {
 
 export interface AvatarProps {
   name: string
+  /** Profile photo URL. Falls back to coloured initials when absent or it fails to load. */
+  src?: string | null
   size?: Size
   className?: string
 }
 
-export function Avatar({ name, size = 'md', className }: AvatarProps) {
+export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
   const hue = useMemo(() => hueFromName(name || '?'), [name])
+  // Fall back to initials if the image 404s / is blocked (stale storage URL, etc.).
+  const [broken, setBroken] = useState(false)
+
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt=""
+        aria-hidden
+        onError={() => setBroken(true)}
+        className={cn(
+          'inline-block rounded-control object-cover shrink-0',
+          sizeClass[size],
+          className,
+        )}
+      />
+    )
+  }
+
   return (
     <span
       aria-hidden

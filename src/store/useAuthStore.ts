@@ -2,6 +2,10 @@ import { create } from 'zustand'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
+import { squareDownscale } from '@/lib/image'
+
+/** Public Storage bucket holding user avatars (see DEPLOY.md §4a). */
+const AVATAR_BUCKET = 'avatars'
 
 /** Stable guest id (device-bound) used when not signed in. */
 function guestId(): string {
@@ -19,17 +23,24 @@ interface AuthState {
   userId: string
   email: string | null
   signedIn: boolean
+  /** Profile photo URL (Storage public URL or the provider's OAuth photo). Null = initials. */
+  avatarUrl: string | null
   /** Sends a magic link. Resolves once the email is dispatched. */
   signInWithEmail: (email: string) => Promise<void>
   /** Google OAuth — one tap, carries the existing Google session across devices. */
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
+  /** Upload a new profile photo (downscaled client-side) to Storage + the account row. */
+  uploadAvatar: (file: File) => Promise<void>
+  /** Clear the profile photo (Storage object + account row). */
+  removeAvatar: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   userId: guestId(),
   email: null,
   signedIn: false,
+  avatarUrl: null,
   signInWithEmail: async (email) => {
     if (!supabase) throw new Error('Sign-in is not configured.')
     const { error } = await supabase.auth.signInWithOtp({
@@ -51,7 +62,40 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
   signOut: async () => {
     if (supabase) await supabase.auth.signOut()
-    set({ userId: guestId(), email: null, signedIn: false })
+    set({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
+  },
+
+  uploadAvatar: async (file) => {
+    const sb = supabase
+    const { signedIn, userId } = get()
+    if (!sb || !signedIn) throw new Error('Sign in to add a photo.')
+
+    // Shrink + square-crop in the browser so we store a few-KB webp, not the
+    // original multi-MB photo. Fixed filename → one object per user (upsert).
+    const blob = await squareDownscale(file)
+    const path = `${userId}/avatar.webp`
+    const { error: upErr } = await sb.storage
+      .from(AVATAR_BUCKET)
+      .upload(path, blob, { upsert: true, contentType: 'image/webp' })
+    if (upErr) throw new Error('Upload failed. Check the avatars bucket exists (see DEPLOY.md).')
+
+    // Cache-bust so the new image shows immediately (same path, public CDN URL).
+    const base = sb.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl
+    const url = `${base}?v=${Date.now()}`
+
+    await sb.from('profiles').upsert({ id: userId, avatar_url: url })
+    set({ avatarUrl: url })
+  },
+
+  removeAvatar: async () => {
+    const sb = supabase
+    const { signedIn, userId } = get()
+    if (!sb || !signedIn) return
+    // Best-effort delete of the Storage object (a provider-seeded OAuth URL has
+    // none — ignore). Then null the account row so it doesn't re-seed.
+    await sb.storage.from(AVATAR_BUCKET).remove([`${userId}/avatar.webp`])
+    await sb.from('profiles').upsert({ id: userId, avatar_url: null })
+    set({ avatarUrl: null })
   },
 }))
 
@@ -67,13 +111,19 @@ function nameFromSession(session: Session): string {
   )
 }
 
+/** Provider profile photo (Google sets `avatar_url`/`picture`), so signed-in users
+ *  start with a real photo without uploading one. */
+function avatarFromSession(session: Session): string {
+  const meta = session.user.user_metadata as { avatar_url?: string; picture?: string } | undefined
+  return meta?.avatar_url?.trim() || meta?.picture?.trim() || ''
+}
+
 /**
- * Sync the display name with the signed-in account: the account row is the source
- * of truth (so the name follows the user across devices). If the account has no
- * name yet, adopt what they typed on this device (or the provider/email name) and
- * write it back. Also keeps the email on the row for call-by-email lookup. All
- * best-effort — degrades silently without the `profiles` table / `display_name`
- * column (see DEPLOY.md).
+ * Sync the display name + avatar with the signed-in account: the account row is
+ * the source of truth (so they follow the user across devices). If the account
+ * has no name/photo yet, adopt what's on this device / the provider and write it
+ * back. Also keeps the email on the row for call-by-email lookup. All best-effort
+ * — degrades silently without the `profiles` table / columns (see DEPLOY.md).
  */
 async function syncProfile(session: Session) {
   if (!supabase) return
@@ -84,39 +134,46 @@ async function syncProfile(session: Session) {
   // account name on another device).
   let hasRow = false
   let accountName = ''
+  let accountAvatar = ''
   try {
     const { data } = await supabase
       .from('profiles')
-      .select('display_name')
+      .select('display_name, avatar_url')
       .eq('id', session.user.id)
       .maybeSingle()
     hasRow = data !== null
     accountName = (data?.display_name ?? '').trim()
+    accountAvatar = (data?.avatar_url ?? '').trim()
   } catch {
-    /* no profiles table / display_name column — fall back to provider/device */
+    /* no profiles table / columns — fall back to provider/device */
   }
 
   // The account is authoritative when it has a name. Otherwise seed from the
   // provider name (stable across devices) before the device-local name, so a
   // stale localStorage value on one device can't overwrite the account.
   const resolved = accountName || nameFromSession(session) || local
+  // Account photo wins; otherwise seed from the provider's OAuth photo.
+  const resolvedAvatar = accountAvatar || avatarFromSession(session)
 
   // Apply locally WITHOUT re-persisting (persist=false) — this value came from /
   // is being written to the account here, so the debounced push would be a
   // redundant double-write that races this upsert.
   if (resolved && resolved !== local) useAppStore.getState().setDisplayName(resolved, false)
+  useAuthStore.setState({ avatarUrl: resolvedAvatar || null })
 
   try {
-    if (resolved && resolved !== accountName) {
-      // Seeding or correcting the account name (also carries the email).
+    const patch: Record<string, string> = {}
+    if (resolved && resolved !== accountName) patch.display_name = resolved
+    if (resolvedAvatar && resolvedAvatar !== accountAvatar) patch.avatar_url = resolvedAvatar
+    if (Object.keys(patch).length > 0) {
+      // Seeding or correcting the account (also carries the email).
       await supabase.from('profiles').upsert({
         id: session.user.id,
         ...(session.user.email ? { email: session.user.email } : {}),
-        display_name: resolved,
+        ...patch,
       })
     } else if (session.user.email && !hasRow) {
-      // Name already correct (or none to set) but no row yet — ensure the email
-      // exists for call-by-email lookup.
+      // Nothing to set but no row yet — ensure the email exists for call-by-email.
       await supabase.from('profiles').upsert({ id: session.user.id, email: session.user.email })
     }
   } catch {
@@ -133,7 +190,7 @@ function applySession(session: Session | null) {
     })
     void syncProfile(session)
   } else {
-    useAuthStore.setState({ userId: guestId(), email: null, signedIn: false })
+    useAuthStore.setState({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
   }
 }
 

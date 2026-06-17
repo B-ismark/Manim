@@ -111,10 +111,12 @@ Two more gotchas:
 create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text unique,
-  display_name text
+  display_name text,
+  avatar_url text
 );
--- Existing installs: add the column without recreating the table.
+-- Existing installs: add the columns without recreating the table.
 alter table profiles add column if not exists display_name text;
+alter table profiles add column if not exists avatar_url text;
 alter table profiles enable row level security;
 
 -- Read/write ONLY your own row. A `using (true)` select policy would let anyone
@@ -137,6 +139,30 @@ $$;
 revoke all on function lookup_profile_id(text) from public;
 grant execute on function lookup_profile_id(text) to authenticated;
 ```
+
+### 3a. Avatars (profile photos)
+Profile photos are uploaded to a **public Storage bucket** (downscaled to a small
+square webp client-side first, so objects stay a few KB), and the resulting public
+URL is saved to `profiles.avatar_url`. Google sign-ins are seeded with the
+provider photo automatically — no upload needed. Without this bucket the app still
+runs: avatars just fall back to coloured initials and the upload button errors.
+
+1. **Storage → New bucket**: name `avatars`, **Public** ✅ (public read so the
+   `<img>` and the cross-device sync work via the CDN URL).
+2. **SQL editor** → RLS so a user can only write **their own** `${uid}/…` objects
+   (public read is already granted by the bucket being public):
+
+```sql
+create policy "avatar upload own" on storage.objects for insert to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatar update own" on storage.objects for update to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+create policy "avatar delete own" on storage.objects for delete to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+```
+
+The client uploads to `avatars/<user-id>/avatar.webp` (one object per user,
+upsert), so the folder-name check pins each user to their own prefix.
 
 4. **Contacts** (optional — powers the consent-based contacts list + call-a-contact).
    Run in the SQL editor:
@@ -169,11 +195,14 @@ create policy "addressee accepts" on contacts for update
 create policy "either removes" on contacts for delete
   using (auth.uid() = requester or auth.uid() = addressee);
 
--- Joined read with names/emails. profiles isn't publicly readable, so this
--- SECURITY DEFINER fn does the join — but only ever returns rows where the
+-- Joined read with names/emails/avatars. profiles isn't publicly readable, so
+-- this SECURITY DEFINER fn does the join — but only ever returns rows where the
 -- caller is one of the two parties, so it can't dump the table.
+-- Drop first: adding the other_avatar column changes the return type, which
+-- `create or replace` can't do on its own.
+drop function if exists list_contacts();
 create or replace function list_contacts()
-returns table (other_id uuid, other_email text, other_name text, status text, direction text)
+returns table (other_id uuid, other_email text, other_name text, other_avatar text, status text, direction text)
 language sql
 security definer
 set search_path = public
@@ -182,6 +211,7 @@ as $$
     case when c.requester = auth.uid() then c.addressee else c.requester end,
     p.email,
     p.display_name,
+    p.avatar_url,
     c.status,
     case
       when c.status = 'accepted' then 'accepted'
