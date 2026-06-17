@@ -79,10 +79,14 @@ jobs:
             sleep 1
           done
           echo "vite did not come up" && exit 1
-      - name: Run E2E (functional + a11y)
+      - name: Run E2E (functional + a11y) — desktop
         if: steps.guard.outputs.run == 'true'
         # Serial — concurrent WebRTC contexts saturate the runner and flake.
         run: npm test -- --workers=1
+      - name: Run E2E (functional + a11y) — mobile
+        if: steps.guard.outputs.run == 'true'
+        # Touch layouts (bottom sheets, auto-hide chrome, portrait tiles).
+        run: npm run test:mobile -- --workers=1
       - name: Run visual scenarios (screenshots + edge cases)
         if: steps.guard.outputs.run == 'true'
         run: npm run test:visual

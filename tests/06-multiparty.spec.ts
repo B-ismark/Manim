@@ -38,9 +38,12 @@ test.describe('Multi-party', () => {
     const room = uniqueRoom('lobby')
     await join(page, room, 'Host')
 
-    // Host turns the lobby on (More → Lobby off→on toggle).
+    // Host turns the lobby on (More → Lobby off→on toggle), then closes the menu
+    // — on mobile More is a modal bottom-sheet whose scrim would otherwise block
+    // the admit banner (on desktop it's a non-modal popover). Esc closes both.
     await page.getByRole('button', { name: 'More options' }).click()
     await page.getByRole('button', { name: /Lobby/ }).click()
+    await page.keyboard.press('Escape')
 
     // Guest tries to join → should land in the waiting screen.
     const ctx = await browser.newContext({ permissions: ['camera', 'microphone'] })
