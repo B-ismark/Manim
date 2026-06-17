@@ -36,8 +36,12 @@ export default defineConfig(({ command, mode }) => {
           // Split the heavy, rarely-changing vendor code into long-lived cacheable
           // chunks so app edits don't bust the whole bundle. livekit is the biggest
           // dependency by far; React + Radix are stable too.
+          // NOTE: @livekit/track-processors is intentionally NOT listed — it (and
+          // its ~160KB MediaPipe payload) is dynamically imported only when blur is
+          // first enabled (see useBackgroundBlur). Naming it here would force it
+          // into the eagerly-loaded room chunk and defeat that lazy boundary.
           manualChunks: {
-            livekit: ['livekit-client', '@livekit/components-react', '@livekit/track-processors'],
+            livekit: ['livekit-client', '@livekit/components-react'],
             react: ['react', 'react-dom', 'react-router-dom'],
           },
         },

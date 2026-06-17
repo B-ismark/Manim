@@ -254,10 +254,17 @@ export async function handleModerate(env, body, token) {
   const modIdentity = await verifyCaller(env, token, room)
   if (!modIdentity) return { status: 401, body: { error: 'Your session expired — rejoin to moderate.' } }
   const modFlags = await getRoomFlags(roomService, room)
+  const modIsPrimaryHost = modFlags.hostId === modIdentity
   const modIsHost =
-    modFlags.hostId === modIdentity ||
+    modIsPrimaryHost ||
     (Array.isArray(modFlags.coHosts) && modFlags.coHosts.includes(modIdentity))
   if (!modIsHost) return { status: 403, body: { error: 'Host only.' } }
+  // A co-host can't remove or mute the primary host — only the primary host has
+  // authority over the host seat. (Co-hosts moderating each other / attendees is
+  // fine.) Prevents a promoted co-host from kicking the host out of their own call.
+  if (target === modFlags.hostId && !modIsPrimaryHost) {
+    return { status: 403, body: { error: 'Only the host can do that.' } }
+  }
   if (action === 'remove') {
     await roomService.removeParticipant(room, target)
   } else if (action === 'mute') {

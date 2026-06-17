@@ -23,10 +23,21 @@ export function uploadError(file: File): string | null {
 }
 
 const IMAGE_URL = /\.(gif|png|jpe?g|webp|avif)(\?.*)?$/i
+const TRUSTED_IMAGE_HOST = /(\.|\/\/)(tenor|giphy)\.com|media\.tenor/i
 
 /** A bare URL that points at an image / GIF (so chat can render it inline). */
 export function looksLikeImageUrl(text: string): boolean {
   const t = text.trim()
   if (!/^https?:\/\/\S+$/.test(t) || /\s/.test(t)) return false
-  return IMAGE_URL.test(t) || /(\.|\/\/)(tenor|giphy)\.com|media\.tenor/i.test(t)
+  return IMAGE_URL.test(t) || TRUSTED_IMAGE_HOST.test(t)
+}
+
+/**
+ * Whether an image URL may be auto-fetched (rendered as <img> on receive). Only
+ * the GIF picker's own hosts (giphy/tenor) qualify; any OTHER remote URL is
+ * click-to-load, so a sender can't use an arbitrary endpoint as a tracking pixel
+ * to harvest every recipient's IP/UA/online-timing on message receipt.
+ */
+export function isAutoLoadImageUrl(text: string): boolean {
+  return TRUSTED_IMAGE_HOST.test(text.trim())
 }

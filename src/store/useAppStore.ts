@@ -40,7 +40,10 @@ interface AppState {
     videoInputId?: string
     audioOutputId?: string
   }
-  setDisplayName: (name: string) => void
+  /** `persist` (default true) also pushes to the signed-in account; pass false to
+   *  set the name locally only (used when seeding FROM the account on sign-in, so
+   *  it doesn't echo straight back as a write). */
+  setDisplayName: (name: string, persist?: boolean) => void
   setPrejoin: (patch: Partial<AppState['prejoin']>) => void
   setRoomToken: (token: string | null) => void
 }
@@ -54,7 +57,7 @@ export const useAppStore = create<AppState>((set) => ({
     cameraEnabled: true,
     lowBandwidth: false,
   },
-  setDisplayName: (displayName) => {
+  setDisplayName: (displayName, persist = true) => {
     try {
       // Device fallback: keeps the name for guests + offline, and seeds the
       // account on first sign-in. Signed-in users sync it to their profile too.
@@ -63,7 +66,7 @@ export const useAppStore = create<AppState>((set) => ({
       /* private mode / storage full — keep the in-memory value */
     }
     set({ displayName })
-    persistNameToAccount(displayName)
+    if (persist) persistNameToAccount(displayName)
   },
   setPrejoin: (patch) => set((s) => ({ prejoin: { ...s.prejoin, ...patch } })),
   setRoomToken: (roomToken) => set({ roomToken }),

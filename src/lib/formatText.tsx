@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
-import { MENTION_RE } from '@/features/chat/mentions'
-import { cn } from '@/lib/cn'
+import { MENTION_RE, OPEN } from '@/features/chat/mentions'
 
 /**
  * Minimal, safe inline-markdown renderer for chat messages. Supports the common
@@ -17,7 +16,7 @@ const PATTERN = /(\*\*([\s\S]+?)\*\*|~~([\s\S]+?)~~|`([^`]+?)`|\*([^*\n]+?)\*|_(
  * ever seeing the private-use delimiter chars.
  */
 export function renderRichText(text: string, myIdentity?: string): ReactNode {
-  if (!text.includes('')) return renderMarkdown(text)
+  if (!text.includes(OPEN)) return renderMarkdown(text)
   const out: ReactNode[] = []
   let last = 0
   let key = 0
@@ -28,12 +27,13 @@ export function renderRichText(text: string, myIdentity?: string): ReactNode {
     const [, identity, name] = m
     const isMe = myIdentity !== undefined && identity === myIdentity
     out.push(
+      // Self-mention = filled accent pill (white ink, AA-verified). Other mentions
+      // = bold accent text (no tinted background) — same contrast as any accent
+      // text in the app, which avoids the borderline text-on-accent-soft ratio in
+      // dark mode.
       <span
         key={key++}
-        className={cn(
-          'rounded px-1 font-medium',
-          isMe ? 'bg-accent text-accent-ink' : 'bg-accent-soft text-accent',
-        )}
+        className={isMe ? 'rounded bg-accent px-1 font-medium text-accent-ink' : 'font-semibold text-accent'}
       >
         @{name}
       </span>,

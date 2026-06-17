@@ -21,8 +21,13 @@ export interface ContactsDialogProps {
 export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: ContactsDialogProps) {
   const rows = useContactsStore((s) => s.rows)
   const loading = useContactsStore((s) => s.loading)
+  const error = useContactsStore((s) => s.error)
+  const remove = useContactsStore((s) => s.remove)
   const refresh = useContactsStore((s) => s.refresh)
   const [tab, setTab] = useState('contacts')
+  // Removing an accepted contact is destructive (it drops you from each other's
+  // lists) → confirm first. Declining/cancelling a pending request is routine.
+  const [pendingRemove, setPendingRemove] = useState<ContactRow | null>(null)
 
   // Reload whenever the dialog opens so the lists are fresh (no realtime here —
   // requests are low-frequency; a pull on open is enough).
@@ -56,24 +61,49 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
     <Dialog open={open} onOpenChange={onOpenChange} title="Contacts" description="Call people you've saved, and manage requests.">
       <Tabs items={items} value={tab} onValueChange={setTab} className="min-h-0 flex-1">
         <TabPanel value="contacts" className="mt-3 min-h-0 overflow-y-auto">
+          {error && (
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger">
+              <span>{error}</span>
+              <button type="button" onClick={() => void refresh()} className="font-medium text-ink-muted hover:text-ink">
+                Retry
+              </button>
+            </div>
+          )}
           {accepted.length === 0 ? (
             <Empty
-              title={loading ? 'Loading…' : 'No contacts yet'}
-              hint="Add someone by email in the Add tab. They'll appear here once they accept."
+              title={loading ? 'Loading…' : error ? "Couldn't load contacts" : 'No contacts yet'}
+              hint={
+                error
+                  ? 'Check your connection and retry.'
+                  : "Add someone by email in the Add tab. They'll appear here once they accept."
+              }
             />
           ) : (
             <ul className="flex flex-col gap-1">
               {accepted.map((c) => (
                 <Row key={c.otherId} contact={c}>
                   {onAddToCall && (
-                    <Button size="sm" variant="accent" onClick={() => onAddToCall(c)}>
+                    <Button size="sm" variant="accent" disabled={!c.email} onClick={() => onAddToCall(c)}>
                       Add to call
                     </Button>
                   )}
                   {onCall && (
-                    <IconButton size="sm" tone="accent" label={`Call ${c.name}`} icon={<CameraIcon />} onClick={() => onCall(c)} />
+                    <IconButton
+                      size="sm"
+                      tone="accent"
+                      label={c.email ? `Call ${c.name}` : `No email on file for ${c.name}`}
+                      icon={<CameraIcon />}
+                      disabled={!c.email}
+                      onClick={() => onCall(c)}
+                    />
                   )}
-                  <RemoveButton contact={c} label="Remove contact" />
+                  <IconButton
+                    size="sm"
+                    tone="neutral"
+                    label={`Remove ${c.name}`}
+                    icon={<CloseIcon />}
+                    onClick={() => setPendingRemove(c)}
+                  />
                 </Row>
               ))}
             </ul>
@@ -113,6 +143,29 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
           <AddByEmail onAdded={() => setTab('requests')} />
         </TabPanel>
       </Tabs>
+
+      <Dialog
+        open={pendingRemove !== null}
+        onOpenChange={(o) => !o && setPendingRemove(null)}
+        title={`Remove ${pendingRemove?.name ?? ''}?`}
+        description="You'll be removed from each other's contacts. You can send a new request later."
+      >
+        <div className="flex justify-end gap-2">
+          <Button variant="neutral" onClick={() => setPendingRemove(null)}>
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              const c = pendingRemove
+              setPendingRemove(null)
+              if (c) void remove(c.otherId)
+            }}
+          >
+            Remove
+          </Button>
+        </div>
+      </Dialog>
     </Dialog>
   )
 }

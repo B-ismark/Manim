@@ -86,7 +86,8 @@ export async function closePanel(page: Page) {
 export async function openChat(page: Page) {
   await revealChrome(page)
   await page.getByRole('button', { name: 'Open chat' }).click()
-  const composer = page.getByRole('textbox', { name: 'Message', exact: true })
+  // The composer is an ARIA combobox (it hosts the @-mention autocomplete).
+  const composer = page.getByRole('combobox', { name: 'Message', exact: true })
   await expect(composer).toBeVisible()
   return composer
 }

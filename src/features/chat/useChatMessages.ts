@@ -505,15 +505,18 @@ export function useChatMessages() {
         name: string
         typing: boolean
       }
-      if (d.identity === myIdentity) return
+      // Key off the unforgeable sender identity, NOT the payload's claimed
+      // identity — otherwise a peer could spoof "X is typing" for someone else.
+      const from = msg.from?.identity
+      if (!from || from === myIdentity) return
       setTyping((prev) => {
         if (!d.typing) {
-          if (!prev[d.identity]) return prev
+          if (!prev[from]) return prev
           const next = { ...prev }
-          delete next[d.identity]
+          delete next[from]
           return next
         }
-        return { ...prev, [d.identity]: { name: d.name, at: Date.now() } }
+        return { ...prev, [from]: { name: d.name, at: Date.now() } }
       })
     } catch {
       /* malformed — ignore */

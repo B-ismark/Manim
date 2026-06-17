@@ -26,10 +26,19 @@ export async function ringUser(
   if (error) return 'Could not look up that user.'
   if (!data) return 'No Manim account with that email.'
 
-  const channel = supabase.channel(`user:${data as string}`)
-  await channel.subscribe()
-  await channel.send({ type: 'broadcast', event: 'ring', payload: { room, fromName } })
-  await supabase.removeChannel(channel)
+  // Broadcast the ring SERVER-SIDE via a SECURITY DEFINER RPC that verifies the
+  // caller is an accepted contact of the target, then writes into the target's
+  // private channel. The sender never joins that channel (no harvest), and
+  // non-contacts can't ring (share the invite link instead).
+  const { data: result, error: ringErr } = await supabase.rpc('ring', {
+    target_id: data as string,
+    room,
+    from_name: fromName,
+  })
+  if (ringErr) return 'Could not place the call.'
+  if (result === 'not_contact') {
+    return 'You can only ring your contacts. Add them, or share the invite link instead.'
+  }
   return null
 }
 
@@ -67,7 +76,10 @@ export function useIncomingCalls() {
     // Notification permission is requested on a user gesture from Settings
     // (useNotifyStore), never auto-prompted here — non-gesture requests get
     // re-surfaced by browsers every session, which is the nag we're killing.
-    const channel = sb.channel(`user:${userId}`, { config: { broadcast: { self: false } } })
+    // Private: Realtime RLS lets only this user receive on their own user:<id>
+    // channel, and only the SECURITY DEFINER `ring` RPC (contact-gated) can write
+    // to it — so no one can ring-spam or harvest by joining someone else's channel.
+    const channel = sb.channel(`user:${userId}`, { config: { private: true, broadcast: { self: false } } })
     channel
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
         const p = payload as IncomingCall
