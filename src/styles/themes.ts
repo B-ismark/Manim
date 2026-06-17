@@ -34,8 +34,13 @@ export const baseDark: TokenMap = {
   '--color-line-strong': 'oklch(0.43 0.016 270)',
   '--color-ink': 'oklch(0.96 0.005 270)',
   '--color-ink-muted': 'oklch(0.72 0.01 270)',
-  '--color-ink-subtle': 'oklch(0.56 0.012 270)',
+  // L=0.65 so subtle text clears AA (4.5:1) on dark surfaces — 0.56 was 3.5:1.
+  '--color-ink-subtle': 'oklch(0.65 0.012 270)',
   '--color-scrim': 'oklch(0.08 0.02 270 / 0.6)',
+  // Danger is a single light-mode value in @theme (dark red on white); on dark
+  // surfaces that same red only hit 3.5:1, so lighten it for dark mode only.
+  '--color-danger': 'oklch(0.65 0.2 25)',
+  '--color-danger-hover': 'oklch(0.59 0.21 25)',
 }
 
 /* ── High-contrast overrides (mode-aware) ──────────────────────────────────
@@ -84,7 +89,7 @@ function accent(a: string, hover: string): TokenMap {
 }
 
 export const accentPresets: AccentPreset[] = [
-  { id: 'aurora', name: 'Aurora', swatch: 'oklch(0.62 0.18 275)', tokens: accent('oklch(0.62 0.18 275)', 'oklch(0.56 0.19 275)') },
+  { id: 'aurora', name: 'Aurora', swatch: 'oklch(0.55 0.18 275)', tokens: accent('oklch(0.55 0.18 275)', 'oklch(0.49 0.19 275)') },
   { id: 'lagoon', name: 'Lagoon', swatch: 'oklch(0.6 0.13 230)', tokens: accent('oklch(0.6 0.13 230)', 'oklch(0.54 0.14 230)') },
   { id: 'jade', name: 'Jade', swatch: 'oklch(0.62 0.14 160)', tokens: accent('oklch(0.62 0.14 160)', 'oklch(0.56 0.15 160)') },
   { id: 'clementine', name: 'Clementine', swatch: 'oklch(0.7 0.17 50)', tokens: accent('oklch(0.7 0.17 50)', 'oklch(0.64 0.18 50)') },
