@@ -10,6 +10,11 @@ function nameOf(p: Participant): string {
   return p.name || p.identity.split('#')[0] || 'Someone'
 }
 
+// Join/leave chimes only fire in small rooms — in a busy call a cue on every
+// arrival/exit is constant noise, so past this headcount we keep the toast but
+// drop the sound. ("with very few people".)
+const CHIME_MAX_PARTICIPANTS = 6
+
 /**
  * Plays contextual cues + on-screen toasts for participant lifecycle and raised
  * hands by listening to room events. Reaction and end-call cues are fired where
@@ -26,14 +31,16 @@ export function useCallSounds() {
       settled.current = true
     }, 1500)
 
+    // Total headcount (the just-connected peer is already in remoteParticipants).
+    const small = () => room.remoteParticipants.size + 1 <= CHIME_MAX_PARTICIPANTS
     const onConnected = (p: Participant) => {
       if (!settled.current) return
-      sounds.join()
+      if (small()) sounds.join()
       toast(`${nameOf(p)} joined`, 'info')
     }
     const onDisconnected = (p: Participant) => {
       if (!settled.current) return
-      sounds.leave()
+      if (small()) sounds.leave()
       toast(`${nameOf(p)} left`, 'neutral')
     }
     const onAttr = (changed: Record<string, string>, p: Participant) => {

@@ -209,7 +209,9 @@ export function ParticipantsPanel() {
     setCallMsg('Ringing…')
     const err = await ringUser(c.email, room.name, localParticipant.name || 'Someone')
     setCallMsg(err ?? `Ringing ${c.name}…`)
-    if (!err) addInvite(c.email)
+    // Label by name (not email) so the "Invited · waiting" row clears when they
+    // join (the ghost matches against participant display names).
+    if (!err) addInvite(c.name)
   }
 
   // Report flags a participant to the host over the control channel (only the
