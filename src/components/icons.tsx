@@ -39,12 +39,15 @@ export const NoiseIcon = (p: P) => (
   </svg>
 )
 
+/** Switch front/rear camera — the standard "switch-camera" glyph: a camera body
+ *  with rotation chevrons either side of the lens (Lucide switch-camera). */
 export const FlipCameraIcon = (p: P) => (
   <svg {...base(p)}>
-    <rect x="3" y="6" width="18" height="13" rx="2" />
-    <circle cx="12" cy="12.5" r="2.5" />
-    <path d="M9 3.5h6" />
-    <path d="M13.8 11.2a2.5 2.5 0 0 0-3.8.3M10.2 13.8a2.5 2.5 0 0 0 3.8-.3" />
+    <path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5" />
+    <path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5" />
+    <circle cx="12" cy="12" r="3" />
+    <path d="m18 22-3-3 3-3" />
+    <path d="m6 2 3 3-3 3" />
   </svg>
 )
 

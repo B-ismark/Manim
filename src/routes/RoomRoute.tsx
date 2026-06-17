@@ -64,6 +64,11 @@ export function RoomRoute() {
       return
     }
     setConnecting(true)
+    // Download the in-call chunk in parallel with the knock round-trip. By the time
+    // a token comes back it's usually cached, so the Suspense fallback below never
+    // mounts a *second* JoiningScreen — the join→connect handoff stops flashing on
+    // mobile (module cache dedups this with the lazy() import).
+    void import('@/islands/CallRoom')
     try {
       const res = await knock({ room, name: displayName, deviceId, userId })
       if (res.token) {

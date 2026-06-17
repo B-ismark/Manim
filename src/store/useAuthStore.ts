@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
+import { useAppStore } from '@/store/useAppStore'
 
 /** Stable guest id (device-bound) used when not signed in. */
 function guestId(): string {
@@ -54,6 +55,18 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 }))
 
+/** Best display name from an OAuth/magic-link session: provider full name first,
+ *  then the email local-part, so a signed-in user never has to type their name. */
+function nameFromSession(session: Session): string {
+  const meta = session.user.user_metadata as { full_name?: string; name?: string } | undefined
+  return (
+    meta?.full_name?.trim() ||
+    meta?.name?.trim() ||
+    session.user.email?.split('@')[0] ||
+    ''
+  )
+}
+
 function applySession(session: Session | null) {
   if (session?.user) {
     useAuthStore.setState({
@@ -61,6 +74,12 @@ function applySession(session: Session | null) {
       email: session.user.email ?? null,
       signedIn: true,
     })
+    // Prefill the prejoin name from the account, but never clobber a name the user
+    // has already chosen/typed (their override wins).
+    if (!useAppStore.getState().displayName.trim()) {
+      const name = nameFromSession(session)
+      if (name) useAppStore.getState().setDisplayName(name)
+    }
     // Make this user reachable by email for calls (best-effort; needs a
     // `profiles` table — see deploy docs). Degrades silently if absent.
     if (supabase && session.user.email) {

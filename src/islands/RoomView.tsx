@@ -190,6 +190,14 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Mobile: float the call into OS PiP when the app is backgrounded, restore on return.
   useAutoBackgroundPip(connected)
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
+  // Opening the effects carousel must reveal + pin the chrome. The Effects button
+  // lives on the self-view tile (always visible on touch), but the carousel is a
+  // sibling of the auto-hiding control bar — so after the 4s auto-hide a tap would
+  // flip carouselOpen with the chrome gone, and the strip never appeared. Treat an
+  // open carousel like an open menu: hold the chrome up until it closes.
+  useEffect(() => {
+    setChromeHold(carouselOpen)
+  }, [carouselOpen, setChromeHold])
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.
