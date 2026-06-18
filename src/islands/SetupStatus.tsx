@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Island, Popover } from '@/components/primitives'
+import { Dialog, Island, Popover } from '@/components/primitives'
 import { CheckIcon } from '@/components/icons'
 import { useConfigStatus, type ConfigItem } from '@/features/config/useConfigStatus'
+import { useIsTouch } from '@/lib/useIsTouch'
 import { cn } from '@/lib/cn'
 
 /**
@@ -47,33 +48,52 @@ function StatusRow({ item, ready }: { item: ConfigItem; ready: boolean }) {
   )
 }
 
-/** Trigger + popover for the header (Landing). Shows a dot when something's off. */
+/**
+ * Setup-status launcher for the header (Landing). Shows a dot when something's
+ * off. Desktop → anchored popover; touch → full modal dialog (a header-anchored
+ * panel is a desktop-only pattern — see Contacts/Settings launchers).
+ */
 export function SetupStatusButton() {
   const { items, ready, blocked } = useConfigStatus()
   const anyOff = ready && items.some((i) => !i.ok)
-  return (
-    <Popover
-      side="bottom"
-      align="end"
-      trigger={
-        <button
-          type="button"
-          aria-label="Setup status"
-          className="relative inline-flex h-9 items-center gap-1.5 rounded-control bg-sunken px-3 text-sm text-ink-muted hover:text-ink"
-        >
-          Setup
-          {anyOff && (
-            <span
-              className={cn(
-                'size-2 rounded-full',
-                blocked ? 'bg-danger' : 'bg-warning',
-              )}
-              aria-hidden
-            />
-          )}
-        </button>
-      }
+  const touch = useIsTouch()
+  const [open, setOpen] = useState(false)
+
+  const trigger = (onClick?: () => void) => (
+    <button
+      type="button"
+      aria-label="Setup status"
+      onClick={onClick}
+      className="relative inline-flex h-9 items-center gap-1.5 rounded-control bg-sunken px-3 text-sm text-ink-muted hover:text-ink"
     >
+      Setup
+      {anyOff && (
+        <span
+          className={cn('size-2 rounded-full', blocked ? 'bg-danger' : 'bg-warning')}
+          aria-hidden
+        />
+      )}
+    </button>
+  )
+
+  if (touch) {
+    return (
+      <>
+        {trigger(() => setOpen(true))}
+        <Dialog
+          open={open}
+          onOpenChange={setOpen}
+          title="Setup status"
+          description="What's configured for this app."
+        >
+          <StatusList />
+        </Dialog>
+      </>
+    )
+  }
+
+  return (
+    <Popover side="bottom" align="end" trigger={trigger()}>
       <div className="w-72 p-2">
         <p className="mb-2 px-1 text-xs font-medium text-ink-subtle">Setup status</p>
         <StatusList />

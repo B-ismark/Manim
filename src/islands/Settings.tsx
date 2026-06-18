@@ -6,6 +6,7 @@ import { useSoundStore } from '@/store/useSoundStore'
 import { useAppStore } from '@/store/useAppStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useIsTouch } from '@/lib/useIsTouch'
 import { toast } from '@/store/useToastStore'
 
 /**
@@ -34,8 +35,32 @@ export function SettingsDialog({
   )
 }
 
-/** Landing-header settings: anchored popover (no overlay), Setup-status style. */
-export function SettingsPopover() {
+/**
+ * Landing-header settings launcher. Desktop (fine pointer) → anchored popover,
+ * no scrim (Setup-status style). Touch → full modal dialog; a header-anchored
+ * panel is a desktop-only pattern that reads wrong on a phone.
+ */
+export function SettingsLauncher() {
+  const touch = useIsTouch()
+  const [open, setOpen] = useState(false)
+
+  if (!touch) return <SettingsPopover />
+
+  return (
+    <>
+      <IconButton
+        label="Settings"
+        icon={<SettingsIcon />}
+        tone="neutral"
+        onClick={() => setOpen(true)}
+      />
+      <SettingsDialog open={open} onOpenChange={setOpen} />
+    </>
+  )
+}
+
+/** Desktop: anchored popover (no overlay), Setup-status style. */
+function SettingsPopover() {
   return (
     <Popover
       side="bottom"

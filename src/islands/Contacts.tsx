@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Avatar, Button, Dialog, IconButton, Popover, Tabs, TabPanel } from '@/components/primitives'
 import { CameraIcon, CheckIcon, CloseIcon, PeopleIcon } from '@/components/icons'
 import { useContactsStore, type ContactRow } from '@/store/useContactsStore'
+import { useIsTouch } from '@/lib/useIsTouch'
 import { cn } from '@/lib/cn'
 
 interface ContactsActions {
@@ -68,13 +69,52 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
   )
 }
 
-/** Landing-header contacts: anchored popover (no overlay), Setup-status style. */
-export function ContactsPopover({ onCall, onAddToCall }: ContactsActions) {
+/** People icon with an unread-request dot. */
+function ContactsIcon() {
+  const incoming = useContactsStore((s) => s.rows.filter((r) => r.direction === 'incoming').length)
+  return (
+    <span className="relative inline-flex">
+      <PeopleIcon />
+      {incoming > 0 && (
+        <span
+          className="absolute -right-1 -top-1 size-2 rounded-full bg-accent ring-2 ring-sunken"
+          aria-hidden
+        />
+      )}
+    </span>
+  )
+}
+
+/**
+ * Landing-header contacts launcher. On desktop (fine pointer) it's an anchored
+ * popover with no scrim (Setup-status style). On touch it opens a full modal
+ * dialog — anchoring a panel to a tiny header button is a desktop-only pattern.
+ */
+export function ContactsLauncher({ onCall, onAddToCall }: ContactsActions) {
+  const touch = useIsTouch()
+  const [open, setOpen] = useState(false)
+
+  if (!touch) return <ContactsPopover onCall={onCall} onAddToCall={onAddToCall} />
+
+  return (
+    <>
+      <IconButton
+        label="Contacts"
+        icon={<ContactsIcon />}
+        tone="neutral"
+        onClick={() => setOpen(true)}
+      />
+      <ContactsDialog open={open} onOpenChange={setOpen} onCall={onCall} onAddToCall={onAddToCall} />
+    </>
+  )
+}
+
+/** Desktop: anchored popover (no overlay), Setup-status style. */
+function ContactsPopover({ onCall, onAddToCall }: ContactsActions) {
   const [open, setOpen] = useState(false)
   const [pendingCall, setPendingCall] = useState<ContactRow | null>(null)
   const [pendingRemove, setPendingRemove] = useState<ContactRow | null>(null)
   const remove = useContactsStore((s) => s.remove)
-  const incoming = useContactsStore((s) => s.rows.filter((r) => r.direction === 'incoming').length)
 
   return (
     <>
@@ -84,23 +124,7 @@ export function ContactsPopover({ onCall, onAddToCall }: ContactsActions) {
         side="bottom"
         align="end"
         className="w-80"
-        trigger={
-          <IconButton
-            label="Contacts"
-            icon={
-              <span className="relative inline-flex">
-                <PeopleIcon />
-                {incoming > 0 && (
-                  <span
-                    className="absolute -right-1 -top-1 size-2 rounded-full bg-accent ring-2 ring-sunken"
-                    aria-hidden
-                  />
-                )}
-              </span>
-            }
-            tone="neutral"
-          />
-        }
+        trigger={<IconButton label="Contacts" icon={<ContactsIcon />} tone="neutral" />}
       >
         <div className="flex max-h-[26rem] flex-col">
           <p className="px-1 pb-2 text-xs font-medium text-ink-subtle">Contacts</p>
