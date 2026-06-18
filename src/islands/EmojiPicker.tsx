@@ -110,20 +110,18 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
         {results ? 'Search results' : activeGroup?.group}
       </p>
 
-      {/* auto-fill columns sized to fit the width → never a horizontal scrollbar,
-          whatever the container width. Only vertical (mouse wheel) scroll. */}
+      {/* auto-fill columns sized to fit the width → never a horizontal scrollbar.
+          Cells are a comfortable 2.75rem min so wide system emoji (Samsung / Noto
+          on Android) aren't clipped into thin ribbons; NO overflow-hidden on the
+          buttons for the same reason. Taller scroll area on a phone where there's
+          room; capped on desktop. */}
       <div
-        className="h-56 gap-0.5 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin]"
-        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(2.25rem, 1fr))', alignContent: 'start' }}
+        className="grid h-[44dvh] grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] content-start gap-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin] sm:h-56"
       >
         {loading ? (
-          <p className="py-6 text-center text-xs text-ink-subtle" style={{ gridColumn: '1 / -1' }}>
-            Loading emoji…
-          </p>
+          <p className="col-span-full py-6 text-center text-xs text-ink-subtle">Loading emoji…</p>
         ) : shown.length === 0 ? (
-          <p className="py-6 text-center text-xs text-ink-subtle" style={{ gridColumn: '1 / -1' }}>
-            No emoji found
-          </p>
+          <p className="col-span-full py-6 text-center text-xs text-ink-subtle">No emoji found</p>
         ) : (
           shown.map((d) => (
             <button
@@ -132,7 +130,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
               aria-label={d.name}
               title={d.name}
               onClick={() => onSelect(d.e)}
-              className="grid aspect-square place-items-center overflow-hidden rounded-control text-xl leading-none hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
+              className="flex aspect-square items-center justify-center rounded-control text-2xl leading-none hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
             >
               {d.e}
             </button>
