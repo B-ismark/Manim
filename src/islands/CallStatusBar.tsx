@@ -6,7 +6,8 @@ import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { cn } from '@/lib/cn'
 
 export interface CallStatusBarProps {
-  /** True when E2EE is active for this room (a passphrase was set at prejoin). */
+  /** True only when E2EE is ACTUALLY active (room.setE2EEEnabled resolved), not
+   *  merely when a passphrase was typed — the badge must never overstate security. */
   encrypted: boolean
   /** Hidden alongside the rest of the chrome on mobile tap-to-hide. */
   visible: boolean

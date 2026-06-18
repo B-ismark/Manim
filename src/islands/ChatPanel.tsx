@@ -67,6 +67,11 @@ const GROUP_WINDOW_MS = 5 * 60 * 1000
 function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
   if (!prev) return false
   if (item.kind === 'text' && item.replyTo) return false
+  // Never group across the verified/replayed boundary — a peer-replayed (unverified)
+  // message must not hide under a live, verified-author header.
+  const prevReplayed = prev.kind === 'text' && prev.replayed
+  const itemReplayed = item.kind === 'text' && item.replayed
+  if (prevReplayed !== itemReplayed) return false
   return (
     prev.fromIdentity === item.fromIdentity &&
     prev.isLocal === item.isLocal &&
@@ -139,6 +144,23 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     endRef.current?.scrollIntoView({ block: 'end' })
   }, [items.length])
 
+  // Keep the latest message + composer above the on-screen keyboard on mobile.
+  // scrollIntoView-on-send doesn't fire when the keyboard *opens* (a visualViewport
+  // resize, not a send), so on iOS Safari the keyboard could cover the last message
+  // or the input. Only re-pin while the composer is focused — otherwise opening the
+  // keyboard would yank someone out of scrolled-up history.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const onResize = () => {
+      if (document.activeElement === inputRef.current) {
+        endRef.current?.scrollIntoView({ block: 'end' })
+      }
+    }
+    vv.addEventListener('resize', onResize)
+    return () => vv.removeEventListener('resize', onResize)
+  }, [])
+
   // Grow the composer to fit the draft (up to the CSS max-height, after which it
   // scrolls). A rows=1 textarea otherwise stays one line tall and the rest
   // scrolls hidden inside it.
@@ -149,15 +171,26 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     el.style.height = `${el.scrollHeight}px`
   }, [draft])
 
-  function submit() {
-    if (!draft.trim()) return
+  async function submit() {
+    const original = draft
+    if (!original.trim()) return
     // Encode @mentions against the current roster just before sending so each
     // client can resolve who was tagged regardless of name changes.
-    sendText(encodeMentions(draft, mentionTargets), replyTo ?? undefined)
+    const body = encodeMentions(original, mentionTargets)
+    const reply = replyTo ?? undefined
+    // Optimistic clear so the composer feels instant…
     setDraft('')
-    setReplyTo(null)
     setMention(null)
     stopTyping()
+    const ok = await sendText(body, reply)
+    if (ok) {
+      setReplyTo(null)
+    } else {
+      // …but if the transport rejected it (e.g. mid-reconnect), put the message
+      // back (the original, not the encoded form) and say so — don't lose it.
+      setDraft(original)
+      setError("Couldn't send — check your connection and try again.")
+    }
   }
 
   function onDraftChange(value: string) {
@@ -331,8 +364,10 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                   id={`mention-opt-${i}`}
                   role="option"
                   aria-selected={i === mentionIdx}
-                  // onMouseDown (not onClick) so the pick fires before the textarea blurs.
-                  onMouseDown={(e) => {
+                  // onPointerDown (not onClick) so the pick fires before the textarea
+                  // blurs — and pointer covers touch too, where a click would land
+                  // after blur dismissed the list (and behind the on-screen keyboard).
+                  onPointerDown={(e) => {
                     e.preventDefault()
                     pickMention(t)
                   }}
@@ -573,6 +608,16 @@ function MessageRow({
             <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
             {item.kind === 'text' && item.edited && (
               <span className="text-[11px] text-ink-subtle">(edited)</span>
+            )}
+            {/* Peer-replayed history: sender isn't verified (P2P sync, no server).
+                Flag it so a fabricated message can't pass as a verified author. */}
+            {item.kind === 'text' && item.replayed && (
+              <span
+                className="text-[11px] text-ink-subtle italic"
+                title="Sent before you joined — sender not verified"
+              >
+                · before you joined
+              </span>
             )}
             {pinned && <PinIcon className="size-3 text-accent" aria-label="Pinned" />}
           </div>

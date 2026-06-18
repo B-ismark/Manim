@@ -13,6 +13,9 @@ import {
   handleKnockStatus,
   handlePending,
   handleAdmit,
+  handleEndRoom,
+  handleElectHost,
+  handleHandoff,
   handleModerate,
   handleRoomflags,
   handleEmailInvite,
@@ -37,10 +40,28 @@ async function handleApi(request, env, url) {
 
   try {
     if (path === 'health') return json(handleHealth(env))
-    if (path === 'knock' && method === 'POST') return json(await handleKnock(env, await bodyOf()))
+    if (path === 'knock' && method === 'POST') {
+      // Per-IP rate limit on the (intentionally unauthenticated) join endpoint.
+      // knock is how anyone enters a room, so it can't require a token — which is
+      // exactly what makes room enumeration cheap. Throttling per IP blunts a
+      // brute-force scan of the room-code space. Degrades gracefully when the
+      // binding is absent (local dev), so it only bites in production.
+      const limiter = env.KNOCK_RATELIMIT
+      if (limiter && typeof limiter.limit === 'function') {
+        const ip = request.headers.get('cf-connecting-ip') || 'anon'
+        const { success } = await limiter.limit({ key: `knock:${ip}` })
+        if (!success) {
+          return json({ status: 429, body: { error: 'Too many attempts — wait a moment and try again.' } })
+        }
+      }
+      return json(await handleKnock(env, await bodyOf()))
+    }
     if (path === 'knock-status') return json(await handleKnockStatus(env, query))
     if (path === 'pending') return json(await handlePending(env, query, bearer(request)))
     if (path === 'admit' && method === 'POST') return json(await handleAdmit(env, await bodyOf(), bearer(request)))
+    if (path === 'end' && method === 'POST') return json(await handleEndRoom(env, await bodyOf(), bearer(request)))
+    if (path === 'elect-host' && method === 'POST') return json(await handleElectHost(env, await bodyOf(), bearer(request)))
+    if (path === 'handoff' && method === 'POST') return json(await handleHandoff(env, await bodyOf(), bearer(request)))
     if (path === 'moderate' && method === 'POST') return json(await handleModerate(env, await bodyOf(), bearer(request)))
     if (path === 'roomflags' && method === 'POST') return json(await handleRoomflags(env, await bodyOf(), bearer(request)))
     if (path === 'email-invite' && method === 'POST') {
@@ -55,7 +76,7 @@ async function handleApi(request, env, url) {
           return json({ status: 429, body: { error: 'Too many invites — try again in a minute.' } })
         }
       }
-      return json(await handleEmailInvite(env, await bodyOf()))
+      return json(await handleEmailInvite(env, await bodyOf(), bearer(request)))
     }
     if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
     return new Response('Not found', { status: 404 })

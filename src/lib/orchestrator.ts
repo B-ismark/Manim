@@ -21,8 +21,13 @@ export interface JoinRequest {
   room: string
   name: string
   deviceId: string
-  /** Stable account/guest id — stamped into metadata for presence + handoff. */
-  userId?: string
+  /** Supabase access token, if signed in. The server derives the stamped account
+   *  id FROM this (verified) — it ignores any client-claimed `userId`, so a client
+   *  can't spoof another user's identity. Absent for guests (stamped id = ''). */
+  accessToken?: string
+  /** Join secret from the invite link's #fragment. Required by the server once a
+   *  room records its hash; absent for open (typed-name) rooms. */
+  secret?: string
   host?: boolean
 }
 
@@ -113,15 +118,56 @@ export function setRoomFlags({ token, ...body }: RoomFlagsRequest): Promise<void
 }
 
 /**
+ * Host: end the call for everyone, server-side (deletes the LiveKit room). This is
+ * the authoritative close — it disconnects participants the data-channel `end`
+ * broadcast can't reach (anyone mid-reconnect) and blocks rejoins. `token` is the
+ * host's signed join token.
+ */
+export function endRoom(room: string, token: string): Promise<void> {
+  return postJson<{ ok: boolean }>('/api/end', { room }, token).then(() => undefined)
+}
+
+/**
+ * Promote a successor host when the primary has left (the recorded hostId is no
+ * longer in the room). Any remaining participant may call it; the server only acts
+ * if the host is genuinely absent and picks the successor deterministically, so
+ * concurrent calls from every client are safe + idempotent. Returns the (possibly
+ * unchanged) hostId. `token` is the caller's signed join token.
+ */
+export function electHost(room: string, token: string): Promise<{ ok: boolean; hostId: string }> {
+  return postJson<{ ok: boolean; hostId: string }>('/api/elect-host', { room }, token)
+}
+
+/**
+ * Multi-device handoff: drop the caller's own OTHER sessions in this room, keeping
+ * `keepDevice`. Server-mediated and authorized on the caller's signed-token account
+ * id — NOT a client broadcast (which could be forged to disconnect anyone). `token`
+ * is the caller's signed join token.
+ */
+export function handoff(room: string, token: string, keepDevice: string): Promise<void> {
+  return postJson<{ ok: boolean }>('/api/handoff', { room, keepDevice }, token).then(() => undefined)
+}
+
+/**
  * Send a real email invite (Resend). Resolves true if sent; false on ANY
  * failure — not configured (501) OR the provider rejected it (502, e.g. an
  * unverified sandbox recipient). Either way the caller falls back to mailto, so
  * an invite never silently drops. Only a network error rejects the promise.
  */
-export async function sendEmailInvite(to: string, room: string, link: string, fromName: string): Promise<boolean> {
+export async function sendEmailInvite(
+  to: string,
+  room: string,
+  link: string,
+  fromName: string,
+  /** The inviter's signed join token — the server requires it so the endpoint
+   *  can't be used as an open spam relay. Falls back to mailto when absent/invalid. */
+  token?: string,
+): Promise<boolean> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (token) headers.authorization = `Bearer ${token}`
   const res = await fetch('/api/email-invite', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify({ to, room, link, fromName }),
   })
   return res.ok

@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from 'react'
 import { Island, Button } from '@/components/primitives'
+import { addBreadcrumb, reportError } from '@/lib/report'
 
 /** A dynamic-import (code-split chunk) failure — the common cause is a new deploy
  *  that rotated chunk hashes while an old tab was still open, so the chunk 404s. */
@@ -46,6 +47,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
 
   componentDidCatch(error: Error) {
     if (isChunkLoadError(error)) {
+      addBreadcrumb('ErrorBoundary: chunk load error', { message: error.message })
       try {
         if (!sessionStorage.getItem(RELOAD_FLAG)) {
           sessionStorage.setItem(RELOAD_FLAG, '1')
@@ -56,8 +58,10 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
         /* storage blocked — fall through to the manual UI */
       }
     }
-    // Real (non-chunk) errors: log for diagnosis; the fallback UI handles recovery.
-    console.error('[ErrorBoundary]', error)
+    // Report for diagnosis (E1); the fallback UI handles recovery. A chunk error
+    // that reaches here got past the one-shot reload guard — a *persistent* stale
+    // chunk, which is worth knowing about, so report it too.
+    reportError(error, { source: 'ErrorBoundary', chunk: isChunkLoadError(error) })
   }
 
   render() {

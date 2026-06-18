@@ -307,6 +307,30 @@ end $$;
 revoke all on function ring(uuid, text, text) from public;
 grant execute on function ring(uuid, text, text) to authenticated;
 
+-- (4b) Ring overload that ALSO relays the invite-link secrets (the join secret and
+-- E2EE key) into the ring payload, so a called contact can pass the room's
+-- join-secret gate and key end-to-end encryption. Kept as a SEPARATE overload from
+-- the 3-arg ring() above so a client mid-rollout keeps working. REQUIRED for ringing
+-- a contact into a secured room (room access hardening) — deploy this BEFORE the app
+-- build that calls it. The same Realtime RLS as (5) gates who can receive.
+create or replace function ring(target_id uuid, room text, from_name text, join_secret text, e2ee_key text)
+returns text language plpgsql security definer set search_path = public, realtime as $$
+declare me uuid := auth.uid();
+begin
+  if me is null then return 'unauthenticated'; end if;
+  if not exists (
+    select 1 from contacts c where c.status = 'accepted'
+      and ((c.requester = me and c.addressee = target_id)
+        or (c.addressee = me and c.requester = target_id))
+  ) then return 'not_contact'; end if;
+  perform realtime.send(
+    jsonb_build_object('room', room, 'fromName', from_name, 'secret', join_secret, 'e2ee', e2ee_key),
+    'ring', 'user:' || target_id::text, true);
+  return 'ok';
+end $$;
+revoke all on function ring(uuid, text, text, text, text) from public;
+grant execute on function ring(uuid, text, text, text, text) to authenticated;
+
 -- (5) Realtime Authorization: you may only RECEIVE on your own user:/presence:
 -- channel (kills online-harvest), and only WRITE to your own presence or — via
 -- the SECURITY DEFINER ring() above — to a contact. Direct client broadcast to

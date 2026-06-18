@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
+import { toast } from '@/store/useToastStore'
 import { squareDownscale } from '@/lib/image'
 
 /** Public Storage bucket holding user avatars (see DEPLOY.md §4a). */
@@ -27,6 +28,10 @@ interface AuthState {
   avatarUrl: string | null
   /** Sends a magic link. Resolves once the email is dispatched. */
   signInWithEmail: (email: string) => Promise<void>
+  /** Verify the 6-digit code from the sign-in email. The mobile-safe alternative to
+   *  the link: a copy/pasted code survives switching to the mail app and back, where
+   *  the link's single-browser PKCE flow breaks if it opens in a different browser. */
+  verifyEmailOtp: (email: string, token: string) => Promise<void>
   /** Google OAuth — one tap, carries the existing Google session across devices. */
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
@@ -44,19 +49,30 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signInWithEmail: async (email) => {
     if (!supabase) throw new Error('Sign-in is not configured.')
     const { error } = await supabase.auth.signInWithOtp({
+      // Return to the EXACT page sign-in started from (e.g. /r/standup), not the
+      // bare origin — otherwise a user who signs in mid-join lands on / and has to
+      // re-navigate. href carries the path + any query.
       email,
-      options: { emailRedirectTo: window.location.origin },
+      options: { emailRedirectTo: window.location.href },
     })
+    if (error) throw error
+  },
+  verifyEmailOtp: async (email, token) => {
+    if (!supabase) throw new Error('Sign-in is not configured.')
+    // type 'email' covers the OTP token from a signInWithOtp email. On success the
+    // onAuthStateChange listener (initAuth) applies the session — no extra wiring.
+    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: 'email' })
     if (error) throw error
   },
   signInWithGoogle: async () => {
     if (!supabase) throw new Error('Sign-in is not configured.')
-    // Redirects to Google, then back to the app origin where onAuthStateChange
-    // (initAuth) picks up the session. Requires the Google provider to be enabled
-    // in the Supabase dashboard (OAuth client id/secret) — see DEPLOY.md.
+    // Redirects to Google, then back to the page sign-in started from, where
+    // onAuthStateChange (initAuth) picks up the session. Requires the Google
+    // provider enabled in the Supabase dashboard (OAuth client id/secret) — see
+    // DEPLOY.md. (The exact return URL must be in Supabase's allow-list.)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: window.location.href },
     })
     if (error) throw error
   },
@@ -213,9 +229,44 @@ export function persistNameToAccount(name: string): void {
   }, 600)
 }
 
+/**
+ * Surface an auth failure that came back on the redirect URL. OAuth bounce-backs
+ * (user cancelled, redirect URL not allow-listed) and dead magic links (expired,
+ * or opened in a different browser than they were started in — the PKCE verifier
+ * is local) return `error`/`error_description` in the query OR the hash. Without
+ * this the user just lands logged-out with no reason. Toast it, then strip the
+ * error keys so a reload doesn't re-announce (other params, incl. tokens Supabase
+ * consumes, are preserved).
+ */
+function reportAuthErrorFromUrl(): void {
+  if (typeof window === 'undefined') return
+  const query = new URLSearchParams(window.location.search)
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+  const raw = query.get('error_description') || query.get('error') || hash.get('error_description') || hash.get('error')
+  if (!raw) return
+  const msg = decodeURIComponent(raw.replace(/\+/g, ' '))
+  // A failed verification is most often a cross-browser/expired link — give the
+  // actionable hint rather than the raw provider string.
+  const code = query.get('error_code') || hash.get('error_code') || ''
+  toast(
+    /otp|expired|invalid|access_denied/i.test(`${code} ${msg}`)
+      ? 'That sign-in link didn’t work — open it in the same browser you started from, or request a new one.'
+      : msg,
+    'danger',
+  )
+  for (const k of ['error', 'error_code', 'error_description']) {
+    query.delete(k)
+    hash.delete(k)
+  }
+  const q = query.toString()
+  const h = hash.toString()
+  window.history.replaceState({}, '', window.location.pathname + (q ? `?${q}` : '') + (h ? `#${h}` : ''))
+}
+
 /** Call once at startup: hydrate session + subscribe to auth changes. */
 export function initAuth(): void {
   if (!supabase) return
+  reportAuthErrorFromUrl()
   void supabase.auth.getSession().then(({ data }) => applySession(data.session))
   supabase.auth.onAuthStateChange((_event, session) => applySession(session))
 }

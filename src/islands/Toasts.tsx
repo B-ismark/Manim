@@ -11,7 +11,7 @@ const dotTone: Record<ToastTone, string> = {
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
   useEffect(() => {
-    const id = window.setTimeout(onDismiss, 4000)
+    const id = window.setTimeout(onDismiss, toast.duration ?? 4000)
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -21,7 +21,20 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       className="mn-pop pointer-events-auto flex items-center gap-2.5 rounded-control bg-raised px-3.5 py-2 text-sm text-ink shadow-pop border border-line"
     >
       <span className={cn('size-2 shrink-0 rounded-full', dotTone[toast.tone])} aria-hidden />
-      <span className="max-w-[18rem] truncate">{toast.text}</span>
+      {/* Don't truncate an actionable toast — its text + button must stay readable. */}
+      <span className={cn(toast.action ? 'max-w-[18rem]' : 'max-w-[18rem] truncate')}>{toast.text}</span>
+      {toast.action && (
+        <button
+          type="button"
+          onClick={() => {
+            toast.action!.onClick()
+            onDismiss()
+          }}
+          className="-mr-1 shrink-0 rounded-control px-2 py-0.5 text-sm font-medium text-accent hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+          {toast.action.label}
+        </button>
+      )}
     </div>
   )
 }

@@ -12,6 +12,9 @@ import {
   handleKnockStatus,
   handlePending,
   handleAdmit,
+  handleEndRoom,
+  handleElectHost,
+  handleHandoff,
   handleModerate,
   handleRoomflags,
   handleEmailInvite,
@@ -34,9 +37,12 @@ app.post('/api/knock', async (req, res) => send(res, await handleKnock(env, req.
 app.get('/api/knock-status', async (req, res) => send(res, await handleKnockStatus(env, req.query)))
 app.get('/api/pending', async (req, res) => send(res, await handlePending(env, req.query, bearer(req))))
 app.post('/api/admit', async (req, res) => send(res, await handleAdmit(env, req.body, bearer(req))))
+app.post('/api/end', async (req, res) => send(res, await handleEndRoom(env, req.body, bearer(req))))
+app.post('/api/elect-host', async (req, res) => send(res, await handleElectHost(env, req.body, bearer(req))))
+app.post('/api/handoff', async (req, res) => send(res, await handleHandoff(env, req.body, bearer(req))))
 app.post('/api/moderate', async (req, res) => send(res, await handleModerate(env, req.body, bearer(req))))
 app.post('/api/roomflags', async (req, res) => send(res, await handleRoomflags(env, req.body, bearer(req))))
-app.post('/api/email-invite', async (req, res) => send(res, await handleEmailInvite(env, req.body)))
+app.post('/api/email-invite', async (req, res) => send(res, await handleEmailInvite(env, req.body, bearer(req))))
 app.post('/api/push', async (req, res) => send(res, await handlePushRing(env, req.body)))
 
 app.listen(PORT, () => {

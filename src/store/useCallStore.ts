@@ -1,6 +1,7 @@
 import { create } from 'zustand'
+import type { RoomSecrets } from '@/lib/roomLink'
 
-export interface IncomingCall {
+export interface IncomingCall extends RoomSecrets {
   room: string
   fromName: string
 }

@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCallStore, type IncomingCall } from '@/store/useCallStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
+import type { RoomSecrets } from '@/lib/roomLink'
 
 export type { IncomingCall }
 
@@ -15,6 +16,9 @@ export async function ringUser(
   email: string,
   room: string,
   fromName: string,
+  /** Invite secrets for the room, relayed to the callee so they pass the join-secret
+   *  gate and get the E2EE key. Requires the 5-arg `ring` RPC (see DEPLOY.md §4b). */
+  secrets: RoomSecrets = {},
 ): Promise<string | null> {
   if (!supabase) return 'Calling is not configured.'
   // Resolve via a SECURITY DEFINER RPC (single exact-match lookup) rather than a
@@ -34,6 +38,8 @@ export async function ringUser(
     target_id: data as string,
     room,
     from_name: fromName,
+    join_secret: secrets.secret ?? null,
+    e2ee_key: secrets.e2ee ?? null,
   })
   if (ringErr) return 'Could not place the call.'
   if (result === 'not_contact') {
@@ -102,7 +108,7 @@ export function useIncomingCalls() {
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
         const p = payload as IncomingCall
         if (p?.room) {
-          setIncoming({ room: p.room, fromName: p.fromName || 'Someone' })
+          setIncoming({ room: p.room, fromName: p.fromName || 'Someone', secret: p.secret, e2ee: p.e2ee })
           notifyIncoming(p.fromName || 'Someone', p.room)
         }
       })

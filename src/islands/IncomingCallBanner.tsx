@@ -4,6 +4,7 @@ import { LeaveIcon, CameraIcon } from '@/components/icons'
 import { useIncomingCalls } from '@/features/calls/calls'
 import { useAppStore } from '@/store/useAppStore'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { roomTo } from '@/lib/roomLink'
 
 /**
  * App-level incoming-call surface, mounted once. Owns the single Realtime
@@ -23,11 +24,12 @@ export function IncomingCallBanner() {
   if (inCall || !incoming) return null
 
   const accept = () => {
-    const room = incoming.room
+    const { room, secret, e2ee } = incoming
     dismiss()
     // autojoin: you already consented by tapping Accept — skip the second prejoin
-    // and connect straight in (RoomRoute auto-joins on this nav state).
-    navigate(`/r/${encodeURIComponent(room)}`, { state: { autojoin: true } })
+    // and connect straight in (RoomRoute auto-joins on this nav state). Carry the
+    // ring's secrets so the join-secret gate passes and E2EE keys up.
+    navigate(roomTo(room, { secret, e2ee }), { state: { autojoin: true } })
   }
 
   if (touch) {
