@@ -2,8 +2,8 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Island, Popover, Avatar } from '@/components/primitives'
 import { GoogleIcon, CameraIcon } from '@/components/icons'
-import { SettingsPopover } from '@/islands/Settings'
-import { ContactsPopover } from '@/islands/Contacts'
+import { SettingsLauncher } from '@/islands/Settings'
+import { ContactsLauncher } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -67,9 +67,9 @@ export function Landing() {
       <header className="absolute inset-x-4 top-4 z-20 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
-          {signedIn && <ContactsPopover onCall={callContact} />}
+          {signedIn && <ContactsLauncher onCall={callContact} />}
           <SetupStatusButton />
-          <SettingsPopover />
+          <SettingsLauncher />
         </div>
       </header>
 
