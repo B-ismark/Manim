@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { MergeIcon } from '@/components/icons'
 import { useCallStore } from '@/store/useCallStore'
+import { roomTo, type RoomSecrets } from '@/lib/roomLink'
 
 /**
  * Incoming call while you're ALREADY in a call. This is the only place merge is
@@ -19,7 +20,7 @@ export function InCallIncomingBanner({
   onMerge,
 }: {
   isHost: boolean
-  onMerge: (room: string) => void
+  onMerge: (room: string, secrets: RoomSecrets) => void
 }) {
   const incoming = useCallStore((s) => s.incoming)
   const dismiss = useCallStore((s) => s.dismiss)
@@ -27,6 +28,7 @@ export function InCallIncomingBanner({
   if (!incoming) return null
 
   const room = incoming.room
+  const secrets: RoomSecrets = { secret: incoming.secret, e2ee: incoming.e2ee }
 
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-50 flex justify-center px-4">
@@ -42,7 +44,7 @@ export function InCallIncomingBanner({
             variant="accent"
             onClick={() => {
               dismiss()
-              onMerge(room)
+              onMerge(room, secrets)
             }}
           >
             <MergeIcon />
@@ -54,7 +56,7 @@ export function InCallIncomingBanner({
           variant="neutral"
           onClick={() => {
             dismiss()
-            navigate(`/r/${encodeURIComponent(room)}`, { state: { autojoin: true } })
+            navigate(roomTo(room, secrets), { state: { autojoin: true } })
           }}
         >
           Switch

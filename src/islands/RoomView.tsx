@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
+import { useNavigate } from 'react-router-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
 import { ConnectionState } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
@@ -33,8 +34,11 @@ import { useEffectsUi } from '@/store/useEffectsUi'
 import { useAppStore } from '@/store/useAppStore'
 import { Button } from '@/components/primitives'
 import { HandIcon, PipIcon } from '@/components/icons'
+import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
 import { isTouch } from '@/lib/device'
+import { parseRoomHash } from '@/lib/roomLink'
 import { cn } from '@/lib/cn'
+import { addBreadcrumb, reportError } from '@/lib/report'
 
 /**
  * Mobile gesture + auto-hide-chrome controller for the stage.
@@ -148,7 +152,12 @@ function useSoloAutoLeave(onLeave: () => void) {
  */
 export function RoomView({ onLeave }: { onLeave: () => void }) {
   const room = useRoomContext()
-  const e2eePassphrase = useAppStore((s) => s.prejoin.e2ee)
+  // Security material rides in the invite link's #fragment (see lib/roomLink), not
+  // the store: the E2EE key keys the media, the join secret is re-advertised to the
+  // user's own other devices for quick-join. A strong random key shared only via
+  // the link — no typed passphrase.
+  const linkSecrets = useMemo(() => parseRoomHash(window.location.hash), [])
+  const e2eePassphrase = linkSecrets.e2ee
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   // Chat state is owned here (persists across the side panel opening/closing —
   // LiveKit chat history is transient and would otherwise reset on remount).
@@ -166,11 +175,49 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const docPip = useDocumentPip(connected)
   useCallSounds()
   useApplyBlocks()
+  // Detect mid-call device loss (camera unplugged / mic disconnected / OS revoke)
+  // and surface it instead of letting the tile silently freeze (E5).
+  useMediaDeviceWatch()
+
+  // Breadcrumb connection-state transitions so a reported error carries the recent
+  // connection history (E1) — e.g. "errored right after a Reconnecting blip".
+  useEffect(() => {
+    addBreadcrumb('connection state', { state: connState })
+  }, [connState])
 
   // Activate end-to-end encryption when a passphrase was set at prejoin. The key
   // is already configured on the room's keyProvider (see roomOptions).
+  //
+  // The padlock MUST reflect the REAL E2EE state, not merely "a passphrase was
+  // typed": enabling can fail (unsupported browser, SharedArrayBuffer unavailable,
+  // worker load error). A badge that lies — claiming encryption while media flows
+  // in the clear — is worse than no badge. So we only mark the call encrypted once
+  // setE2EEEnabled actually resolves, and on failure we drop the badge and warn
+  // loudly rather than swallowing the error.
+  const [e2eeActive, setE2eeActive] = useState(false)
   useEffect(() => {
-    if (e2eePassphrase) void room.setE2EEEnabled(true).catch(() => {})
+    if (!e2eePassphrase) return
+    let cancelled = false
+    room
+      .setE2EEEnabled(true)
+      .then(() => {
+        if (!cancelled) setE2eeActive(true)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setE2eeActive(false)
+        // This is a security-correctness failure (media flows unencrypted while the
+        // user expected E2EE) — it must NOT vanish silently. Warn the user AND
+        // report it so its real-world rate is measurable (E1/E2).
+        reportError(e, { context: 'e2ee-enable' })
+        toast(
+          'Encryption couldn’t be turned on — this call is NOT end-to-end encrypted.',
+          'danger',
+        )
+      })
+    return () => {
+      cancelled = true
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const {
@@ -196,12 +243,31 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     setChromeHold(carouselOpen)
   }, [carouselOpen, setChromeHold])
+  // Leave via the control bar is instant by design (a sound choice on desktop), but
+  // on a thumb-zone mobile bar a fat-finger drops you and rejoin can mean re-knocking
+  // the waiting room. Pair the explicit Leave button with an undo toast that rejoins
+  // the same room (autojoin → no second prejoin). End-for-everyone, host-end, handoff
+  // and the solo-auto-leave keep the plain doLeave — those aren't accidental.
+  const navigate = useNavigate()
+  const leaveWithUndo = useCallback(() => {
+    const slug = room.name
+    void doLeave()
+    toast('You left the call', 'neutral', {
+      duration: 8000,
+      action: {
+        label: 'Rejoin',
+        onClick: () => navigate(`/r/${encodeURIComponent(slug)}`, { state: { autojoin: true } }),
+      },
+    })
+  }, [doLeave, navigate, room.name])
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.
   useSoloAutoLeave(doLeave)
-  // Advertise this call to the user's other signed-in devices (quick-join).
-  usePublishMeetingPresence(room.name)
+  // Advertise this call to the user's other signed-in devices (quick-join). Carry
+  // the link secrets so the other device can reconstruct the full invite link and
+  // pass the join-secret gate — the presence channel is owner-only (Realtime RLS).
+  usePublishMeetingPresence(room.name, linkSecrets)
 
   // Focus restoration. A forced rejoin / handoff / merge remounts this subtree —
   // the control that triggered it (a menu item, the handoff banner button) is now
@@ -241,7 +307,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         )}
       />
       <ConnectionBanner />
-      <CallStatusBar encrypted={Boolean(e2eePassphrase)} visible={chromeVisible} />
+      <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
       <StageTopBar visible={chromeVisible} />
       <PinCoachmark />
       <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
@@ -274,7 +340,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <ControlBar
         chromeVisible={chromeVisible}
         onMenuOpenChange={setChromeHold}
-        onLeave={doLeave}
+        onLeave={leaveWithUndo}
         onEndForEveryone={endForEveryone}
         isHost={isHost}
         locked={locked}

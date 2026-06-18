@@ -555,10 +555,16 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
       >
         {!p.isLocal && canModerate && !micOff && (
           <IconButton
-            size="sm"
+            // Touch has no hover and a tap doesn't trigger focus-within, so the
+            // reveal-on-hover affordance is invisible on phones — pin it visible
+            // (and at a 44px target) there. Desktop keeps the hover reveal.
+            size={coarse ? 'md' : 'sm'}
             label={`Mute ${name}`}
             icon={<MicOffIcon />}
-            className="bg-overlay text-white opacity-0 transition-opacity duration-[var(--dur-fast)] hover:bg-overlay focus-visible:opacity-100 group-hover:opacity-100"
+            className={cn(
+              'bg-overlay text-white transition-opacity duration-[var(--dur-fast)] hover:bg-overlay',
+              coarse ? 'opacity-100' : 'opacity-0 focus-visible:opacity-100 group-hover:opacity-100',
+            )}
             onClick={() => void forceMute()}
           />
         )}
@@ -594,9 +600,11 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         </div>
       )}
 
-      {/* Pin toggle — reveals on hover/focus (desktop). On touch there's no
-          hover and the top-right corner is taken by the participants chip, so we
-          rely on double-tap to pin (taught once by PinCoachmark) instead. */}
+      {/* Pin toggle — reveals on hover/focus (desktop). On touch there's no hover
+          and the top-right corner is taken by the screen-level participants chip, so
+          we rely on double-tap / long-press to pin (taught once by PinCoachmark) plus
+          the keyboard Enter/Space path — a persistent button here would collide with
+          that chip on the focused fill tile. */}
       <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
         <IconButton
           size="sm"

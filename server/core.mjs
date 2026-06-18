@@ -18,6 +18,17 @@ function escapeHtml(s) {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// A pending waiting-room entry self-expires after this long, so a guest never
+// waits forever on a knock no one will action (host left / never opened admit).
+// knock-status flips stale pending → expired; new knocks also prune by it.
+const KNOCK_TTL_MS = 5 * 60 * 1000
+
+/** SHA-256 hex of a string, via the Web Crypto API (available on Workers + Node). */
+async function sha256Hex(s) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)))
+  return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 function services(env) {
   const apiKey = env.LIVEKIT_API_KEY
   const apiSecret = env.LIVEKIT_API_SECRET
@@ -107,6 +118,53 @@ async function verifyCaller(env, token, room) {
   }
 }
 
+// Like verifyCaller, but also returns the userId baked into the SIGNED token
+// metadata (set by the server at mint — immutable, unlike the live participant
+// metadata a client can rewrite via canUpdateOwnMetadata). Used to authorize the
+// device-handoff against an unforgeable account id.
+async function verifyCallerClaims(env, token, room) {
+  const { apiKey, apiSecret } = services(env)
+  if (!token || !apiKey || !apiSecret) return null
+  try {
+    const verifier = new TokenVerifier(apiKey, apiSecret)
+    const claims = await verifier.verify(token)
+    if (room && claims?.video?.room && claims.video.room !== room) return null
+    const identity = claims?.sub || null
+    if (!identity) return null
+    let userId = ''
+    try {
+      userId = JSON.parse(claims.metadata || '{}').userId || ''
+    } catch {
+      /* no/invalid metadata */
+    }
+    return { identity, userId }
+  } catch {
+    return null
+  }
+}
+
+// Resolve the caller's TRUSTED account id from their Supabase session token, the
+// same way handlePushRing proves contact authorization. The client sends whatever
+// it likes for `userId` at knock; trusting that lets a participant claim another
+// user's id (and force-disconnect them via handoff). So we IGNORE the client value
+// and derive the id server-side: a valid Supabase access token → the verified uid;
+// no/invalid token → '' (an unauthenticated guest, who is device-bound anyway).
+async function verifySupabaseUser(env, accessToken) {
+  const url = env.SUPABASE_URL
+  const anon = env.SUPABASE_ANON_KEY
+  if (!url || !anon || !accessToken) return null
+  try {
+    const r = await fetch(`${url.replace(/\/+$/, '')}/auth/v1/user`, {
+      headers: { apikey: anon, authorization: `Bearer ${accessToken}` },
+    })
+    if (!r.ok) return null
+    const u = await r.json()
+    return u?.id || null
+  } catch {
+    return null
+  }
+}
+
 // Host authority lives in ROOM metadata (written only by the server / a roomAdmin
 // token), NOT participant metadata: tokens grant canUpdateOwnMetadata (needed for
 // raise-hand attributes), so a participant could otherwise rewrite their own
@@ -144,11 +202,15 @@ export function handleHealth(env) {
 
 export async function handleKnock(env, body) {
   const { apiKey, apiSecret, roomService } = services(env)
-  const { room, name, deviceId, userId, host } = body ?? {}
+  const { room, name, deviceId, host, accessToken, secret } = body ?? {}
   if (!room || !name) return { status: 400, body: { error: 'room and name are required' } }
   if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
 
   const identity = `${name}#${deviceId || 'web'}`
+  // SERVER-DERIVED account id — never the client-supplied `userId` (which a client
+  // can set to any value, including a victim's, to spoof identity in handoff). A
+  // valid Supabase session → the verified uid; otherwise '' (guest).
+  const userId = (await verifySupabaseUser(env, accessToken)) || ''
 
   if (!roomService) {
     // Degraded mode = no LiveKit configured (local UI-first dev). Host status is
@@ -180,6 +242,19 @@ export async function handleKnock(env, body) {
     return { status: 403, body: { error: 'This room is locked by the host.' } }
   }
 
+  // Join-secret gate. Once a room records a secretHash (set by its creator from the
+  // #fragment of the invite link), entry requires the matching secret — so the LINK
+  // is the credential, not the guessable slug (closes room enumeration). The
+  // recorded host (reconnecting), anyone already in, and a previously-approved guest
+  // bypass it. Rooms with no secretHash (created by typing a bare name) stay open,
+  // exactly as before — this only hardens link-shared rooms.
+  if (flags.secretHash && !isHost && !alreadyIn && !wasApproved) {
+    const ok = secret && (await sha256Hex(secret)) === flags.secretHash
+    if (!ok) {
+      return { status: 403, body: { error: 'This room needs its invite link — open the full link you were sent.' } }
+    }
+  }
+
   if (isHost || alreadyIn || !flags.waiting || wasApproved) {
     // Record the authoritative host identity ONCE (only when unclaimed), server-side,
     // so it can't be forged via participant metadata (see ensureHost) and a second
@@ -187,11 +262,16 @@ export async function handleKnock(env, body) {
     // exist yet, so updateRoomMetadata would fail — create it with the metadata
     // instead. (LiveKit auto-creates the room on connect either way.)
     if (isHost && !flags.hostId) {
+      // Record the join-secret hash alongside the host identity, so subsequent
+      // joiners must present the matching secret from the invite link. Store only
+      // the hash — a metadata leak then never exposes the secret itself.
+      const patch = { hostId: identity }
+      if (secret) patch.secretHash = await sha256Hex(secret)
       try {
-        await mergeRoomFlags(roomService, room, { hostId: identity })
+        await mergeRoomFlags(roomService, room, patch)
       } catch {
         try {
-          await roomService.createRoom({ name: room, metadata: JSON.stringify({ hostId: identity }) })
+          await roomService.createRoom({ name: room, metadata: JSON.stringify(patch) })
         } catch {
           /* non-fatal: host UI/moderation degrades, joining still works */
         }
@@ -201,9 +281,27 @@ export async function handleKnock(env, body) {
     return { status: 200, body: { ...minted, host: isHost } }
   }
 
+  // Waiting room is on and we're not auto-admitting. Don't queue against a host
+  // who isn't connected — a `pending` entry no one can action would leave the
+  // guest waiting indefinitely (a live `pending` has no client-visible timeout).
+  // Reject with an actionable message instead; the guest can tap Join to retry.
+  const hostLive = participants.some(
+    (p) =>
+      p.identity === flags.hostId ||
+      (Array.isArray(flags.coHosts) && flags.coHosts.includes(p.identity)),
+  )
+  if (!hostLive) {
+    return { status: 503, body: { error: 'The host isn’t here to let you in yet — try again in a moment.' } }
+  }
+
+  const now = Date.now()
   const requestId = crypto.randomUUID()
-  queue.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending' })
-  await mergeRoomFlags(roomService, room, { queue: queue.slice(-50) })
+  // Prune stale pending entries (past the TTL) BEFORE the 50-cap, so a burst of
+  // dead knocks can't evict fresh ones — the earlier-pending-evicted-as-expired
+  // bug — and the queue self-cleans. Resolved entries are kept (rejoin needs them).
+  const live = queue.filter((e) => e.status !== 'pending' || now - (e.ts || now) < KNOCK_TTL_MS)
+  live.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now })
+  await mergeRoomFlags(roomService, room, { queue: live.slice(-50) })
   return { status: 200, body: { pending: true, requestId } }
 }
 
@@ -214,6 +312,11 @@ export async function handleKnockStatus(env, query) {
   const flags = await getRoomFlags(roomService, room)
   const entry = (Array.isArray(flags.queue) ? flags.queue : []).find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
+  // A pending entry past its TTL is treated as expired — the host never actioned
+  // it (left / missed the prompt), so stop the guest polling forever.
+  if (entry.status === 'pending' && entry.ts && Date.now() - entry.ts > KNOCK_TTL_MS) {
+    return { status: 200, body: { status: 'expired' } }
+  }
   if (entry.status === 'approved') {
     const minted = await mintToken(env, room, entry.name, entry.deviceId, false, entry.userId)
     return { status: 200, body: { status: 'approved', ...minted } }
@@ -245,6 +348,121 @@ export async function handleAdmit(env, body, token) {
   entry.status = approve ? 'approved' : 'denied'
   await mergeRoomFlags(roomService, room, { queue })
   return { status: 200, body: { ok: true } }
+}
+
+/**
+ * Host ends the call for everyone — the AUTHORITATIVE close. The client also
+ * broadcasts an `end` over the data channel for an instant local teardown, but
+ * that frame is missed by anyone mid-reconnect, and once the host is gone nobody
+ * can re-send it — they'd be stranded alone in a "closed" room. Deleting the room
+ * server-side disconnects every participant (including reconnecting ones) and
+ * blocks rejoins. Host-only via the same Bearer-token check as the other privileged
+ * endpoints.
+ */
+export async function handleEndRoom(env, body, token) {
+  const { roomService } = services(env)
+  const { room } = body ?? {}
+  if (!roomService) return { status: 500, body: { error: 'not configured' } }
+  if (!room) return { status: 400, body: { error: 'room required' } }
+  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
+  try {
+    await roomService.deleteRoom(room)
+    return { status: 200, body: { ok: true } }
+  } catch {
+    return { status: 502, body: { error: 'failed to end the call' } }
+  }
+}
+
+/**
+ * Host succession. `hostId` is written once at room creation and never moves, so
+ * when the primary host leaves for good the host seat points at a ghost: the
+ * co-host roster freezes (only the primary may edit it) and nobody can take over.
+ * Any remaining participant may call this; the server only acts if the recorded
+ * host is genuinely absent from the live roster, and picks the successor
+ * DETERMINISTICALLY — the longest-present co-host, else the oldest participant
+ * (by LiveKit joinedAt, identity as tiebreak). Because the choice is deterministic,
+ * concurrent calls from every client converge on the same identity (no election
+ * race), and it's idempotent: a no-op once any host is present. The departed host
+ * therefore does NOT silently reclaim adminship on return (the recorded hostId has
+ * moved on) — intentional.
+ */
+export async function handleElectHost(env, body, token) {
+  const { roomService } = services(env)
+  const { room } = body ?? {}
+  if (!roomService) return { status: 500, body: { error: 'not configured' } }
+  if (!room) return { status: 400, body: { error: 'room required' } }
+  const caller = await verifyCaller(env, token, room)
+  if (!caller) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
+
+  const flags = await getRoomFlags(roomService, room)
+  const participants = await listParticipants(roomService, room)
+  // Only a real occupant can trigger an election (no drive-by promotions).
+  if (!participants.some((p) => p.identity === caller)) return { status: 403, body: { error: 'not in room' } }
+  // Host still present, or the room's empty → nothing to elect.
+  if (flags.hostId && participants.some((p) => p.identity === flags.hostId)) {
+    return { status: 200, body: { ok: true, hostId: flags.hostId } }
+  }
+  if (participants.length === 0) return { status: 200, body: { ok: true, hostId: flags.hostId || '' } }
+
+  const byTenure = (a, b) =>
+    Number(a.joinedAt || 0) - Number(b.joinedAt || 0) ||
+    String(a.identity).localeCompare(String(b.identity))
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  const presentCoHosts = participants.filter((p) => coHosts.includes(p.identity)).sort(byTenure)
+  const successor = (presentCoHosts[0] || [...participants].sort(byTenure)[0]).identity
+
+  // The new primary shouldn't also sit in its own co-host list.
+  await mergeRoomFlags(roomService, room, {
+    hostId: successor,
+    coHosts: coHosts.filter((id) => id !== successor),
+  })
+  return { status: 200, body: { ok: true, hostId: successor } }
+}
+
+/**
+ * Multi-device handoff: drop the caller's OWN other sessions in this room (used by
+ * the "switch to this device" banner). This MUST be server-mediated, not a
+ * client-trusted data-channel broadcast: the old client path authorized on
+ * self-asserted participant metadata, so a participant could set their userId to a
+ * victim's and force-disconnect them (a targeted DoS). Here authority is the userId
+ * in the caller's SIGNED token (set by the server at mint, validated against the
+ * Supabase session — unforgeable), and we only remove participants whose account id
+ * matches the caller's. A victim's real id differs and they can't be made to match,
+ * so the worst an attacker can do is disconnect their own devices.
+ */
+export async function handleHandoff(env, body, token) {
+  const { roomService } = services(env)
+  const { room, keepDevice } = body ?? {}
+  if (!roomService) return { status: 500, body: { error: 'not configured' } }
+  if (!room) return { status: 400, body: { error: 'room required' } }
+  const caller = await verifyCallerClaims(env, token, room)
+  if (!caller) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
+  // Guests have no account id and are device-bound: nothing to hand off.
+  if (!caller.userId) return { status: 200, body: { ok: true, dropped: 0 } }
+
+  const participants = await listParticipants(roomService, room)
+  let dropped = 0
+  await Promise.all(
+    participants.map(async (p) => {
+      if (p.identity === caller.identity) return
+      let pUserId = ''
+      try {
+        pUserId = JSON.parse(p.metadata || '{}').userId || ''
+      } catch {
+        /* no metadata */
+      }
+      const device = String(p.identity).split('#').slice(1).join('#')
+      if (pUserId && pUserId === caller.userId && device !== keepDevice) {
+        try {
+          await roomService.removeParticipant(room, p.identity)
+          dropped++
+        } catch {
+          /* already gone */
+        }
+      }
+    }),
+  )
+  return { status: 200, body: { ok: true, dropped } }
 }
 
 export async function handleModerate(env, body, token) {
@@ -308,9 +526,18 @@ export async function handleRoomflags(env, body, token) {
   return { status: 200, body: { ok: true, ...patch } }
 }
 
-export async function handleEmailInvite(env, body) {
+export async function handleEmailInvite(env, body, token) {
   const { to, room, link, fromName } = body ?? {}
   if (!to || !link) return { status: 400, body: { error: 'to and link required' } }
+  // Require a valid join token for the room being invited to. Without this the
+  // endpoint is an open relay: anyone could make our verified Resend domain send
+  // "X invited you to a Manim call" to arbitrary addresses (spam / reputation
+  // burn). The token is the same signed LiveKit token the inviter holds in-call,
+  // bound to this room (verifyCaller rejects a token minted for another room).
+  if (!room) return { status: 400, body: { error: 'room required' } }
+  if (!(await verifyCaller(env, token, room))) {
+    return { status: 401, body: { error: 'Join the call before inviting others.' } }
+  }
   // Validate the recipient + the link. The link must be an http(s) URL — this
   // prevents javascript:/data: payloads and limits the endpoint to sending
   // join links, not arbitrary content.

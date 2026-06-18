@@ -7,7 +7,10 @@ import { MENTION_RE, OPEN } from '@/features/chat/mentions'
  * `inline code`. Returns React nodes (never raw HTML), so there's no injection
  * surface. Bold/italic/strike recurse so they can nest; code is literal.
  */
-const PATTERN = /(\*\*([\s\S]+?)\*\*|~~([\s\S]+?)~~|`([^`]+?)`|\*([^*\n]+?)\*|_([^_\n]+?)_)/
+// URL is the last alternative so it never shadows a markdown marker (the markers
+// require a leading */~/` which a URL match position never has). Group 7 = URL,
+// keeping the existing bold/strike/code/italic group indices (2–6) intact.
+const PATTERN = /(\*\*([\s\S]+?)\*\*|~~([\s\S]+?)~~|`([^`]+?)`|\*([^*\n]+?)\*|_([^_\n]+?)_|(https?:\/\/[^\s<]+))/
 
 /**
  * Render chat text with @mentions highlighted, then markdown on the rest. Mentions
@@ -67,6 +70,25 @@ export function renderMarkdown(text: string): ReactNode {
       )
     else if (m[5] !== undefined) out.push(<em key={key++}>{renderMarkdown(m[5])}</em>)
     else if (m[6] !== undefined) out.push(<em key={key++}>{renderMarkdown(m[6])}</em>)
+    else if (m[7] !== undefined) {
+      // Trailing sentence punctuation isn't part of the link — strip it back out
+      // so "see https://x.com." doesn't swallow the period into the href.
+      let url = m[7]
+      const trail = url.match(/[.,!?;:]+$/)?.[0] ?? ''
+      if (trail) url = url.slice(0, -trail.length)
+      out.push(
+        <a
+          key={key++}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="break-words text-accent underline underline-offset-2 hover:text-accent-hover"
+        >
+          {url}
+        </a>,
+      )
+      if (trail) out.push(trail)
+    }
     rest = rest.slice(m.index + m[0].length)
   }
   return out

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalAudioTrack } from 'livekit-client'
+import { reportError } from '@/lib/report'
 
 type KrispModule = typeof import('@livekit/krisp-noise-filter')
 type KrispProcessor = ReturnType<KrispModule['KrispNoiseFilter']>
@@ -105,7 +106,7 @@ export function useNoiseFilter() {
         if (cancelled) return
         await procRef.current.setEnabled(true)
         if (!cancelled) setUsingKrisp(true)
-      } catch {
+      } catch (e) {
         // WASM/SharedArrayBuffer unavailable, or attach failed mid-reconnect.
         // CRITICAL: never leave the mic routed through a half-attached/stalled
         // processor — that's a silent mic. Strip it so raw audio passes through,
@@ -122,6 +123,9 @@ export function useNoiseFilter() {
           krispFailedRef.current = true
           setUsingKrisp(false)
         }
+        // The fallback keeps audio clean, but the user silently lost the AI filter
+        // they enabled — report it (E2) so the Krisp-load failure rate is visible.
+        reportError(e, { context: 'krisp-noise-filter' })
       }
     }
 

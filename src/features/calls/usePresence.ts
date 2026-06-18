@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useAppStore } from '@/store/useAppStore'
+import type { RoomSecrets } from '@/lib/roomLink'
 
-export interface DeviceMeeting {
+export interface DeviceMeeting extends RoomSecrets {
   room: string
   deviceId: string
 }
@@ -18,26 +19,31 @@ function presenceChannelName(userId: string): string {
  * signed-in devices can offer a quick join. Signed-in only (guests have no
  * stable cross-device id). No-op without Supabase.
  */
-export function usePublishMeetingPresence(room: string) {
+export function usePublishMeetingPresence(room: string, secrets: RoomSecrets = {}) {
   const userId = useAuthStore((s) => s.userId)
   const signedIn = useAuthStore((s) => s.signedIn)
   const deviceId = useAppStore((s) => s.deviceId)
+  // Flatten so the effect re-runs if the link's secrets change, not on a new object.
+  const { secret, e2ee } = secrets
 
   useEffect(() => {
     const sb = supabase
     if (!sb || !signedIn || !room) return
     const channel = sb.channel(presenceChannelName(userId), {
       // Private: Realtime RLS restricts presence:<id> to the owner, so only THIS
-      // user's other devices can see it (no cross-user online-harvest).
+      // user's other devices can see it (no cross-user online-harvest). The join
+      // secret / E2EE key ride along so the other device can rebuild the full
+      // invite link and pass the server's join-secret gate — safe because the
+      // channel is owner-only.
       config: { presence: { key: deviceId }, private: true },
     })
     channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') void channel.track({ room, deviceId })
+      if (status === 'SUBSCRIBED') void channel.track({ room, deviceId, secret, e2ee })
     })
     return () => {
       void sb.removeChannel(channel)
     }
-  }, [userId, signedIn, deviceId, room])
+  }, [userId, signedIn, deviceId, room, secret, e2ee])
 }
 
 /**
@@ -60,12 +66,17 @@ export function useOtherDeviceMeetings(): DeviceMeeting[] {
       config: { presence: { key: deviceId }, private: true },
     })
     const sync = () => {
-      const state = channel.presenceState<{ room?: string; deviceId?: string }>()
+      const state = channel.presenceState<{
+        room?: string
+        deviceId?: string
+        secret?: string
+        e2ee?: string
+      }>()
       const rooms: DeviceMeeting[] = []
       for (const key of Object.keys(state)) {
         if (key === deviceId) continue // skip this device
         for (const p of state[key]) {
-          if (p.room) rooms.push({ room: p.room, deviceId: p.deviceId || key })
+          if (p.room) rooms.push({ room: p.room, deviceId: p.deviceId || key, secret: p.secret, e2ee: p.e2ee })
         }
       }
       // De-dupe by room (same call open on two other devices → one entry).

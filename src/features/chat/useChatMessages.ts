@@ -78,6 +78,14 @@ export interface TextItem {
   replyTo?: ReplyRef
   /** True once the author has edited this message. */
   edited?: boolean
+  /**
+   * True for a message that arrived via peer history-replay (sent before you
+   * joined), NOT live through the SFU. Its author identity comes from the
+   * replaying peer's payload and is NOT verified — a malicious peer can fabricate
+   * one attributed to anyone. The UI marks these so they're never mistaken for a
+   * verified-author live message, and they're excluded from the unread count.
+   */
+  replayed?: boolean
 }
 
 export interface FileItem {
@@ -356,6 +364,8 @@ export function useChatMessages() {
                   ? { name: e.replyName ?? '', text: e.replyText ?? '', id: e.replyId }
                   : undefined,
               edited: e.edited,
+              // Peer-replayed → author identity is unverified (see TextItem.replayed).
+              replayed: true,
             })
           }
           if (additions.length === 0) return prev
@@ -586,19 +596,35 @@ export function useChatMessages() {
   )
 
   // Track remote-message count → bump unread badge while chat is closed.
+  // Exclude peer-replayed history: a late-join sync can inject a batch of old
+  // messages at once, which would otherwise spike the badge for things the user
+  // never missed (they predate the join).
   const prevRemote = useRef(0)
   useEffect(() => {
-    const remote = items.reduce((n, i) => (i.isLocal ? n : n + 1), 0)
+    const remote = items.reduce(
+      (n, i) => (i.isLocal || (i.kind === 'text' && i.replayed) ? n : n + 1),
+      0,
+    )
     if (remote > prevRemote.current && panelRef.current !== 'chat') {
       bumpUnread(remote - prevRemote.current)
     }
     prevRemote.current = remote
   }, [items, bumpUnread])
 
+  /** Send a chat message. Returns false if the transport rejected it (e.g. sent
+   *  mid-reconnect) so the composer can keep the text + tell the user, instead of
+   *  silently dropping a real message (the publish() swallow was fine for typing
+   *  pings, not for an actual send). */
   const sendText = useCallback(
-    (text: string, replyTo?: ReplyRef) => {
+    async (text: string, replyTo?: ReplyRef): Promise<boolean> => {
       const trimmed = text.trim()
-      if (trimmed) void sendChatText(encodeText(trimmed, replyTo))
+      if (!trimmed) return true
+      try {
+        await sendChatText(encodeText(trimmed, replyTo))
+        return true
+      } catch {
+        return false
+      }
     },
     [sendChatText],
   )

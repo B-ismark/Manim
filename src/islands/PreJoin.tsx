@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
-import { CameraIcon, CameraOffIcon, ChevronLeftIcon, MicIcon, MicOffIcon } from '@/components/icons'
+import { CameraIcon, CameraOffIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon } from '@/components/icons'
 import { useAppStore } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 
 export interface PreJoinProps {
   room: string
   onJoin: () => void
+  /** True when the invite link carries an E2EE key (#e) — the call is encrypted. */
+  encrypted?: boolean
 }
 
 /**
  * Device check + name entry before entering. Sets expectations and lets the
  * user pick mic/cam/quality before consuming any media bandwidth.
  */
-export function PreJoin({ room, onJoin }: PreJoinProps) {
+export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   const navigate = useNavigate()
   const displayName = useAppStore((s) => s.displayName)
   const setDisplayName = useAppStore((s) => s.setDisplayName)
@@ -227,21 +229,15 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
             label="Low-bandwidth mode (audio-first)"
           />
 
-          <details className="rounded-field bg-sunken px-3 py-2">
-            <summary className="cursor-pointer select-none text-sm text-ink-muted">
-              End-to-end encryption
-            </summary>
-            <input
-              type="password"
-              value={prejoin.e2ee ?? ''}
-              onChange={(e) => setPrejoin({ e2ee: e.target.value })}
-              placeholder="Shared passphrase (optional)"
-              aria-label="End-to-end encryption passphrase"
-              autoComplete="off"
-              className="mt-2 h-10 w-full rounded-field bg-surface px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-            />
-            <p className="mt-1.5 text-xs text-ink-subtle">Everyone needs the same passphrase.</p>
-          </details>
+          {/* E2EE is keyed by the invite link (#e), not a typed passphrase — a
+              strong random key everyone gets automatically by opening the link.
+              Show it as a read-only assurance rather than asking for input. */}
+          {encrypted && (
+            <p className="flex items-center gap-1.5 rounded-field bg-sunken px-3 py-2 text-xs text-ink-muted [&_svg]:size-3.5 [&_svg]:text-success">
+              <LockIcon />
+              End-to-end encrypted — secured by your invite link.
+            </p>
+          )}
 
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now

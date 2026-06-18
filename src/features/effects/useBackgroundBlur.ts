@@ -2,11 +2,44 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
 import { isLowPowerDevice, isMobile } from '@/lib/device'
+import { reportError } from '@/lib/report'
 
 const DEFAULT_RADIUS = 12
 
 /** What the camera processor is currently doing. */
 export type EffectMode = 'none' | 'blur'
+
+// Effect choice is remembered across joins (Meet/Zoom convention) — re-enabling
+// blur every single call was the most-felt instance of the persistence gap. We
+// persist the bare choice (mode/radius/quality) and re-apply it on the next join;
+// low-power gating still wins at read time, so a saved 'high' never overrides it.
+const STORE_KEY = 'mn.effects'
+type PersistedEffect = { mode: EffectMode; radius: number; quality: BlurQuality }
+
+function loadEffect(): Partial<PersistedEffect> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = window.localStorage.getItem(STORE_KEY)
+    if (!raw) return {}
+    const v = JSON.parse(raw) as Partial<PersistedEffect>
+    return {
+      mode: v.mode === 'blur' ? 'blur' : 'none',
+      radius: typeof v.radius === 'number' ? Math.min(25, Math.max(1, Math.round(v.radius))) : undefined,
+      quality: v.quality === 'high' ? 'high' : v.quality === 'standard' ? 'standard' : undefined,
+    }
+  } catch {
+    return {}
+  }
+}
+
+function saveEffect(v: PersistedEffect) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(STORE_KEY, JSON.stringify(v))
+  } catch {
+    /* private mode / quota — non-fatal, the session just won't be remembered */
+  }
+}
 
 /**
  * Quality (blur only) — trades smoothness for power. The segmenter runs on the
@@ -40,16 +73,25 @@ export function useBackgroundBlur() {
   // back to standard.
   const allowHighQuality = !isLowPowerDevice()
 
+  // Last session's choice, re-applied on join (low-power gating wins below).
+  // Lazy init so localStorage is read once at mount, not on every render.
+  const [saved] = useState(loadEffect)
+
   // Optimistic: show the controls; verified against the module on first enable.
   const [supported, setSupported] = useState(true)
   // True while the processor is (re)building — covers the first ~160KB MediaPipe
   // import so the preview can show a spinner instead of looking frozen.
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState<EffectMode>('none')
-  const [radius, setRadius] = useState(DEFAULT_RADIUS)
+  const [mode, setMode] = useState<EffectMode>(saved.mode ?? 'none')
+  const [radius, setRadius] = useState(saved.radius ?? DEFAULT_RADIUS)
   const [quality, setQuality] = useState<BlurQuality>(() =>
-    isLowPowerDevice() ? 'standard' : 'high',
+    isLowPowerDevice() ? 'standard' : (saved.quality ?? 'high'),
   )
+
+  // Remember the choice for the next join. Cheap enough to write on every change.
+  useEffect(() => {
+    saveEffect({ mode, radius, quality })
+  }, [mode, radius, quality])
 
   const procRef = useRef<Processor | null>(null)
   const modRef = useRef<TrackProcessorsModule | null>(null)
@@ -119,8 +161,12 @@ export function useBackgroundBlur() {
             throw new Error('processor failed')
           }
         }
-      } catch {
+      } catch (e) {
+        // Module import or processor construction failed for real — the user loses
+        // blur with no idea why. Degrade to 'none', and report it (E2) so a device
+        // class that can never build the processor is visible, not silent.
         if (!cancelled) setMode('none')
+        reportError(e, { context: 'blur-processor', quality })
       } finally {
         if (!cancelled) setBusy(false)
       }

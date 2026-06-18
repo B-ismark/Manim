@@ -177,7 +177,7 @@ export function ParticipantsPanel() {
     try {
       // Try a real email first; fall back to the mail client if the server has
       // no provider configured or the provider rejects the recipient.
-      const sent = await sendEmailInvite(to, room.name, window.location.href, who)
+      const sent = await sendEmailInvite(to, room.name, window.location.href, who, roomToken ?? undefined)
       if (sent) {
         setCallMsg(`Invite emailed to ${to}`)
         addInvite(to)

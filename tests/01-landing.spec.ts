@@ -22,17 +22,19 @@ test.describe('Landing', () => {
     await expect(page.getByLabel('Your name')).toBeVisible({ timeout: 20_000 })
   })
 
-  test('New meeting generates a random room when no name is typed', async ({ page }) => {
+  test('New meeting generates a random, secured room when no name is typed', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'New meeting' }).click()
-    await expect(page).toHaveURL(/\/r\/[a-z]+-[a-z]+-\d+$/)
+    // High-entropy slug PLUS a join secret + E2EE key in the #fragment (the link,
+    // not the slug, is the credential — see lib/roomLink).
+    await expect(page).toHaveURL(/\/r\/[a-z]+-[a-z]+-[a-z0-9]+#k=[^&]+&e=.+$/)
   })
 
-  test('New meeting uses a typed name', async ({ page }) => {
+  test('New meeting uses a typed name and still mints link secrets', async ({ page }) => {
     await page.goto('/')
     await page.locator('#room').fill('Design Sync')
     await page.getByRole('button', { name: 'New meeting' }).click()
-    await expect(page).toHaveURL(/\/r\/design-sync$/)
+    await expect(page).toHaveURL(/\/r\/design-sync#k=[^&]+&e=.+$/)
   })
 
   test('Settings popover opens from landing', async ({ page }) => {

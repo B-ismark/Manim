@@ -34,8 +34,6 @@ interface AppState {
     micEnabled: boolean
     cameraEnabled: boolean
     lowBandwidth: boolean // audio-only / reduced quality
-    /** Optional end-to-end encryption passphrase; all participants must match. */
-    e2ee?: string
     audioInputId?: string
     videoInputId?: string
     audioOutputId?: string
