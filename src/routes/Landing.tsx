@@ -250,7 +250,7 @@ function AccountMenu() {
               Send magic link
             </Button>
           </form>
-          {err && <p className="text-xs text-danger">{err}</p>}
+          {err && <p className="text-xs text-danger-text">{err}</p>}
           <p className="text-xs text-ink-subtle">Sign in to move calls between your devices.</p>
         </div>
       )}

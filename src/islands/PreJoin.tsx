@@ -202,7 +202,7 @@ export function PreJoin({ room, onJoin }: PreJoinProps) {
           </div>
         )}
 
-        {error && <p className="mt-2 text-sm text-danger">{error}</p>}
+        {error && <p className="mt-2 text-sm text-danger-text">{error}</p>}
 
         <div className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3">
           <input

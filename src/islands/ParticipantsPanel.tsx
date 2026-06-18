@@ -502,7 +502,7 @@ function ParticipantRow({
         />
       ) : (
         <span className="text-ink-muted [&_svg]:size-4" title={micMuted ? 'Muted' : 'Unmuted'}>
-          {micMuted ? <MicOffIcon className="text-danger" /> : <MicIcon />}
+          {micMuted ? <MicOffIcon className="text-danger-text" /> : <MicIcon />}
         </span>
       )}
 

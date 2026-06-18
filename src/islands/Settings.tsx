@@ -152,7 +152,7 @@ function SettingsContent() {
           placeholder="Your name"
           aria-label="Your name"
           autoComplete="name"
-          className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
+          className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:text-sm"
         />
         <span className="text-xs text-ink-subtle">
           {signedIn

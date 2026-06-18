@@ -224,7 +224,7 @@ function ContactsBody({
     <Tabs items={items} value={tab} onValueChange={setTab} className={className}>
       <TabPanel value="contacts" className="mt-3 min-h-0 overflow-y-auto">
         {error && (
-          <div className="mb-2 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger">
+          <div className="mb-2 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger-text">
             <span>{error}</span>
             <button
               type="button"
@@ -355,7 +355,7 @@ function CallNameDialog({
           aria-label="Meeting name"
           autoComplete="off"
           autoFocus
-          className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
+          className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:text-sm"
         />
         <div className="flex justify-end gap-2">
           <Button type="button" variant="neutral" onClick={onClose}>
@@ -508,7 +508,7 @@ function AddByEmail({ onAdded }: { onAdded: () => void }) {
         {busy ? 'Sending…' : 'Send request'}
       </Button>
       {msg && (
-        <p className={cn('text-xs', msg.kind === 'ok' ? 'text-success' : 'text-danger')}>
+        <p className={cn('text-xs', msg.kind === 'ok' ? 'text-success' : 'text-danger-text')}>
           {msg.text}
         </p>
       )}
