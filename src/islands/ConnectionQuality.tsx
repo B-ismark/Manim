@@ -20,15 +20,25 @@ const META: Record<Quality, QualityMeta> = {
 export interface ConnectionQualityProps {
   participant?: Participant
   className?: string
+  /**
+   * Only render when the connection has actually degraded (Poor/Lost). A healthy
+   * signal shows nothing — the bars are a *warning*, not always-on chrome, which
+   * is how Meet/Teams/Zoom treat the indicator (and what users expect).
+   */
+  degradedOnly?: boolean
 }
 
 /**
  * Three-bar signal strength indicator. Meaning is paired with a text label
  * (title + aria-label), never color alone (STYLE.md §6).
  */
-export function ConnectionQuality({ participant, className }: ConnectionQualityProps) {
+export function ConnectionQuality({ participant, className, degradedOnly }: ConnectionQualityProps) {
   const { quality } = useConnectionQualityIndicator({ participant })
   const meta = META[quality] ?? META[Quality.Unknown]
+  const degraded = quality === Quality.Poor || quality === Quality.Lost
+
+  // Healthy (or not-yet-known) connection in degraded-only mode → render nothing.
+  if (degradedOnly && !degraded) return null
 
   return (
     <span

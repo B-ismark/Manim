@@ -37,7 +37,9 @@ const sideClass: Record<NonNullable<SheetProps['side']>, string> = {
   bottom: 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-island pb-[env(safe-area-inset-bottom)]',
   responsive:
     'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-island pb-[env(safe-area-inset-bottom)] ' +
-    'md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[min(92vw,22rem)] md:max-h-none md:rounded-island md:pb-0 xl:w-[26rem]',
+    // Docked chat/people panel. Narrower on small laptops (it ate ~40% of an md
+    // viewport at 22rem) and steps up only on large screens.
+    'md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[min(92vw,19rem)] md:max-h-none md:rounded-island md:pb-0 lg:w-[21rem] xl:w-[24rem]',
 }
 
 /**

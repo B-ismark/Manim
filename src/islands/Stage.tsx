@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -32,6 +32,38 @@ import { cn } from '@/lib/cn'
 /** Stable per-tile key (identity + source) — never reshuffles as people speak. */
 function tileKey(t: TrackReferenceOrPlaceholder): string {
   return `${t.participant.identity}-${t.source}`
+}
+
+/** Composed screen-reader label for a tile: who + their current state. Keeps the
+ *  visual pills (icons) in sync with an accessible text equivalent (STYLE.md §6 —
+ *  meaning never by color/icon alone). */
+function tileLabel(opts: {
+  name: string
+  isLocal: boolean
+  myOtherDevice: boolean
+  isScreen: boolean
+  micOff: boolean
+  speaking: boolean
+  handRaised: boolean
+  hasVideo: boolean
+  pinned: boolean
+}): string {
+  const who = opts.isScreen
+    ? `${opts.name}’s screen share`
+    : opts.isLocal
+      ? `${opts.name} (you)`
+      : opts.myOtherDevice
+        ? `${opts.name} (your device)`
+        : opts.name
+  const states: string[] = []
+  if (!opts.isScreen) {
+    states.push(opts.micOff ? 'muted' : 'unmuted')
+    if (opts.speaking) states.push('speaking')
+    if (opts.handRaised) states.push('hand raised')
+    if (!opts.hasVideo) states.push('camera off')
+  }
+  if (opts.pinned) states.push('pinned')
+  return states.length ? `${who}, ${states.join(', ')}` : who
 }
 
 /** Keep screen shares first, then your own camera, then everyone else — pins the
@@ -76,6 +108,40 @@ function gridCapacity(
   // Also bounds mounted <video>/DOM per page (perf), the point of paging.
   const MAX_PER_PAGE = coarse ? 9 : 20
   return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) }
+}
+
+/**
+ * Largest tile size that fits `n` tiles of a fixed aspect ratio into a w×h box,
+ * trying every column count and keeping the one that maximizes tile size. This is
+ * the standard video-grid fit (Meet/Teams/Zoom): tiles hold their aspect and never
+ * stretch to the cell — the block is centered with letterbox gutters instead. Fixes
+ * the "2 people on a wide desktop render as portrait" bug (tiles used to fill 1fr
+ * cells, so two half-width full-height columns came out taller than wide).
+ */
+function fitTiles(
+  width: number,
+  height: number,
+  n: number,
+  gap: number,
+  aspect: number,
+): { w: number; h: number } {
+  let best = { w: 0, h: 0 }
+  for (let cols = 1; cols <= n; cols++) {
+    const rows = Math.ceil(n / cols)
+    const cw = (width - gap * (cols - 1)) / cols
+    const ch = (height - gap * (rows - 1)) / rows
+    if (cw <= 0 || ch <= 0) continue
+    // Fit the tile to the cell at the target aspect — width-bound first, then
+    // clamp to the cell height if that overflowed.
+    let w = cw
+    let h = w / aspect
+    if (h > ch) {
+      h = ch
+      w = h * aspect
+    }
+    if (w > best.w) best = { w, h }
+  }
+  return best
 }
 
 export function Stage() {
@@ -167,7 +233,7 @@ function GridStage({
     [tracks],
   )
 
-  const { cols, perPage } = gridCapacity(size.width, size.height, ordered.length, coarse)
+  const { perPage } = gridCapacity(size.width, size.height, ordered.length, coarse)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
   // Clamp the page if the count shrank (resize, people left) — keep it in range.
   const current = Math.min(page, pageCount - 1)
@@ -177,9 +243,15 @@ function GridStage({
 
   const start = current * perPage
   const shown = ordered.slice(start, start + perPage)
-  const shownCols = Math.max(1, Math.min(cols, shown.length))
-  const rows = Math.max(1, Math.ceil(shown.length / shownCols))
   const paged = pageCount > 1
+
+  // Fixed-aspect tile fit (Meet/Teams/Zoom). Phones favor portrait tiles (front
+  // cameras are portrait); desktop favors 16:9. The block is centered, so a sparse
+  // grid (e.g. 2 people) sits in the middle with gutters instead of stretching.
+  const gap = coarse ? 8 : 12
+  const aspect = coarse ? 3 / 4 : 16 / 9
+  const measured = size.width > 2 && size.height > 2
+  const tile = measured ? fitTiles(size.width, size.height, shown.length, gap, aspect) : null
 
   // If someone is speaking on a page you're not looking at, offer a one-tap jump
   // (no auto-jump — that's jarring). Manual + clearly labelled.
@@ -193,14 +265,14 @@ function GridStage({
     <div className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
       <div
         ref={ref}
-        className="grid min-h-0 flex-1 justify-center gap-2 sm:gap-3"
-        style={{
-          gridTemplateColumns: `repeat(${shownCols}, minmax(0, 1fr))`,
-          gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-        }}
+        className="flex min-h-0 flex-1 flex-wrap content-center justify-center gap-2 sm:gap-3"
       >
         {shown.map((tref) => (
-          <div key={tileKey(tref)} className="min-h-0 min-w-0">
+          <div
+            key={tileKey(tref)}
+            className={cn('min-h-0', !tile && 'aspect-video w-full max-w-3xl')}
+            style={tile ? { width: tile.w, height: tile.h } : undefined}
+          >
             <Tile trackRef={tref} fill />
           </div>
         ))}
@@ -307,7 +379,7 @@ function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
       className={cn(
         'fixed bottom-24 right-4 z-20 cursor-grab touch-none select-none active:cursor-grabbing',
         'transition-[right] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        panel && 'md:right-[23.5rem] xl:right-[27.5rem]',
+        panel && 'md:right-[20.5rem] lg:right-[22.5rem] xl:right-[25.5rem]',
         // Touch: a tall portrait card (Discord/Snapchat self-view). Desktop:
         // a wider landscape thumbnail.
         'w-24 aspect-[3/4] pointer-fine:w-52 pointer-fine:aspect-video',
@@ -401,10 +473,41 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
   }
   const cancelPress = () => window.clearTimeout(pressTimer.current)
 
+  const ariaLabel = tileLabel({
+    name,
+    isLocal: p.isLocal,
+    myOtherDevice,
+    isScreen,
+    micOff,
+    speaking,
+    handRaised,
+    hasVideo,
+    pinned,
+  })
+
+  // Keyboard equivalent of double-tap / long-press to pin (STYLE.md §6: a
+  // pointer-only gesture must never be the ONLY way to reach a function). Enter
+  // or Space on the focused tile toggles the pin — but only when the tile itself
+  // is focused, so a keypress meant for an overlay button (pin/mute/effects)
+  // isn't hijacked.
+  const onTileKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      togglePin(p.identity)
+    }
+  }
+
   return (
     <div
       // Double-tap (or long-press) a tile to pin it; single tap bubbles
       // to the stage chrome toggle on mobile. Mirrors Zoom/Telegram/Discord.
+      // Also a labelled, focusable group so screen-reader + keyboard users get
+      // parity with the visual pills and the pointer-only pin gesture.
+      role="group"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      onKeyDown={onTileKeyDown}
       onDoubleClick={() => togglePin(p.identity)}
       onPointerDown={startPress}
       onPointerUp={cancelPress}
@@ -415,6 +518,10 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         fill ? 'size-full' : 'aspect-video',
         'ring-2 transition-[box-shadow] duration-[var(--dur-fast)]',
         speaking ? 'ring-[var(--color-speaking)]' : 'ring-transparent',
+        // Visible keyboard focus — the tile is now a tab stop, so it needs its
+        // own indicator. Reuse the always-on ring-2 width and recolour it to the
+        // accent on focus (overrides the transparent/speaking ring while focused).
+        'focus-visible:outline-none focus-visible:ring-[var(--color-accent)]',
       )}
     >
       {hasVideo && pub ? (
@@ -456,7 +563,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
           />
         )}
         {handRaised && (
-          <span className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-warning">
+          <span aria-hidden className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-warning">
             <HandIcon className="size-3" /> Hand
           </span>
         )}
@@ -501,8 +608,11 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
         />
       </div>
 
+      {/* The tile group's aria-label already names the person + status, so the
+          visual name/mic pill is decorative to a screen reader (avoids a double
+          read). The connection indicator keeps its own label — it's unique info. */}
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 p-2">
-        <span className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-white">
+        <span aria-hidden className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-white">
           {micOff ? (
             <MicOffIcon className="size-3" />
           ) : (
@@ -514,9 +624,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
             {isScreen ? ' — screen' : ''}
           </span>
         </span>
-        <span className="rounded-control bg-overlay p-1">
-          <ConnectionQuality participant={p} />
-        </span>
+        <ConnectionQuality participant={p} degradedOnly className="rounded-control bg-overlay p-1" />
       </div>
     </div>
   )

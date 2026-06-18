@@ -135,25 +135,47 @@ export function ControlBar({
   }, [])
 
   const togglePip = useCallback(async () => {
+    // iOS Safari has no standard PiP API — it exposes webkitSetPresentationMode
+    // on the <video> instead. This is the *manual*, gesture-driven path, which is
+    // the supported way to PiP on iOS (unlike the gesture-less auto-PiP we removed,
+    // which hard-crashed mobile WebKit).
+    type WebkitVideo = HTMLVideoElement & {
+      webkitSetPresentationMode?: (mode: 'inline' | 'picture-in-picture' | 'fullscreen') => void
+      webkitPresentationMode?: string
+    }
     try {
-      if (document.pictureInPictureElement) {
-        await document.exitPictureInPicture()
-        setPipActive(false)
-        return
-      }
       // PiP shows raw (unmirrored) frames, so PiP-ing your own self-view looks
       // flipped. Prefer a remote video that's actually playing — keyed off the
       // local-cam marker the tile sets, not a fragile CSS-transform check.
       const videos = Array.from(document.querySelectorAll<HTMLVideoElement>('video'))
       const playing = videos.filter((v) => v.videoWidth > 0)
-      const target =
-        playing.find((v) => !v.hasAttribute('data-local-cam')) ?? playing[0] ?? videos[0]
-      if (target && document.pictureInPictureEnabled) {
-        await target.requestPictureInPicture()
-        setPipActive(true)
-      } else {
-        toast("Picture-in-Picture isn't available here", 'warning')
+      const target = (playing.find((v) => !v.hasAttribute('data-local-cam')) ??
+        playing[0] ??
+        videos[0]) as WebkitVideo | undefined
+
+      // Standard API (desktop Chromium, Android Chrome).
+      if (document.pictureInPictureEnabled) {
+        if (document.pictureInPictureElement) {
+          await document.exitPictureInPicture()
+          setPipActive(false)
+        } else if (target) {
+          await target.requestPictureInPicture()
+          setPipActive(true)
+        } else {
+          toast("Picture-in-Picture isn't available here", 'warning')
+        }
+        return
       }
+
+      // WebKit fallback (iOS Safari / iOS Chrome).
+      if (target && typeof target.webkitSetPresentationMode === 'function') {
+        const inPip = target.webkitPresentationMode === 'picture-in-picture'
+        target.webkitSetPresentationMode(inPip ? 'inline' : 'picture-in-picture')
+        setPipActive(!inPip)
+        return
+      }
+
+      toast("Picture-in-Picture isn't available here", 'warning')
     } catch {
       toast("Couldn't open Picture-in-Picture", 'warning')
     }
@@ -281,20 +303,19 @@ export function ControlBar({
             closeMore()
           }}
         />
-        {/* PiP — desktop only. On mobile auto-PiP floats the call when the app is
-            backgrounded, so a manual tile would be redundant. */}
-        {!touch && (
-          <GridTile
-            icon={<PipIcon />}
-            label="PiP"
-            active={docPip.supported ? docPip.active : pipActive}
-            onClick={() => {
-              if (docPip.supported) docPip.toggle()
-              else void togglePip()
-              closeMore()
-            }}
-          />
-        )}
+        {/* PiP — floats the call into an OS window. Desktop uses Document-PiP
+            (whole-app); mobile + unsupported desktop fall back to element PiP. This
+            is manual/tap-driven on purpose: gesture-less auto-PiP crashed mobile. */}
+        <GridTile
+          icon={<PipIcon />}
+          label="PiP"
+          active={docPip.supported ? docPip.active : pipActive}
+          onClick={() => {
+            if (docPip.supported) docPip.toggle()
+            else void togglePip()
+            closeMore()
+          }}
+        />
         <GridTile
           icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
           label={isFullscreen ? 'Exit' : 'Full'}
@@ -393,7 +414,7 @@ export function ControlBar({
         // Reflow left of the docked side panel on desktop — same inset the stage
         // uses (RoomView) — so the bar centres in the visible area instead of
         // sliding under the chat/people panel.
-        panel && 'md:pr-[23rem] xl:pr-[27rem]',
+        panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
         !chromeVisible && 'translate-y-[150%] opacity-0',
       )}
     >

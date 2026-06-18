@@ -43,7 +43,7 @@ export default function CallRoom({
       options={options}
       onDisconnected={onLeave}
       onError={onError}
-      className="relative flex min-h-dvh flex-col"
+      className="relative flex h-dvh flex-col overflow-hidden"
     >
       <RoomView onLeave={onLeave} />
     </LiveKitRoom>

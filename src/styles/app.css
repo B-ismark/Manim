@@ -176,6 +176,23 @@
     animation: mn-fade-in var(--dur-base) var(--ease-island);
   }
 
+  /* Jump-to-message highlight: a brief accent wash + ring when you tap a reply's
+     quote and the original scrolls into view. Self-clearing (no `forwards`). */
+  @keyframes mn-flash {
+    0%,
+    35% {
+      background-color: var(--color-accent-soft);
+      box-shadow: 0 0 0 2px var(--color-accent) inset;
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: 0 0 0 2px transparent inset;
+    }
+  }
+  .mn-flash {
+    animation: mn-flash 1.4s var(--ease-island);
+  }
+
   /* Speaking equalizer bars — a non-color cue paired with the speaking ring. */
   @keyframes mn-eq {
     0%,
@@ -291,6 +308,28 @@
     .mn-typing-dot {
       animation: none !important;
       opacity: 1 !important;
+    }
+  }
+
+  /*
+    High-contrast mode (Windows Contrast / "Increase contrast"). The theme store
+    writes the colour tokens INLINE on <html>, so plain :root rules can't win —
+    we override on `html` with !important, and point the low-contrast tokens at
+    higher-contrast ones that the store still sets per-mode, so this stays correct
+    in BOTH light and dark.
+  */
+  @media (prefers-contrast: more) {
+    html {
+      /* Muted/subtle copy → full ink (kills the 4.5:1-ish greys). */
+      --color-ink-muted: var(--color-ink) !important;
+      --color-ink-subtle: var(--color-ink) !important;
+      /* Hairline separators → the strong line so structure is perceivable. */
+      --color-line: var(--color-line-strong) !important;
+    }
+    /* A thicker, always-present focus indicator for every interactive element. */
+    :where(a, button, [role='button'], [tabindex]:not([tabindex='-1']), input, textarea, select):focus-visible {
+      outline: 3px solid var(--color-accent) !important;
+      outline-offset: 2px;
     }
   }
 }

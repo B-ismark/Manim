@@ -32,6 +32,9 @@ export type ReactionMap = Record<string, MessageReactions>
 export interface ReplyRef {
   name: string
   text: string
+  /** Id of the original message, so the quote can scroll back to it when tapped.
+   *  Optional — replies from older clients (no id in the envelope) still render. */
+  id?: string
 }
 
 /** A pinned message snapshot (shared via PIN_TOPIC). */
@@ -49,15 +52,16 @@ const REPLY_START = ''
 const REPLY_END = ''
 function encodeText(text: string, replyTo?: ReplyRef): string {
   if (!replyTo) return text
-  return REPLY_START + JSON.stringify({ n: replyTo.name, t: replyTo.text.slice(0, 160) }) + REPLY_END + text
+  const meta = { n: replyTo.name, t: replyTo.text.slice(0, 160), i: replyTo.id }
+  return REPLY_START + JSON.stringify(meta) + REPLY_END + text
 }
 function decodeText(raw: string): { text: string; replyTo?: ReplyRef } {
   if (!raw.startsWith(REPLY_START)) return { text: raw }
   const end = raw.indexOf(REPLY_END)
   if (end < 0) return { text: raw }
   try {
-    const meta = JSON.parse(raw.slice(REPLY_START.length, end)) as { n?: string; t?: string }
-    return { text: raw.slice(end + 1), replyTo: { name: meta.n ?? '', text: meta.t ?? '' } }
+    const meta = JSON.parse(raw.slice(REPLY_START.length, end)) as { n?: string; t?: string; i?: string }
+    return { text: raw.slice(end + 1), replyTo: { name: meta.n ?? '', text: meta.t ?? '', id: meta.i } }
   } catch {
     return { text: raw }
   }
@@ -307,6 +311,7 @@ export function useChatMessages() {
     text: string
     replyName?: string
     replyText?: string
+    replyId?: string
     edited?: boolean
   }
   const sendHistoryRef = useRef<((data: object) => void) | null>(null)
@@ -325,6 +330,7 @@ export function useChatMessages() {
           text: it.text,
           replyName: it.replyTo?.name,
           replyText: it.replyTo?.text,
+          replyId: it.replyTo?.id,
           edited: it.edited,
         }))
         sendHistoryRef.current?.({ kind: 'history', items })
@@ -345,7 +351,10 @@ export function useChatMessages() {
               fromName: e.name,
               isLocal: e.identity === myIdentity,
               text: e.text,
-              replyTo: e.replyName || e.replyText ? { name: e.replyName ?? '', text: e.replyText ?? '' } : undefined,
+              replyTo:
+                e.replyName || e.replyText
+                  ? { name: e.replyName ?? '', text: e.replyText ?? '', id: e.replyId }
+                  : undefined,
               edited: e.edited,
             })
           }

@@ -25,7 +25,6 @@ import { useAdaptiveQuality } from '@/features/effects/useAdaptiveQuality'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
-import { useAutoBackgroundPip } from '@/features/pip/useAutoBackgroundPip'
 import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
@@ -162,7 +161,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const connState = useConnectionState()
   const connected = connState === ConnectionState.Connected
   // Desktop auto-PiP: float the app into a Document-PiP window when the tab is
-  // backgrounded (mobile uses element PiP via useAutoBackgroundPip below).
+  // backgrounded. Mobile PiP is manual only (a tile in More) — gesture-less
+  // auto-PiP crashed mobile WebKit, so it was removed.
   const docPip = useDocumentPip(connected)
   useCallSounds()
   useApplyBlocks()
@@ -187,8 +187,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
   const carouselOpen = useEffectsUi((s) => s.carouselOpen)
-  // Mobile: float the call into OS PiP when the app is backgrounded, restore on return.
-  useAutoBackgroundPip(connected)
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
   // Opening the effects carousel must reveal + pin the chrome. The Effects button
   // lives on the self-view tile (always visible on touch), but the carousel is a
@@ -204,6 +202,22 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useSoloAutoLeave(doLeave)
   // Advertise this call to the user's other signed-in devices (quick-join).
   usePublishMeetingPresence(room.name)
+
+  // Focus restoration. A forced rejoin / handoff / merge remounts this subtree —
+  // the control that triggered it (a menu item, the handoff banner button) is now
+  // gone, so keyboard focus falls back to <body> and a screen reader announces
+  // nothing about the new context. On the FIRST connect after mount, move focus
+  // to the call region so it announces "In call" and keyboard nav resumes from a
+  // known point. Guarded to fire once per mount, so a mid-call network reconnect
+  // (Reconnecting → Connected) never yanks focus away from, say, the chat input.
+  const callRegionRef = useRef<HTMLDivElement>(null)
+  const didFocusOnConnect = useRef(false)
+  useEffect(() => {
+    if (connected && !didFocusOnConnect.current) {
+      didFocusOnConnect.current = true
+      callRegionRef.current?.focus({ preventScroll: true })
+    }
+  }, [connected])
 
   // Cover the initial connect with the joining screen (same label as RoomRoute's
   // so the knock→connect handoff doesn't jump). Reconnects after that are handled
@@ -238,11 +252,17 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       <div
         {...stageHandlers}
+        // Programmatic focus target after a (re)join — see the focus-restoration
+        // effect above. tabIndex=-1 keeps it out of the Tab sequence (it's only
+        // focused in code); the label is what a screen reader announces on landing.
+        ref={callRegionRef}
+        tabIndex={-1}
+        aria-label="In call"
         className={cn(
+          'mn-fade flex min-h-0 flex-1 flex-col outline-none transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
           // Fade only (no scale): scaling a container that holds live <video>
           // causes a repaint flash on connect. transition is for the panel reflow.
-          'mn-fade flex min-h-0 flex-1 flex-col transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-          panel && 'md:pr-[23rem] xl:pr-[27rem]',
+          panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
         )}
       >
         {/* While the call is in the floating PiP window, don't also render the
