@@ -506,7 +506,7 @@ function ParticipantRow({
         </span>
       )}
 
-      <ConnectionQuality participant={participant} />
+      <ConnectionQuality participant={participant} degradedOnly />
 
       <DropdownMenu
         trigger={<IconButton size="sm" tone="neutral" label={`Actions for ${name}`} icon={<MoreIcon />} />}

@@ -224,8 +224,22 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   // Stable so the memoized MessageList isn't invalidated on every ChatPanel
   // re-render (draft typing, participant speaking-state churn, etc.).
   const startReply = useCallback((item: ChatItem) => {
-    setReplyTo({ name: item.isLocal ? 'You' : item.fromName, text: previewOf(item) })
+    setReplyTo({ id: item.id, name: item.isLocal ? 'You' : item.fromName, text: previewOf(item) })
     inputRef.current?.focus()
+  }, [])
+
+  // Tap a reply's quote → scroll the original into view and flash it. Imperative
+  // (querySelector + classList) so the ~200-row memoized list isn't re-rendered
+  // just to highlight one row. No-op if the original has scrolled out of history.
+  const listRef = useRef<HTMLDivElement>(null)
+  const jumpToMessage = useCallback((id: string) => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-mid="${CSS.escape(id)}"]`)
+    if (!el) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' })
+    el.classList.remove('mn-flash')
+    void el.offsetWidth // restart the animation if it's already mid-flash
+    el.classList.add('mn-flash')
   }, [])
 
   function onPickFiles(files: FileList | null) {
@@ -255,7 +269,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
         </div>
       )}
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         <MessageList
           items={items}
           reactions={reactions}
@@ -265,6 +279,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           onReply={startReply}
           onTogglePin={togglePin}
           onEdit={editMessage}
+          onJumpTo={jumpToMessage}
         />
         <div ref={endRef} />
       </div>
@@ -444,6 +459,7 @@ const MessageList = memo(function MessageList({
   onReply,
   onTogglePin,
   onEdit,
+  onJumpTo,
 }: {
   items: ChatItem[]
   reactions: ReactionMap
@@ -453,6 +469,7 @@ const MessageList = memo(function MessageList({
   onReply: (item: ChatItem) => void
   onTogglePin: (item: ChatItem) => void
   onEdit: (id: string, text: string) => void
+  onJumpTo: (id: string) => void
 }) {
   if (items.length === 0) {
     return (
@@ -479,6 +496,7 @@ const MessageList = memo(function MessageList({
           onReply={() => onReply(item)}
           onTogglePin={() => onTogglePin(item)}
           onEdit={item.kind === 'text' && item.isLocal ? (text) => onEdit(item.id, text) : undefined}
+          onJumpTo={onJumpTo}
         />
       ))}
     </>
@@ -495,6 +513,7 @@ function MessageRow({
   onReply,
   onTogglePin,
   onEdit,
+  onJumpTo,
 }: {
   item: ChatItem
   /** True when this continues the previous sender's run — avatar/header collapse. */
@@ -508,6 +527,8 @@ function MessageRow({
   onTogglePin: () => void
   /** Defined only for your own text messages — edits the body in place. */
   onEdit?: (text: string) => void
+  /** Scroll to + flash the message a reply quotes. */
+  onJumpTo: (id: string) => void
 }) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -532,10 +553,11 @@ function MessageRow({
   }
   return (
     <div
+      data-mid={item.id}
       className={cn(
-        'group relative flex gap-2.5',
+        'group relative flex gap-2.5 rounded-field',
         grouped ? 'mt-0.5' : 'mt-3 first:mt-0',
-        mentionsMe && '-mx-1.5 rounded-field border-l-2 border-accent bg-accent-soft/40 py-1 pl-2 pr-1.5',
+        mentionsMe && '-mx-1.5 border-l-2 border-accent bg-accent-soft/40 py-1 pl-2 pr-1.5',
       )}
     >
       {grouped ? (
@@ -557,19 +579,39 @@ function MessageRow({
         )}
 
         {/* Quoted message this one replies to — a compact card with an accent rail
-            so the threaded context reads at a glance. */}
-        {replyTo && (
-          <div className="mt-1 flex items-stretch gap-2 overflow-hidden rounded-field bg-sunken/70 pr-2">
-            <span aria-hidden className="w-0.5 shrink-0 self-stretch bg-accent/60" />
-            <div className="min-w-0 flex-1 py-1">
-              <p className="flex items-center gap-1 text-[11px] font-medium text-ink-muted [&_svg]:size-3">
-                <ReplyIcon />
-                {replyTo.name}
-              </p>
-              <p className="truncate text-xs text-ink-subtle">{replyTo.text}</p>
-            </div>
-          </div>
-        )}
+            so the threaded context reads at a glance. When the original is linkable
+            (its id rode along in the reply), the card is a button that scrolls back
+            to it; otherwise it stays a static quote. */}
+        {replyTo &&
+          (() => {
+            const rail = <span aria-hidden className="w-0.5 shrink-0 self-stretch bg-accent/60" />
+            const body = (
+              <div className="min-w-0 flex-1 py-1 text-left">
+                <p className="flex items-center gap-1 text-[11px] font-medium text-ink-muted [&_svg]:size-3">
+                  <ReplyIcon />
+                  {replyTo.name}
+                </p>
+                <p className="truncate text-xs text-ink-subtle">{replyTo.text}</p>
+              </div>
+            )
+            const cls = 'mt-1 flex w-full items-stretch gap-2 overflow-hidden rounded-field bg-sunken/70 pr-2'
+            return replyTo.id ? (
+              <button
+                type="button"
+                onClick={() => onJumpTo(replyTo.id!)}
+                className={cn(cls, 'transition-colors hover:bg-sunken')}
+                aria-label={`Go to the message from ${replyTo.name} that this replies to`}
+              >
+                {rail}
+                {body}
+              </button>
+            ) : (
+              <div className={cls}>
+                {rail}
+                {body}
+              </div>
+            )
+          })()}
 
         {editing && item.kind === 'text' ? (
           <div className="mt-0.5 flex flex-col gap-1.5">
