@@ -193,7 +193,7 @@ export function RoomRoute() {
         <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
           <Island elevation="raised" className="max-w-md">
             <div className="flex flex-col gap-2">
-              <p className="text-sm text-danger">{error}</p>
+              <p className="text-sm text-danger-text">{error}</p>
               <Button size="sm" variant="neutral" onClick={() => setError(null)}>
                 Dismiss
               </Button>

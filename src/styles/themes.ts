@@ -24,6 +24,9 @@ export const baseLight: TokenMap = {
   // L=0.52 so subtle text clears AA (4.5:1) on light surfaces — 0.65 was 3.2:1.
   '--color-ink-subtle': 'oklch(0.52 0.012 270)',
   '--color-scrim': 'oklch(0.2 0.02 270 / 0.45)',
+  // Danger as TEXT (menu items / error lines): a dark red that clears AA on the
+  // light raised/surface (~5.5:1). The fill --color-danger is separate.
+  '--color-danger-text': 'oklch(0.5 0.21 25)',
 }
 
 export const baseDark: TokenMap = {
@@ -38,11 +41,12 @@ export const baseDark: TokenMap = {
   // L=0.65 so subtle text clears AA (4.5:1) on dark surfaces — 0.56 was 3.5:1.
   '--color-ink-subtle': 'oklch(0.65 0.012 270)',
   '--color-scrim': 'oklch(0.08 0.02 270 / 0.6)',
-  // NOTE: danger stays the single @theme value (L=0.55) in both modes — it must
-  // be dark enough for white danger-ink on danger FILLS (Leave / mute-off), which
-  // are always on screen. The rarer case (danger as TEXT on a dark surface, e.g.
-  // a transient connect-error line) is the known trade-off; if that needs AA too
-  // it wants its own lighter --color-danger-text token, not a fill change.
+  // danger (the FILL) stays the single @theme value (L=0.55) in both modes — it
+  // must be dark enough for white danger-ink on danger fills (Leave / mute-off).
+  // Danger as TEXT needs the opposite in dark mode: a LIGHT red that reads on a
+  // dark surface. L=0.72 clears AA (~4.7:1) on --color-raised (0.27) and more on
+  // the darker --color-sunken; this is what the red menu items / error lines use.
+  '--color-danger-text': 'oklch(0.72 0.16 25)',
 }
 
 /* ── High-contrast overrides (mode-aware) ──────────────────────────────────

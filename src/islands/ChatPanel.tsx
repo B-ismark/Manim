@@ -285,7 +285,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       </div>
 
       {error && (
-        <div className="mx-3 mb-1 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger">
+        <div className="mx-3 mb-1 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger-text">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="text-ink-muted hover:text-ink">
             Dismiss

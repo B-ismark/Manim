@@ -48,5 +48,29 @@ for (const scheme of ['light', 'dark'] as const) {
       await peer.context.close()
       expect(v, JSON.stringify(v, null, 2)).toEqual([])
     })
+
+    // Transient overlays (menus / dialogs) aren't in the DOM during the snapshots
+    // above, so axe never sampled them — that's how a danger-TEXT-on-dark-surface
+    // contrast fail (the red "End call for everyone" item) shipped green. The room
+    // creator is host, so the split Leave control exposes the end-call menu. Open
+    // it, then its confirm dialog, and axe each while it's actually on screen.
+    test('host end-call menu + confirm dialog have no WCAG violations', async ({ page }) => {
+      await setColorScheme(page, scheme)
+      await join(page, uniqueRoom(), 'Ada')
+
+      // Open the end-call dropdown (the caret beside Leave) — renders the danger
+      // menu item whose contrast regressed.
+      await page.getByRole('button', { name: 'End call for everyone' }).click()
+      const item = page.getByRole('menuitem', { name: 'End call for everyone' })
+      await expect(item).toBeVisible()
+      const menuViolations = await axeViolations(page)
+      expect(menuViolations, JSON.stringify(menuViolations, null, 2)).toEqual([])
+
+      // Selecting it opens the confirm dialog — axe its content too.
+      await item.click()
+      await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
+      const dialogViolations = await axeViolations(page)
+      expect(dialogViolations, JSON.stringify(dialogViolations, null, 2)).toEqual([])
+    })
   })
 }

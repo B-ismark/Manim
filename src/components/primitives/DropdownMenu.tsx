@@ -22,7 +22,12 @@ export function DropdownMenu({
   className,
 }: DropdownMenuProps) {
   return (
-    <RDM.Root onOpenChange={onOpenChange}>
+    // Non-modal: a modal menu `aria-hidden`s the rest of the page (control bar,
+    // top bar, stage) while it's open, but those still hold focusable buttons —
+    // axe flags that as `aria-hidden-focus` (serious), and it's a real AT trap.
+    // An action menu doesn't need modal semantics; Radix still moves focus into it,
+    // closes on Esc / outside-click, and supports arrow-key navigation.
+    <RDM.Root onOpenChange={onOpenChange} modal={false}>
       <RDM.Trigger asChild>{trigger}</RDM.Trigger>
       <RDM.Portal>
         <RDM.Content
@@ -59,7 +64,7 @@ export function DropdownItem({ children, onSelect, icon, tone = 'neutral', disab
       className={cn(
         'flex cursor-pointer items-center gap-2.5 rounded-field px-2.5 py-2 text-sm outline-none select-none',
         'data-[highlighted]:bg-sunken data-[disabled]:opacity-40 data-[disabled]:pointer-events-none',
-        tone === 'danger' ? 'text-danger' : 'text-ink',
+        tone === 'danger' ? 'text-danger-text' : 'text-ink',
         '[&_svg]:size-4 [&_svg]:shrink-0',
       )}
     >
