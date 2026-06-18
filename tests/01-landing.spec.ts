@@ -35,10 +35,11 @@ test.describe('Landing', () => {
     await expect(page).toHaveURL(/\/r\/design-sync$/)
   })
 
-  test('Settings dialog opens from landing', async ({ page }) => {
+  test('Settings popover opens from landing', async ({ page }) => {
     await page.goto('/')
     await page.getByRole('button', { name: 'Settings' }).click()
-    await expect(page.getByRole('dialog')).toBeVisible()
+    // Settings is an anchored popover (no scrim), not a modal dialog.
+    await expect(page.getByText('Your profile, notifications, and appearance.')).toBeVisible()
   })
 
   test('unknown route redirects home', async ({ page }) => {

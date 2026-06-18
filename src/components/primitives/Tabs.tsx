@@ -28,7 +28,7 @@ export function Tabs({ items, value, onValueChange, children, className }: TabsP
             key={it.value}
             value={it.value}
             className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 rounded-control px-3 py-1.5 text-sm font-medium',
+              'flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-medium',
               'transition-colors duration-[var(--dur-fast)] outline-none',
               'text-ink-muted hover:text-ink',
               // Active pill: lifted surface + an inset ring. The ring carries the

@@ -221,7 +221,7 @@ export function ControlBar({
     <div className="flex flex-col">
       <div className="mb-2 pointer-fine:hidden">
         <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">React</p>
-        <div className="flex items-center justify-between gap-1">
+        <div className="flex flex-wrap items-center justify-center gap-1">
           {REACTION_EMOJI.map((e) => (
             <IconButton
               key={e}

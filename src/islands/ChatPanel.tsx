@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParticipants } from '@livekit/components-react'
-import { Avatar, IconButton, Popover, Sheet } from '@/components/primitives'
+import { Avatar, Button, IconButton, Popover, Sheet } from '@/components/primitives'
 import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
 import { EmojiPicker } from '@/islands/EmojiPicker'
 import { encodeMentions, mentionsIdentity, plainText, type MentionTarget } from '@/features/chat/mentions'
@@ -412,7 +412,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           className={cn(
             // Cap relative to viewport on phones so a multi-line draft doesn't
             // crowd out the timeline when the on-screen keyboard is up.
-            'max-h-[20dvh] min-h-9 flex-1 resize-none rounded-field bg-sunken px-3 py-2 text-sm sm:max-h-28',
+            'max-h-[20dvh] min-h-9 flex-1 resize-none rounded-field bg-sunken px-3 py-2 text-base sm:max-h-28 sm:text-sm',
             'placeholder:text-ink-subtle outline-none focus-visible:ring-2 focus-visible:ring-accent',
           )}
         />
@@ -599,16 +599,19 @@ function MessageRow({
               rows={1}
               autoFocus
               aria-label="Edit message"
-              className="max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-field bg-sunken px-2.5 py-1.5 text-sm outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className="max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-field bg-sunken px-2.5 py-1.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
             />
-            <div className="flex items-center gap-2 text-xs">
-              <button type="button" onClick={saveEdit} className="font-medium text-accent hover:underline">
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="accent" onClick={saveEdit}>
                 Save
-              </button>
-              <button type="button" onClick={() => setEditing(false)} className="text-ink-muted hover:text-ink">
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 Cancel
-              </button>
-              <span className="text-ink-subtle">Enter to save · Esc to cancel</span>
+              </Button>
+              {/* Keyboard hint is desktop-only guidance — hidden on touch. */}
+              <span className="hidden text-xs text-ink-subtle sm:inline">
+                Enter to save · Esc to cancel
+              </span>
             </div>
           </div>
         ) : item.kind === 'text' ? (
