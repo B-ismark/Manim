@@ -80,7 +80,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search emoji"
         aria-label="Search emoji"
-        className="h-8 shrink-0 rounded-field bg-sunken px-2.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+        className="h-9 shrink-0 rounded-field bg-sunken px-2.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:h-8 sm:text-sm"
       />
 
       {!results && groups.length > 0 && (

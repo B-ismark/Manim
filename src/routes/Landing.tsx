@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Button, Island, Popover, IconButton, Avatar } from '@/components/primitives'
-import { SettingsIcon, GoogleIcon, CameraIcon } from '@/components/icons'
-import { SettingsDialog } from '@/islands/Settings'
+import { Button, Island, Popover, Avatar } from '@/components/primitives'
+import { GoogleIcon, CameraIcon } from '@/components/icons'
+import { SettingsPopover } from '@/islands/Settings'
 import { ContactsPopover } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
 import { authEnabled } from '@/lib/supabase'
@@ -26,7 +26,6 @@ function randomRoom(): string {
 export function Landing() {
   const navigate = useNavigate()
   const [room, setRoom] = useState('')
-  const [settingsOpen, setSettingsOpen] = useState(false)
   const signedIn = useAuthStore((s) => s.signedIn)
   const avatarUrl = useAuthStore((s) => s.avatarUrl)
   const myName = useAppStore((s) => s.displayName)
@@ -70,16 +69,9 @@ export function Landing() {
         <div className="flex items-center gap-2">
           {signedIn && <ContactsPopover onCall={callContact} />}
           <SetupStatusButton />
-          <IconButton
-            label="Settings"
-            icon={<SettingsIcon />}
-            tone="neutral"
-            onClick={() => setSettingsOpen(true)}
-          />
+          <SettingsPopover />
         </div>
       </header>
-
-      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       <div className="flex w-full max-w-sm flex-col items-center gap-6">
         {/* Personal greeting when signed in (Whereby-style), else just the brand. */}

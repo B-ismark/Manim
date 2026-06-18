@@ -1,5 +1,6 @@
 import { useRef, useState, type ReactNode } from 'react'
-import { Dialog, Toggle, Button, Avatar } from '@/components/primitives'
+import { Dialog, Toggle, Button, Avatar, Popover, IconButton } from '@/components/primitives'
+import { SettingsIcon } from '@/components/icons'
 import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
 import { useSoundStore } from '@/store/useSoundStore'
 import { useAppStore } from '@/store/useAppStore'
@@ -8,11 +9,11 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { toast } from '@/store/useToastStore'
 
 /**
- * Settings home for personal preferences, grouped into sections: a Profile header
- * (photo + name + account), Notifications (sounds + incoming-call alerts), and
- * Appearance (theme). This is the single place appearance + profile live (no
- * longer loose in the call control bar); opened from the landing page and the
- * in-call More menu.
+ * Settings: profile (photo + name + account), notifications, and appearance.
+ * Two surfaces share the same body — a full Dialog (in-call, from the More menu)
+ * and a header Popover (landing — anchored, no scrim, like Setup status). The
+ * landing popover is sized to the available viewport height so it fits without an
+ * inner scroll on a normal screen.
  */
 export function SettingsDialog({
   open,
@@ -21,6 +22,37 @@ export function SettingsDialog({
   open: boolean
   onOpenChange: (open: boolean) => void
 }) {
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Settings"
+      description="Your profile, notifications, and appearance."
+    >
+      <SettingsContent />
+    </Dialog>
+  )
+}
+
+/** Landing-header settings: anchored popover (no overlay), Setup-status style. */
+export function SettingsPopover() {
+  return (
+    <Popover
+      side="bottom"
+      align="end"
+      className="w-[21rem] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain"
+      trigger={<IconButton label="Settings" icon={<SettingsIcon />} tone="neutral" />}
+    >
+      <div className="px-1 pb-2 pt-1">
+        <p className="text-sm font-semibold">Settings</p>
+        <p className="text-xs text-ink-muted">Your profile, notifications, and appearance.</p>
+      </div>
+      <SettingsContent />
+    </Popover>
+  )
+}
+
+function SettingsContent() {
   const soundOn = useSoundStore((s) => s.enabled)
   const toggleSound = useSoundStore((s) => s.toggle)
   const displayName = useAppStore((s) => s.displayName)
@@ -56,116 +88,102 @@ export function SettingsDialog({
   }
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title="Settings"
-      description="Your profile, notifications, and appearance."
-    >
-      <div className="flex flex-col gap-5">
-        {/* Profile ------------------------------------------------------- */}
-        <div className="flex items-center gap-4">
-          <Avatar size="lg" name={displayName || email || '?'} src={avatarUrl} />
-          <div className="flex min-w-0 flex-col gap-2">
-            {signedIn ? (
-              <>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={onPick}
-                  className="hidden"
-                />
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="neutral"
-                    disabled={uploading}
-                    onClick={() => fileRef.current?.click()}
-                  >
-                    {uploading ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+    <div className="flex flex-col gap-4">
+      {/* Profile ------------------------------------------------------- */}
+      <div className="flex items-center gap-4">
+        <Avatar size="lg" name={displayName || email || '?'} src={avatarUrl} />
+        <div className="flex min-w-0 flex-col gap-2">
+          {signedIn ? (
+            <>
+              <input ref={fileRef} type="file" accept="image/*" onChange={onPick} className="hidden" />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="neutral"
+                  disabled={uploading}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  {uploading ? 'Uploading…' : avatarUrl ? 'Change photo' : 'Upload photo'}
+                </Button>
+                {avatarUrl && !uploading && (
+                  <Button size="sm" variant="ghost" onClick={() => void removeAvatar()}>
+                    Remove
                   </Button>
-                  {avatarUrl && !uploading && (
-                    <Button size="sm" variant="ghost" onClick={() => void removeAvatar()}>
-                      Remove
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-ink-subtle">JPG, PNG or WebP, up to 8MB.</p>
-              </>
-            ) : (
-              <p className="text-xs text-ink-subtle">Sign in to add a profile photo.</p>
-            )}
-          </div>
-        </div>
-
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium">Your name</span>
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            placeholder="Your name"
-            aria-label="Your name"
-            autoComplete="name"
-            className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
-          />
-          <span className="text-xs text-ink-subtle">
-            {signedIn
-              ? 'Synced to your account — used on every device you sign in on.'
-              : 'Saved on this device and used when you join a call.'}
-          </span>
-        </label>
-
-        {signedIn && email && (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium">Email</span>
-            <input
-              value={email}
-              readOnly
-              aria-label="Email"
-              className="h-11 cursor-default rounded-field bg-sunken px-3.5 text-base text-ink-muted outline-none sm:text-sm"
-            />
-          </label>
-        )}
-
-        {/* Notifications ------------------------------------------------- */}
-        <Section title="Notifications">
-          <div className="flex flex-col gap-4">
-            <Toggle
-              checked={soundOn}
-              onCheckedChange={toggleSound}
-              label="UI sounds"
-              className="w-full justify-between"
-            />
-            {notifSupported && (
-              <div>
-                <Toggle
-                  checked={notifyOn}
-                  disabled={notifBlocked}
-                  onCheckedChange={(v) => {
-                    if (v) void enableNotify()
-                    else disableNotify()
-                  }}
-                  label="Notify me of incoming calls"
-                  className="w-full justify-between"
-                />
-                {notifBlocked && (
-                  <p className="mt-1 text-xs text-ink-subtle">
-                    Notifications are blocked — re-enable them for this site in your browser
-                    settings.
-                  </p>
                 )}
               </div>
-            )}
-          </div>
-        </Section>
-
-        {/* Appearance ---------------------------------------------------- */}
-        <Section title="Appearance">
-          <ThemeSwitcher />
-        </Section>
+              <p className="text-xs text-ink-subtle">JPG, PNG or WebP, up to 8MB.</p>
+            </>
+          ) : (
+            <p className="text-xs text-ink-subtle">Sign in to add a profile photo.</p>
+          )}
+        </div>
       </div>
-    </Dialog>
+
+      <label className="flex flex-col gap-1.5">
+        <span className="text-sm font-medium">Your name</span>
+        <input
+          value={displayName}
+          onChange={(e) => setDisplayName(e.target.value)}
+          placeholder="Your name"
+          aria-label="Your name"
+          autoComplete="name"
+          className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
+        />
+        <span className="text-xs text-ink-subtle">
+          {signedIn
+            ? 'Synced to your account — used on every device you sign in on.'
+            : 'Saved on this device and used when you join a call.'}
+        </span>
+      </label>
+
+      {signedIn && email && (
+        <label className="flex flex-col gap-1.5">
+          <span className="text-sm font-medium">Email</span>
+          <input
+            value={email}
+            readOnly
+            aria-label="Email"
+            className="h-11 cursor-default rounded-field bg-sunken px-3.5 text-base text-ink-muted outline-none sm:text-sm"
+          />
+        </label>
+      )}
+
+      {/* Notifications ------------------------------------------------- */}
+      <Section title="Notifications">
+        <div className="flex flex-col gap-4">
+          <Toggle
+            checked={soundOn}
+            onCheckedChange={toggleSound}
+            label="UI sounds"
+            className="w-full justify-between"
+          />
+          {notifSupported && (
+            <div>
+              <Toggle
+                checked={notifyOn}
+                disabled={notifBlocked}
+                onCheckedChange={(v) => {
+                  if (v) void enableNotify()
+                  else disableNotify()
+                }}
+                label="Notify me of incoming calls"
+                className="w-full justify-between"
+              />
+              {notifBlocked && (
+                <p className="mt-1 text-xs text-ink-subtle">
+                  Notifications are blocked — re-enable them for this site in your browser settings.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* Appearance ---------------------------------------------------- */}
+      <Section title="Appearance">
+        <ThemeSwitcher />
+      </Section>
+    </div>
   )
 }
 
