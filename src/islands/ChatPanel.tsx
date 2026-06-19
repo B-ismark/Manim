@@ -85,6 +85,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
+  const [emojiOpen, setEmojiOpen] = useState(false)
   const [replyTo, setReplyTo] = useState<ReplyRef | null>(null)
   const narrow = useIsTouch()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -315,6 +316,21 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     setUnseen(0)
   }
 
+  // Insert an emoji at the caret (composer emoji picker — distinct from reacting to
+  // a message). Keeps focus + caret after the inserted glyph so typing continues.
+  function insertEmoji(emoji: string) {
+    const el = inputRef.current
+    const start = el?.selectionStart ?? draft.length
+    const end = el?.selectionEnd ?? start
+    const next = draft.slice(0, start) + emoji + draft.slice(end)
+    onDraftChange(next)
+    const pos = start + emoji.length
+    requestAnimationFrame(() => {
+      el?.focus()
+      el?.setSelectionRange(pos, pos)
+    })
+  }
+
   function onPickFiles(files: FileList | null) {
     if (!files) return
     for (const f of Array.from(files)) {
@@ -416,7 +432,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       )}
 
       <form
-        className="relative flex shrink-0 items-end gap-2 border-t border-line p-3"
+        className="relative flex shrink-0 flex-col gap-1.5 border-t border-line p-3"
         onSubmit={(e) => {
           e.preventDefault()
           submit()
@@ -463,55 +479,6 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           className="hidden"
           onChange={(e) => onPickFiles(e.target.files)}
         />
-        <IconButton
-          type="button"
-          size="sm"
-          label="Attach a file"
-          icon={<AttachIcon />}
-          className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
-          onClick={() => fileInputRef.current?.click()}
-        />
-        {gifEnabled &&
-          (narrow ? (
-            <>
-              <IconButton
-                type="button"
-                size="sm"
-                label="Send a GIF"
-                icon={<GifIcon />}
-                active={gifOpen}
-                className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
-                onClick={() => setGifOpen(true)}
-              />
-              <Sheet open={gifOpen} onOpenChange={setGifOpen} side="bottom" title="Send a GIF">
-                <GifPicker
-                  onSelect={(url) => {
-                    sendText(url)
-                    setGifOpen(false)
-                  }}
-                />
-              </Sheet>
-            </>
-          ) : (
-            <Popover
-              open={gifOpen}
-              onOpenChange={setGifOpen}
-              side="top"
-              align="start"
-              trigger={
-                <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
-              }
-            >
-              <div className="w-72">
-                <GifPicker
-                  onSelect={(url) => {
-                    sendText(url)
-                    setGifOpen(false)
-                  }}
-                />
-              </div>
-            </Popover>
-          ))}
         <textarea
           ref={inputRef}
           value={draft}
@@ -534,18 +501,115 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           className={cn(
             // Cap relative to viewport on phones so a multi-line draft doesn't
             // crowd out the timeline when the on-screen keyboard is up.
-            'max-h-[20dvh] min-h-9 flex-1 resize-none rounded-field bg-sunken px-3 py-2 text-base sm:max-h-28 sm:text-sm',
+            'max-h-[20dvh] min-h-9 w-full resize-none rounded-field bg-sunken px-3 py-2 text-base sm:max-h-28 sm:text-sm',
             'placeholder:text-ink-subtle outline-none focus-visible:ring-2 focus-visible:ring-accent',
           )}
         />
-        <IconButton
-          type="submit"
-          size="sm"
-          tone="accent"
-          label="Send message"
-          icon={<SendIcon />}
-          disabled={!draft.trim()}
-        />
+        {/* Toolbar under a full-width input (Teams/Slack): options on the left, send
+            on the right. Keeps every composer option while giving the textarea the
+            whole width to type in. */}
+        <div className="flex items-center gap-0.5">
+          <IconButton
+            type="button"
+            size="sm"
+            label="Attach a file"
+            icon={<AttachIcon />}
+            className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
+            onClick={() => fileInputRef.current?.click()}
+          />
+          {/* Emoji insert (distinct from reacting to a message): popover on desktop,
+              bottom sheet on touch — same pattern as the GIF picker. */}
+          {narrow ? (
+            <>
+              <IconButton
+                type="button"
+                size="sm"
+                label="Add emoji"
+                icon={<ReactionIcon />}
+                active={emojiOpen}
+                className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
+                onClick={() => setEmojiOpen(true)}
+              />
+              <Sheet open={emojiOpen} onOpenChange={setEmojiOpen} side="bottom" title="Add emoji">
+                <EmojiPicker
+                  onSelect={(e) => {
+                    insertEmoji(e)
+                    setEmojiOpen(false)
+                  }}
+                />
+              </Sheet>
+            </>
+          ) : (
+            <Popover
+              open={emojiOpen}
+              onOpenChange={setEmojiOpen}
+              side="top"
+              align="start"
+              trigger={
+                <IconButton type="button" size="sm" label="Add emoji" icon={<ReactionIcon />} active={emojiOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
+              }
+            >
+              <div className="w-72">
+                <EmojiPicker
+                  onSelect={(e) => {
+                    insertEmoji(e)
+                    setEmojiOpen(false)
+                  }}
+                />
+              </div>
+            </Popover>
+          )}
+          {gifEnabled &&
+            (narrow ? (
+              <>
+                <IconButton
+                  type="button"
+                  size="sm"
+                  label="Send a GIF"
+                  icon={<GifIcon />}
+                  active={gifOpen}
+                  className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
+                  onClick={() => setGifOpen(true)}
+                />
+                <Sheet open={gifOpen} onOpenChange={setGifOpen} side="bottom" title="Send a GIF">
+                  <GifPicker
+                    onSelect={(url) => {
+                      sendText(url)
+                      setGifOpen(false)
+                    }}
+                  />
+                </Sheet>
+              </>
+            ) : (
+              <Popover
+                open={gifOpen}
+                onOpenChange={setGifOpen}
+                side="top"
+                align="start"
+                trigger={
+                  <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
+                }
+              >
+                <div className="w-72">
+                  <GifPicker
+                    onSelect={(url) => {
+                      sendText(url)
+                      setGifOpen(false)
+                    }}
+                  />
+                </div>
+              </Popover>
+            ))}
+          <span className="flex-1" aria-hidden />
+          <IconButton
+            type="submit"
+            size="sm"
+            tone="accent"
+            label="Send message"
+            icon={<SendIcon />}
+            disabled={!draft.trim()}
+          />
+        </div>
       </form>
     </div>
   )
