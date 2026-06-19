@@ -2,7 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
-import { ConnectionState } from 'livekit-client'
+import { ConnectionState, RoomEvent } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
 import { Stage } from '@/islands/Stage'
 import { JoiningScreen } from '@/islands/JoiningScreen'
@@ -231,6 +231,30 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Surface E2EE key MISMATCH (S4c). The key is delivered by the invite link, so a
+  // mismatch only happens when someone opened a stale/wrong link — but when it does,
+  // that peer silently can't decode our media (frames are dropped), and nothing else
+  // tells either side why "I can't see/hear you". LiveKit fires EncryptionError on a
+  // decrypt failure; warn (throttled) with the fix. Local encryption is still on, so
+  // this doesn't touch the padlock — it flags a REMOTE peer on a different key.
+  const lastE2eeWarn = useRef(0)
+  useEffect(() => {
+    if (!e2eePassphrase) return
+    const onError = () => {
+      const now = Date.now()
+      if (now - lastE2eeWarn.current < 15_000) return // throttle: errors burst per-frame
+      lastE2eeWarn.current = now
+      toast(
+        'Encryption mismatch — someone may be on a different invite link, so they can’t see or hear you. Re-share your link.',
+        'danger',
+      )
+    }
+    room.on(RoomEvent.EncryptionError, onError)
+    return () => {
+      room.off(RoomEvent.EncryptionError, onError)
+    }
+  }, [room, e2eePassphrase])
   const {
     isHost,
     locked,

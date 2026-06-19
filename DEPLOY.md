@@ -164,6 +164,28 @@ create policy "avatar delete own" on storage.objects for delete to authenticated
 The client uploads to `avatars/<user-id>/avatar.webp` (one object per user,
 upsert), so the folder-name check pins each user to their own prefix.
 
+### 3b. Self-serve account deletion
+The app's **Settings → Delete account** button (privacy requirement) calls a
+`delete_account()` RPC. It removes the caller's own `auth.users` row; the
+`on delete cascade` foreign keys on `profiles`, `contacts`, and
+`push_subscriptions` take all their data with it. SECURITY DEFINER is required
+because deleting from `auth.users` is privileged — but it only ever deletes
+`auth.uid()` (the caller), so it can't be used to delete anyone else. Without
+this function the button errors; everything else still works.
+
+```sql
+create or replace function delete_account()
+returns void
+language sql
+security definer
+set search_path = public, auth
+as $$
+  delete from auth.users where id = auth.uid();
+$$;
+revoke all on function delete_account() from public;
+grant execute on function delete_account() to authenticated;
+```
+
 4. **Contacts** (optional — powers the consent-based contacts list + call-a-contact).
    Run in the SQL editor:
 

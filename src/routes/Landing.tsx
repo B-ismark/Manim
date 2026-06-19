@@ -5,6 +5,7 @@ import { GoogleIcon, CameraIcon } from '@/components/icons'
 import { SettingsLauncher } from '@/islands/Settings'
 import { ContactsLauncher } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
+import { SiteFooter } from '@/islands/SiteFooter'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useAppStore } from '@/store/useAppStore'
@@ -154,6 +155,8 @@ export function Landing() {
           </form>
         </Island>
       </div>
+
+      <SiteFooter />
     </main>
   )
 }

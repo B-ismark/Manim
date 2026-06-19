@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon } from '@/components/icons'
 import { useAppStore } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
+import { APP_NAME } from '@/lib/legal'
 
 export interface PreJoinProps {
   room: string
@@ -242,6 +243,15 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now
           </Button>
+
+          {/* Turn the (unstated) no-recording fact into trust, and disclose what
+              the camera/mic are for — the audit's L3. */}
+          <p className="text-center text-xs text-ink-subtle">
+            Your camera and mic let others see and hear you. {APP_NAME} doesn't record calls.{' '}
+            <Link to="/privacy" className="underline underline-offset-2 hover:text-ink">
+              Privacy
+            </Link>
+          </p>
         </div>
       </Island>
     </main>

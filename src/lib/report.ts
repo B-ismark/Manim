@@ -18,6 +18,9 @@
 interface SentryLike {
   captureException?: (error: unknown, context?: unknown) => void
   addBreadcrumb?: (breadcrumb: unknown) => void
+  // Provided by the Sentry Loader Script — queue init until the full SDK arrives.
+  init?: (options: { dsn: string }) => void
+  onLoad?: (cb: () => void) => void
 }
 
 declare global {
@@ -73,11 +76,46 @@ export function reportError(error: unknown, context?: Context): void {
   sentry()?.captureException?.(error, { extra: { ...context, breadcrumbs: [...breadcrumbs] } })
 }
 
+/**
+ * Inject the official Sentry Loader Script when a DSN is configured. The loader is
+ * a tiny CDN stub that installs a queueing `window.Sentry` immediately (so
+ * captureException calls made before the full SDK downloads are buffered, not
+ * lost) and lazy-loads the real SDK in the background. We derive the loader URL
+ * from the DSN's public key — no second config value to keep in sync.
+ *
+ * Inert without `VITE_SENTRY_DSN` (local + test), so reporting stays console-only
+ * there; setting the env var in the Cloudflare build is the entire "wire Sentry"
+ * step — no code change, because every call site already routes through here.
+ */
+function initSentry(): void {
+  const dsn = import.meta.env.VITE_SENTRY_DSN
+  if (!dsn || typeof document === 'undefined') return
+  let publicKey = ''
+  try {
+    publicKey = new URL(dsn).username
+  } catch {
+    return // malformed DSN — skip rather than throw at startup
+  }
+  if (!publicKey) return
+
+  const script = document.createElement('script')
+  script.src = `https://js.sentry-cdn.com/${publicKey}.min.js`
+  script.crossOrigin = 'anonymous'
+  script.addEventListener('load', () => {
+    const s = sentry()
+    // The loader exposes onLoad; configure the SDK once it's actually present.
+    s?.onLoad?.(() => s.init?.({ dsn }))
+  })
+  document.head.appendChild(script)
+}
+
 /** Install the global last-resort handlers. Idempotent; call once at startup
  *  (main.tsx) BEFORE the app mounts so an early throw is still caught. */
 export function initErrorReporting(): void {
   if (installed || typeof window === 'undefined') return
   installed = true
+
+  initSentry()
 
   window.addEventListener('error', (e) => {
     // Resource load errors (img/script) surface here with no `error` object —

@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { LiveKitRoom } from '@livekit/components-react'
 import { RoomView } from '@/islands/RoomView'
+import { AnnouncerProvider } from '@/features/a11y/AnnouncerContext'
 import { roomOptions } from '@/lib/livekit'
 
 /**
@@ -45,7 +46,11 @@ export default function CallRoom({
       onError={onError}
       className="relative flex h-dvh flex-col overflow-hidden"
     >
-      <RoomView onLeave={onLeave} />
+      {/* Shared announcer for the call subtree — RoomView + its hooks (device-loss
+          watch) voice through one set of live regions. */}
+      <AnnouncerProvider>
+        <RoomView onLeave={onLeave} />
+      </AnnouncerProvider>
     </LiveKitRoom>
   )
 }

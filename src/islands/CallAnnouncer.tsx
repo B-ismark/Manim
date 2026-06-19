@@ -7,17 +7,18 @@ import {
 } from '@livekit/components-react'
 import { ConnectionState, RoomEvent, Track, type Participant } from 'livekit-client'
 import { HAND_ATTR } from '@/features/reactions/useReactions'
-import { useAnnouncer } from '@/features/a11y/useAnnouncer'
+import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 
 function nameOf(p: Participant): string {
   return p.name || p.identity.split('#')[0] || 'Someone'
 }
 
 /**
- * Visually-hidden live regions that voice call state for screen readers
- * (WCAG 4.1.3 Status Messages). Renders nothing visible; no behavioural effect
- * for sighted users. State that MUST interrupt — being force-muted by a host,
- * losing/regaining the connection — is announced assertively; the rest politely.
+ * Voices call state for screen readers (WCAG 4.1.3 Status Messages) via the
+ * shared announcer (AnnouncerProvider renders the live regions; this component
+ * renders nothing). No behavioural effect for sighted users. State that MUST
+ * interrupt — being force-muted by a host, losing/regaining the connection — is
+ * announced assertively; the rest politely.
  *
  * Mount once inside the room (RoomView) where the LiveKit room context exists.
  */
@@ -26,7 +27,7 @@ export function CallAnnouncer() {
   const participants = useParticipants()
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant()
   const connection = useConnectionState()
-  const { announce, regions } = useAnnouncer()
+  const announce = useAnnounce()
 
   // ── Joins / leaves ─────────────────────────────────────────────────────────
   // Keep the previous Participant objects (not just ids) so we can name who LEFT,
@@ -145,5 +146,6 @@ export function CallAnnouncer() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [raisedKey])
 
-  return regions
+  // The live regions are rendered by AnnouncerProvider; this component is effects-only.
+  return null
 }

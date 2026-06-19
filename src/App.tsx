@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { TooltipProvider } from '@/components/primitives'
 import { Landing } from '@/routes/Landing'
+import { Privacy, Terms } from '@/routes/Legal'
 import { IncomingCallBanner } from '@/islands/IncomingCallBanner'
 import { ErrorBoundary, clearChunkReloadGuard } from '@/islands/ErrorBoundary'
 import { Toasts } from '@/islands/Toasts'
@@ -27,6 +28,8 @@ export function App() {
         <IncomingCallBanner />
         <Routes>
           <Route path="/" element={<Landing />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route
             path="/r/:room"
             element={
