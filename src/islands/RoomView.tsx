@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
 import { ConnectionState, RoomEvent } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
@@ -152,6 +152,11 @@ function useSoloAutoLeave(onLeave: () => void) {
  */
 export function RoomView({ onLeave }: { onLeave: () => void }) {
   const room = useRoomContext()
+  // The LiveKit room.name is empty until the server sends it (post-connect), so the
+  // joining cover would drop the room title mid-connect — a visible jump from
+  // RoomRoute's cover (which has the title) to this one (which wouldn't). Use the
+  // URL slug instead so both covers render the SAME title and the handoff is seamless.
+  const { room: roomSlug = '' } = useParams()
   // DEV-only test seam: expose the live Room so E2E specs can drive LiveKit's
   // built-in fault simulation (room.simulateScenario('signal-reconnect')) — the
   // network transport can't be cut from the test side (CDP/setOffline don't touch
@@ -324,7 +329,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // so the knock→connect handoff doesn't jump). Reconnects after that are handled
   // by ConnectionBanner, not here.
   if (connState === ConnectionState.Connecting) {
-    return <JoiningScreen room={room.name} />
+    return <JoiningScreen room={room.name || roomSlug} />
   }
 
   return (
