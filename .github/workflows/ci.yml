@@ -34,6 +34,8 @@ jobs:
       - run: npm ci
       - name: Typecheck
         run: npm run typecheck
+      - name: Unit tests (pure logic — no LiveKit needed)
+        run: npm run test:unit
 
   # E2E hits the real LiveKit Cloud backend, so it only runs when the repo has
   # the creds configured. Skips cleanly (not fails) when secrets are absent —

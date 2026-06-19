@@ -152,6 +152,17 @@ function useSoloAutoLeave(onLeave: () => void) {
  */
 export function RoomView({ onLeave }: { onLeave: () => void }) {
   const room = useRoomContext()
+  // DEV-only test seam: expose the live Room so E2E specs can drive LiveKit's
+  // built-in fault simulation (room.simulateScenario('signal-reconnect')) — the
+  // network transport can't be cut from the test side (CDP/setOffline don't touch
+  // the established WebRTC media path). Stripped from prod builds by the DEV guard.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    ;(window as unknown as { __lkRoom?: typeof room }).__lkRoom = room
+    return () => {
+      delete (window as unknown as { __lkRoom?: typeof room }).__lkRoom
+    }
+  }, [room])
   // Security material rides in the invite link's #fragment (see lib/roomLink), not
   // the store: the E2EE key keys the media, the join secret is re-advertised to the
   // user's own other devices for quick-join. A strong random key shared only via

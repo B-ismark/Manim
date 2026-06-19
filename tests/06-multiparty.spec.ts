@@ -34,6 +34,28 @@ test.describe('Multi-party', () => {
     }
   })
 
+  test('three participants populate the grid for everyone', async ({ page, browser }) => {
+    // The standard multi-party tests cap at 2 (audit T6) — a 2-tile grid never
+    // exercises the paged grid layout. A modest 3-party ramp stays cheap enough for
+    // the default suite while covering >2 tiles; the heavy ramp stays opt-in (07).
+    const room = uniqueRoom('mp3')
+    await join(page, room, 'Host')
+    const g1 = await newParticipant(browser, room, 'Guest-1')
+    const g2 = await newParticipant(browser, room, 'Guest-2')
+    try {
+      for (const p of [page, g1.page, g2.page]) {
+        await expect(p.getByRole('button', { name: /Participants \(3\)/ })).toBeVisible({
+          timeout: 40_000,
+        })
+      }
+      expect(appErrors(g1.sink), appErrors(g1.sink).join('\n')).toEqual([])
+      expect(appErrors(g2.sink), appErrors(g2.sink).join('\n')).toEqual([])
+    } finally {
+      await g1.context.close()
+      await g2.context.close()
+    }
+  })
+
   test('waiting room: host admits a knocking guest', async ({ page, browser }) => {
     const room = uniqueRoom('lobby')
     await join(page, room, 'Host')
