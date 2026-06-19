@@ -1,4 +1,4 @@
-import { type Page, type BrowserContext, type Browser, expect } from '@playwright/test'
+import { type Page, type Locator, type BrowserContext, type Browser, expect } from '@playwright/test'
 
 /** Unique room per test run so parallel tests + reruns never collide on host/queue state. */
 export function uniqueRoom(prefix = 'e2e'): string {
@@ -136,6 +136,54 @@ export async function openChat(page: Page) {
   const composer = page.getByRole('combobox', { name: 'Message', exact: true })
   await expect(composer).toBeVisible()
   return composer
+}
+
+/** Reveal a message's secondary actions (react / edit / pin), matching the real
+ *  per-platform affordance: hover on desktop, long-press on touch (which opens the
+ *  anchored actions popover). After this resolves the action buttons — "Add
+ *  reaction" / "Edit message" / "Pin" — are in the DOM and clickable at page level.
+ *  Reply lives on the swipe gesture on touch, so it's not in this popover. */
+export async function openMessageActions(page: Page, row: Locator): Promise<void> {
+  if (await isTouch(page)) {
+    const box = await row.boundingBox()
+    if (!box) throw new Error('openMessageActions: row has no bounding box')
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    // Real long-press: pointer down, hold past the 500ms timer, release in place.
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.waitForTimeout(650)
+    await page.mouse.up()
+  } else {
+    await row.hover()
+  }
+}
+
+/** Swipe a message bubble left to reply (touch only). No-op on desktop (which uses
+ *  the hover toolbar's Reply button instead). */
+export async function swipeToReply(page: Page, row: Locator): Promise<void> {
+  if (!(await isTouch(page))) return
+  const box = await row.boundingBox()
+  if (!box) throw new Error('swipeToReply: row has no bounding box')
+  const y = box.y + box.height / 2
+  const startX = box.x + box.width - 12
+  await page.mouse.move(startX, y)
+  await page.mouse.down()
+  // Move past SWIPE_TRIGGER (48px) in steps so the move handler arms the swipe.
+  await page.mouse.move(startX - 30, y, { steps: 4 })
+  await page.mouse.move(startX - 70, y, { steps: 4 })
+  await page.mouse.up()
+}
+
+/** Start a reply to a message, per platform: swipe-left on touch, the hover
+ *  toolbar's Reply button on desktop. Leaves the "Replying to …" chip showing. */
+export async function replyToMessage(page: Page, row: Locator): Promise<void> {
+  if (await isTouch(page)) {
+    await swipeToReply(page, row)
+  } else {
+    await row.hover()
+    await row.getByRole('button', { name: 'Reply', exact: true }).click()
+  }
 }
 
 /** Force the colour scheme so a11y / visual runs cover BOTH themes. The app's

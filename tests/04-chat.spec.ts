@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, openChat } from './helpers'
+import { uniqueRoom, attachErrorSink, appErrors, join, openChat, openMessageActions, replyToMessage } from './helpers'
 
 test.describe('Chat', () => {
   test('send a message; it renders and the composer clears', async ({ page }) => {
@@ -37,8 +37,8 @@ test.describe('Chat', () => {
     await composer.fill('first draft')
     await composer.press('Enter')
     const row = page.locator('.group', { hasText: 'first draft' }).first()
-    await row.hover()
-    await row.getByRole('button', { name: 'Edit message' }).click()
+    await openMessageActions(page, row)
+    await page.getByRole('button', { name: 'Edit message' }).click()
     const editor = page.getByRole('textbox', { name: 'Edit message' })
     await editor.fill('edited text')
     await editor.press('Enter')
@@ -52,8 +52,8 @@ test.describe('Chat', () => {
     await composer.fill('react to me')
     await composer.press('Enter')
     const row = page.locator('.group', { hasText: 'react to me' }).first()
-    await row.hover()
-    await row.getByRole('button', { name: 'Add reaction' }).click()
+    await openMessageActions(page, row)
+    await page.getByRole('button', { name: 'Add reaction' }).click()
     // Emoji picker: search narrows to a known emoji, then pick it by accessible name.
     const search = page.getByRole('textbox', { name: 'Search emoji' })
     await expect(search).toBeVisible()
@@ -62,6 +62,22 @@ test.describe('Chat', () => {
     await emoji.click()
     // A reaction chip (aria-pressed because it's mine) appears under the message.
     await expect(row.locator('button[aria-pressed="true"]').first()).toBeVisible()
+  })
+
+  test('reply to a message quotes it (swipe on touch, toolbar on desktop)', async ({ page }) => {
+    await join(page, uniqueRoom(), 'Ada')
+    const composer = await openChat(page)
+    await composer.fill('quote me')
+    await composer.press('Enter')
+    const row = page.locator('.group', { hasText: 'quote me' }).first()
+    await replyToMessage(page, row)
+    // The composer shows a "Replying to You" chip while the reply is staged.
+    await expect(page.getByText('Replying to You')).toBeVisible()
+    await composer.fill('here is the reply')
+    await composer.press('Enter')
+    // The sent message renders with a quoted card pointing back at the original.
+    const reply = page.locator('.group', { hasText: 'here is the reply' }).first()
+    await expect(reply.getByText('quote me')).toBeVisible()
   })
 
   test('chat flood: 60 rapid messages stay responsive', async ({ page }) => {

@@ -28,6 +28,7 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
       flush
       hideTitle
       modal={coarse}
+      expandable={coarse}
     >
       <Tabs
         items={[

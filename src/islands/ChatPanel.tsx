@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useParticipants } from '@livekit/components-react'
 import { Avatar, Button, IconButton, Popover, Sheet } from '@/components/primitives'
 import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
@@ -569,6 +569,53 @@ function MessageRow({
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState('')
   const narrow = useIsTouch()
+  // Touch action model: swipe-left a bubble to reply (the common case), long-press
+  // for the rest via an anchored popover. Desktop keeps the hover toolbar.
+  const [actionsOpen, setActionsOpen] = useState(false)
+  const [swipeX, setSwipeX] = useState(0)
+  const press = useRef<{ timer?: number; x: number; y: number; moved: boolean; swiping: boolean }>({
+    x: 0,
+    y: 0,
+    moved: false,
+    swiping: false,
+  })
+  const SWIPE_TRIGGER = 48 // px left-drag past which release fires reply
+  const SWIPE_MAX = 72
+
+  const onRowPointerDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (!narrow || editing) return
+    press.current = { x: e.clientX, y: e.clientY, moved: false, swiping: false }
+    press.current.timer = window.setTimeout(() => {
+      if (!press.current.moved) {
+        setActionsOpen(true)
+        navigator.vibrate?.(10)
+      }
+    }, 500)
+  }
+  const onRowPointerMove = (e: PointerEvent<HTMLDivElement>) => {
+    if (!narrow || editing) return
+    const dx = e.clientX - press.current.x
+    const dy = e.clientY - press.current.y
+    if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+      press.current.moved = true
+      window.clearTimeout(press.current.timer)
+    }
+    // Horizontal-dominant left drag = reply swipe; vertical stays a scroll.
+    if (dx < -6 && Math.abs(dx) > Math.abs(dy)) {
+      press.current.swiping = true
+      setSwipeX(Math.max(dx, -SWIPE_MAX))
+    }
+  }
+  const endPress = () => {
+    if (!narrow) return
+    window.clearTimeout(press.current.timer)
+    if (press.current.swiping) {
+      if (swipeX <= -SWIPE_TRIGGER) onReply()
+      press.current.swiping = false
+      setSwipeX(0)
+    }
+  }
+
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
   // Highlight the whole row when you were tagged, so a mention is scannable in a
   // busy timeline (Slack/Teams convention).
@@ -576,6 +623,7 @@ function MessageRow({
   const react = (emoji: string) => {
     onReact(emoji)
     setPickerOpen(false)
+    setActionsOpen(false)
   }
   const startEdit = () => {
     if (item.kind !== 'text') return
@@ -589,19 +637,41 @@ function MessageRow({
   return (
     <div
       data-mid={item.id}
+      onPointerDown={onRowPointerDown}
+      onPointerMove={onRowPointerMove}
+      onPointerUp={endPress}
+      onPointerLeave={endPress}
+      onContextMenu={narrow ? (e) => e.preventDefault() : undefined}
       className={cn(
         'group relative flex gap-2.5 rounded-field',
         grouped ? 'mt-0.5' : 'mt-3 first:mt-0',
         mentionsMe && '-mx-1.5 border-l-2 border-accent bg-accent-soft/40 py-1 pl-2 pr-1.5',
       )}
     >
+      {/* Reply affordance revealed as you swipe the bubble left (touch). */}
+      {narrow && swipeX < 0 && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 text-accent [&_svg]:size-5"
+          style={{ opacity: Math.min(1, Math.abs(swipeX) / 56) }}
+        >
+          <ReplyIcon />
+        </span>
+      )}
       {grouped ? (
         // Keep the bubble aligned with the grouped run (matches Avatar sm = size-8).
         <div className="w-8 shrink-0" aria-hidden />
       ) : (
         <Avatar name={item.fromName} size="sm" />
       )}
-      <div className="min-w-0 flex-1">
+      <div
+        className="min-w-0 flex-1"
+        style={
+          narrow
+            ? { transform: `translateX(${swipeX}px)`, transition: press.current.swiping ? 'none' : 'transform .15s ease-out' }
+            : undefined
+        }
+      >
         {!grouped && (
           <div className="flex items-baseline gap-2">
             <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
@@ -714,29 +784,15 @@ function MessageRow({
         <ReactionChips reactions={reactions} myIdentity={myIdentity} onReact={onReact} />
       </div>
 
-      {/* Hover (desktop) / always-on (touch) message actions. Hidden while
-          editing so the toolbar never overlaps the edit field. */}
-      <div
-        className={cn(
-          'absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100',
-          editing && 'hidden',
-        )}
-      >
-        {narrow ? (
-          <>
-            <IconButton
-              size="sm"
-              tone="neutral"
-              label="Add reaction"
-              icon={<ReactionIcon />}
-              active={pickerOpen}
-              onClick={() => setPickerOpen(true)}
-            />
-            <Sheet open={pickerOpen} onOpenChange={setPickerOpen} side="bottom" title="Add reaction">
-              <EmojiPicker onSelect={react} />
-            </Sheet>
-          </>
-        ) : (
+      {/* DESKTOP: hover/focus-revealed toolbar. Hidden on touch (which uses
+          swipe-to-reply + the long-press popover) and while editing. */}
+      {!narrow && (
+        <div
+          className={cn(
+            'absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+            editing && 'hidden',
+          )}
+        >
           <Popover
             open={pickerOpen}
             onOpenChange={setPickerOpen}
@@ -746,31 +802,93 @@ function MessageRow({
           >
             <EmojiPicker onSelect={react} />
           </Popover>
-        )}
-        <IconButton size="sm" tone="neutral" label="Reply" icon={<ReplyIcon />} onClick={onReply} />
-        {onEdit && (
+          <IconButton size="sm" tone="neutral" label="Reply" icon={<ReplyIcon />} onClick={onReply} />
+          {onEdit && (
+            <IconButton
+              size="sm"
+              tone="neutral"
+              label="Edit message"
+              icon={
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 20h9" />
+                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                </svg>
+              }
+              onClick={startEdit}
+            />
+          )}
           <IconButton
             size="sm"
-            tone="neutral"
-            label="Edit message"
-            icon={
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 20h9" />
-                <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-              </svg>
-            }
-            onClick={startEdit}
+            tone={pinned ? 'accent' : 'neutral'}
+            label={pinned ? 'Unpin' : 'Pin'}
+            icon={<PinIcon />}
+            active={pinned}
+            onClick={onTogglePin}
           />
-        )}
-        <IconButton
-          size="sm"
-          tone={pinned ? 'accent' : 'neutral'}
-          label={pinned ? 'Unpin' : 'Pin'}
-          icon={<PinIcon />}
-          active={pinned}
-          onClick={onTogglePin}
-        />
-      </div>
+        </div>
+      )}
+
+      {/* TOUCH: long-press opens an anchored popover for the secondary actions
+          (Reply lives on the swipe gesture, so it's intentionally absent here).
+          Radix collision-detection flips/shifts it so it never clips at the panel
+          edge — including at the "peek" snap height. The trigger is a zero-size
+          anchor pinned to the bubble; the long-press toggles `actionsOpen`. */}
+      {narrow && (
+        <Popover
+          open={actionsOpen}
+          onOpenChange={(o) => {
+            setActionsOpen(o)
+            if (!o) setPickerOpen(false)
+          }}
+          side="top"
+          align="end"
+          trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
+        >
+          <div className="flex flex-col">
+            {pickerOpen ? (
+              <EmojiPicker onSelect={react} />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  onClick={() => setPickerOpen(true)}
+                >
+                  <ReactionIcon />
+                  Add reaction
+                </button>
+                {onEdit && (
+                  <button
+                    type="button"
+                    className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                    onClick={() => {
+                      setActionsOpen(false)
+                      startEdit()
+                    }}
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 20h9" />
+                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                    Edit message
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  onClick={() => {
+                    setActionsOpen(false)
+                    onTogglePin()
+                  }}
+                >
+                  <PinIcon />
+                  {pinned ? 'Unpin' : 'Pin'}
+                </button>
+              </>
+            )}
+          </div>
+        </Popover>
+      )}
     </div>
   )
 }
