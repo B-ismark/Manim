@@ -9,6 +9,12 @@ export interface PopoverProps {
   align?: 'start' | 'center' | 'end'
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /**
+   * Modal traps focus and blocks pointer events on the rest of the page while open
+   * (outside tap still dismisses). Needed for a touch popover floating over the
+   * chat timeline so a swipe inside it can't reach the message rows behind it.
+   */
+  modal?: boolean
   className?: string
 }
 
@@ -20,10 +26,11 @@ export function Popover({
   align = 'center',
   open,
   onOpenChange,
+  modal = false,
   className,
 }: PopoverProps) {
   return (
-    <RP.Root open={open} onOpenChange={onOpenChange}>
+    <RP.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <RP.Trigger asChild>{trigger}</RP.Trigger>
       <RP.Portal>
         <RP.Content

@@ -91,6 +91,15 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const endRef = useRef<HTMLDivElement>(null)
 
+  // Scroll-position tracking that drives the jump-to-latest control: whether the
+  // reader is pinned to the bottom, and how many messages arrived while they
+  // weren't. `atBottomRef` mirrors the state for use inside the new-message effect
+  // without making it a dependency.
+  const [atBottom, setAtBottom] = useState(true)
+  const atBottomRef = useRef(true)
+  const [unseen, setUnseen] = useState(0)
+  const prevLen = useRef(0)
+
   // Everyone else in the call is taggable. Memoized so the picker filter is cheap.
   const participants = useParticipants()
   const mentionTargets = useMemo<MentionTarget[]>(
@@ -140,9 +149,21 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     })
   }
 
+  // New-message behaviour: pin to the latest when the reader is already at the
+  // bottom, or when the message is mine (I just sent it). Otherwise leave them
+  // where they are and stack the arrivals into the unseen counter.
   useEffect(() => {
-    endRef.current?.scrollIntoView({ block: 'end' })
-  }, [items.length])
+    const grew = items.length - prevLen.current
+    prevLen.current = items.length
+    if (grew <= 0) return
+    const last = items[items.length - 1]
+    if (atBottomRef.current || last?.isLocal) {
+      endRef.current?.scrollIntoView({ block: 'end' })
+      setUnseen(0)
+    } else {
+      setUnseen((u) => u + grew)
+    }
+  }, [items.length, items])
 
   // Keep the latest message + composer above the on-screen keyboard on mobile.
   // scrollIntoView-on-send doesn't fire when the keyboard *opens* (a visualViewport
@@ -275,6 +296,25 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     el.classList.add('mn-flash')
   }, [])
 
+  // Track how close the reader is to the latest message. ~80px of slack counts as
+  // "at the bottom" so a tiny manual nudge doesn't flip the control on.
+  const onListScroll = () => {
+    const el = listRef.current
+    if (!el) return
+    const bottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    atBottomRef.current = bottom
+    setAtBottom(bottom)
+    if (bottom) setUnseen(0)
+  }
+
+  const scrollToBottom = () => {
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    endRef.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'end' })
+    atBottomRef.current = true
+    setAtBottom(true)
+    setUnseen(0)
+  }
+
   function onPickFiles(files: FileList | null) {
     if (!files) return
     for (const f of Array.from(files)) {
@@ -295,26 +335,58 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       </p>
 
       {pinned.length > 0 && (
-        <div className="shrink-0 space-y-1 border-b border-line bg-sunken/60 px-3 py-2">
+        <div className="shrink-0 space-y-1.5 border-b border-line px-3 py-2">
           {pinned.map((p) => (
-            <PinnedRow key={p.id} pin={p} onUnpin={() => togglePin({ kind: 'text', id: p.id, fromName: p.name, text: p.text, timestamp: p.timestamp, fromIdentity: '', isLocal: false })} />
+            <PinnedRow
+              key={p.id}
+              pin={p}
+              onJump={() => jumpToMessage(p.id)}
+              onUnpin={() => togglePin({ kind: 'text', id: p.id, fromName: p.name, text: p.text, timestamp: p.timestamp, fromIdentity: '', isLocal: false })}
+            />
           ))}
         </div>
       )}
 
-      <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <MessageList
-          items={items}
-          reactions={reactions}
-          pinned={pinned}
-          myIdentity={myIdentity}
-          onReact={toggleReaction}
-          onReply={startReply}
-          onTogglePin={togglePin}
-          onEdit={editMessage}
-          onJumpTo={jumpToMessage}
-        />
-        <div ref={endRef} />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+          <MessageList
+            items={items}
+            reactions={reactions}
+            pinned={pinned}
+            myIdentity={myIdentity}
+            onReact={toggleReaction}
+            onReply={startReply}
+            onTogglePin={togglePin}
+            onEdit={editMessage}
+            onJumpTo={jumpToMessage}
+          />
+          <div ref={endRef} />
+        </div>
+
+        {/* Jump-to-latest: shown once the reader scrolls up off the bottom. Carries
+            an unseen-message count so they know whether catching up is worth it. */}
+        {!atBottom && (
+          <button
+            type="button"
+            onClick={scrollToBottom}
+            aria-label={
+              unseen > 0
+                ? `Scroll to latest — ${unseen} new ${unseen === 1 ? 'message' : 'messages'}`
+                : 'Scroll to latest messages'
+            }
+            className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-raised py-1.5 pl-2.5 pr-3 text-xs font-medium text-ink shadow-pop transition-colors hover:bg-sunken [&_svg]:size-4"
+          >
+            {unseen > 0 && (
+              <span className="rounded-full bg-accent px-1.5 py-0.5 text-[11px] font-semibold leading-none text-accent-ink tabular-nums">
+                {unseen > 99 ? '99+' : unseen}
+              </span>
+            )}
+            <span>{unseen > 0 ? 'new' : 'Latest'}</span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9l6 6 6-6" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {error && (
@@ -572,6 +644,9 @@ function MessageRow({
   // Touch action model: swipe-left a bubble to reply (the common case), long-press
   // for the rest via an anchored popover. Desktop keeps the hover toolbar.
   const [actionsOpen, setActionsOpen] = useState(false)
+  // Touch reaction picker rides a bottom Sheet (full width + scrollable + scrim)
+  // rather than the cramped long-press popover — the emoji grid needs the room.
+  const [reactOpen, setReactOpen] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
   const press = useRef<{ timer?: number; x: number; y: number; moved: boolean; swiping: boolean }>({
     x: 0,
@@ -623,8 +698,12 @@ function MessageRow({
   const react = (emoji: string) => {
     onReact(emoji)
     setPickerOpen(false)
+    setReactOpen(false)
     setActionsOpen(false)
   }
+  // Highlight the row whose action menu / reaction sheet / editor is open, so it's
+  // unambiguous which message a tapped action applies to.
+  const actionsActive = actionsOpen || reactOpen
   const startEdit = () => {
     if (item.kind !== 'text') return
     setEditDraft(item.text)
@@ -643,9 +722,11 @@ function MessageRow({
       onPointerLeave={endPress}
       onContextMenu={narrow ? (e) => e.preventDefault() : undefined}
       className={cn(
-        'group relative flex gap-2.5 rounded-field',
+        'group relative flex gap-2.5 rounded-field transition-colors',
         grouped ? 'mt-0.5' : 'mt-3 first:mt-0',
         mentionsMe && '-mx-1.5 border-l-2 border-accent bg-accent-soft/40 py-1 pl-2 pr-1.5',
+        // Active-action highlight wins over the mention tint so the target is clear.
+        actionsActive && '-mx-1.5 bg-sunken px-1.5 py-1 ring-2 ring-accent',
       )}
     >
       {/* Reply affordance revealed as you swipe the bubble left (touch). */}
@@ -830,64 +911,66 @@ function MessageRow({
 
       {/* TOUCH: long-press opens an anchored popover for the secondary actions
           (Reply lives on the swipe gesture, so it's intentionally absent here).
-          Radix collision-detection flips/shifts it so it never clips at the panel
-          edge — including at the "peek" snap height. The trigger is a zero-size
-          anchor pinned to the bubble; the long-press toggles `actionsOpen`. */}
+          It's MODAL so a swipe inside it can't reach the rows behind it, and Radix
+          collision-detection flips/shifts it so it never clips at the panel edge.
+          The trigger is a zero-size anchor pinned to the bubble; the long-press
+          toggles `actionsOpen`. "Add reaction" hands off to a full bottom Sheet —
+          the emoji grid needs more room than this little menu has. */}
       {narrow && (
-        <Popover
-          open={actionsOpen}
-          onOpenChange={(o) => {
-            setActionsOpen(o)
-            if (!o) setPickerOpen(false)
-          }}
-          side="top"
-          align="end"
-          trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
-        >
-          <div className="flex flex-col">
-            {pickerOpen ? (
-              <EmojiPicker onSelect={react} />
-            ) : (
-              <>
-                <button
-                  type="button"
-                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
-                  onClick={() => setPickerOpen(true)}
-                >
-                  <ReactionIcon />
-                  Add reaction
-                </button>
-                {onEdit && (
-                  <button
-                    type="button"
-                    className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
-                    onClick={() => {
-                      setActionsOpen(false)
-                      startEdit()
-                    }}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 20h9" />
-                      <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                    </svg>
-                    Edit message
-                  </button>
-                )}
+        <>
+          <Popover
+            open={actionsOpen}
+            onOpenChange={setActionsOpen}
+            modal
+            side="top"
+            align="end"
+            trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
+          >
+            <div className="flex flex-col">
+              <button
+                type="button"
+                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                onClick={() => {
+                  setActionsOpen(false)
+                  setReactOpen(true)
+                }}
+              >
+                <ReactionIcon />
+                Add reaction
+              </button>
+              {onEdit && (
                 <button
                   type="button"
                   className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
                   onClick={() => {
                     setActionsOpen(false)
-                    onTogglePin()
+                    startEdit()
                   }}
                 >
-                  <PinIcon />
-                  {pinned ? 'Unpin' : 'Pin'}
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                  Edit message
                 </button>
-              </>
-            )}
-          </div>
-        </Popover>
+              )}
+              <button
+                type="button"
+                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                onClick={() => {
+                  setActionsOpen(false)
+                  onTogglePin()
+                }}
+              >
+                <PinIcon />
+                {pinned ? 'Unpin' : 'Pin'}
+              </button>
+            </div>
+          </Popover>
+          <Sheet open={reactOpen} onOpenChange={setReactOpen} side="bottom" title="Add reaction">
+            <EmojiPicker onSelect={react} />
+          </Sheet>
+        </>
       )}
     </div>
   )
@@ -959,23 +1042,29 @@ function ReactionChips({
   )
 }
 
-/** A row in the pinned bar at the top of chat. */
-function PinnedRow({ pin, onUnpin }: { pin: PinnedMessage; onUnpin: () => void }) {
+/** A row in the pinned bar at the top of chat. Mirrors the reply-quote card
+ *  (accent rail + label + preview) so it reads as part of the app, and the body
+ *  is a button that jumps to the original message — same affordance as tapping a
+ *  reply's quote. */
+function PinnedRow({ pin, onJump, onUnpin }: { pin: PinnedMessage; onJump: () => void; onUnpin: () => void }) {
   return (
-    <div className="flex items-center gap-2">
-      <PinIcon className="size-3.5 shrink-0 text-accent" />
-      <div className="min-w-0 flex-1 text-xs">
-        <span className="font-medium text-ink">{pin.name}</span>
-        <span className="ml-1.5 text-ink-subtle">{pin.text}</span>
-      </div>
+    <div className="flex items-stretch gap-1 overflow-hidden rounded-field border border-line bg-raised">
       <button
         type="button"
-        onClick={onUnpin}
-        aria-label="Unpin message"
-        className="shrink-0 text-ink-subtle hover:text-ink [&_svg]:size-3.5"
+        onClick={onJump}
+        aria-label={`Go to the pinned message from ${pin.name}`}
+        className="flex min-w-0 flex-1 items-stretch gap-2 py-1.5 pl-2 text-left transition-colors hover:bg-sunken"
       >
-        <CloseIcon />
+        <span aria-hidden className="w-0.5 shrink-0 self-stretch rounded-full bg-accent" />
+        <div className="min-w-0 flex-1">
+          <p className="flex items-center gap-1 text-[11px] font-medium text-accent [&_svg]:size-3">
+            <PinIcon />
+            Pinned · {pin.name}
+          </p>
+          <p className="truncate text-xs text-ink">{pin.text}</p>
+        </div>
       </button>
+      <IconButton size="sm" tone="neutral" label="Unpin message" icon={<CloseIcon />} onClick={onUnpin} className="self-center" />
     </div>
   )
 }
