@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -127,37 +127,95 @@ function gridCapacity(
 }
 
 /**
- * Largest tile size that fits `n` tiles of a fixed aspect ratio into a w×h box,
- * trying every column count and keeping the one that maximizes tile size. This is
- * the standard video-grid fit (Meet/Teams/Zoom): tiles hold their aspect and never
- * stretch to the cell — the block is centered with letterbox gutters instead. Fixes
- * the "2 people on a wide desktop render as portrait" bug (tiles used to fill 1fr
- * cells, so two half-width full-height columns came out taller than wide).
+ * Snap a raw frame aspect (w/h) to a tidy bucket so one odd stream can't make a
+ * grid row absurdly tall or wide. Portrait phones clamp to 3:4 (NOT raw 9:16 —
+ * that blows out row height), wide cams to 16:9, near-square to 1:1. Mirrors the
+ * AWS IVS portrait/square/landscape model. Unknown/camera-off tiles default to
+ * 16:9 upstream so the grid stays calm until a real frame arrives.
  */
-function fitTiles(
+function bucketAspect(ratio: number): number {
+  if (ratio <= 0.85) return 3 / 4
+  if (ratio >= 1.2) return 16 / 9
+  return 1
+}
+
+/**
+ * Split an ORDERED aspect list into `rows` contiguous groups, balancing the summed
+ * aspect per row so rows come out near-equal width. Contiguous (never reorders) so
+ * tile order — and thus paging — stays stable. Each remaining row is guaranteed at
+ * least one tile. Greedy cumulative-threshold split; ample for a page's worth.
+ */
+function balancedRows(aspects: number[], rows: number): number[][] {
+  const r = Math.min(rows, aspects.length)
+  if (r <= 1) return [aspects.slice()]
+  const total = aspects.reduce((s, a) => s + a, 0)
+  const out: number[][] = []
+  let cur: number[] = []
+  let acc = 0
+  for (let i = 0; i < aspects.length; i++) {
+    cur.push(aspects[i])
+    acc += aspects[i]
+    const rowsDone = out.length
+    const tilesLeft = aspects.length - i - 1
+    const rowsLeft = r - rowsDone - 1
+    // Close the row once it crosses its share of the total, but only while there
+    // are still enough tiles to give every remaining row at least one.
+    if (rowsDone < r - 1 && acc >= (total * (rowsDone + 1)) / r && tilesLeft >= rowsLeft) {
+      out.push(cur)
+      cur = []
+      acc = 0
+    }
+  }
+  if (cur.length) out.push(cur)
+  return out
+}
+
+/**
+ * Mixed-orientation grid packer (Google Meet "dynamic layouts" model). Lays `n`
+ * tiles of VARYING aspect into justified equal-width rows, picking the row count
+ * that maximizes the smallest tile (legibility). Each row is scaled to fill the
+ * width; if the stack would overflow the height it's scaled down uniformly and
+ * centered — so it always fits without scrolling. Returns per-tile {w,h} grouped
+ * by row, in the original (contiguous) order. Replaces the old single-aspect fit:
+ * a portrait phone feed now gets a portrait tile beside a laptop's 16:9, instead
+ * of being center-cropped into a shared 16:9 cell.
+ */
+function fitMixedRows(
   width: number,
   height: number,
-  n: number,
+  aspects: number[],
   gap: number,
-  aspect: number,
-): { w: number; h: number } {
-  let best = { w: 0, h: 0 }
-  for (let cols = 1; cols <= n; cols++) {
-    const rows = Math.ceil(n / cols)
-    const cw = (width - gap * (cols - 1)) / cols
-    const ch = (height - gap * (rows - 1)) / rows
-    if (cw <= 0 || ch <= 0) continue
-    // Fit the tile to the cell at the target aspect — width-bound first, then
-    // clamp to the cell height if that overflowed.
-    let w = cw
-    let h = w / aspect
-    if (h > ch) {
-      h = ch
-      w = h * aspect
-    }
-    if (w > best.w) best = { w, h }
+): { w: number; h: number }[][] {
+  const n = aspects.length
+  if (n === 0 || width <= 0 || height <= 0) return []
+  let best: { score: number; rows: { w: number; h: number }[][] } = { score: -1, rows: [] }
+  for (let R = 1; R <= n; R++) {
+    const groups = balancedRows(aspects, R)
+    const rr = groups.length
+    // Row height that fills the width at this row's combined aspect.
+    const rowH = groups.map((g) => {
+      const sum = g.reduce((s, a) => s + a, 0)
+      return (width - gap * (g.length - 1)) / sum
+    })
+    if (rowH.some((h) => h <= 0)) continue
+    // Scale rows to the height left AFTER the inter-row gaps — gaps are fixed, so
+    // they must come out of the budget first or the stack overflows by a few px.
+    const sumH = rowH.reduce((s, h) => s + h, 0)
+    const availH = height - gap * (rr - 1)
+    if (availH <= 0) continue
+    const scale = sumH > availH ? availH / sumH : 1
+    const sized = groups.map((g, ri) => {
+      const h = rowH[ri] * scale
+      return g.map((a) => ({ w: h * a, h }))
+    })
+    // Score by the smallest tile (legibility). R ascends, so a later (taller) row
+    // count must beat the current best by a clear margin to win — otherwise we keep
+    // the wider, fewer-row layout, matching the Zoom/Meet desktop norm (a 1-on-1
+    // sits side-by-side, not stacked, on a near-tie).
+    const minH = Math.min(...rowH) * scale
+    if (minH > best.score * 1.05) best = { score: minH, rows: sized }
   }
-  return best
+  return best.rows
 }
 
 export function Stage() {
@@ -185,7 +243,11 @@ export function Stage() {
   const screenShare = tracks.some((t) => t.source === Track.Source.ScreenShare)
   const phone1on1 = coarse && tracks.length === 2 && !screenShare
 
-  if ((layout === 'grid' && !phone1on1) || tracks.length <= 1) {
+  // A screen share always claims the spotlight (content fills the stage, people
+  // collapse to a filmstrip) — the Meet/Zoom/Teams convention. Forcing it out of the
+  // grid fixes the "share is just another equal tile, pillarboxed into 16:9/3:4" look:
+  // even in grid layout, sharing routes through the focus layout below.
+  if ((layout === 'grid' && !phone1on1 && !screenShare) || tracks.length <= 1) {
     // "Hide self view" drops your own camera tile from the grid too (it only hid
     // the floating self-card in speaker layout before). Keep it if it's the only
     // tile, so the grid never goes empty.
@@ -206,7 +268,7 @@ export function Stage() {
     <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-2 sm:p-3">
       <div className="min-h-0 flex-1">{focus && <Tile trackRef={focus} fill />}</div>
 
-      {layout === 'speaker' && filmstrip.length > 0 && (
+      {(layout === 'speaker' || screenShare) && filmstrip.length > 0 && (
         <div className="flex h-24 shrink-0 gap-3 overflow-x-auto sm:h-28">
           {filmstrip.map((ref) => (
             <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-video h-full shrink-0">
@@ -269,13 +331,28 @@ function GridStage({
   const shown = ordered.slice(start, start + perPage)
   const paged = pageCount > 1
 
-  // Fixed-aspect tile fit (Meet/Teams/Zoom). Phones favor portrait tiles (front
-  // cameras are portrait); desktop favors 16:9. The block is centered, so a sparse
-  // grid (e.g. 2 people) sits in the middle with gutters instead of stretching.
+  // Per-publisher aspect (Meet "dynamic layouts"): each tile takes its real frame
+  // orientation, not a viewer-device guess — so a portrait phone feed gets a
+  // portrait tile beside a laptop's 16:9 instead of being center-cropped into a
+  // shared cell. Tiles report their video's intrinsic ratio up; unknown/camera-off
+  // tiles default to 16:9 so the grid stays calm until a frame lands.
+  const [aspects, setAspects] = useState<Record<string, number>>({})
+  const reportAspect = useCallback((key: string, ratio: number) => {
+    setAspects((prev) => {
+      if (prev[key] && Math.abs(prev[key] - ratio) < 0.02) return prev
+      return { ...prev, [key]: ratio }
+    })
+  }, [])
+
   const gap = coarse ? 8 : 12
-  const aspect = coarse ? 3 / 4 : 16 / 9
   const measured = size.width > 2 && size.height > 2
-  const tile = measured ? fitTiles(size.width, size.height, shown.length, gap, aspect) : null
+  // Snap to buckets at pack time (raw ratios stored) so a stream nudging across a
+  // boundary doesn't thrash the layout.
+  const rows = useMemo(() => {
+    if (!measured) return null
+    const arr = shown.map((t) => bucketAspect(aspects[tileKey(t)] ?? 16 / 9))
+    return fitMixedRows(size.width, size.height, arr, gap)
+  }, [measured, shown, aspects, size.width, size.height, gap])
 
   // If someone is speaking on a page you're not looking at, offer a one-tap jump
   // (no auto-jump — that's jarring). Manual + clearly labelled.
@@ -285,21 +362,35 @@ function GridStage({
   }, [ordered, perPage])
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
+  // Flatten the packer's per-row sizes back onto the ordered tracks. balancedRows
+  // is contiguous, so a single walking index re-pairs sizes with tiles in order.
+  const rowTiles = useMemo(() => {
+    if (!rows) return null
+    let i = 0
+    return rows.map((row) => row.map((cell) => ({ tref: shown[i++], ...cell })))
+  }, [rows, shown])
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
       <div
         ref={ref}
-        className="flex min-h-0 flex-1 flex-wrap content-center justify-center gap-2 sm:gap-3"
+        className="flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2 sm:gap-3"
       >
-        {shown.map((tref) => (
-          <div
-            key={tileKey(tref)}
-            className={cn('min-h-0', !tile && 'aspect-video w-full max-w-3xl')}
-            style={tile ? { width: tile.w, height: tile.h } : undefined}
-          >
-            <Tile trackRef={tref} fill />
-          </div>
-        ))}
+        {rowTiles
+          ? rowTiles.map((row, ri) => (
+              <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
+                {row.map(({ tref, w, h }) => (
+                  <div key={tileKey(tref)} className="min-h-0" style={{ width: w, height: h }}>
+                    <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} />
+                  </div>
+                ))}
+              </div>
+            ))
+          : shown.map((tref) => (
+              <div key={tileKey(tref)} className="min-h-0 aspect-video w-full max-w-3xl">
+                <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} />
+              </div>
+            ))}
       </div>
 
       {/* Paged-grid navigation. Arrows live on the left/right EDGES, vertically
@@ -430,7 +521,17 @@ function SpeakingBars() {
   )
 }
 
-function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholder; fill?: boolean }) {
+function Tile({
+  trackRef,
+  fill = false,
+  onAspect,
+}: {
+  trackRef: TrackReferenceOrPlaceholder
+  fill?: boolean
+  /** Report the video's real intrinsic aspect (w/h) up to the grid packer. Only
+   *  the mixed-orientation grid passes this; spotlight/filmstrip/self ignore it. */
+  onAspect?: (ratio: number) => void
+}) {
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
   const { localParticipant } = useLocalParticipant()
@@ -497,6 +598,40 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
   }
   const cancelPress = () => window.clearTimeout(pressTimer.current)
 
+  // Read the video's intrinsic aspect off the <video> element and report it to the
+  // grid packer. 'resize' fires when the publisher rotates their phone mid-call, so
+  // the tile re-orients live; rAF retries only until the element mounts.
+  const tileRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!onAspect || !hasVideo) return
+    const root = tileRef.current
+    if (!root) return
+    let raf = 0
+    let video: HTMLVideoElement | null = null
+    const read = () => {
+      if (video && video.videoWidth && video.videoHeight) {
+        onAspect(video.videoWidth / video.videoHeight)
+      }
+    }
+    const attach = () => {
+      const v = root.querySelector('video')
+      if (v) {
+        video = v
+        v.addEventListener('resize', read)
+        v.addEventListener('loadedmetadata', read)
+        read()
+      } else {
+        raf = requestAnimationFrame(attach)
+      }
+    }
+    attach()
+    return () => {
+      cancelAnimationFrame(raf)
+      video?.removeEventListener('resize', read)
+      video?.removeEventListener('loadedmetadata', read)
+    }
+  }, [onAspect, hasVideo])
+
   const ariaLabel = tileLabel({
     name,
     isLocal: p.isLocal,
@@ -524,6 +659,7 @@ function Tile({ trackRef, fill = false }: { trackRef: TrackReferenceOrPlaceholde
 
   return (
     <div
+      ref={tileRef}
       // Double-tap (or long-press) a tile to pin it; single tap bubbles
       // to the stage chrome toggle on mobile. Mirrors Zoom/Telegram/Discord.
       // Also a labelled, focusable group so screen-reader + keyboard users get

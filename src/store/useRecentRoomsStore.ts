@@ -19,6 +19,10 @@ export interface RecentRoom {
 
 const KEY = 'mn.recentRooms'
 const MAX = 6
+// Recent calls self-expire after 30 days of no rejoin (WhatsApp/iOS norm: a bounded
+// recents list, oldest dropped). Each rejoin refreshes `ts`, so an active call's slug
+// keeps its place; a link no one has touched in a month falls off on the next load.
+const TTL_MS = 30 * 24 * 60 * 60 * 1000
 
 function load(): RecentRoom[] {
   try {
@@ -26,10 +30,17 @@ function load(): RecentRoom[] {
     if (!raw) return []
     const arr: unknown = JSON.parse(raw)
     if (!Array.isArray(arr)) return []
-    return arr.filter(
+    const fresh = Date.now() - TTL_MS
+    const rooms = arr.filter(
       (r): r is RecentRoom =>
-        !!r && typeof (r as RecentRoom).slug === 'string' && typeof (r as RecentRoom).ts === 'number',
+        !!r &&
+        typeof (r as RecentRoom).slug === 'string' &&
+        typeof (r as RecentRoom).ts === 'number' &&
+        (r as RecentRoom).ts >= fresh,
     )
+    // Persist the prune so expired entries don't linger in storage.
+    if (rooms.length !== arr.length) save(rooms)
+    return rooms
   } catch {
     return []
   }

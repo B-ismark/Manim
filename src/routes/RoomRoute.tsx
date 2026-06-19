@@ -4,7 +4,7 @@ import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
-import { knock, knockStatus, LIVEKIT_URL } from '@/lib/orchestrator'
+import { knock, knockStatus, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
 import { supabase } from '@/lib/supabase'
 import { parseRoomHash } from '@/lib/roomLink'
 import { toast } from '@/store/useToastStore'
@@ -115,6 +115,7 @@ export function RoomRoute() {
   }, [token, setRoomToken])
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [expired, setExpired] = useState(false)
   const [waitingId, setWaitingId] = useState<string | null>(null)
 
   const handleJoin = useCallback(async () => {
@@ -152,6 +153,13 @@ export function RoomRoute() {
         }
         return
       } catch (e) {
+        // A dead invite link is definitive — no retry, no generic error toast. Show
+        // the dedicated "link expired" screen that tells the user what to do next.
+        if (e instanceof ApiError && e.code === 'link_expired') {
+          setExpired(true)
+          setConnecting(false)
+          return
+        }
         const raw = e instanceof Error ? e.message : 'Failed to join'
         if (isTransientJoinError(raw) && attempt < JOIN_MAX_ATTEMPTS) {
           // Stay on the JoiningScreen (connecting && !error) and tell the user we're
@@ -210,6 +218,7 @@ export function RoomRoute() {
       setConnecting(false)
       setWaitingId(null)
       setError(null)
+      setExpired(false)
     }
     if (autojoin && displayName && joinedFor.current !== room) {
       joinedFor.current = room
@@ -250,6 +259,10 @@ export function RoomRoute() {
     )
   }
 
+  if (expired) {
+    return <ExpiredLink room={room} onHome={() => navigate('/')} />
+  }
+
   if (waitingId) {
     return <WaitingRoom room={room} onCancel={leave} />
   }
@@ -274,6 +287,37 @@ export function RoomRoute() {
         </div>
       )}
     </div>
+  )
+}
+
+/**
+ * Dead-end screen for an expired invite link. A link with no activity for 30 days
+ * is retired server-side (see core.mjs LINK_TTL_MS), so rather than silently spawn a
+ * fresh room under the same slug we land here and tell the user plainly what
+ * happened and what to do: start a new meeting (the old slug stays retired) and ask
+ * whoever shared it for a current link.
+ */
+function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
+  return (
+    <main className="grid min-h-dvh place-items-center p-4">
+      <Island pad="lg" className="w-full max-w-sm text-center">
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-sunken text-ink-muted [&_svg]:size-6">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </span>
+        <h1 className="mt-4 text-lg font-semibold">This link has expired</h1>
+        <p className="mt-1 text-sm text-ink-muted">
+          The invite for <span className="font-medium text-ink">{prettyRoom(room)}</span> hasn't been
+          used in a while, so it's no longer active. Start a new meeting and share its fresh link — or
+          ask whoever invited you for a current one.
+        </p>
+        <Button variant="accent" className="mt-5" onClick={onHome}>
+          Start a new meeting
+        </Button>
+      </Island>
+    </main>
   )
 }
 

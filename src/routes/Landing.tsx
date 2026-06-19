@@ -127,8 +127,7 @@ export function Landing() {
         )}
 
         <SetupBanner />
-        <OtherDeviceMeetings onJoin={goTo} />
-        <RecentMeetings onJoin={goTo} />
+        <LiveAndRecent onJoin={goTo} />
 
         <Island pad="none" className="w-full p-5 sm:p-6">
           <form onSubmit={onJoin} className="flex flex-col gap-3">
@@ -163,9 +162,31 @@ export function Landing() {
   )
 }
 
-/** Quick-join meetings the signed-in user already has open on another device. */
-function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string, secrets: RoomSecrets) => void }) {
+/**
+ * The two quick-join lists, sharing one presence read so they can't double-list the
+ * same room: a call live on another device shows ONLY under "On your other devices"
+ * (live, actionable now), and is suppressed from "Recent calls" (where it'd be a
+ * stale duplicate). Recents still shows everything else from this device's history.
+ */
+function LiveAndRecent({ onJoin }: { onJoin: (room: string, secrets: RoomSecrets) => void }) {
   const meetings = useOtherDeviceMeetings()
+  const activeSlugs = new Set(meetings.map((m) => m.room))
+  return (
+    <>
+      <OtherDeviceMeetings meetings={meetings} onJoin={onJoin} />
+      <RecentMeetings hideSlugs={activeSlugs} onJoin={onJoin} />
+    </>
+  )
+}
+
+/** Quick-join meetings the signed-in user already has open on another device. */
+function OtherDeviceMeetings({
+  meetings,
+  onJoin,
+}: {
+  meetings: ReturnType<typeof useOtherDeviceMeetings>
+  onJoin: (room: string, secrets: RoomSecrets) => void
+}) {
   if (meetings.length === 0) return null
   return (
     <Island pad="none" className="w-full p-3">
@@ -189,9 +210,18 @@ function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string, secrets: RoomS
 
 /** Rejoin a recently-exited meeting (stored locally). Mirrors OtherDeviceMeetings,
  *  but sourced from this device's history rather than live presence. */
-function RecentMeetings({ onJoin }: { onJoin: (room: string, secrets: RoomSecrets) => void }) {
-  const rooms = useRecentRoomsStore((s) => s.rooms)
+function RecentMeetings({
+  hideSlugs,
+  onJoin,
+}: {
+  hideSlugs: Set<string>
+  onJoin: (room: string, secrets: RoomSecrets) => void
+}) {
+  const allRooms = useRecentRoomsStore((s) => s.rooms)
   const remove = useRecentRoomsStore((s) => s.remove)
+  // Drop any room that's live on another device — it's already offered above as a
+  // "Join" (active), so listing it here too as "Rejoin" (stale) is just a duplicate.
+  const rooms = allRooms.filter((r) => !hideSlugs.has(r.slug))
   if (rooms.length === 0) return null
   return (
     <Island pad="none" className="w-full p-3">
