@@ -10,6 +10,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
+    "unmerged": "git fetch -q origin main && git log --oneline origin/main..HEAD || true",
     "test:unit": "vitest run",
     "test": "playwright test --project=desktop --grep-invert @heavy",
     "test:mobile": "playwright test --project=mobile --grep-invert @heavy",
