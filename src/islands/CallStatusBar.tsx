@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useConnectionQualityIndicator, useLocalParticipant } from '@livekit/components-react'
 import { ConnectionQuality as Quality } from 'livekit-client'
 import { LockIcon } from '@/components/icons'
@@ -38,6 +38,50 @@ function useCallTimer(): string {
   return formatElapsed(Math.floor((now - startedAt) / 1000))
 }
 
+/** Poor must hold before we warn. */
+const POOR_HOLD_MS = 5000
+
+/**
+ * Debounced weak-connection signal. `Lost` surfaces instantly (a real drop, not
+ * noise), but `Poor` must persist {@link POOR_HOLD_MS} before we warn — many
+ * regions (e.g. West Africa → the nearest LiveKit edge in Marseille, ~150ms RTT)
+ * sit at a latency that LiveKit buckets as `Poor` yet calls fine. Without the
+ * hold the chip flashes "Weak connection" at a perfectly usable baseline.
+ * Recovery clears the warning immediately.
+ */
+function useDebouncedPoor(quality: Quality): boolean {
+  const [warn, setWarn] = useState(false)
+  const timer = useRef<number | undefined>(undefined)
+
+  useEffect(() => {
+    const clear = () => {
+      if (timer.current !== undefined) {
+        window.clearTimeout(timer.current)
+        timer.current = undefined
+      }
+    }
+    if (quality === Quality.Lost) {
+      clear()
+      setWarn(true)
+    } else if (quality === Quality.Poor) {
+      // Start the hold only if one isn't already pending and we aren't warning.
+      if (timer.current === undefined && !warn) {
+        timer.current = window.setTimeout(() => {
+          timer.current = undefined
+          setWarn(true)
+        }, POOR_HOLD_MS)
+      }
+    } else {
+      // Good / Excellent / Unknown → recovered: drop the warning at once.
+      clear()
+      setWarn(false)
+    }
+    return clear
+  }, [quality, warn])
+
+  return warn
+}
+
 /**
  * Persistent status chip, top-center (WhatsApp/Telegram convention): the call
  * timer always, plus an end-to-end-encryption badge and weak-connection warning
@@ -46,7 +90,7 @@ function useCallTimer(): string {
 export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
   const { localParticipant } = useLocalParticipant()
   const { quality } = useConnectionQualityIndicator({ participant: localParticipant })
-  const poor = quality === Quality.Poor || quality === Quality.Lost
+  const poor = useDebouncedPoor(quality)
   const elapsed = useCallTimer()
 
   return (
