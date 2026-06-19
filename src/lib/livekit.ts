@@ -1,6 +1,5 @@
 import {
   type RoomOptions,
-  type VideoResolution,
   VideoPresets,
   ExternalE2EEKeyProvider,
 } from 'livekit-client'
@@ -9,16 +8,18 @@ import { isMobile } from '@/lib/device'
 
 /**
  * Room options tuned for high perceptual quality with graceful degradation:
- * simulcast + adaptiveStream + dynacast let each subscriber pull only the layer
- * it needs, while a network-driven LOD (useAdaptiveQuality) steps the *capture*
- * down only when the uplink is genuinely poor — so the default is "as sharp as
- * the device can do", not a permanent low cap.
+ * simulcast + adaptiveStream + dynacast let each subscriber pull only the layer it
+ * needs, and on a weak UPLINK WebRTC simply stops sending the higher simulcast
+ * layers (peers fall back to a lower one, and it climbs back automatically when
+ * bandwidth returns) — all without ever restarting the capture. So the default is
+ * "as sharp as the device can do", degrading on the wire rather than by re-acquiring
+ * the camera. (An earlier capture-restart LOD blacked the preview on/off as quality
+ * flapped Poor↔Good; simulcast covers the same need with no flicker.)
  *
  * Capture: 1080p on desktop, 720p on phones. We deliberately do NOT push 1080p
  * encode on a phone — sustained 1080p VP-encode thermally throttles the SoC and
  * drops frames (which reads as *worse* quality, plus banding), so 720p is the
- * real-world sweet spot for a portrait tile. Low-bandwidth mode (or a poor live
- * connection, via the LOD hook) drops this further.
+ * real-world sweet spot for a portrait tile. Low-bandwidth mode drops this further.
  *
  * Codec:
  * - Desktop, no E2EE → VP9 + VP8 backup. VP9 carries ~30-50% less bitrate at the
@@ -33,8 +34,8 @@ import { isMobile } from '@/lib/device'
  *
  * degradationPreference 'maintain-resolution': when the encoder is constrained it
  * sheds frame RATE before resolution, keeping faces/text crisp rather than going
- * blocky+discolored. Sustained constraint is handled higher up by the LOD hook,
- * which lowers the actual capture instead of letting WebRTC smear it.
+ * blocky+discolored — paired with simulcast layer-dropping for graceful uplink
+ * degradation that never touches the capture.
  *
  * Audio: DTX → near-zero bitrate during silence; RED → packet-loss resilience.
  * When an E2EE passphrase is supplied the room enables end-to-end encryption
@@ -89,31 +90,4 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   }
 
   return options
-}
-
-/** A network-quality LOD step: the level it applies at and the capture it forces. */
-export interface CaptureTier {
-  resolution: VideoResolution
-  label: string
-}
-
-/**
- * Capture ladder for the network-driven LOD (useAdaptiveQuality). `full` mirrors
- * the resolution roomOptions captured at, so restoring after a recovery lands the
- * device back at its native quality. `reduced`/`floor` are the degraded rungs the
- * hook restarts the camera at when the live connection goes Poor / Lost.
- */
-export function captureTiers(lowBandwidth: boolean): {
-  full: CaptureTier
-  reduced: CaptureTier
-  floor: CaptureTier
-} {
-  const full: CaptureTier = lowBandwidth
-    ? { resolution: VideoPresets.h360.resolution, label: '360p' }
-    : { resolution: VideoPresets.h720.resolution, label: '720p' }
-  return {
-    full,
-    reduced: { resolution: VideoPresets.h360.resolution, label: '360p' },
-    floor: { resolution: VideoPresets.h180.resolution, label: '180p' },
-  }
 }

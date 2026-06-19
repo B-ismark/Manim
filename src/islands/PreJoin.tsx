@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
-import { CameraIcon, CameraOffIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon } from '@/components/icons'
+import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
 import { useAppStore } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
+import { useShareLink } from '@/lib/useShareLink'
 import { APP_NAME } from '@/lib/legal'
 
 export interface PreJoinProps {
@@ -19,6 +20,7 @@ export interface PreJoinProps {
  */
 export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   const navigate = useNavigate()
+  const { copied, share } = useShareLink()
   const displayName = useAppStore((s) => s.displayName)
   const setDisplayName = useAppStore((s) => s.setDisplayName)
   const prejoin = useAppStore((s) => s.prejoin)
@@ -154,8 +156,22 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
           <ChevronLeftIcon />
           Back
         </button>
-        <p className="text-xs font-medium text-ink-subtle">Joining</p>
-        <h1 className="text-xl font-semibold">{prettyRoom(room)}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-ink-subtle">Joining</p>
+            <h1 className="truncate text-xl font-semibold">{prettyRoom(room)}</h1>
+          </div>
+          {/* Share the invite before joining — host can pull people in from the
+              green room. The current URL already carries the invite secret + E2EE
+              key in its #fragment, so it's the full link. */}
+          <IconButton
+            label={copied ? 'Invite link copied' : 'Share invite link'}
+            icon={copied ? <CheckIcon /> : <ShareIcon />}
+            tone="neutral"
+            className="mt-0.5 shrink-0"
+            onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
+          />
+        </div>
 
         {/* Portrait on touch (matches the in-call tiles), landscape on desktop.
             Height is capped (max-h) so the preview never pushes the name field and

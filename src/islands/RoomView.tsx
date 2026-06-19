@@ -22,7 +22,6 @@ import { useChatMessages } from '@/features/chat/useChatMessages'
 import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
-import { useAdaptiveQuality } from '@/features/effects/useAdaptiveQuality'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
@@ -31,12 +30,13 @@ import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
-import { useAppStore } from '@/store/useAppStore'
 import { Button } from '@/components/primitives'
 import { HandIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
 import { isTouch } from '@/lib/device'
 import { parseRoomHash } from '@/lib/roomLink'
+import { prettyRoom } from '@/lib/roomName'
+import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
@@ -178,11 +178,14 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Chat state is owned here (persists across the side panel opening/closing —
   // LiveKit chat history is transient and would otherwise reset on remount).
   const chat = useChatMessages()
-  const lowBandwidth = useAppStore((s) => s.prejoin.lowBandwidth)
   const blur = useBackgroundBlur()
   const noise = useNoiseFilter()
-  // Network-driven LOD: drop capture only when the live uplink is struggling.
-  useAdaptiveQuality(lowBandwidth)
+  // Uplink adaptation is left entirely to simulcast + dynacast + adaptiveStream (see
+  // roomOptions): on a weak uplink WebRTC simply stops sending the higher simulcast
+  // layers — subscribers pull a lower one and it auto-recovers — all WITHOUT touching
+  // the capture. An earlier capture-restart LOD (useAdaptiveQuality) re-acquired the
+  // camera on every Poor↔Good crossing, which blacked the preview on and off on a
+  // flaky network. Removed: the simulcast path degrades gracefully with no flicker.
   const connState = useConnectionState()
   const connected = connState === ConnectionState.Connected
   // Latches true on the first successful connect. Drives the initial joining cover
@@ -192,6 +195,21 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     if (connected) setEverConnected(true)
   }, [connected])
+
+  // Remember this room for one-tap rejoin from the home page, once we've actually
+  // connected (so a failed/abandoned join isn't recorded). Carries the link secrets
+  // so rejoin reconstructs the full invite.
+  const recordRecent = useRecentRoomsStore((s) => s.record)
+  useEffect(() => {
+    if (!everConnected || !roomSlug) return
+    recordRecent({
+      slug: roomSlug,
+      name: prettyRoom(roomSlug),
+      ts: Date.now(),
+      secret: linkSecrets.secret,
+      e2ee: linkSecrets.e2ee,
+    })
+  }, [everConnected, roomSlug, linkSecrets, recordRecent])
   // Desktop auto-PiP: float the app into a Document-PiP window when the tab is
   // backgrounded. Mobile PiP is manual only (a tile in More) — gesture-less
   // auto-PiP crashed mobile WebKit, so it was removed.

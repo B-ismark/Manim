@@ -44,7 +44,7 @@ import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
-import { useRoomStore } from '@/store/useRoomStore'
+import { useRoomStore, type GridSize } from '@/store/useRoomStore'
 import { useCameraToggle } from '@/lib/useCameraToggle'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
@@ -123,6 +123,10 @@ export function ControlBar({
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
+  const gridSize = useRoomStore((s) => s.gridSize)
+  const setGridSize = useRoomStore((s) => s.setGridSize)
+  const videosFirst = useRoomStore((s) => s.videosFirst)
+  const toggleVideosFirst = useRoomStore((s) => s.toggleVideosFirst)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const toggleSelfView = useRoomStore((s) => s.toggleSelfView)
   const audioOnly = useRoomStore((s) => s.audioOnly)
@@ -180,6 +184,12 @@ export function ControlBar({
       toast("Couldn't open Picture-in-Picture", 'warning')
     }
   }, [])
+
+  // Legible gallery-size steps differ by device: phones top out at 9 (2-wide),
+  // desktop at 16. 'Auto' = fit-to-viewport (the default).
+  const gallerySizes: { value: GridSize; label: string }[] = touch
+    ? [{ value: 'auto', label: 'Auto' }, { value: 2, label: '2' }, { value: 4, label: '4' }, { value: 9, label: '9' }]
+    : [{ value: 'auto', label: 'Auto' }, { value: 4, label: '4' }, { value: 9, label: '9' }, { value: 16, label: '16' }]
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
 
@@ -343,6 +353,34 @@ export function ControlBar({
         )}
       </div>
 
+      {/* View: gallery density (Teams "gallery size"). Only the grid has pages, so
+          picking a fixed size also switches to it; 'Auto' fits the viewport. */}
+      <div className="mt-2 border-t border-line pt-2">
+        <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Gallery size</p>
+        <div className="flex gap-1" role="group" aria-label="Gallery size — tiles per page">
+          {gallerySizes.map((opt) => {
+            const active = gridSize === opt.value
+            return (
+              <button
+                key={String(opt.value)}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  setGridSize(opt.value)
+                  if (opt.value !== 'auto') setLayout('grid')
+                }}
+                className={cn(
+                  'flex-1 rounded-control py-1.5 text-sm font-medium transition-colors',
+                  active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
+                )}
+              >
+                {opt.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
       {/* A short action list (Google model) — heavy controls live in dialogs, so
           the menu never needs to scroll. */}
       <div className="mt-1 flex flex-col border-t border-line pt-1">
@@ -368,6 +406,15 @@ export function ControlBar({
           active={selfViewHidden}
           onClick={() => {
             toggleSelfView()
+            closeMore()
+          }}
+        />
+        <MenuRow
+          icon={<CameraIcon />}
+          label={videosFirst ? 'Showing videos first' : 'Show videos first'}
+          active={videosFirst}
+          onClick={() => {
+            toggleVideosFirst()
             closeMore()
           }}
         />

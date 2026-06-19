@@ -16,7 +16,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
-import { useRoomStore } from '@/store/useRoomStore'
+import { useRoomStore, type GridSize } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
@@ -66,6 +66,13 @@ function tileLabel(opts: {
   return states.length ? `${who}, ${states.join(', ')}` : who
 }
 
+/** Does this track currently carry video (camera on, or a screen share)? Drives the
+ *  "videos first" ordering — avatar/camera-off tiles sort to the back. */
+function hasLiveVideo(t: TrackReferenceOrPlaceholder): boolean {
+  if (t.source === Track.Source.ScreenShare) return true
+  return !!t.publication && !t.publication.isMuted
+}
+
 /** Keep screen shares first, then your own camera, then everyone else — pins the
  *  share + your self-view to the first page and gives a stable tile order. */
 function tilePriority(t: TrackReferenceOrPlaceholder): number {
@@ -87,11 +94,25 @@ function gridCapacity(
   height: number,
   n: number,
   coarse: boolean,
+  sizePref: GridSize,
 ): { cols: number; perPage: number } {
   const gap = coarse ? 8 : 12
   const minW = coarse ? 132 : 200
   const minH = coarse ? 116 : 150
   const maxCols = coarse ? 2 : 4
+  // Hard cap so pagination ALWAYS engages for big rooms — independent of the
+  // measured height (a flex chain can briefly report an unbounded grid height,
+  // which would otherwise compute a perPage large enough to mount every tile).
+  // Also bounds mounted <video>/DOM per page (perf), the point of paging.
+  const MAX_PER_PAGE = coarse ? 9 : 20
+  // User-chosen density (Teams "gallery size"): the page is exactly the picked count
+  // — tiles shrink to fit, pager engages — clamped to what the device can legibly
+  // hold. This overrides the auto fit-to-viewport below.
+  if (sizePref !== 'auto') {
+    const perPage = Math.max(1, Math.min(sizePref, MAX_PER_PAGE))
+    const cols = Math.max(1, Math.min(maxCols, Math.ceil(Math.sqrt(perPage))))
+    return { cols, perPage }
+  }
   // Before the first measure, fall back to a sane page so we don't flash a huge
   // mount of every tile.
   if (width < 2 || height < 2) {
@@ -102,11 +123,6 @@ function gridCapacity(
   const bySqrt = Math.ceil(Math.sqrt(n))
   const cols = Math.max(1, Math.min(maxCols, byWidth, bySqrt))
   const rows = Math.max(1, Math.floor((height + gap) / (minH + gap)))
-  // Hard cap so pagination ALWAYS engages for big rooms — independent of the
-  // measured height (a flex chain can briefly report an unbounded grid height,
-  // which would otherwise compute a perPage large enough to mount every tile).
-  // Also bounds mounted <video>/DOM per page (perf), the point of paging.
-  const MAX_PER_PAGE = coarse ? 9 : 20
   return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) }
 }
 
@@ -222,18 +238,26 @@ function GridStage({
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
+  const gridSize = useRoomStore((s) => s.gridSize)
+  const videosFirst = useRoomStore((s) => s.videosFirst)
 
   // Stable order: screen share → self → others, then by key. Never reorders on
-  // speech (that would make tiles jump between pages mid-sentence).
+  // speech (that would make tiles jump between pages mid-sentence). When "videos
+  // first" is on, camera-on tiles sort ahead of avatars so the active video lands
+  // on page 1 — a coarser, far less frequent reshuffle than speaking would cause.
   const ordered = useMemo(
     () =>
-      [...tracks].sort(
-        (a, b) => tilePriority(a) - tilePriority(b) || tileKey(a).localeCompare(tileKey(b)),
-      ),
-    [tracks],
+      [...tracks].sort((a, b) => {
+        if (videosFirst) {
+          const d = Number(hasLiveVideo(b)) - Number(hasLiveVideo(a))
+          if (d) return d
+        }
+        return tilePriority(a) - tilePriority(b) || tileKey(a).localeCompare(tileKey(b))
+      }),
+    [tracks, videosFirst],
   )
 
-  const { perPage } = gridCapacity(size.width, size.height, ordered.length, coarse)
+  const { perPage } = gridCapacity(size.width, size.height, ordered.length, coarse, gridSize)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
   // Clamp the page if the count shrank (resize, people left) — keep it in range.
   const current = Math.min(page, pageCount - 1)
