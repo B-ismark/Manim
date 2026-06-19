@@ -15,6 +15,16 @@
  * (copy-link, native share, email invite) carries them for free. App-internal
  * navigations that DON'T have the URL in hand (merge, cross-device quick-join,
  * ringing) must thread these secrets through explicitly.
+ *
+ * KNOWN LIMITATION — no E2EE re-key on membership change (audit S4b). The media key
+ * is fixed for the room's lifetime; a participant who leaves (or is removed) retains
+ * it and could decode subsequent media if they captured ciphertext or rejoin with
+ * the link. Excluding them cryptographically needs a fresh key delivered ONLY to
+ * remaining members — which the SFU/data-channel can't carry without leaking it to
+ * the server E2EE defends against, so it requires a per-peer key-exchange protocol
+ * (e.g. X25519). Deliberately deferred: the operational controls (link gate +
+ * host-remove) cover the common case, and a hand-rolled re-key risks breaking E2EE
+ * outright. Build remove-only re-key (not every leave) if the threat model needs it.
  */
 export interface RoomSecrets {
   /** Join secret (#k) — server-enforced room access credential. */

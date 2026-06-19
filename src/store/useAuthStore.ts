@@ -35,6 +35,10 @@ interface AuthState {
   /** Google OAuth — one tap, carries the existing Google session across devices. */
   signInWithGoogle: () => Promise<void>
   signOut: () => Promise<void>
+  /** Permanently delete the signed-in account: a SECURITY DEFINER RPC removes the
+   *  `auth.users` row, which cascades to profiles/contacts/push_subscriptions
+   *  (see DEPLOY.md §4c). Then drops back to a guest session locally. */
+  deleteAccount: () => Promise<void>
   /** Upload a new profile photo (downscaled client-side) to Storage + the account row. */
   uploadAvatar: (file: File) => Promise<void>
   /** Clear the profile photo (Storage object + account row). */
@@ -78,6 +82,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
   signOut: async () => {
     if (supabase) await supabase.auth.signOut()
+    set({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
+  },
+
+  deleteAccount: async () => {
+    const sb = supabase
+    if (!sb || !get().signedIn) throw new Error('Sign in to delete your account.')
+    // The DB function deletes the caller's own auth.users row (auth.uid()); the
+    // on-delete-cascade FKs take profiles/contacts/push_subscriptions with it.
+    const { error } = await sb.rpc('delete_account')
+    if (error) throw new Error('Could not delete your account. Please contact support.')
+    // The user no longer exists — clear the (now invalid) session and drop to guest.
+    await sb.auth.signOut()
     set({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
   },
 

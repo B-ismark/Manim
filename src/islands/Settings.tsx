@@ -90,6 +90,7 @@ function SettingsContent() {
   const avatarUrl = useAuthStore((s) => s.avatarUrl)
   const uploadAvatar = useAuthStore((s) => s.uploadAvatar)
   const removeAvatar = useAuthStore((s) => s.removeAvatar)
+  const deleteAccount = useAuthStore((s) => s.deleteAccount)
   const notifSupported = typeof Notification !== 'undefined'
   const notifBlocked = notifSupported && Notification.permission === 'denied'
 
@@ -208,6 +209,64 @@ function SettingsContent() {
       <Section title="Appearance">
         <ThemeSwitcher />
       </Section>
+
+      {/* Account — self-serve deletion (the audit's L5). Signed-in only. */}
+      {signedIn && (
+        <Section title="Account">
+          <DeleteAccount onDelete={deleteAccount} />
+        </Section>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Self-serve account deletion. Inline two-step confirm (not a separate modal) so
+ * it works identically whether Settings is rendered as the desktop popover or the
+ * touch dialog — a nested portal modal would race the popover's auto-close.
+ */
+function DeleteAccount({ onDelete }: { onDelete: () => Promise<void> }) {
+  const [confirming, setConfirming] = useState(false)
+  const [busy, setBusy] = useState(false)
+
+  async function run() {
+    setBusy(true)
+    try {
+      await onDelete()
+      toast('Your account and data were deleted.', 'info')
+    } catch (ex) {
+      toast(ex instanceof Error ? ex.message : 'Could not delete your account.', 'danger')
+      setBusy(false)
+      setConfirming(false)
+    }
+  }
+
+  if (!confirming) {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <Button size="sm" variant="ghost" className="self-start !text-danger-text" onClick={() => setConfirming(true)}>
+          Delete account
+        </Button>
+        <p className="text-xs text-ink-subtle">
+          Permanently removes your profile, contacts, and notifications. Calls aren't recorded, so
+          there's no call history to delete.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-field bg-sunken p-3">
+      <p className="text-sm font-medium">Delete your account?</p>
+      <p className="text-xs text-ink-muted">This can't be undone.</p>
+      <div className="flex gap-2">
+        <Button size="sm" variant="danger" disabled={busy} onClick={() => void run()}>
+          {busy ? 'Deleting…' : 'Delete account'}
+        </Button>
+        <Button size="sm" variant="neutral" disabled={busy} onClick={() => setConfirming(false)}>
+          Cancel
+        </Button>
+      </div>
     </div>
   )
 }

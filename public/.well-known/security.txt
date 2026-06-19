@@ -1,0 +1,5 @@
+# Manim security contact (RFC 9116).
+# Update Contact + Expires before deploying, and keep Expires in the future.
+Contact: mailto:privacy@manim.app
+Expires: 2027-06-19T00:00:00.000Z
+Preferred-Languages: en

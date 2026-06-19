@@ -286,6 +286,13 @@ export function ParticipantsPanel() {
             Invite
           </Button>
         </form>
+        {/* Tell the user that entering an address causes us to process/email it
+            (the audit's L4 — disclose the third-party email processing). */}
+        <p className="mt-1.5 text-xs text-ink-subtle">
+          {canRing
+            ? "We'll email them an invite, or ring them if they have an account."
+            : "We'll email them an invite to join this call."}
+        </p>
         {canRing && (
           <button
             type="button"
