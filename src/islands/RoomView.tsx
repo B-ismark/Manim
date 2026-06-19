@@ -185,6 +185,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useAdaptiveQuality(lowBandwidth)
   const connState = useConnectionState()
   const connected = connState === ConnectionState.Connected
+  // Latches true on the first successful connect. Drives the initial joining cover
+  // (below): we cover until connected ONCE, then never again — so mid-call reconnects
+  // fall through to the ConnectionBanner and can't strand a full-screen cover.
+  const [everConnected, setEverConnected] = useState(false)
+  useEffect(() => {
+    if (connected) setEverConnected(true)
+  }, [connected])
   // Desktop auto-PiP: float the app into a Document-PiP window when the tab is
   // backgrounded. Mobile PiP is manual only (a tile in More) — gesture-less
   // auto-PiP crashed mobile WebKit, so it was removed.
@@ -325,10 +332,14 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     }
   }, [connected])
 
-  // Cover the initial connect with the joining screen (same label as RoomRoute's
-  // so the knock→connect handoff doesn't jump). Reconnects after that are handled
-  // by ConnectionBanner, not here.
-  if (connState === ConnectionState.Connecting) {
+  // Cover everything up to the FIRST connect with the joining screen (same label as
+  // RoomRoute's so the knock→connect handoff doesn't jump). Crucially this covers
+  // Disconnected too — on mount, before LiveKit's connect effect runs, the room
+  // reports Disconnected, and rendering the full call tree for that frame flashed the
+  // chrome/control-bar/stage in, then yanked it back to the cover when Connecting
+  // began. Gate on `everConnected` so reconnects AFTER the first connect fall through
+  // to ConnectionBanner instead (a stuck full-screen cover was a past-reverted bug).
+  if (!everConnected && connState !== ConnectionState.Connected) {
     return <JoiningScreen room={room.name || roomSlug} />
   }
 
