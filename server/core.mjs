@@ -23,6 +23,26 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // knock-status flips stale pending → expired; new knocks also prune by it.
 const KNOCK_TTL_MS = 5 * 60 * 1000
 
+// Link expiry. A link-shared room (one entered with an invite secret) is recorded
+// in durable KV on join and refreshed on every join; if no one joins for LINK_TTL,
+// the link is dead and the next knock is rejected. Without this a stale link silently
+// spawns a FRESH room under the same slug — the LiveKit room (and its metadata) is
+// garbage-collected minutes after it empties, so a 20-day-old link used to just
+// recreate the room and "work". Mirrors the Zoom/Meet norm: expire on inactivity,
+// extended by each join. Bare typed-name rooms (no secret) are unaffected.
+const LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000
+// Hold the record far past the active window so "expired" stays distinguishable from
+// "never existed" (an absent record = a brand-new room, which is allowed). An
+// untouched slug only frees for reuse after a year.
+const LINK_RECORD_TTL_S = 365 * 24 * 60 * 60
+
+/** The room-lifecycle KV namespace, or null when unbound (local dev / unprovisioned).
+ *  Degrades to a no-op exactly like the rate-limit bindings. */
+function roomKv(env) {
+  const kv = env?.ROOM_KV
+  return kv && typeof kv.get === 'function' && typeof kv.put === 'function' ? kv : null
+}
+
 /** SHA-256 hex of a string, via the Web Crypto API (available on Workers + Node). */
 async function sha256Hex(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)))
@@ -238,6 +258,30 @@ export async function handleKnock(env, body) {
     (e) => e.name === name && (e.deviceId || '') === (deviceId || '') && e.status === 'approved',
   )
 
+  // Link expiry (durable, KV-backed). Only link-shared rooms are governed; a room is
+  // "expired" only when it ALSO has no live participants (a long-running call isn't
+  // expired just because the last join was a while ago). An active room can't be
+  // dead, so skip the check when anyone is in it.
+  const kv = roomKv(env)
+  const linkRoom = kv && Boolean(secret)
+  if (linkRoom && participants.length === 0) {
+    let rec = null
+    try {
+      rec = await kv.get(`room:${room}`, 'json')
+    } catch {
+      rec = null
+    }
+    if (rec && Date.now() - (rec.lastJoinTs || 0) > LINK_TTL_MS) {
+      return {
+        status: 410,
+        body: {
+          error: 'This meeting link has expired. Start a new meeting to keep talking.',
+          code: 'link_expired',
+        },
+      }
+    }
+  }
+
   if (!isHost && !alreadyIn && flags.locked) {
     return { status: 403, body: { error: 'This room is locked by the host.' } }
   }
@@ -252,6 +296,21 @@ export async function handleKnock(env, body) {
     const ok = secret && (await sha256Hex(secret)) === flags.secretHash
     if (!ok) {
       return { status: 403, body: { error: 'This room needs its invite link — open the full link you were sent.' } }
+    }
+  }
+
+  // Past the gate → a legitimate entrant. Stamp the link's activity so it stays alive
+  // for another LINK_TTL window (createdAt is written once, the first time we see it).
+  if (linkRoom) {
+    try {
+      const prev = await kv.get(`room:${room}`, 'json')
+      await kv.put(
+        `room:${room}`,
+        JSON.stringify({ createdAt: prev?.createdAt ?? Date.now(), lastJoinTs: Date.now() }),
+        { expirationTtl: LINK_RECORD_TTL_S },
+      )
+    } catch {
+      /* KV write failed — non-fatal; joining still works, expiry just isn't refreshed */
     }
   }
 

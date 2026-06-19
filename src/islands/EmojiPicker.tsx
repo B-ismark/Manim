@@ -84,7 +84,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
       />
 
       {!results && groups.length > 0 && (
-        <div className="flex shrink-0 gap-0.5" role="tablist" aria-label="Emoji categories">
+        <div className="flex shrink-0 gap-1" role="tablist" aria-label="Emoji categories">
           {groups.map((g) => (
             <button
               key={g.group}

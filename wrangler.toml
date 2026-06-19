@@ -45,3 +45,19 @@ name = "KNOCK_RATELIMIT"
 type = "ratelimit"
 namespace_id = "1002"
 simple = { limit = 20, period = 60 }
+
+# Durable room-lifecycle store for invite-link expiry (server/core.mjs roomKv). A
+# link-shared room is stamped on join and retired after 30 days of no joins, so a
+# stale link can't silently recreate a fresh room under the same slug. The Worker
+# degrades to a no-op when this binding is absent (so the code is safe to ship before
+# you provision it), but expiry is NOT enforced until it's bound.
+#
+# TO ENABLE (one-time, then uncomment below + redeploy from main):
+#   wrangler kv namespace create ROOM_KV          # prints the real id
+#   wrangler kv namespace create ROOM_KV --preview # for `wrangler dev`
+# Paste the printed ids in place of the REPLACE_ME placeholders.
+#
+# [[kv_namespaces]]
+# binding = "ROOM_KV"
+# id = "REPLACE_ME_PROD_NAMESPACE_ID"
+# preview_id = "REPLACE_ME_PREVIEW_NAMESPACE_ID"

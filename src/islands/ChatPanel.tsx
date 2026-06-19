@@ -508,7 +508,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
         {/* Toolbar under a full-width input (Teams/Slack): options on the left, send
             on the right. Keeps every composer option while giving the textarea the
             whole width to type in. */}
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-1">
           <IconButton
             type="button"
             size="sm"
@@ -549,7 +549,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                 <IconButton type="button" size="sm" label="Add emoji" icon={<ReactionIcon />} active={emojiOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
               }
             >
-              <div className="w-72">
+              <div className="w-[22rem]">
                 <EmojiPicker
                   onSelect={(e) => {
                     insertEmoji(e)

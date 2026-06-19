@@ -4,6 +4,20 @@
   for join (knock), waiting-room admit, moderation, and room flags.
 */
 
+/** An error carrying the server's HTTP status + machine-readable `code`, so callers
+ *  can branch on a specific failure (e.g. an expired link) instead of string-matching
+ *  the human message. */
+export class ApiError extends Error {
+  status: number
+  code?: string
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
 async function postJson<T>(url: string, body: unknown, token?: string): Promise<T> {
   const headers: Record<string, string> = { 'content-type': 'application/json' }
   // Host endpoints authenticate by the caller's signed LiveKit token (Bearer),
@@ -11,8 +25,8 @@ async function postJson<T>(url: string, body: unknown, token?: string): Promise<
   if (token) headers.authorization = `Bearer ${token}`
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
   if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string }
-    throw new Error(data.error ?? `request failed (${res.status})`)
+    const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
+    throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code)
   }
   return (await res.json()) as T
 }
