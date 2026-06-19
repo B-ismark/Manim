@@ -26,3 +26,10 @@ Quick reference:
 - **Design decisions → check Mobbin** (Meet/Teams/Zoom/WhatsApp) before guessing.
 - A11y is gated (axe, light + dark); contrast tokens are oklch — compute real WCAG
   ratios when changing them (see QA-PLAYBOOK §3).
+
+## Branch hygiene — don't strand work
+Work landing on a feature branch but never reaching `main` is a recurring failure.
+- **Finish = merged.** When a task is done and gates pass, merge to `main` (fast-forward
+  or PR) and push. Don't leave the only copy on a feature branch.
+- Check before ending: `npm run unmerged` (lists commits on HEAD not yet on `origin/main`).
+- A `Stop` hook (`.claude/settings.json`) warns automatically when unmerged commits exist.
