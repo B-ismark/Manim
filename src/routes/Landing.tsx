@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Dialog, Island, Popover, Avatar } from '@/components/primitives'
-import { GoogleIcon, CameraIcon } from '@/components/icons'
+import { GoogleIcon, CameraIcon, CloseIcon } from '@/components/icons'
 import { SettingsLauncher } from '@/islands/Settings'
 import { ContactsLauncher } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
@@ -10,6 +10,7 @@ import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useAppStore } from '@/store/useAppStore'
 import { useInviteStore } from '@/store/useInviteStore'
+import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { toast } from '@/store/useToastStore'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
@@ -127,6 +128,7 @@ export function Landing() {
 
         <SetupBanner />
         <OtherDeviceMeetings onJoin={goTo} />
+        <RecentMeetings onJoin={goTo} />
 
         <Island pad="none" className="w-full p-5 sm:p-6">
           <form onSubmit={onJoin} className="flex flex-col gap-3">
@@ -178,6 +180,44 @@ function OtherDeviceMeetings({ onJoin }: { onJoin: (room: string, secrets: RoomS
             <Button variant="accent" size="sm" onClick={() => onJoin(m.room, { secret: m.secret, e2ee: m.e2ee })}>
               Join
             </Button>
+          </li>
+        ))}
+      </ul>
+    </Island>
+  )
+}
+
+/** Rejoin a recently-exited meeting (stored locally). Mirrors OtherDeviceMeetings,
+ *  but sourced from this device's history rather than live presence. */
+function RecentMeetings({ onJoin }: { onJoin: (room: string, secrets: RoomSecrets) => void }) {
+  const rooms = useRecentRoomsStore((s) => s.rooms)
+  const remove = useRecentRoomsStore((s) => s.remove)
+  if (rooms.length === 0) return null
+  return (
+    <Island pad="none" className="w-full p-3">
+      <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">Recent calls</p>
+      <ul className="flex flex-col gap-1.5">
+        {rooms.map((r) => (
+          <li key={r.slug} className="flex items-center gap-2">
+            <span className="grid size-8 shrink-0 place-items-center rounded-control bg-sunken text-ink-muted [&_svg]:size-4">
+              <CameraIcon />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.name}</span>
+            <Button
+              variant="accent"
+              size="sm"
+              onClick={() => onJoin(r.slug, { secret: r.secret, e2ee: r.e2ee })}
+            >
+              Rejoin
+            </Button>
+            <button
+              type="button"
+              aria-label={`Remove ${r.name} from recents`}
+              onClick={() => remove(r.slug)}
+              className="grid size-7 shrink-0 place-items-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink [&_svg]:size-3.5"
+            >
+              <CloseIcon />
+            </button>
           </li>
         ))}
       </ul>
