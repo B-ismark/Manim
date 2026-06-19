@@ -130,13 +130,14 @@ export const PinIcon = (p: P) => (
 
 export const SendIcon = (p: P) => (
   <svg {...base(p)}>
-    <path d="M4 12l16-7-7 16-2.5-6.5L4 12z" />
+    <path d="M22 2 11 13" />
+    <path d="M22 2 15 22l-4-9-9-4 20-7Z" />
   </svg>
 )
 
 export const AttachIcon = (p: P) => (
   <svg {...base(p)}>
-    <path d="M19 11l-7.5 7.5a4 4 0 0 1-5.7-5.7L13 5.5a2.7 2.7 0 0 1 3.8 3.8l-7.4 7.4a1.3 1.3 0 0 1-1.9-1.9L14 7.5" />
+    <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
   </svg>
 )
 
