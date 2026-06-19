@@ -52,12 +52,7 @@ simple = { limit = 20, period = 60 }
 # degrades to a no-op when this binding is absent (so the code is safe to ship before
 # you provision it), but expiry is NOT enforced until it's bound.
 #
-# TO ENABLE (one-time, then uncomment below + redeploy from main):
-#   wrangler kv namespace create ROOM_KV          # prints the real id
-#   wrangler kv namespace create ROOM_KV --preview # for `wrangler dev`
-# Paste the printed ids in place of the REPLACE_ME placeholders.
-#
-# [[kv_namespaces]]
-# binding = "ROOM_KV"
-# id = "REPLACE_ME_PROD_NAMESPACE_ID"
-# preview_id = "REPLACE_ME_PREVIEW_NAMESPACE_ID"
+[[kv_namespaces]]
+binding = "ROOM_KV"
+id = "aa044ac9f8024ef786813cb7995a1d2d"
+preview_id = "32f20a00b86d4eebadce9c0090ee8711"
