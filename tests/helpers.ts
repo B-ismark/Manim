@@ -21,17 +21,36 @@ export function attachErrorSink(page: Page): ErrorSink {
   return sink
 }
 
-/** Noise we tolerate (third-party / environmental, not app bugs). */
-const IGNORED_ERROR_RE =
-  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|net::ERR_|datachannel|publishing rejected|insertable streams|the user aborted a request|abort handler called|ConnectionError/i
+/** Truly environmental noise — third-party / browser chrome, never an app bug.
+ *  Always filtered, even in strict mode. */
+const ENV_NOISE_RE =
+  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called/i
 
-export function appErrors(sink: ErrorSink): string[] {
-  return [...sink.pageErrors, ...sink.consoleErrors].filter((e) => !IGNORED_ERROR_RE.test(e))
+/** Transient connection / media-pipeline errors that LiveKit emits during normal
+ *  teardown (leave) and on the unhappy paths we DON'T assert in a given spec. These
+ *  are tolerated by default so happy-path specs aren't flaked by leave-time noise —
+ *  but they're exactly the symptoms of the resilience / E2EE bugs (T5 in the audit),
+ *  so a spec that targets those paths must pass { strict: true } to surface them. */
+const TRANSIENT_CONN_RE =
+  /net::ERR_|datachannel|publishing rejected|insertable streams|the user aborted a request|ConnectionError/i
+
+/**
+ * App-originated errors from the sink, with noise filtered.
+ * - default: tolerate transient connection/media errors (happy-path specs).
+ * - { strict: true }: only filter true environmental noise, so connection / E2EE /
+ *   datachannel failures fail the test instead of being silently swallowed.
+ */
+export function appErrors(sink: ErrorSink, opts: { strict?: boolean } = {}): string[] {
+  const all = [...sink.pageErrors, ...sink.consoleErrors]
+  if (opts.strict) return all.filter((e) => !ENV_NOISE_RE.test(e))
+  return all.filter((e) => !ENV_NOISE_RE.test(e) && !TRANSIENT_CONN_RE.test(e))
 }
 
-/** Fill prejoin and enter the call. Returns once in-call chrome (mic button) is visible. */
-export async function join(page: Page, room: string, name: string): Promise<void> {
-  await page.goto(`/r/${room}`, { waitUntil: 'domcontentloaded' })
+/** Fill prejoin and enter the call. Returns once in-call chrome (mic button) is visible.
+ *  `hash` carries room secrets (#k=…&e=…) — pass an E2EE key (`#e=…`) to exercise the
+ *  encrypted path. */
+export async function join(page: Page, room: string, name: string, hash = ''): Promise<void> {
+  await page.goto(`/r/${room}${hash}`, { waitUntil: 'domcontentloaded' })
   const nameInput = page.getByLabel('Your name')
   await expect(nameInput).toBeVisible({ timeout: 20_000 })
   await nameInput.fill(name)
@@ -47,12 +66,39 @@ export async function newParticipant(
   browser: Browser,
   room: string,
   name: string,
+  hash = '',
 ): Promise<{ context: BrowserContext; page: Page; sink: ErrorSink }> {
   const context = await browser.newContext({ permissions: ['camera', 'microphone'] })
   const page = await context.newPage()
   const sink = attachErrorSink(page)
-  await join(page, room, name)
+  await join(page, room, name, hash)
   return { context, page, sink }
+}
+
+/** Force getUserMedia + the Permissions API to report a hard DENY for this page,
+ *  regardless of the browser-level fake-media flag (which would otherwise auto-grant).
+ *  Must run BEFORE navigation (addInitScript). Mirrors a user who blocked the camera. */
+export async function denyMedia(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const err = () => {
+      const e = new Error('Permission denied')
+      e.name = 'NotAllowedError'
+      return Promise.reject(e)
+    }
+    if (navigator.mediaDevices) {
+      navigator.mediaDevices.getUserMedia = err as typeof navigator.mediaDevices.getUserMedia
+    }
+    if (navigator.permissions) {
+      navigator.permissions.query = (() =>
+        Promise.resolve({
+          state: 'denied',
+          onchange: null,
+          addEventListener() {},
+          removeEventListener() {},
+          dispatchEvent: () => false,
+        })) as typeof navigator.permissions.query
+    }
+  })
 }
 
 /** Is this a touch device? (mobile project) — gates real tap gestures. */
