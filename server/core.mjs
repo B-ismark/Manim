@@ -218,7 +218,13 @@ async function verifySupabaseUser(env, accessToken) {
     })
     if (!r.ok) return null
     const u = await r.json()
-    return u?.id ? { id: u.id, email: u.email || '' } : null
+    // Only trust a CONFIRMED email for the allowlist gate. If the project ever allows
+    // signup without email confirmation, an unconfirmed account could claim an
+    // allowlisted address it doesn't own and host. Gate on email_confirmed_at so an
+    // unverified email resolves to '' (never matches allow:<email>) — independent of
+    // the dashboard "Confirm email" setting.
+    const verifiedEmail = u?.email_confirmed_at ? u.email || '' : ''
+    return u?.id ? { id: u.id, email: verifiedEmail } : null
   } catch {
     return null
   }
