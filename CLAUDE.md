@@ -3,12 +3,26 @@
 LiveKit video-call app. React + Vite + Tailwind (oklch design tokens), Cloudflare
 Workers backend (`worker/`, shared core in `server/`).
 
+## 🛑 LiveKit testing FROZEN (since 2026-06) — quota near limit
+**Do NOT run anything that connects to LiveKit** until this banner is removed.
+Every connection burns monthly participant-minutes and we're close to the cap.
+- **Forbidden** (connect to real LiveKit): `npm test` · `npm run test:mobile` ·
+  `npm run test:mobile-sm` · `npm run test:a11y` · `npm run test:visual` ·
+  `npm run test:stress` · `npm run loadtest` · `npm run dev` **with** LiveKit creds.
+- **Allowed** (no LiveKit): `npm run typecheck` · `npm run test:unit` ·
+  `npm run lighthouse` · `node audit/responsive-audit.mjs` · `npm run dev` **without**
+  creds (in-call UI absent, but landing/prejoin/static work).
+- **CI**: the `e2e` and `loadtest` jobs are gated behind repo variable
+  `LIVEKIT_TESTS=true` (unset → skip). `typecheck` still runs every push.
+- **Re-enable** only on explicit owner say-so: set `LIVEKIT_TESTS=true` and delete
+  this banner.
+
 ## Testing / QA
 **Before testing or auditing the app, read [QA-PLAYBOOK.md](QA-PLAYBOOK.md)** — it has
 the full process, commands, parameters, pass criteria, and the hard-won conventions.
 Setup (test LiveKit project + secrets) is in [TESTING.md](TESTING.md).
 
-Quick reference:
+Quick reference (⚠️ LiveKit gates frozen — see banner above):
 - Full local QA needs LiveKit test creds via **shell env** (don't edit `.env`):
   `LIVEKIT_API_KEY=… LIVEKIT_API_SECRET=… LIVEKIT_URL=… VITE_LIVEKIT_URL=… npm run dev`
 - Gates: `npm run typecheck` · `npm test` (desktop) · `npm run test:mobile` ·
