@@ -116,7 +116,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
           buttons for the same reason. Taller scroll area on a phone where there's
           room; capped on desktop. */}
       <div
-        className="grid h-[44dvh] grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] content-start gap-1 overflow-y-auto overflow-x-hidden overscroll-contain [scrollbar-width:thin] sm:h-56"
+        className="grid h-[44dvh] grid-cols-[repeat(auto-fill,minmax(2.75rem,1fr))] content-start gap-1 overflow-y-auto overflow-x-hidden overscroll-contain sm:h-56"
       >
         {loading ? (
           <p className="col-span-full py-6 text-center text-xs text-ink-subtle">Loading emoji…</p>
