@@ -43,6 +43,44 @@ function roomKv(env) {
   return kv && typeof kv.get === 'function' && typeof kv.put === 'function' ? kv : null
 }
 
+// Beta room-size cap. Enforced two ways: rejected at knock once a room is full, and
+// stamped onto the LiveKit room (maxParticipants) at creation so the SFU enforces it
+// even if a client connects without knocking first. Override via env for a different
+// beta ceiling.
+function roomCap(env) {
+  return Number(env?.ROOM_CAP) || 10
+}
+
+// Current link epoch (mirrors LINK_EPOCH in src/lib/roomLink.ts). A fresh invite
+// link's join secret is "<epoch>.<random>"; bumping this — or just shipping the
+// epoch check, since legacy secrets carry no prefix — invalidates every old link.
+function linkEpoch(env) {
+  return String(env?.LINK_EPOCH || '1')
+}
+
+// The epoch a join secret was minted under, or null for a legacy (pre-epoch) secret.
+// `.` never appears in a base64url secret, so the first dot unambiguously delimits it.
+function secretEpoch(secret) {
+  const s = String(secret || '')
+  const i = s.indexOf('.')
+  return i > 0 ? s.slice(0, i) : null
+}
+
+// Beta allowlist membership (opt-in gate via env.BETA_GATE === 'true'). An email is
+// approved when `allow:<email>` exists in ROOM_KV — runtime-editable, so a tester is
+// added without a redeploy. Gate off (default) → always allowed, so local dev and
+// the pre-beta state are unaffected. Used host-gated: only approved accounts may
+// START a room; their invited guests join the link without being on the list.
+async function isAllowed(env, email) {
+  const kv = roomKv(env)
+  if (!kv || !email) return false
+  try {
+    return (await kv.get(`allow:${String(email).toLowerCase()}`)) != null
+  } catch {
+    return false
+  }
+}
+
 /** SHA-256 hex of a string, via the Web Crypto API (available on Workers + Node). */
 async function sha256Hex(s) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(s)))
@@ -163,12 +201,13 @@ async function verifyCallerClaims(env, token, room) {
   }
 }
 
-// Resolve the caller's TRUSTED account id from their Supabase session token, the
-// same way handlePushRing proves contact authorization. The client sends whatever
-// it likes for `userId` at knock; trusting that lets a participant claim another
-// user's id (and force-disconnect them via handoff). So we IGNORE the client value
-// and derive the id server-side: a valid Supabase access token → the verified uid;
-// no/invalid token → '' (an unauthenticated guest, who is device-bound anyway).
+// Resolve the caller's TRUSTED account from their Supabase session token, the same
+// way handlePushRing proves contact authorization. The client sends whatever it
+// likes for `userId` at knock; trusting that lets a participant claim another user's
+// id (and force-disconnect them via handoff). So we IGNORE the client value and
+// derive it server-side: a valid Supabase access token → the verified { id, email };
+// no/invalid token → null (an unauthenticated guest, who is device-bound anyway).
+// Email comes from the same verified response and backs the beta allowlist gate.
 async function verifySupabaseUser(env, accessToken) {
   const url = env.SUPABASE_URL
   const anon = env.SUPABASE_ANON_KEY
@@ -179,7 +218,7 @@ async function verifySupabaseUser(env, accessToken) {
     })
     if (!r.ok) return null
     const u = await r.json()
-    return u?.id || null
+    return u?.id ? { id: u.id, email: u.email || '' } : null
   } catch {
     return null
   }
@@ -227,10 +266,26 @@ export async function handleKnock(env, body) {
   if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
 
   const identity = `${name}#${deviceId || 'web'}`
-  // SERVER-DERIVED account id — never the client-supplied `userId` (which a client
-  // can set to any value, including a victim's, to spoof identity in handoff). A
-  // valid Supabase session → the verified uid; otherwise '' (guest).
-  const userId = (await verifySupabaseUser(env, accessToken)) || ''
+  // SERVER-DERIVED account — never the client-supplied `userId` (which a client can
+  // set to any value, including a victim's, to spoof identity in handoff). A valid
+  // Supabase session → the verified { id, email }; otherwise null (guest).
+  const account = await verifySupabaseUser(env, accessToken)
+  const userId = account?.id || ''
+  const email = account?.email || ''
+
+  // Link epoch — reject pre-cutover invite links so the beta starts clean. A legacy
+  // link's secret carries no epoch prefix; a superseded one carries an old epoch.
+  // Bare typed-name rooms have no secret and are unaffected. Reuses the link_expired
+  // code so the client shows its existing "start a new meeting" screen.
+  if (secret && secretEpoch(secret) !== linkEpoch(env)) {
+    return {
+      status: 410,
+      body: {
+        error: 'This meeting link is no longer valid. Start a new meeting to keep talking.',
+        code: 'link_expired',
+      },
+    }
+  }
 
   if (!roomService) {
     // Degraded mode = no LiveKit configured (local UI-first dev). Host status is
@@ -257,6 +312,31 @@ export async function handleKnock(env, body) {
   const wasApproved = queue.some(
     (e) => e.name === name && (e.deviceId || '') === (deviceId || '') && e.status === 'approved',
   )
+
+  // Beta allowlist gate (host-gated). Only an approved account may CREATE/hold a
+  // room; their invited guests join the link without being on the list (still
+  // bounded by the room cap). A non-approved account claiming host — a fresh room, a
+  // bare typed name, or resurrecting a GC'd link room as its first occupant — is
+  // rejected, so every room originates from an approved host and quota stays bounded.
+  if (env.BETA_GATE === 'true' && isHost && !(await isAllowed(env, email))) {
+    return {
+      status: 403,
+      body: {
+        error: 'This beta is invite-only — only approved hosts can start a call. Ask to be added to the allowlist.',
+        code: 'not_in_beta',
+      },
+    }
+  }
+
+  // Beta room-size cap. Reject once the room is full — backstops the maxParticipants
+  // set on the LiveKit room (a client could otherwise connect without knocking). The
+  // host reclaiming their seat and anyone already in bypass it (they aren't NEW load).
+  if (!isHost && !alreadyIn && participants.length >= roomCap(env)) {
+    return {
+      status: 403,
+      body: { error: 'This room is full (beta limit reached). Try again later.', code: 'room_full' },
+    }
+  }
 
   // Link expiry (durable, KV-backed). Only link-shared rooms are governed; a room is
   // "expired" only when it ALSO has no live participants (a long-running call isn't
@@ -330,7 +410,18 @@ export async function handleKnock(env, body) {
         await mergeRoomFlags(roomService, room, patch)
       } catch {
         try {
-          await roomService.createRoom({ name: room, metadata: JSON.stringify(patch) })
+          // First-join room creation — stamp the beta size cap and idle timeouts so
+          // the SFU enforces them itself: maxParticipants caps the room, emptyTimeout
+          // reaps it shortly after the last person leaves, and departureTimeout closes
+          // it quickly once empty — all quota protection that doesn't rely on a client
+          // staying alive to end the call.
+          await roomService.createRoom({
+            name: room,
+            metadata: JSON.stringify(patch),
+            maxParticipants: roomCap(env),
+            emptyTimeout: 120,
+            departureTimeout: 60,
+          })
         } catch {
           /* non-fatal: host UI/moderation degrades, joining still works */
         }

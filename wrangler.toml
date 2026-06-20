@@ -24,6 +24,12 @@ run_worker_first = true
 [vars]
 VITE_LIVEKIT_URL = "wss://manim-2dl88wbx.livekit.cloud"
 RESEND_FROM = "Manim <onboarding@resend.dev>"
+# Beta allowlist gate (server/core.mjs). When "true", only accounts whose login
+# email has an `allow:<email>` key in ROOM_KV may START a room; their invited guests
+# join via the link without being listed. Seed the allowlist BEFORE flipping this on,
+# or every host (you included) gets locked out. Room size is capped at ROOM_CAP
+# (default 10) and links carry LINK_EPOCH (default "1"); set those only to override.
+BETA_GATE = "true"
 
 # Native Workers rate limiter (no external store) guarding the unauthenticated
 # email-invite endpoint against spam/abuse: 5 requests per 60s per client IP.
