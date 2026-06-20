@@ -137,6 +137,20 @@
     background-clip: padding-box;
   }
 
+  /* Touch devices: hide scrollbars entirely. Scroll affordance comes from a
+     partially-visible next item (containers overflow mid-item, not on a
+     boundary), so no chrome is needed to signal scrollability. */
+  @media (hover: none) and (pointer: coarse) {
+    * {
+      scrollbar-width: none;
+    }
+    ::-webkit-scrollbar {
+      width: 0;
+      height: 0;
+      display: none;
+    }
+  }
+
   /* Visible, token-driven focus ring on every keyboard-focusable element. */
   :focus-visible {
     outline: 2px solid var(--color-accent);

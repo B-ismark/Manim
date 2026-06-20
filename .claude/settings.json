@@ -1,6 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "statusMessage": "Checking LiveKit test freeze…",
+            "command": "bash .claude/hooks/block-livekit-tests.sh"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
