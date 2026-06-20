@@ -1,5 +1,14 @@
 # QA Playbook — Manim
 
+> ## 🛑 LiveKit testing FROZEN (since 2026-06)
+> Monthly LiveKit quota is near its limit. **Do not run any layer marked "Creds:
+> yes" below** (Functional E2E desktop/mobile/mobile-sm, a11y, visual, stress,
+> loadtest) and **do not `npm run dev` with LiveKit creds**. They connect to the
+> real LiveKit Cloud test project and burn participant-minutes.
+> Still safe: `typecheck`, `test:unit`, `lighthouse`, `node audit/responsive-audit.mjs`,
+> creds-less `npm run dev`. CI `e2e`/`loadtest` are gated behind repo var
+> `LIVEKIT_TESTS=true`. Re-enable only on owner say-so, then delete this banner.
+
 A replicable QA process for this LiveKit video-call app, written so a future
 Claude agent (or any engineer) can re-run the full audit and know *what* to test,
 *how*, with *which parameters*, and *what counts as a pass*. Pair with:
