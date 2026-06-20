@@ -121,8 +121,9 @@ function useStageChrome() {
 // The chat/participants panel is only needed once opened — defer its chunk.
 const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ default: m.SidePanel })))
 
-/** Minutes alone before the call auto-ends (a forgotten-open-call guard). */
-const SOLO_TIMEOUT_MS = 10 * 60 * 1000
+/** Minutes alone before the call auto-ends (a forgotten-open-call guard). Tightened
+ *  to 5min during the beta — a lone forgotten tab burns participant-minutes. */
+const SOLO_TIMEOUT_MS = 5 * 60 * 1000
 /**
  * Auto-leave when you've been the only one in the room for a long time — stops a
  * forgotten call running forever. A warning toast fires a minute before. The

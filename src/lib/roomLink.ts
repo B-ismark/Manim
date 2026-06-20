@@ -33,6 +33,17 @@ export interface RoomSecrets {
   e2ee?: string
 }
 
+/**
+ * Link epoch — the beta "kill switch" for old invite links. Every freshly minted
+ * join secret is prefixed `<epoch>.<random>`; the server (see LINK_EPOCH in
+ * server/core.mjs) rejects any knock whose secret carries a different — or no —
+ * epoch. Shipping the check at all invalidates every PRE-epoch link (their secrets
+ * have no prefix); bumping this value + redeploying invalidates the current crop
+ * too. `.` is the separator: a base64url secret never contains one, so the split is
+ * unambiguous. Must stay in sync with the server's default LINK_EPOCH.
+ */
+export const LINK_EPOCH = '1'
+
 /** CSPRNG URL-safe token. 16 bytes ≈ 128 bits — well past brute-force. */
 export function randomSecret(bytes = 16): string {
   const a = crypto.getRandomValues(new Uint8Array(bytes))
@@ -41,9 +52,11 @@ export function randomSecret(bytes = 16): string {
   return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
-/** A fresh secret + E2EE key for a newly-created room. */
+/** A fresh secret + E2EE key for a newly-created room. The join secret carries the
+ *  current link epoch so the server can reject pre-cutover links (the e2ee key is
+ *  media-only, never sent to the server, so it needs no epoch). */
 export function newRoomSecrets(): Required<RoomSecrets> {
-  return { secret: randomSecret(), e2ee: randomSecret() }
+  return { secret: `${LINK_EPOCH}.${randomSecret()}`, e2ee: randomSecret() }
 }
 
 /** Parse a location hash (`#k=…&e=…`) into its secrets. */

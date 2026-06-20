@@ -160,6 +160,13 @@ export function RoomRoute() {
           setConnecting(false)
           return
         }
+        // Beta gate rejections are definitive — no retry. Show the server's message
+        // (invite-only / room full) verbatim rather than the generic join error.
+        if (e instanceof ApiError && (e.code === 'not_in_beta' || e.code === 'room_full')) {
+          setError(e.message)
+          setConnecting(false)
+          return
+        }
         const raw = e instanceof Error ? e.message : 'Failed to join'
         if (isTransientJoinError(raw) && attempt < JOIN_MAX_ATTEMPTS) {
           // Stay on the JoiningScreen (connecting && !error) and tell the user we're
