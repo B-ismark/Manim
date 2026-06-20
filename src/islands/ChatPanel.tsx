@@ -705,14 +705,14 @@ function MessageRow({
   const [editing, setEditing] = useState(false)
   const [editDraft, setEditDraft] = useState('')
   const narrow = useIsTouch()
-  // Touch action model: swipe-left a bubble to reply (the common case), long-press
-  // for the rest via an anchored popover. Desktop keeps the hover toolbar.
+  // Touch action model: tap a bubble to open the actions popover (Reply, reaction,
+  // edit, pin); swipe-left is a shortcut for reply. Desktop keeps the hover toolbar.
   const [actionsOpen, setActionsOpen] = useState(false)
   // Touch reaction picker rides a bottom Sheet (full width + scrollable + scrim)
   // rather than the cramped long-press popover — the emoji grid needs the room.
   const [reactOpen, setReactOpen] = useState(false)
   const [swipeX, setSwipeX] = useState(0)
-  const press = useRef<{ timer?: number; x: number; y: number; moved: boolean; swiping: boolean }>({
+  const press = useRef<{ x: number; y: number; moved: boolean; swiping: boolean }>({
     x: 0,
     y: 0,
     moved: false,
@@ -724,12 +724,6 @@ function MessageRow({
   const onRowPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     if (!narrow || editing) return
     press.current = { x: e.clientX, y: e.clientY, moved: false, swiping: false }
-    press.current.timer = window.setTimeout(() => {
-      if (!press.current.moved) {
-        setActionsOpen(true)
-        navigator.vibrate?.(10)
-      }
-    }, 500)
   }
   const onRowPointerMove = (e: PointerEvent<HTMLDivElement>) => {
     if (!narrow || editing) return
@@ -737,7 +731,6 @@ function MessageRow({
     const dy = e.clientY - press.current.y
     if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
       press.current.moved = true
-      window.clearTimeout(press.current.timer)
     }
     // Horizontal-dominant left drag = reply swipe; vertical stays a scroll.
     if (dx < -6 && Math.abs(dx) > Math.abs(dy)) {
@@ -745,14 +738,26 @@ function MessageRow({
       setSwipeX(Math.max(dx, -SWIPE_MAX))
     }
   }
-  const endPress = () => {
+  const settleSwipe = () => {
+    if (press.current.swiping && swipeX <= -SWIPE_TRIGGER) onReply()
+    press.current.swiping = false
+    setSwipeX(0)
+  }
+  const onRowPointerUp = (e: PointerEvent<HTMLDivElement>) => {
     if (!narrow) return
-    window.clearTimeout(press.current.timer)
-    if (press.current.swiping) {
-      if (swipeX <= -SWIPE_TRIGGER) onReply()
-      press.current.swiping = false
-      setSwipeX(0)
-    }
+    const wasSwiping = press.current.swiping
+    settleSwipe()
+    // A clean tap (no drag, no swipe) on the bubble body opens the actions menu.
+    // Skip taps that land on interactive children (links, reaction chips, the
+    // reply-quote button, the file download) so those keep their own behaviour.
+    if (wasSwiping || press.current.moved || editing) return
+    if ((e.target as HTMLElement).closest('a, button, textarea, input, [role="button"]')) return
+    setActionsOpen(true)
+    navigator.vibrate?.(10)
+  }
+  const onRowPointerLeave = () => {
+    if (!narrow) return
+    settleSwipe()
   }
 
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
@@ -782,8 +787,8 @@ function MessageRow({
       data-mid={item.id}
       onPointerDown={onRowPointerDown}
       onPointerMove={onRowPointerMove}
-      onPointerUp={endPress}
-      onPointerLeave={endPress}
+      onPointerUp={onRowPointerUp}
+      onPointerLeave={onRowPointerLeave}
       onContextMenu={narrow ? (e) => e.preventDefault() : undefined}
       className={cn(
         'group relative flex gap-2.5 rounded-field transition-colors',
@@ -973,13 +978,13 @@ function MessageRow({
         </div>
       )}
 
-      {/* TOUCH: long-press opens an anchored popover for the secondary actions
-          (Reply lives on the swipe gesture, so it's intentionally absent here).
+      {/* TOUCH: tapping the bubble opens an anchored popover for the actions
+          (Reply, react, edit, pin). Reply is also reachable via swipe-left.
           It's MODAL so a swipe inside it can't reach the rows behind it, and Radix
           collision-detection flips/shifts it so it never clips at the panel edge.
-          The trigger is a zero-size anchor pinned to the bubble; the long-press
-          toggles `actionsOpen`. "Add reaction" hands off to a full bottom Sheet —
-          the emoji grid needs more room than this little menu has. */}
+          The trigger is a zero-size anchor pinned to the bubble; the tap toggles
+          `actionsOpen`. "Add reaction" hands off to a full bottom Sheet — the emoji
+          grid needs more room than this little menu has. */}
       {narrow && (
         <>
           <Popover
@@ -991,6 +996,17 @@ function MessageRow({
             trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
           >
             <div className="flex flex-col">
+              <button
+                type="button"
+                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                onClick={() => {
+                  setActionsOpen(false)
+                  onReply()
+                }}
+              >
+                <ReplyIcon />
+                Reply
+              </button>
               <button
                 type="button"
                 className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
