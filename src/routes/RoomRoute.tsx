@@ -282,7 +282,7 @@ export function RoomRoute() {
     <div className="relative">
       <PreJoin room={room} onJoin={handleJoin} encrypted={Boolean(e2ee)} />
       {error && (
-        <div className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4">
+        <div className="fixed inset-x-0 top-4 z-30 flex justify-center px-4">
           <Island elevation="raised" className="max-w-md">
             <div className="flex flex-col gap-2">
               <p className="text-sm text-danger-text">{error}</p>
