@@ -30,6 +30,14 @@ RESEND_FROM = "Manim <onboarding@resend.dev>"
 # vanished after a deploy). The URL is public. SUPABASE_ANON_KEY is set as a Worker
 # SECRET (secrets survive deploys), so it's intentionally NOT listed here.
 SUPABASE_URL = "https://xrbvjcxefdihkojxebur.supabase.co"
+# Web Push (background incoming-call notifications). Public key + subject pinned here
+# so a deploy doesn't wipe them (same reason as SUPABASE_URL above); VAPID_PRIVATE_KEY
+# is a Worker Secret. This SAME public key must also be the VITE_VAPID_PUBLIC_KEY build
+# var so the client subscribes with the matching key. Push stays a graceful no-op
+# until VAPID_PRIVATE_KEY is set AND the push_subscriptions table + get_push_targets
+# RPC exist (DEPLOY.md §4c).
+VAPID_PUBLIC_KEY = "BADDBgiHH8moL6Wc4Re005pxPOulTr9lNuQvFTTqHpvl_C4NuYRM5Qs-a61ROhJQrDpBNbKyxDRnYpgA72B21eI"
+VAPID_SUBJECT = "mailto:bismark.gyau@amalitech.com"
 # Beta allowlist gate (server/core.mjs). When "true", only accounts whose login
 # email has an `allow:<email>` key in ROOM_KV may START a room; their invited guests
 # join via the link without being listed. Seed the allowlist BEFORE flipping this on,
