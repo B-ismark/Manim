@@ -136,7 +136,7 @@ export function Landing() {
   return (
     // Top-align + scroll on phones so the keyboard can't bury the inputs
     // (centering strands them behind the keyboard); centered on desktop.
-    <main className="min-h-dvh overflow-y-auto p-4 pt-20 sm:pt-4 flex flex-col items-center justify-start sm:justify-center">
+    <main className="min-h-dvh overflow-y-auto p-4 pt-20 sm:pt-4 short:pt-4 flex flex-col items-center justify-start sm:justify-center">
       <header className="absolute inset-x-4 top-4 z-20 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
@@ -146,12 +146,12 @@ export function Landing() {
         </div>
       </header>
 
-      <div className="flex w-full max-w-sm flex-col items-center gap-6">
+      <div className="flex w-full max-w-sm flex-col items-center gap-6 short:gap-3">
         {/* Personal greeting when signed in (Whereby-style), else just the brand. */}
         {signedIn ? (
-          <div className="flex flex-col items-center gap-3">
+          <div className="flex flex-col items-center gap-3 short:gap-1.5">
             <Avatar size="lg" name={myName || '?'} src={avatarUrl} />
-            <h1 className="text-xl font-semibold tracking-tight">
+            <h1 className="text-xl font-semibold tracking-tight short:text-lg">
               {firstName ? `Welcome back, ${firstName}` : 'Welcome back'}
             </h1>
           </div>
@@ -182,8 +182,8 @@ export function Landing() {
         )}
         {signedIn && <LiveAndRecent onJoin={goTo} />}
 
-        <Island pad="none" className="w-full p-5 sm:p-6">
-          <form onSubmit={onJoin} className="flex flex-col gap-3">
+        <Island pad="none" className="w-full p-5 sm:p-6 short:p-4">
+          <form onSubmit={onJoin} className="flex flex-col gap-3 short:gap-2">
             <label htmlFor="room" className="text-sm font-medium">
               Meeting name or code
             </label>
