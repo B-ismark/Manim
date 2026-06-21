@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Short-viewport density. Small/landscape laptops have tight VERTICAL space, so the
+   primary surfaces (prejoin especially) overflow and force scrolling — which the
+   no-scroll rule forbids. `short:` compresses vertical rhythm when height is tight. */
+@custom-variant short (@media (max-height: 760px));
+
 /*
   ───────────────────────────────────────────────────────────────────────────
   VEIL DESIGN TOKENS  —  single source of truth for all UI.

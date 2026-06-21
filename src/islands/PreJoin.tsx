@@ -147,7 +147,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
     // items-start + scroll so a tall card on a short phone stays reachable
     // (items-center would strand the top off-screen with no way to scroll).
     <main className="min-h-dvh flex items-start justify-center overflow-y-auto p-4 sm:items-center">
-      <Island pad="none" className="my-auto w-full max-w-lg p-4 sm:p-6">
+      <Island pad="none" className="my-auto w-full max-w-lg p-4 sm:p-6 short:p-3 sm:short:p-4">
         <button
           type="button"
           onClick={() => navigate('/')}
@@ -159,7 +159,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-medium text-ink-subtle">Joining</p>
-            <h1 className="truncate text-xl font-semibold">{prettyRoom(room)}</h1>
+            <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
           </div>
           {/* Share the invite before joining — host can pull people in from the
               green room. The current URL already carries the invite secret + E2EE
@@ -176,7 +176,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         {/* Portrait on touch (matches the in-call tiles), landscape on desktop.
             Height is capped (max-h) so the preview never pushes the name field and
             Join button off a short viewport — the real cause of pre-join scrolling. */}
-        <div className="mx-auto mt-3 aspect-[3/4] max-h-[32dvh] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken pointer-fine:mt-4 pointer-fine:aspect-video pointer-fine:max-h-none pointer-fine:max-w-none">
+        <div className="mx-auto mt-3 aspect-[3/4] max-h-[32dvh] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken short:mt-2 short:max-h-[26dvh] pointer-fine:mt-4 pointer-fine:aspect-video pointer-fine:max-h-[34dvh] pointer-fine:max-w-none">
           {cameraOn ? (
             <video ref={videoRef} autoPlay muted playsInline className="size-full object-cover [transform:scaleX(-1)]" />
           ) : (
@@ -188,7 +188,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
 
         {/* Device toggles sit below the preview (not floating over it) so the
             keyboard never covers them once the name field is focused. */}
-        <div className="mt-3 flex justify-center gap-3">
+        <div className="mt-3 flex justify-center gap-3 short:mt-2">
           <IconButton
             label={prejoin.micEnabled ? 'Mute microphone' : 'Unmute microphone'}
             icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
@@ -223,7 +223,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
 
         {error && <p className="mt-2 text-sm text-danger-text">{error}</p>}
 
-        <div className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3">
+        <div className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3 short:mt-2 short:gap-2 sm:short:mt-2 sm:short:gap-2">
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -338,7 +338,7 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
   }
 
   return (
-    <div className="mt-3 flex items-center gap-3">
+    <div className="mt-3 flex items-center gap-3 short:mt-2">
       <div className="flex flex-1 items-center gap-2">
         {micEnabled ? <MicIcon className="size-4 text-ink-muted" /> : <MicOffIcon className="size-4 text-ink-subtle" />}
         <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
