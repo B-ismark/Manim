@@ -261,6 +261,9 @@ export function handleHealth(env) {
       ok: true,
       hasKeys: Boolean(apiKey && apiSecret),
       email: Boolean(env.RESEND_API_KEY),
+      // Whether the beta allowlist gate is on — lets the landing surface the
+      // "approved hosts only" notice up front instead of after a failed knock.
+      betaGate: env.BETA_GATE === 'true',
     },
   }
 }
