@@ -282,7 +282,27 @@ export async function handleMe(env, body) {
   const email = account?.email || ''
   const gate = env.BETA_GATE === 'true'
   const allowed = !gate || (await isAllowed(env, email))
-  return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed } }
+
+  // TEMP DIAGNOSTIC — pinpoints why signedIn can be false. Reports only booleans +
+  // an HTTP status about the CALLER's own request (no secrets, no other users).
+  // Remove once the gate is confirmed working.
+  const debug = {
+    gotToken: Boolean(accessToken),
+    supaConfigured: Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY),
+    userStatus: null,
+  }
+  if (debug.gotToken && debug.supaConfigured) {
+    try {
+      const r = await fetch(`${String(env.SUPABASE_URL).replace(/\/+$/, '')}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${accessToken}` },
+      })
+      debug.userStatus = r.status
+    } catch {
+      debug.userStatus = 'fetch_error'
+    }
+  }
+
+  return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed, debug } }
 }
 
 export async function handleKnock(env, body) {
