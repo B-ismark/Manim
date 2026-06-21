@@ -195,15 +195,17 @@ export interface ServerHealth {
   hasKeys: boolean
   /** RESEND_API_KEY present (real email invites; else mailto fallback). */
   email: boolean
+  /** Beta allowlist gate is on — only approved accounts can start a call. */
+  betaGate: boolean
 }
 
 /** Probe server-side capabilities for the setup-status surface. Never throws. */
 export async function getHealth(): Promise<ServerHealth> {
   try {
     const res = await fetch('/api/health')
-    if (!res.ok) return { ok: false, hasKeys: false, email: false }
+    if (!res.ok) return { ok: false, hasKeys: false, email: false, betaGate: false }
     return (await res.json()) as ServerHealth
   } catch {
-    return { ok: false, hasKeys: false, email: false }
+    return { ok: false, hasKeys: false, email: false, betaGate: false }
   }
 }

@@ -12,6 +12,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useInviteStore } from '@/store/useInviteStore'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { toast } from '@/store/useToastStore'
+import { getHealth } from '@/lib/orchestrator'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 import { prettyRoom } from '@/lib/roomName'
@@ -47,6 +48,20 @@ export function Landing() {
   const addInvite = useInviteStore((s) => s.addInvite)
   const firstName = myName.trim().split(/\s+/)[0]
 
+  // Whether the beta allowlist gate is on (server-reported). Drives the up-front
+  // "private beta" notice so a guest learns starting a call needs an approved
+  // account here, not after a failed knock inside the room.
+  const [betaGate, setBetaGate] = useState(false)
+  useEffect(() => {
+    let alive = true
+    getHealth().then((h) => {
+      if (alive) setBetaGate(h.betaGate)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   /** Navigate to a room, carrying any join-secret / E2EE key in the #fragment. */
   function goTo(slug: string, secrets: RoomSecrets = {}) {
     if (slug) navigate(roomTo(slug, secrets))
@@ -75,9 +90,17 @@ export function Landing() {
   // blank field gets a random room name.
   function newMeeting() {
     const typed = room.trim()
+    const parsed = typed ? parseTyped(typed) : { slug: '', secrets: {} as RoomSecrets }
+    // Starting a NEW room makes you its host — which the beta gate restricts to
+    // approved accounts. Nudge a signed-out user to sign in rather than letting them
+    // dead-end on the in-room "invite-only" error. A pasted invite link (carries a
+    // secret) is a guest JOIN, not a host claim, so it's allowed through.
+    if (betaGate && !signedIn && !parsed.secrets.secret) {
+      toast('Sign in with an approved account to start a meeting', 'warning')
+      return
+    }
     if (!typed) return goTo(randomRoom(), newRoomSecrets())
-    const { slug, secrets } = parseTyped(typed)
-    goTo(slug, secrets.secret ? secrets : newRoomSecrets())
+    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
   }
 
   // Call a contact: mint a fresh secured room, ring them into it (the ring carries
@@ -127,6 +150,21 @@ export function Landing() {
         )}
 
         <SetupBanner />
+        {betaGate && (
+          <Island elevation="pop" pad="sm" bordered className="w-full border-accent/40">
+            <div className="flex items-start gap-3">
+              <span className="mt-1 size-2 shrink-0 rounded-full bg-accent" aria-hidden />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium">Manim is in private beta</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {signedIn
+                    ? 'Only approved accounts can start a meeting. You can still join any call you’re invited to.'
+                    : 'Sign in with an approved account to start a meeting — or open an invite link to join one.'}
+                </p>
+              </div>
+            </div>
+          </Island>
+        )}
         <LiveAndRecent onJoin={goTo} />
 
         <Island pad="none" className="w-full p-5 sm:p-6">
