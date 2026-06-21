@@ -81,9 +81,12 @@ export const ScreenShareIcon = (p: P) => (
   </svg>
 )
 
+/** Hang-up handset (downward-tilted) — the universal "end / leave call" symbol
+ *  (Meet/Zoom/Material call_end). Filled rather than stroked so it reads clearly as
+ *  white-on-red on the danger pill. */
 export const LeaveIcon = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M3.5 9.5c5-4 11.5-4 17 0 1 .8 1.2 2 .5 3l-1.7 2c-.6.7-1.6.9-2.4.4l-2.2-1.3c-.6-.4-.9-1-.8-1.7l.2-1.4c-2-.9-4.2-.9-6.2 0l.2 1.4c.1.7-.2 1.3-.8 1.7L4.8 14.4c-.8.5-1.8.3-2.4-.4l-1.7-2c-.7-1-.5-2.2.5-3z" />
+  <svg viewBox="0 0 24 24" fill="currentColor" stroke="none" {...p}>
+    <path d="M12 9c-1.6 0-3.15.25-4.6.72v3.1c0 .39-.23.74-.56.9-.98.49-1.88 1.11-2.66 1.85-.18.18-.43.28-.7.28-.28 0-.53-.11-.71-.29L.29 13.08c-.18-.17-.29-.42-.29-.7 0-.28.11-.53.29-.71C3.34 8.78 7.46 7 12 7s8.66 1.78 11.71 4.67c.18.18.29.43.29.71 0 .28-.11.53-.29.7l-2.48 2.48c-.18.18-.43.29-.71.29-.27 0-.52-.1-.7-.28-.79-.74-1.69-1.36-2.67-1.85a.998.998 0 0 1-.56-.9v-3.1C15.15 9.25 13.6 9 12 9z" />
   </svg>
 )
 

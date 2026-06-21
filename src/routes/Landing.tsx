@@ -180,7 +180,7 @@ export function Landing() {
             </div>
           </Island>
         )}
-        <LiveAndRecent onJoin={goTo} />
+        {signedIn && <LiveAndRecent onJoin={goTo} />}
 
         <Island pad="none" className="w-full p-5 sm:p-6">
           <form onSubmit={onJoin} className="flex flex-col gap-3">
