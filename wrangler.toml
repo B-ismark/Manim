@@ -24,6 +24,12 @@ run_worker_first = true
 [vars]
 VITE_LIVEKIT_URL = "wss://manim-2dl88wbx.livekit.cloud"
 RESEND_FROM = "Manim <onboarding@resend.dev>"
+# Server-side Supabase — token verification for the beta gate (verifySupabaseUser)
+# and the push RPC. MUST live here, not only in the dashboard: a deploy rewrites the
+# Worker's plaintext vars from this file and wipes any set elsewhere (that's why these
+# vanished after a deploy). The URL is public. SUPABASE_ANON_KEY is set as a Worker
+# SECRET (secrets survive deploys), so it's intentionally NOT listed here.
+SUPABASE_URL = "https://xrbvjcxefdihkojxebur.supabase.co"
 # Beta allowlist gate (server/core.mjs). When "true", only accounts whose login
 # email has an `allow:<email>` key in ROOM_KV may START a room; their invited guests
 # join via the link without being listed. Seed the allowlist BEFORE flipping this on,
