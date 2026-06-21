@@ -30,6 +30,11 @@ RESEND_FROM = "Manim <onboarding@resend.dev>"
 # vanished after a deploy). The URL is public. SUPABASE_ANON_KEY is set as a Worker
 # SECRET (secrets survive deploys), so it's intentionally NOT listed here.
 SUPABASE_URL = "https://xrbvjcxefdihkojxebur.supabase.co"
+# The anon/public key — designed for client exposure (already shipped in the bundle
+# as VITE_SUPABASE_ANON_KEY), so committing it here is safe. Pinned so deploys can't
+# wipe it (a plaintext dashboard var gets erased on every deploy; that's why it kept
+# vanishing). RLS — not key secrecy — protects the data.
+SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYnZqY3hlZmRpaGtvanhlYnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0NTI5OTYsImV4cCI6MjA5NzAyODk5Nn0.CZaXYizzM_kZmhKpfpIQAUbbaReoT0DIus7nnx2DmWs"
 # Web Push (background incoming-call notifications). Public key + subject pinned here
 # so a deploy doesn't wipe them (same reason as SUPABASE_URL above); VAPID_PRIVATE_KEY
 # is a Worker Secret. This SAME public key must also be the VITE_VAPID_PUBLIC_KEY build
