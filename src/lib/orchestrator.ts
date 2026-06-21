@@ -209,3 +209,29 @@ export async function getHealth(): Promise<ServerHealth> {
     return { ok: false, hasKeys: false, email: false, betaGate: false }
   }
 }
+
+export interface MeStatus {
+  /** Server verified a Supabase session from the supplied token. */
+  signedIn: boolean
+  /** Beta allowlist gate is on. */
+  betaGate: boolean
+  /** This user may START a call (gate off, or their email is allowlisted). */
+  allowed: boolean
+}
+
+/** Whether the current user can host, per the beta gate. `accessToken` is the
+ *  Supabase session token (absent for guests). Never throws — defaults to a
+ *  signed-out, gate-off view so the UI degrades to "open" if the probe fails. */
+export async function getMe(accessToken?: string): Promise<MeStatus> {
+  try {
+    const res = await fetch('/api/me', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ accessToken }),
+    })
+    if (!res.ok) return { signedIn: false, betaGate: false, allowed: true }
+    return (await res.json()) as MeStatus
+  } catch {
+    return { signedIn: false, betaGate: false, allowed: true }
+  }
+}

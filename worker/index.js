@@ -9,6 +9,7 @@
 */
 import {
   handleHealth,
+  handleMe,
   handleKnock,
   handleKnockStatus,
   handlePending,
@@ -40,6 +41,7 @@ async function handleApi(request, env, url) {
 
   try {
     if (path === 'health') return json(handleHealth(env))
+    if (path === 'me' && method === 'POST') return json(await handleMe(env, await bodyOf()))
     if (path === 'knock' && method === 'POST') {
       // Per-IP rate limit on the (intentionally unauthenticated) join endpoint.
       // knock is how anyone enters a room, so it can't require a token — which is

@@ -8,6 +8,7 @@ import express from 'express'
 import cors from 'cors'
 import {
   handleHealth,
+  handleMe,
   handleKnock,
   handleKnockStatus,
   handlePending,
@@ -33,6 +34,7 @@ const env = process.env
 const bearer = (req) => (req.get('authorization') || '').replace(/^Bearer\s+/i, '')
 
 app.get('/api/health', (_req, res) => send(res, handleHealth(env)))
+app.post('/api/me', async (req, res) => send(res, await handleMe(env, req.body)))
 app.post('/api/knock', async (req, res) => send(res, await handleKnock(env, req.body)))
 app.get('/api/knock-status', async (req, res) => send(res, await handleKnockStatus(env, req.query)))
 app.get('/api/pending', async (req, res) => send(res, await handlePending(env, req.query, bearer(req))))
