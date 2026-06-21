@@ -213,13 +213,28 @@ async function syncProfile(session: Session) {
   }
 }
 
+/** localStorage key recording which account the persisted display name + avatar
+ *  belong to, so a sign-in as a DIFFERENT user can detect (and discard) the stale
+ *  previous-user profile before the async sync resolves. */
+const PROFILE_UID_KEY = 'manim-profile-uid'
+
 function applySession(session: Session | null) {
   if (session?.user) {
-    useAuthStore.setState({
-      userId: session.user.id,
-      email: session.user.email ?? null,
-      signedIn: true,
-    })
+    const uid = session.user.id
+    // The display name is persisted device-wide and the avatar lingers in memory;
+    // both belong to whoever was last signed in. If that's a DIFFERENT account than
+    // the one now signing in, seed name + avatar from this session synchronously so
+    // the previous user doesn't flash on screen before syncProfile (async) resolves.
+    // Same user (or first-ever sign-in) keeps the persisted value to avoid a
+    // provider-name→account-name flash.
+    const known = localStorage.getItem(PROFILE_UID_KEY)
+    const differentUser = known !== null && known !== uid
+    localStorage.setItem(PROFILE_UID_KEY, uid)
+    useAuthStore.setState({ userId: uid, email: session.user.email ?? null, signedIn: true })
+    if (differentUser) {
+      useAuthStore.setState({ avatarUrl: avatarFromSession(session) || null })
+      useAppStore.getState().setDisplayName(nameFromSession(session), false)
+    }
     void syncProfile(session)
   } else {
     useAuthStore.setState({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
