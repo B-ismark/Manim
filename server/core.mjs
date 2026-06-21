@@ -220,10 +220,11 @@ async function verifySupabaseUser(env, accessToken) {
     const u = await r.json()
     // Only trust a CONFIRMED email for the allowlist gate. If the project ever allows
     // signup without email confirmation, an unconfirmed account could claim an
-    // allowlisted address it doesn't own and host. Gate on email_confirmed_at so an
-    // unverified email resolves to '' (never matches allow:<email>) — independent of
-    // the dashboard "Confirm email" setting.
-    const verifiedEmail = u?.email_confirmed_at ? u.email || '' : ''
+    // allowlisted address it doesn't own and host. `email_confirmed_at` is the modern
+    // field; `confirmed_at` is the older alias GoTrue still returns — accept either so
+    // a version/field difference can't lock out a genuinely confirmed user. (Both OTP
+    // and OAuth sign-in prove email ownership, so legitimate users always have one.)
+    const verifiedEmail = u?.email_confirmed_at || u?.confirmed_at ? u.email || '' : ''
     return u?.id ? { id: u.id, email: verifiedEmail } : null
   } catch {
     return null
@@ -266,6 +267,22 @@ export function handleHealth(env) {
       betaGate: env.BETA_GATE === 'true',
     },
   }
+}
+
+/**
+ * "Can the current user start a call?" — lets the landing hide the private-beta
+ * notice for an approved host and gate the New-meeting button precisely, instead of
+ * showing a blanket banner. Authorizes the same way as knock: a verified Supabase
+ * session → the trusted email → allowlist lookup. Gate off → everyone can host.
+ * Never reveals other users' state (only the caller's own session is inspected).
+ */
+export async function handleMe(env, body) {
+  const { accessToken } = body ?? {}
+  const account = await verifySupabaseUser(env, accessToken)
+  const email = account?.email || ''
+  const gate = env.BETA_GATE === 'true'
+  const allowed = !gate || (await isAllowed(env, email))
+  return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed } }
 }
 
 export async function handleKnock(env, body) {

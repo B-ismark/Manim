@@ -12,7 +12,8 @@ import { useAppStore } from '@/store/useAppStore'
 import { useInviteStore } from '@/store/useInviteStore'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { toast } from '@/store/useToastStore'
-import { getHealth } from '@/lib/orchestrator'
+import { getMe } from '@/lib/orchestrator'
+import { supabase } from '@/lib/supabase'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 import { prettyRoom } from '@/lib/roomName'
@@ -48,19 +49,28 @@ export function Landing() {
   const addInvite = useInviteStore((s) => s.addInvite)
   const firstName = myName.trim().split(/\s+/)[0]
 
-  // Whether the beta allowlist gate is on (server-reported). Drives the up-front
-  // "private beta" notice so a guest learns starting a call needs an approved
-  // account here, not after a failed knock inside the room.
+  // Beta gate state, per THIS user: is the gate on, and may they host? Drives the
+  // up-front "private beta" notice (so a guest learns hosting needs an approved
+  // account here, not after a failed knock) and hides it for an approved host.
+  // Re-checked on sign-in/out. Defaults to can-host so the UI never falsely blocks
+  // before the probe resolves.
   const [betaGate, setBetaGate] = useState(false)
+  const [canHost, setCanHost] = useState(true)
   useEffect(() => {
     let alive = true
-    getHealth().then((h) => {
-      if (alive) setBetaGate(h.betaGate)
-    })
+    void (async () => {
+      const token = signedIn
+        ? (await supabase?.auth.getSession())?.data.session?.access_token
+        : undefined
+      const me = await getMe(token)
+      if (!alive) return
+      setBetaGate(me.betaGate)
+      setCanHost(me.allowed)
+    })()
     return () => {
       alive = false
     }
-  }, [])
+  }, [signedIn])
 
   /** Navigate to a room, carrying any join-secret / E2EE key in the #fragment. */
   function goTo(slug: string, secrets: RoomSecrets = {}) {
@@ -92,11 +102,16 @@ export function Landing() {
     const typed = room.trim()
     const parsed = typed ? parseTyped(typed) : { slug: '', secrets: {} as RoomSecrets }
     // Starting a NEW room makes you its host — which the beta gate restricts to
-    // approved accounts. Nudge a signed-out user to sign in rather than letting them
-    // dead-end on the in-room "invite-only" error. A pasted invite link (carries a
-    // secret) is a guest JOIN, not a host claim, so it's allowed through.
-    if (betaGate && !signedIn && !parsed.secrets.secret) {
-      toast('Sign in with an approved account to start a meeting', 'warning')
+    // approved accounts. Stop a user who can't host before they dead-end on the
+    // in-room "invite-only" error. A pasted invite link (carries a secret) is a guest
+    // JOIN, not a host claim, so it's always allowed through.
+    if (betaGate && !canHost && !parsed.secrets.secret) {
+      toast(
+        signedIn
+          ? 'Your account isn’t approved to start meetings yet.'
+          : 'Sign in with an approved account to start a meeting',
+        'warning',
+      )
       return
     }
     if (!typed) return goTo(randomRoom(), newRoomSecrets())
@@ -150,7 +165,7 @@ export function Landing() {
         )}
 
         <SetupBanner />
-        {betaGate && (
+        {betaGate && !canHost && (
           <Island elevation="pop" pad="sm" bordered className="w-full border-accent/40">
             <div className="flex items-start gap-3">
               <span className="mt-1 size-2 shrink-0 rounded-full bg-accent" aria-hidden />
@@ -158,7 +173,7 @@ export function Landing() {
                 <p className="text-sm font-medium">Manim is in private beta</p>
                 <p className="mt-0.5 text-xs text-ink-muted">
                   {signedIn
-                    ? 'Only approved accounts can start a meeting. You can still join any call you’re invited to.'
+                    ? 'Your account isn’t approved to start meetings yet. You can still join any call you’re invited to.'
                     : 'Sign in with an approved account to start a meeting — or open an invite link to join one.'}
                 </p>
               </div>
