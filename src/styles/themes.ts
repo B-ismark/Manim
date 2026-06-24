@@ -94,12 +94,22 @@ function accent(a: string, hover: string): TokenMap {
   return { '--color-accent': a, '--color-accent-hover': hover }
 }
 
+// Near-black ink for LIGHT accent fills. The default --color-accent-ink is near-white
+// (good on dark accents like Aurora/Graphite at L≈0.55), but on lighter accents white
+// text fails WCAG AA (computed: Lagoon 3.68, Jade 3.31, Clementine 2.75, Rose 3.44).
+// Dark ink clears AA on all of them (4.97–6.65). Set per-preset so button/chip/pill
+// text on the accent fill stays legible whatever theme is chosen.
+const DARK_INK = 'oklch(0.18 0 0)'
+function accentDark(a: string, hover: string): TokenMap {
+  return { '--color-accent': a, '--color-accent-hover': hover, '--color-accent-ink': DARK_INK }
+}
+
 export const accentPresets: AccentPreset[] = [
   { id: 'aurora', name: 'Aurora', swatch: 'oklch(0.55 0.18 275)', tokens: accent('oklch(0.55 0.18 275)', 'oklch(0.49 0.19 275)') },
-  { id: 'lagoon', name: 'Lagoon', swatch: 'oklch(0.6 0.13 230)', tokens: accent('oklch(0.6 0.13 230)', 'oklch(0.54 0.14 230)') },
-  { id: 'jade', name: 'Jade', swatch: 'oklch(0.62 0.14 160)', tokens: accent('oklch(0.62 0.14 160)', 'oklch(0.56 0.15 160)') },
-  { id: 'clementine', name: 'Clementine', swatch: 'oklch(0.7 0.17 50)', tokens: accent('oklch(0.7 0.17 50)', 'oklch(0.64 0.18 50)') },
-  { id: 'rose', name: 'Rose', swatch: 'oklch(0.65 0.18 5)', tokens: accent('oklch(0.65 0.18 5)', 'oklch(0.59 0.19 5)') },
+  { id: 'lagoon', name: 'Lagoon', swatch: 'oklch(0.6 0.13 230)', tokens: accentDark('oklch(0.6 0.13 230)', 'oklch(0.54 0.14 230)') },
+  { id: 'jade', name: 'Jade', swatch: 'oklch(0.62 0.14 160)', tokens: accentDark('oklch(0.62 0.14 160)', 'oklch(0.56 0.15 160)') },
+  { id: 'clementine', name: 'Clementine', swatch: 'oklch(0.7 0.17 50)', tokens: accentDark('oklch(0.7 0.17 50)', 'oklch(0.64 0.18 50)') },
+  { id: 'rose', name: 'Rose', swatch: 'oklch(0.65 0.18 5)', tokens: accentDark('oklch(0.65 0.18 5)', 'oklch(0.59 0.19 5)') },
   { id: 'graphite', name: 'Graphite', swatch: 'oklch(0.55 0.02 270)', tokens: accent('oklch(0.55 0.02 270)', 'oklch(0.48 0.02 270)') },
 
   // Vision-assistive: high-distinction palettes that don't rely on red/green
@@ -111,6 +121,11 @@ export const accentPresets: AccentPreset[] = [
     visionAssistive: true,
     tokens: {
       ...accent('oklch(0.6 0.15 250)', 'oklch(0.54 0.16 250)'),
+      // Dark ink on the lighter accent + orange danger — white failed AA (accent
+      // 3.83, danger 2.72); dark clears both (4.77 / 6.73). A vision-assistive preset
+      // especially must not ship sub-AA text.
+      '--color-accent-ink': DARK_INK,
+      '--color-danger-ink': DARK_INK,
       '--color-success': 'oklch(0.68 0.13 250)', // blue stands in for green
       '--color-danger': 'oklch(0.7 0.17 60)', // orange stands in for red
       '--color-danger-hover': 'oklch(0.64 0.18 60)',
@@ -123,10 +138,14 @@ export const accentPresets: AccentPreset[] = [
     swatch: 'oklch(0.62 0.19 20)',
     visionAssistive: true,
     tokens: {
+      // Dark ink on the lighter red accent (white was 3.89, dark is 4.70).
       ...accent('oklch(0.62 0.19 20)', 'oklch(0.56 0.2 20)'),
+      '--color-accent-ink': DARK_INK,
       '--color-success': 'oklch(0.72 0.14 195)', // cyan
-      '--color-danger': 'oklch(0.6 0.2 20)',
-      '--color-danger-hover': 'oklch(0.54 0.21 20)',
+      // Darkened from L=0.6 so the danger fill keeps white danger-ink yet clears AA
+      // (white on 0.6 was 4.25; on 0.55 it's ~5.1, matching the default red).
+      '--color-danger': 'oklch(0.55 0.21 20)',
+      '--color-danger-hover': 'oklch(0.49 0.22 20)',
       '--color-speaking': 'oklch(0.72 0.14 195)',
     },
   },
