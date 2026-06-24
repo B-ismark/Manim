@@ -10,7 +10,7 @@ import {
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Avatar, Button, IconButton } from '@/components/primitives'
-import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicOffIcon, PinIcon } from '@/components/icons'
+import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicOffIcon, PinIcon, ScreenShareIcon } from '@/components/icons'
 import { moderate } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
@@ -234,33 +234,53 @@ export function Stage() {
 
   const coarse = useIsTouch()
 
-  if (participants.length <= 1 && tracks.length <= 1) {
-    return <SoloStage selfTrack={tracks[0]} />
+  // Don't render your OWN screen share back to yourself. You're already sending it
+  // and everyone else sees it; mirroring it into your own stage is a pointless,
+  // recursive echo (you see the window that's showing the window…). Drop it from your
+  // view and show a small "You're presenting" indicator instead. It stays published.
+  const localScreenShare = tracks.find(
+    (t) => t.participant.isLocal && t.source === Track.Source.ScreenShare,
+  )
+  const visible = localScreenShare ? tracks.filter((t) => t !== localScreenShare) : tracks
+  const presenting = Boolean(localScreenShare)
+
+  if (participants.length <= 1 && visible.length <= 1) {
+    return (
+      <>
+        <SoloStage selfTrack={visible[0]} />
+        {presenting && <PresentingIndicator />}
+      </>
+    )
   }
 
-  // On phones a 1-on-1 reads best as remote-fills + floating self-PiP (Discord/
-  // Meet), not two equal tiles — route it through the focus layout even in grid.
-  const screenShare = tracks.some((t) => t.source === Track.Source.ScreenShare)
-  const phone1on1 = coarse && tracks.length === 2 && !screenShare
+  // A REMOTE screen share (your own is excluded above). It no longer hijacks the
+  // whole stage: in grid it's just a (wide) tile so it doesn't shove everyone around
+  // — the reported reflow. To make it dominate, switch to Speaker (the focus layout
+  // below auto-focuses a screen share) or pin it — an opt-in, not forced.
+  const screenShare = visible.some((t) => t.source === Track.Source.ScreenShare)
+  // On phones a 1-on-1 reads best as remote-fills + floating self-PiP (Discord/Meet),
+  // not two equal tiles — route it through the focus layout even in grid.
+  const phone1on1 = coarse && visible.length === 2 && !screenShare
 
-  // A screen share always claims the spotlight (content fills the stage, people
-  // collapse to a filmstrip) — the Meet/Zoom/Teams convention. Forcing it out of the
-  // grid fixes the "share is just another equal tile, pillarboxed into 16:9/3:4" look:
-  // even in grid layout, sharing routes through the focus layout below.
-  if ((layout === 'grid' && !phone1on1 && !screenShare) || tracks.length <= 1) {
-    // "Hide self view" drops your own camera tile from the grid too (it only hid
-    // the floating self-card in speaker layout before). Keep it if it's the only
-    // tile, so the grid never goes empty.
+  if ((layout === 'grid' && !phone1on1) || visible.length <= 1) {
+    // "Hide self view" drops your own camera tile from the grid too. Keep it if it's
+    // the only tile, so the grid never goes empty.
     const gridTracks =
-      selfViewHidden && tracks.some((t) => !isLocalCam(t)) ? tracks.filter((t) => !isLocalCam(t)) : tracks
-    return <GridStage tracks={gridTracks} coarse={coarse} />
+      selfViewHidden && visible.some((t) => !isLocalCam(t))
+        ? visible.filter((t) => !isLocalCam(t))
+        : visible
+    return (
+      <>
+        <GridStage tracks={gridTracks} coarse={coarse} />
+        {presenting && <PresentingIndicator />}
+      </>
+    )
   }
 
-  // Speaker (and phone 1-on-1): a focused remote (or screen share)
-  // fills the stage and the local camera floats as a draggable self-view
-  // (STYLE.md §2 island model).
-  const localCam = tracks.find(isLocalCam)
-  const others = tracks.filter((t) => !isLocalCam(t))
+  // Speaker (and phone 1-on-1): a focused remote (or screen share) fills the stage
+  // and the local camera floats as a draggable self-view (STYLE.md §2 island model).
+  const localCam = visible.find(isLocalCam)
+  const others = visible.filter((t) => !isLocalCam(t))
   const focus = focusTrack(others, pinned) ?? localCam
   const filmstrip = others.filter((t) => t !== focus)
 
@@ -268,7 +288,7 @@ export function Stage() {
     <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-2 sm:p-3">
       <div className="min-h-0 flex-1">{focus && <Tile trackRef={focus} fill />}</div>
 
-      {(layout === 'speaker' || screenShare) && filmstrip.length > 0 && (
+      {filmstrip.length > 0 && (
         <div className="flex h-24 shrink-0 gap-3 overflow-x-auto sm:h-28">
           {filmstrip.map((ref) => (
             <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-video h-full shrink-0">
@@ -279,6 +299,21 @@ export function Stage() {
       )}
 
       {localCam && focus !== localCam && !selfViewHidden && <SelfViewCard trackRef={localCam} />}
+      {presenting && <PresentingIndicator />}
+    </div>
+  )
+}
+
+/** Status pill shown to YOU while you're sharing your screen — the in-app counterpart
+ *  to the browser's "you're sharing" bar. Replaces mirroring your own share back into
+ *  the stage. Stop sharing lives on the control bar (the Share button toggles off). */
+function PresentingIndicator() {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 top-[max(4rem,calc(env(safe-area-inset-top)+3.5rem))] z-20 flex justify-center px-4">
+      <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
+        <ScreenShareIcon />
+        You’re sharing your screen
+      </span>
     </div>
   )
 }
