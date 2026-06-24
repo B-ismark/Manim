@@ -293,26 +293,8 @@ export function ControlBar({
             }}
           />
         )}
-        {/* People lives in the top-right StageTopBar, not here. Layout switching
-            lives here on every device now (the inline desktop switcher is gone). */}
-        <GridTile
-          icon={<GridIcon />}
-          label="Grid"
-          active={layout === 'grid'}
-          onClick={() => {
-            setLayout('grid')
-            closeMore()
-          }}
-        />
-        <GridTile
-          icon={<SpeakerLayoutIcon />}
-          label="Speaker"
-          active={layout === 'speaker'}
-          onClick={() => {
-            setLayout('speaker')
-            closeMore()
-          }}
-        />
+        {/* Grid/Speaker moved into the unified "View" control below (layout + density
+            in one place). PiP/Full stay here — they're window actions, not layouts. */}
         {/* PiP — floats the call into an OS window. Desktop uses Document-PiP
             (whole-app); mobile + unsupported desktop fall back to element PiP. This
             is manual/tap-driven on purpose: gesture-less auto-PiP crashed mobile. */}
@@ -353,32 +335,61 @@ export function ControlBar({
         )}
       </div>
 
-      {/* View: gallery density (Teams "gallery size"). Only the grid has pages, so
-          picking a fixed size also switches to it; 'Auto' fits the viewport. */}
+      {/* View — layout + density in ONE control (was two separate sections: a
+          Grid/Speaker pair up top and a "Gallery size" row). Speaker = one large feed
+          + filmstrip; Grid = gallery. Only the grid is paged, so the size chips appear
+          only when Grid is active — 'Auto' fits the viewport, a number caps the page. */}
       <div className="mt-2 border-t border-line pt-2">
-        <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Gallery size</p>
-        <div className="flex gap-1" role="group" aria-label="Gallery size — tiles per page">
-          {gallerySizes.map((opt) => {
-            const active = gridSize === opt.value
+        <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">View</p>
+        <div className="flex gap-1" role="group" aria-label="View layout">
+          {(
+            [
+              { value: 'speaker', label: 'Speaker', icon: <SpeakerLayoutIcon /> },
+              { value: 'grid', label: 'Grid', icon: <GridIcon /> },
+            ] as const
+          ).map((opt) => {
+            const active = layout === opt.value
             return (
               <button
-                key={String(opt.value)}
+                key={opt.value}
                 type="button"
                 aria-pressed={active}
-                onClick={() => {
-                  setGridSize(opt.value)
-                  if (opt.value !== 'auto') setLayout('grid')
-                }}
+                onClick={() => setLayout(opt.value)}
                 className={cn(
-                  'flex-1 rounded-control py-1.5 text-sm font-medium transition-colors',
+                  'flex flex-1 items-center justify-center gap-1.5 rounded-control py-1.5 text-sm font-medium transition-colors [&_svg]:size-4',
                   active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
                 )}
               >
+                {opt.icon}
                 {opt.label}
               </button>
             )
           })}
         </div>
+        {layout === 'grid' && (
+          <div className="mt-1.5 flex gap-1" role="group" aria-label="Gallery size — tiles per page">
+            {gallerySizes.map((opt) => {
+              const active = gridSize === opt.value
+              return (
+                <button
+                  key={String(opt.value)}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => {
+                    setGridSize(opt.value)
+                    if (opt.value !== 'auto') setLayout('grid')
+                  }}
+                  className={cn(
+                    'flex-1 rounded-control py-1.5 text-sm font-medium transition-colors',
+                    active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
+                  )}
+                >
+                  {opt.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* A short action list (Google model) — heavy controls live in dialogs, so
