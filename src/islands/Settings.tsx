@@ -65,7 +65,7 @@ function SettingsPopover() {
     <Popover
       side="bottom"
       align="end"
-      className="w-[21rem] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain"
+      className="w-[21rem] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto overscroll-contain no-scrollbar"
       trigger={<IconButton label="Settings" icon={<SettingsIcon />} tone="neutral" />}
     >
       <div className="px-1 pb-2 pt-1">

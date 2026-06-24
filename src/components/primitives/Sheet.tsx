@@ -189,7 +189,7 @@ export function Sheet({
           <RD.Description asChild>
             <VisuallyHidden>{title} panel</VisuallyHidden>
           </RD.Description>
-          <div className={cn(flush ? 'flex min-h-0 flex-1 flex-col' : 'flex-1 overflow-y-auto p-4')}>
+          <div className={cn(flush ? 'flex min-h-0 flex-1 flex-col' : 'flex-1 overflow-y-auto p-4 no-scrollbar')}>
             {children}
           </div>
         </RD.Content>

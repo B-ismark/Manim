@@ -443,7 +443,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
             id="mention-listbox"
             role="listbox"
             aria-label="Mention a participant"
-            className="absolute inset-x-3 bottom-full z-10 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-surface py-1 shadow-pop"
+            className="absolute inset-x-3 bottom-full z-10 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-surface py-1 shadow-pop no-scrollbar"
           >
             {suggestions.map((t, i) => (
               <li key={t.identity}>

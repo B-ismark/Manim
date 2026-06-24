@@ -68,7 +68,7 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
         autoFocus
         className="h-9 w-full rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
       />
-      <div className="mt-2 grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto">
+      <div className="mt-2 grid max-h-64 grid-cols-2 gap-1.5 overflow-y-auto no-scrollbar">
         {items.map((g) => (
           <button
             key={g.id}

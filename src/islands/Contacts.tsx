@@ -222,7 +222,7 @@ function ContactsBody({
 
   return (
     <Tabs items={items} value={tab} onValueChange={setTab} className={className}>
-      <TabPanel value="contacts" className="mt-3 min-h-0 overflow-y-auto">
+      <TabPanel value="contacts" className="mt-3 min-h-0 overflow-y-auto no-scrollbar">
         {error && (
           <div className="mb-2 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger-text">
             <span>{error}</span>
@@ -281,7 +281,7 @@ function ContactsBody({
         )}
       </TabPanel>
 
-      <TabPanel value="requests" className="mt-3 min-h-0 overflow-y-auto">
+      <TabPanel value="requests" className="mt-3 min-h-0 overflow-y-auto no-scrollbar">
         {incoming.length === 0 && outgoing.length === 0 ? (
           <Empty
             title="No requests"

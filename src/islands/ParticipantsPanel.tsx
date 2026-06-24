@@ -322,7 +322,7 @@ export function ParticipantsPanel() {
 
         <p className="mt-3 text-xs font-medium text-ink-subtle">{participants.length} in call</p>
       </div>
-      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
+      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 no-scrollbar">
         {participants.map((p) => (
           <ParticipantRow
             key={p.identity}

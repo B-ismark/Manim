@@ -571,7 +571,7 @@ export function ControlBar({
               <IconButton label="More options" icon={<MoreIcon />} tone="neutral" active={moreOpen} />
             }
           >
-            <div className="max-h-[min(70vh,32rem)] w-80 max-w-[85vw] overflow-y-auto p-2">
+            <div className="max-h-[min(70vh,32rem)] w-80 max-w-[85vw] overflow-y-auto p-2 no-scrollbar">
               {moreContent}
             </div>
           </Popover>
