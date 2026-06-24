@@ -299,6 +299,14 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
+  // Warm the side-panel chunk as soon as we're in the call, so tapping chat/people
+  // opens it instantly. It's lazy() (Suspense fallback is null), so a cold import
+  // left the panel invisible-but-"active" until the chunk downloaded — seconds on a
+  // slow link, and indefinitely mid-reconnect when the fetch can't complete. Warming
+  // it up-front caches it locally before it's needed. Fire-and-forget; import dedups.
+  useEffect(() => {
+    void import('@/islands/SidePanel')
+  }, [])
   const carouselOpen = useEffectsUi((s) => s.carouselOpen)
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
   // Opening the effects carousel must reveal + pin the chrome. The Effects button
