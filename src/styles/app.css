@@ -5,6 +5,18 @@
    no-scroll rule forbids. `short:` compresses vertical rhythm when height is tight. */
 @custom-variant short (@media (max-height: 760px));
 
+/* Hide the scrollbar while keeping the element scrollable. For menus/sheets/popovers
+   where the chunky desktop scrollbar looks out of place — scroll still works via
+   wheel/trackpad/drag, and the content overflows mid-item to signal scrollability. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+  }
+}
+
 /*
   ───────────────────────────────────────────────────────────────────────────
   VEIL DESIGN TOKENS  —  single source of truth for all UI.

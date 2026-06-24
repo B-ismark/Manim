@@ -58,7 +58,7 @@ export function Dialog({
               padding gives the ring room; the negative margin keeps content aligned. */}
           <div
             className={cn(
-              'min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 -mx-1',
+              'min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 -mx-1 no-scrollbar',
               !hideTitle && 'mt-4',
             )}
           >
