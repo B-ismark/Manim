@@ -9,7 +9,7 @@ import { JoiningScreen } from '@/islands/JoiningScreen'
 import { PipPanel } from '@/islands/PipPanel'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
-import { HandoffBanner } from '@/islands/HandoffBanner'
+import { HandoffBanner, CompanionBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { CallStatusBar } from '@/islands/CallStatusBar'
@@ -33,6 +33,7 @@ import { useEffectsUi } from '@/store/useEffectsUi'
 import { Button } from '@/components/primitives'
 import { HandIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
+import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
 import { isTouch } from '@/lib/device'
 import { parseRoomHash } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
@@ -220,6 +221,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Detect mid-call device loss (camera unplugged / mic disconnected / OS revoke)
   // and surface it instead of letting the tile silently freeze (E5).
   useMediaDeviceWatch()
+  // Auto-route devices: restore the user's remembered mic/speaker/camera, and grab a
+  // Bluetooth headset the moment it connects (useDeviceStore prefs).
+  useDeviceAutoswitch()
 
   // Breadcrumb connection-state transitions so a reported error carries the recent
   // connection history (E1) — e.g. "errored right after a Reconnecting blip".
@@ -299,6 +303,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
+  const companion = useRoomStore((s) => s.companion)
+  const setCompanion = useRoomStore((s) => s.setCompanion)
   // Warm the side-panel chunk as soon as we're in the call, so tapping chat/people
   // opens it instantly. It's lazy() (Suspense fallback is null), so a cold import
   // left the panel invisible-but-"active" until the chunk downloaded — seconds on a
@@ -372,7 +378,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
   return (
     <>
-      <RoomAudioRenderer />
+      {/* Companion (same account on another device) mutes the speaker to avoid echo —
+          the user hears the call on their other device. "Turn on sound" clears it. */}
+      <RoomAudioRenderer muted={companion} />
       <CallAnnouncer />
       {/* Faint top scrim: visually groups the floating top chrome (layout chip /
           timer / participants) and guarantees their contrast over bright video.
@@ -390,7 +398,11 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <PinCoachmark />
       <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
 
-      {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
+      {companion ? (
+        <CompanionBanner onTakeOver={() => setCompanion(false)} onTransfer={switchToThisDevice} />
+      ) : (
+        sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
+      )}
       <WaitingRoomBanner active={isHost && waiting} />
       <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
 
