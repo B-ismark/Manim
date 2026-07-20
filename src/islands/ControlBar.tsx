@@ -38,13 +38,14 @@ import {
   EyeOffIcon,
   SoundOnIcon,
 } from '@/components/icons'
-import { DeviceSettings } from '@/islands/DeviceMenu'
+import { DeviceSettings, DeviceRow } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
 import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore, type GridSize } from '@/store/useRoomStore'
+import { useDeviceStore } from '@/store/useDeviceStore'
 import { useCameraToggle } from '@/lib/useCameraToggle'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
@@ -429,9 +430,13 @@ export function ControlBar({
             closeMore()
           }}
         />
+        {/* This toggles whether we DECODE others' video — renamed off "Audio-only
+            mode" because it read as (and sat next to) the "Audio & video" device
+            picker, the exact confusion users reported. Framed as incoming video
+            (Discord "Allow incoming video" / Skype), with a data-saver hint. */}
         <MenuRow
-          icon={<SoundOnIcon />}
-          label={audioOnly ? 'Audio-only on — switch to video' : 'Audio-only mode'}
+          icon={<CameraOffIcon />}
+          label={audioOnly ? 'Turn on incoming video' : 'Turn off incoming video (save data)'}
           active={audioOnly}
           onClick={() => {
             toggleAudioOnly()
@@ -498,25 +503,44 @@ export function ControlBar({
           </Tooltip>
         )}
 
-        <Tooltip content={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
-          <IconButton
-            label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
-            icon={isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
-            tone={isMicrophoneEnabled ? 'neutral' : 'danger'}
-            active={!isMicrophoneEnabled}
-            onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
-          />
-        </Tooltip>
+        {/* Mic — toggle + a caret (desktop) that opens the audio device picker right
+            at the button (Meet/Zoom/Teams pattern), so device controls are never
+            hidden in a menu. Touch reaches the same picker via the Output button and
+            "Audio & video" in More. */}
+        <div className="flex items-center gap-0.5">
+          <Tooltip content={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
+            <IconButton
+              label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
+              icon={isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
+              tone={isMicrophoneEnabled ? 'neutral' : 'danger'}
+              active={!isMicrophoneEnabled}
+              onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+            />
+          </Tooltip>
+          <DeviceCaret label="Audio settings" className="hidden pointer-fine:inline-flex">
+            <AudioDevicePanel noise={noise} />
+          </DeviceCaret>
+        </div>
 
-        <Tooltip content={isCameraEnabled ? 'Stop video' : 'Start video'}>
-          <IconButton
-            label={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-            icon={isCameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
-            tone={isCameraEnabled ? 'neutral' : 'danger'}
-            active={!isCameraEnabled}
-            onClick={() => void toggleCamera()}
-          />
-        </Tooltip>
+        <div className="flex items-center gap-0.5">
+          <Tooltip content={isCameraEnabled ? 'Stop video' : 'Start video'}>
+            <IconButton
+              label={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+              icon={isCameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
+              tone={isCameraEnabled ? 'neutral' : 'danger'}
+              active={!isCameraEnabled}
+              onClick={() => void toggleCamera()}
+            />
+          </Tooltip>
+          <DeviceCaret label="Camera settings" className="hidden pointer-fine:inline-flex">
+            <CameraDevicePanel />
+          </DeviceCaret>
+        </div>
+
+        {/* Audio output — always visible (Brave/Skype/WhatsApp pattern). One tap to
+            see and switch which speaker/headset audio plays through, the control
+            users hunt for most on mobile. */}
+        <OutputDeviceButton noise={noise} />
 
         {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
             where getDisplayMedia is unavailable (iOS). */}
@@ -795,6 +819,112 @@ function MenuRow({
       {icon}
       {label}
     </button>
+  )
+}
+
+/**
+ * Small caret button that opens a device picker anchored to a bar control (the
+ * mic/camera "split button" chevron). Desktop-only via the caller's className —
+ * touch uses the Output button + More, where a full-size tap target is friendlier.
+ */
+function DeviceCaret({
+  label,
+  className,
+  children,
+}: {
+  label: string
+  className?: string
+  children: ReactNode
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      side="top"
+      align="center"
+      trigger={
+        <IconButton
+          label={label}
+          size="sm"
+          tone="neutral"
+          active={open}
+          icon={<ChevronUpIcon />}
+          className={className}
+        />
+      }
+    >
+      <div className="w-72 max-w-[85vw]">{children}</div>
+    </Popover>
+  )
+}
+
+/** Mic + speaker pickers, the Bluetooth-auto toggle, and noise suppression — the
+ *  full audio panel behind the mic caret. */
+function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <DeviceRow kind="audioinput" label="Microphone" />
+      <DeviceRow kind="audiooutput" label="Speaker" />
+      <div className="border-t border-line pt-2">
+        <BluetoothToggle />
+      </div>
+      {noise && (
+        <div className="border-t border-line pt-1">
+          <NoiseSuppression controls={noise} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Camera picker behind the camera caret (desktop). Flip lives on the self-view
+ *  tile for touch, so it's not repeated here. */
+function CameraDevicePanel() {
+  return (
+    <div className="flex flex-col gap-3">
+      <DeviceRow kind="videoinput" label="Camera" />
+    </div>
+  )
+}
+
+/** Always-visible audio-output control (Brave/Skype/WhatsApp). Shows the speaker
+ *  list plus the Bluetooth-auto toggle — the routing users most want at a tap. */
+function OutputDeviceButton({ noise }: { noise: NoiseFilterControls }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <Popover
+      open={open}
+      onOpenChange={setOpen}
+      side="top"
+      align="center"
+      trigger={
+        <Tooltip content="Audio output">
+          <IconButton label="Audio output" tone="neutral" active={open} icon={<SoundOnIcon />} />
+        </Tooltip>
+      }
+    >
+      <div className="w-72 max-w-[85vw]">
+        <AudioDevicePanel noise={noise} />
+      </div>
+    </Popover>
+  )
+}
+
+/** "Auto-connect Bluetooth" preference — when on, a headset that connects takes over
+ *  audio automatically (useAudioDeviceAutoswitch). */
+function BluetoothToggle() {
+  const autoBluetooth = useDeviceStore((s) => s.autoBluetooth)
+  const setAutoBluetooth = useDeviceStore((s) => s.setAutoBluetooth)
+  return (
+    <div className="px-2.5 py-1.5">
+      <Toggle
+        checked={autoBluetooth}
+        onCheckedChange={setAutoBluetooth}
+        label="Auto-connect Bluetooth"
+        className="w-full justify-between"
+      />
+    </div>
   )
 }
 
