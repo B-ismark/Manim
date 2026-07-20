@@ -46,6 +46,22 @@ interface RoomState {
   videosFirst: boolean
   /** Identity of a pinned participant, or null. Drives the speaker-layout focus. */
   pinned: string | null
+  /**
+   * Screen-share presentation layout (big content + segmented user grid).
+   * `spotlightKey` = the tile key currently in the big slot; null = auto (the active
+   * share). Tapping a grid tile spotlights it (person-swap). `demotedShares` = share
+   * track SIDs the viewer demoted back to the plain grid — remembered per share session,
+   * so a NEW share (different SID) re-promotes automatically.
+   */
+  spotlightKey: string | null
+  demotedShares: string[]
+  /**
+   * This device joined as a COMPANION — the same account is already in the call on
+   * another device, and the user chose "join anyway". Mic + camera start off and the
+   * speaker is muted to avoid echo (Meet/Teams companion model). Cleared when the user
+   * takes over audio or transfers here.
+   */
+  companion: boolean
   panel: PanelTab
   /** Unread chat count while the chat panel is closed (cleared on open). */
   unread: number
@@ -64,6 +80,15 @@ interface RoomState {
   toggleAudioOnly: () => void
   /** Toggle pin for an identity; pinning auto-switches to speaker layout if in grid. */
   togglePin: (identity: string) => void
+  /** Mark/clear this device as a muted companion (same account elsewhere). */
+  setCompanion: (companion: boolean) => void
+  /** Presentation: put a tile in the big slot (person-swap); null resets to the share. */
+  setSpotlight: (key: string | null) => void
+  /** Presentation: demote a share (by SID) back to the plain grid, or re-promote it. */
+  toggleShareDemoted: (shareId: string) => void
+  /** Drop stale presentation state when shares end/change (called from Stage). Prunes
+   *  demoted SIDs no longer active and clears a spotlight whose tile is gone. */
+  prunePresentation: (activeShareIds: string[], validKeys: string[]) => void
   setPanel: (panel: PanelTab) => void
   bumpUnread: (by?: number) => void
   clearUnread: () => void
@@ -78,6 +103,9 @@ export const useRoomStore = create<RoomState>((set) => ({
   gridSize: loadGridSize(),
   videosFirst: loadVideosFirst(),
   pinned: null,
+  spotlightKey: null,
+  demotedShares: [],
+  companion: false,
   panel: null,
   unread: 0,
   selfFacing: 'user',
@@ -113,6 +141,34 @@ export const useRoomStore = create<RoomState>((set) => ({
       // Pinning from the grid implies the user wants a focused view.
       const layout = pinned && s.layout === 'grid' ? 'speaker' : s.layout
       return { pinned, layout }
+    }),
+  setCompanion: (companion) => set({ companion }),
+  setSpotlight: (spotlightKey) => set({ spotlightKey }),
+  toggleShareDemoted: (shareId) =>
+    set((s) => {
+      const demoted = s.demotedShares.includes(shareId)
+      return {
+        demotedShares: demoted
+          ? s.demotedShares.filter((id) => id !== shareId)
+          : [...s.demotedShares, shareId],
+        // Demoting to the plain grid drops any person-spotlight too (clean reset).
+        spotlightKey: demoted ? s.spotlightKey : null,
+      }
+    }),
+  prunePresentation: (activeShareIds, validKeys) =>
+    set((s) => {
+      const demotedShares = s.demotedShares.filter((id) => activeShareIds.includes(id))
+      // Clear the spotlight when its tile is gone OR once every share has ended (so the
+      // next share starts big by default rather than inheriting a stale person-spotlight).
+      const spotlightKey =
+        s.spotlightKey && (activeShareIds.length === 0 || !validKeys.includes(s.spotlightKey))
+          ? null
+          : s.spotlightKey
+      // Return a stable reference when nothing changed so the effect that calls this
+      // doesn't loop (zustand bails on identical primitives but not new arrays).
+      const sameDemoted = demotedShares.length === s.demotedShares.length
+      if (sameDemoted && spotlightKey === s.spotlightKey) return s
+      return { demotedShares: sameDemoted ? s.demotedShares : demotedShares, spotlightKey }
     }),
   setPanel: (panel) => set((s) => ({ panel, unread: panel === 'chat' ? 0 : s.unread })),
   bumpUnread: (by = 1) => set((s) => ({ unread: s.unread + by })),
