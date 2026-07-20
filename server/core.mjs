@@ -350,6 +350,21 @@ export async function handleKnock(env, body) {
   const flags = await getRoomFlags(roomService, room)
   const participants = await listParticipants(roomService, room)
   const alreadyIn = participants.some((p) => p.identity === identity)
+  // Is this same signed-in account ALREADY in the room on a DIFFERENT device? (Guests
+  // are device-bound — a different device is a different guest userId — so this only
+  // fires for a real shared account.) Surfaced to the client so prejoin can offer
+  // "join anyway (companion, muted)" vs "transfer to this device". Authority is the
+  // server-derived `userId`, never client-claimed, so it can't be spoofed.
+  const alsoOnDevice =
+    Boolean(userId) &&
+    participants.some((p) => {
+      if (p.identity === identity) return false
+      try {
+        return JSON.parse(p.metadata || '{}').userId === userId
+      } catch {
+        return false
+      }
+    })
   const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
   const queue = Array.isArray(flags.queue) ? flags.queue : []
   // Already admitted this session? Someone the host let in, who then left, should
@@ -474,7 +489,7 @@ export async function handleKnock(env, body) {
       }
     }
     const minted = await mintToken(env, room, name, deviceId, isHost, userId)
-    return { status: 200, body: { ...minted, host: isHost } }
+    return { status: 200, body: { ...minted, host: isHost, alsoOnDevice } }
   }
 
   // Waiting room is on and we're not auto-admitting. Don't queue against a host

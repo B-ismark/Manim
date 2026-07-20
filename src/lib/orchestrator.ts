@@ -50,6 +50,9 @@ export interface KnockResponse {
   token?: string
   identity?: string
   host?: boolean
+  /** True when the SAME signed-in account is already in the room on another device.
+   *  Lets prejoin offer "join anyway (companion, muted)" vs "transfer to this device". */
+  alsoOnDevice?: boolean
   /** Present when the waiting room queued the request for host approval. */
   pending?: boolean
   requestId?: string

@@ -24,14 +24,23 @@ export function useElementSize<T extends HTMLElement>() {
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
+    // Round to whole pixels and ignore sub-2px deltas. The stage animates its width
+    // during the side-panel dock transition (transition-[padding]) — a raw observer
+    // fires every frame, re-running the tile packer (gridCapacity/fitMixedRows/
+    // presentationLayout) on each, which reads as reflow jank. Snapping + a threshold
+    // collapses that continuous stream to at most a couple of relayouts.
+    const nearlyEqual = (a: Size, b: Size) => Math.abs(a.width - b.width) < 2 && Math.abs(a.height - b.height) < 2
     // Measure now, before the first paint, so consumers never render against 0×0.
     const rect = el.getBoundingClientRect()
-    setSize((s) => (s.width === rect.width && s.height === rect.height ? s : { width: rect.width, height: rect.height }))
+    const initial = { width: Math.round(rect.width), height: Math.round(rect.height) }
+    setSize((s) => (nearlyEqual(s, initial) ? s : initial))
 
     if (typeof ResizeObserver === 'undefined') return
     const ro = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect
-      if (box) setSize({ width: box.width, height: box.height })
+      if (!box) return
+      const next = { width: Math.round(box.width), height: Math.round(box.height) }
+      setSize((s) => (nearlyEqual(s, next) ? s : next))
     })
     ro.observe(el)
     return () => ro.disconnect()

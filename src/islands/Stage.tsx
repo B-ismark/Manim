@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -10,7 +10,21 @@ import {
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
 import { Avatar, Button, IconButton } from '@/components/primitives'
-import { CopyIcon, CheckIcon, EffectsIcon, FlipCameraIcon, HandIcon, MicOffIcon, PinIcon, ScreenShareIcon } from '@/components/icons'
+import {
+  CopyIcon,
+  CheckIcon,
+  EffectsIcon,
+  FlipCameraIcon,
+  HandIcon,
+  MicOffIcon,
+  PinIcon,
+  ScreenShareIcon,
+  FullscreenIcon,
+  ExitFullscreenIcon,
+  SpotlightIcon,
+  GridIcon,
+  PeopleIcon,
+} from '@/components/icons'
 import { moderate } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
@@ -23,7 +37,8 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { focusTrack, isLocalCam } from '@/lib/focusTrack'
+import { focusTrack, isLocalCam, isScreenShare, primaryShare } from '@/lib/focusTrack'
+import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
@@ -222,6 +237,8 @@ export function Stage() {
   const layout = useRoomStore((s) => s.layout)
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
+  const demotedShares = useRoomStore((s) => s.demotedShares)
+  const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
   const tracks = useTracks(
@@ -244,6 +261,19 @@ export function Stage() {
   const visible = localScreenShare ? tracks.filter((t) => t !== localScreenShare) : tracks
   const presenting = Boolean(localScreenShare)
 
+  // Prune presentation state (demoted-share flags, a person-spotlight) when the active
+  // shares or tiles change — a share ended, a spotlighted person left. Keyed on the
+  // joined id strings so the effect only fires when the contents actually change, not
+  // on every render (the arrays are re-derived each render).
+  const shareIdKey = visible
+    .filter(isScreenShare)
+    .map((t) => t.publication?.trackSid ?? tileKey(t))
+    .join('|')
+  const tileKeyList = visible.map(tileKey).join('|')
+  useEffect(() => {
+    prunePresentation(shareIdKey ? shareIdKey.split('|') : [], tileKeyList ? tileKeyList.split('|') : [])
+  }, [shareIdKey, tileKeyList, prunePresentation])
+
   if (participants.length <= 1 && visible.length <= 1) {
     return (
       <>
@@ -253,14 +283,37 @@ export function Stage() {
     )
   }
 
-  // A REMOTE screen share (your own is excluded above). It no longer hijacks the
-  // whole stage: in grid it's just a (wide) tile so it doesn't shove everyone around
-  // — the reported reflow. To make it dominate, switch to Speaker (the focus layout
-  // below auto-focuses a screen share) or pin it — an opt-in, not forced.
-  const screenShare = visible.some((t) => t.source === Track.Source.ScreenShare)
+  // Screen-share presentation layout (Meet/Teams model): a REMOTE share (your own is
+  // excluded above) takes the big region and everyone else tiles in a segmented grid
+  // beside/below it. Auto-on unless the viewer demoted THIS share (remembered per share
+  // SID) — demoting falls back to the plain equal-tile grid on every device.
+  const share = primaryShare(visible)
+  if (share && visible.length > 1) {
+    const sid = share.publication?.trackSid ?? tileKey(share)
+    if (!demotedShares.includes(sid)) {
+      return (
+        <>
+          <PresentationStage visible={visible} coarse={coarse} share={share} shareId={sid} />
+          {presenting && <PresentingIndicator />}
+        </>
+      )
+    }
+    const gridTracks =
+      selfViewHidden && visible.some((t) => !isLocalCam(t))
+        ? visible.filter((t) => !isLocalCam(t))
+        : visible
+    return (
+      <>
+        <GridStage tracks={gridTracks} coarse={coarse} />
+        {presenting && <PresentingIndicator />}
+      </>
+    )
+  }
+
+  // No remote share below this point (shares are handled above).
   // On phones a 1-on-1 reads best as remote-fills + floating self-PiP (Discord/Meet),
   // not two equal tiles — route it through the focus layout even in grid.
-  const phone1on1 = coarse && visible.length === 2 && !screenShare
+  const phone1on1 = coarse && visible.length === 2
 
   if ((layout === 'grid' && !phone1on1) || visible.length <= 1) {
     // "Hide self view" drops your own camera tile from the grid too. Keep it if it's
@@ -337,6 +390,22 @@ function GridStage({
   const [page, setPage] = useState(0)
   const gridSize = useRoomStore((s) => s.gridSize)
   const videosFirst = useRoomStore((s) => s.videosFirst)
+  const toggleShareDemoted = useRoomStore((s) => s.toggleShareDemoted)
+
+  // A screen share only reaches the grid when the viewer DEMOTED it out of the
+  // presentation layout — so give it a one-tap way back (re-present). Cameras get no
+  // extra action here (they keep the default pin).
+  const shareProps = useCallback(
+    (t: TrackReferenceOrPlaceholder) => {
+      if (!isScreenShare(t)) return {}
+      const promote = () => toggleShareDemoted(t.publication?.trackSid ?? tileKey(t))
+      return {
+        onActivate: promote,
+        action: { icon: <SpotlightIcon />, label: 'Present shared screen', onClick: promote },
+      }
+    },
+    [toggleShareDemoted],
+  )
 
   // Stable order: screen share → self → others, then by key. Never reorders on
   // speech (that would make tiles jump between pages mid-sentence). When "videos
@@ -416,14 +485,14 @@ function GridStage({
               <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
                 {row.map(({ tref, w, h }) => (
                   <div key={tileKey(tref)} className="min-h-0" style={{ width: w, height: h }}>
-                    <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} />
+                    <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} {...shareProps(tref)} />
                   </div>
                 ))}
               </div>
             ))
           : shown.map((tref) => (
               <div key={tileKey(tref)} className="min-h-0 aspect-video w-full max-w-3xl">
-                <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} />
+                <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} {...shareProps(tref)} />
               </div>
             ))}
       </div>
@@ -469,6 +538,241 @@ function GridStage({
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/** Display name for a tile's participant (strips the `#deviceId` identity suffix). */
+function tileName(t: TrackReferenceOrPlaceholder): string {
+  return t.participant.name || t.participant.identity.split('#')[0]
+}
+
+/** Fullscreen a DOM element (the shared-screen tile). Falls back to the iOS-only
+ *  `<video>.webkitEnterFullscreen` when element fullscreen isn't available (iOS Safari
+ *  only fullscreens the video element, not arbitrary containers). */
+function useFullscreen(ref: { current: HTMLElement | null }) {
+  const [isFs, setIsFs] = useState(false)
+  useEffect(() => {
+    const onChange = () => setIsFs(document.fullscreenElement === ref.current)
+    document.addEventListener('fullscreenchange', onChange)
+    return () => document.removeEventListener('fullscreenchange', onChange)
+  }, [ref])
+  const enter = useCallback(() => {
+    const el = ref.current
+    if (!el) return
+    const video = el.querySelector('video') as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
+    if (el.requestFullscreen) {
+      el.requestFullscreen().catch(() => video?.webkitEnterFullscreen?.())
+    } else {
+      video?.webkitEnterFullscreen?.()
+    }
+  }, [ref])
+  const exit = useCallback(() => {
+    if (document.fullscreenElement) void document.exitFullscreen?.()
+  }, [])
+  return { isFs, enter, exit }
+}
+
+/** Enter/exit-fullscreen controls overlaid on the shared-screen big tile. On desktop
+ *  Esc also exits (native); on touch there's no Esc, so the floating Exit button is the
+ *  way out. Enter sits top-left (clear of the top-right action + bottom name pill). */
+function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement | null } }) {
+  const { isFs, enter, exit } = useFullscreen(targetRef)
+  // Exit sits top-right ABOVE the tile's action button (z-30 covers it in fullscreen —
+  // the only control you want then). Enter stacks just below the action (top-right
+  // column), clear of the top-left moderator mute + the bottom name pill.
+  return isFs ? (
+    <div className="absolute right-2 top-2 z-30" onPointerDown={(e) => e.stopPropagation()}>
+      <IconButton
+        size="md"
+        label="Exit fullscreen"
+        icon={<ExitFullscreenIcon />}
+        className="bg-overlay text-white hover:bg-overlay"
+        onClick={exit}
+      />
+    </div>
+  ) : (
+    <div className="absolute right-2 top-14 z-10" onPointerDown={(e) => e.stopPropagation()}>
+      <IconButton
+        size="sm"
+        label="Fullscreen shared screen"
+        icon={<FullscreenIcon />}
+        className="bg-overlay text-white hover:bg-overlay"
+        onClick={enter}
+      />
+    </div>
+  )
+}
+
+/** Grid-tile-shaped shortcut to the full roster (the "+N view all" overflow). */
+function OverflowTile({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="grid size-full place-items-center rounded-tile bg-sunken text-ink ring-1 ring-line transition-colors hover:bg-line [&_svg]:size-5"
+      aria-label={`View all participants (${count} more)`}
+    >
+      <span className="flex flex-col items-center gap-1 text-sm font-medium">
+        <PeopleIcon />
+        <span className="tabular-nums">+{count}</span>
+      </span>
+    </button>
+  )
+}
+
+/**
+ * Screen-share presentation layout (Meet/Teams model). The featured tile — the share, or
+ * a person you spotlighted — fills a big region sized ADAPTIVELY to its content aspect;
+ * everyone else tiles in a segmented grid to the side (wide stage) or below (portrait).
+ * Video-on tiles come first; when they overflow, a "+N view all" tile opens People and a
+ * compact pager cycles the rest. Double-tap / long-press (or the corner button):
+ * spotlight a grid tile, restore the share, or demote the big share back to the grid.
+ */
+function PresentationStage({
+  visible,
+  coarse,
+  share,
+  shareId,
+}: {
+  visible: TrackReferenceOrPlaceholder[]
+  coarse: boolean
+  share: TrackReferenceOrPlaceholder
+  shareId: string
+}) {
+  const { ref, size } = useElementSize<HTMLDivElement>()
+  const spotlightKey = useRoomStore((s) => s.spotlightKey)
+  const setSpotlight = useRoomStore((s) => s.setSpotlight)
+  const toggleShareDemoted = useRoomStore((s) => s.toggleShareDemoted)
+  const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
+  const setPanel = useRoomStore((s) => s.setPanel)
+  const [page, setPage] = useState(0)
+  const [bigAspect, setBigAspect] = useState(16 / 9)
+  const bigRef = useRef<HTMLDivElement>(null)
+
+  // The big tile: an explicit spotlight (person-swap) or, by default, the share.
+  const big = visible.find((t) => tileKey(t) === spotlightKey) ?? share
+  const bigIsShare = isScreenShare(big)
+
+  // Grid = everyone except the big tile; drop self if hidden (unless it'd empty the grid).
+  let rest = visible.filter((t) => t !== big)
+  if (selfViewHidden && rest.some((t) => !isLocalCam(t))) rest = rest.filter((t) => !isLocalCam(t))
+  const ordered = orderUsers(rest, hasLiveVideo, tileKey)
+
+  const gap = coarse ? 8 : 12
+  const measured = size.width > 2 && size.height > 2
+  const L = presentationLayout(size.width, size.height, ordered.length, bucketAspect(bigAspect), gap)
+
+  // Paging + overflow inside the grid region. When tiles exceed capacity, reserve the
+  // last slot for the "+N view all" tile; a compact pager cycles the pages.
+  const cap = measured ? userRegionCapacity(L.grid.w, L.grid.h, coarse) : ordered.length
+  const overflowing = measured && ordered.length > cap
+  const perPage = overflowing ? Math.max(1, cap - 1) : Math.max(1, ordered.length)
+  const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
+  const current = Math.min(page, pageCount - 1)
+  useEffect(() => {
+    if (page !== current) setPage(current)
+  }, [page, current])
+  const pageItems = ordered.slice(current * perPage, current * perPage + perPage)
+
+  // Pack the page's tiles (+ the overflow slot) into justified rows that fill the region.
+  const cellItems: Array<{ kind: 'tile'; t: TrackReferenceOrPlaceholder } | { kind: 'overflow' }> = [
+    ...pageItems.map((t) => ({ kind: 'tile' as const, t })),
+    ...(overflowing ? [{ kind: 'overflow' as const }] : []),
+  ]
+  const rows = measured ? fitMixedRows(L.grid.w, L.grid.h, cellItems.map(() => 16 / 9), gap) : null
+  let walk = 0
+  const rowCells = rows ? rows.map((row) => row.map((cell) => ({ ...cell, item: cellItems[walk++] }))) : null
+
+  return (
+    <div className="relative flex min-h-0 flex-1 p-2 sm:p-3">
+      <div ref={ref} className="relative min-h-0 flex-1">
+        {measured && (
+          <>
+            {/* Big region — the share (object-contain, never cropped) or a spotlit person. */}
+            <div className="absolute" style={{ left: L.big.x, top: L.big.y, width: L.big.w, height: L.big.h }}>
+              <div ref={bigRef} className="relative size-full">
+                <Tile
+                  trackRef={big}
+                  fill
+                  onAspect={setBigAspect}
+                  onActivate={() => (bigIsShare ? toggleShareDemoted(shareId) : setSpotlight(null))}
+                  action={
+                    bigIsShare
+                      ? { icon: <GridIcon />, label: 'Show as grid', onClick: () => toggleShareDemoted(shareId) }
+                      : { icon: <ScreenShareIcon />, label: 'Back to shared screen', onClick: () => setSpotlight(null) }
+                  }
+                />
+                {bigIsShare && <FullscreenControls targetRef={bigRef} />}
+              </div>
+            </div>
+
+            {/* Grid region — everyone else, filling the space; tap a tile to spotlight it. */}
+            <div
+              className="absolute flex flex-col content-center items-center justify-center"
+              style={{ left: L.grid.x, top: L.grid.y, width: L.grid.w, height: L.grid.h, gap }}
+            >
+              {rowCells?.map((row, ri) => (
+                <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
+                  {row.map(({ w, h, item }, ci) =>
+                    item?.kind === 'overflow' ? (
+                      <div key="overflow" className="min-h-0" style={{ width: w, height: h }}>
+                        <OverflowTile count={ordered.length - perPage} onClick={() => setPanel('people')} />
+                      </div>
+                    ) : item ? (
+                      <div key={tileKey(item.t)} className="min-h-0" style={{ width: w, height: h }}>
+                        <Tile
+                          trackRef={item.t}
+                          fill
+                          onActivate={() =>
+                            isScreenShare(item.t) ? setSpotlight(null) : setSpotlight(tileKey(item.t))
+                          }
+                          action={
+                            isScreenShare(item.t)
+                              ? { icon: <ScreenShareIcon />, label: 'Show shared screen', onClick: () => setSpotlight(null) }
+                              : {
+                                  icon: <SpotlightIcon />,
+                                  label: `Spotlight ${tileName(item.t)}`,
+                                  onClick: () => setSpotlight(tileKey(item.t)),
+                                }
+                          }
+                        />
+                      </div>
+                    ) : (
+                      <div key={`empty-${ri}-${ci}`} style={{ width: w, height: h }} />
+                    ),
+                  )}
+                </div>
+              ))}
+
+              {/* Compact pager for the grid region (Both: pager + the People overflow tile). */}
+              {pageCount > 1 && (
+                <div className="mt-1 flex shrink-0 items-center gap-2">
+                  <IconButton
+                    size="sm"
+                    label="Previous page"
+                    icon={<ChevronLeftIcon />}
+                    disabled={current === 0}
+                    className="bg-overlay text-white hover:bg-overlay"
+                    onClick={() => setPage((prev) => Math.max(0, prev - 1))}
+                  />
+                  <span className="rounded-control bg-overlay px-2 py-0.5 text-xs font-medium tabular-nums text-white">
+                    {current + 1} / {pageCount}
+                  </span>
+                  <IconButton
+                    size="sm"
+                    label="Next page"
+                    icon={<ChevronRightIcon />}
+                    disabled={current >= pageCount - 1}
+                    className="bg-overlay text-white hover:bg-overlay"
+                    onClick={() => setPage((prev) => Math.min(pageCount - 1, prev + 1))}
+                  />
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   )
 }
@@ -560,12 +864,23 @@ function Tile({
   trackRef,
   fill = false,
   onAspect,
+  onActivate,
+  action,
+  overlay,
 }: {
   trackRef: TrackReferenceOrPlaceholder
   fill?: boolean
   /** Report the video's real intrinsic aspect (w/h) up to the grid packer. Only
    *  the mixed-orientation grid passes this; spotlight/filmstrip/self ignore it. */
   onAspect?: (ratio: number) => void
+  /** Override the double-tap / long-press / Enter gesture. Presentation uses this to
+   *  spotlight (grid tile) or demote (big tile) instead of the default pin toggle. */
+  onActivate?: () => void
+  /** Replace the corner pin button with a custom action (icon + label). Presentation
+   *  shows spotlight / exit-presentation here instead of pin. */
+  action?: { icon: ReactNode; label: string; onClick: () => void; active?: boolean }
+  /** Extra absolutely-positioned overlay inside the tile (e.g. the fullscreen button). */
+  overlay?: ReactNode
 }) {
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
@@ -625,11 +940,15 @@ function Tile({
   const toggleEffects = useEffectsUi((s) => s.toggleCarousel)
   const showSelfTools = p.isLocal && !isScreen && hasVideo && coarse
 
-  // Long-press to pin (touch) — a second, more discoverable gesture alongside
-  // double-tap. A drag (swipe to switch layout) cancels it.
+  // Double-tap / long-press / Enter action. Default = toggle pin; presentation overrides
+  // it (spotlight a grid tile, or demote the big tile back to the plain grid).
+  const activate = onActivate ?? (() => togglePin(p.identity))
+
+  // Long-press (touch) — a second, more discoverable gesture alongside double-tap.
+  // A drag (swipe to switch layout) cancels it.
   const pressTimer = useRef<number | undefined>(undefined)
   const startPress = () => {
-    pressTimer.current = window.setTimeout(() => togglePin(p.identity), 500)
+    pressTimer.current = window.setTimeout(activate, 500)
   }
   const cancelPress = () => window.clearTimeout(pressTimer.current)
 
@@ -688,7 +1007,7 @@ function Tile({
     if (e.target !== e.currentTarget) return
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
-      togglePin(p.identity)
+      activate()
     }
   }
 
@@ -703,7 +1022,7 @@ function Tile({
       tabIndex={0}
       aria-label={ariaLabel}
       onKeyDown={onTileKeyDown}
-      onDoubleClick={() => togglePin(p.identity)}
+      onDoubleClick={activate}
       onPointerDown={startPress}
       onPointerUp={cancelPress}
       onPointerLeave={cancelPress}
@@ -795,21 +1114,42 @@ function Tile({
         </div>
       )}
 
-      {/* Pin toggle — reveals on hover/focus (desktop). On touch there's no hover
-          and the top-right corner is taken by the screen-level participants chip, so
-          we rely on double-tap / long-press to pin (taught once by PinCoachmark) plus
-          the keyboard Enter/Space path — a persistent button here would collide with
-          that chip on the focused fill tile. */}
-      <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
-        <IconButton
-          size="sm"
-          label={pinned ? `Unpin ${name}` : `Pin ${name}`}
-          icon={<PinIcon />}
-          active={pinned}
-          className="bg-overlay text-white hover:bg-overlay"
-          onClick={() => togglePin(p.identity)}
-        />
-      </div>
+      {/* Top-right action. Default = Pin toggle, revealed on hover/focus (desktop);
+          on touch we rely on double-tap / long-press instead (taught by PinCoachmark),
+          since a persistent button collides with the screen-level participants chip.
+          Presentation passes a custom `action` (spotlight / exit presentation) and
+          shows it on touch too — those tiles have no other affordance. */}
+      {action ? (
+        <div
+          className={cn(
+            'absolute right-2 top-2 transition-opacity duration-[var(--dur-fast)]',
+            coarse ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100',
+          )}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <IconButton
+            size={coarse ? 'md' : 'sm'}
+            label={action.label}
+            icon={action.icon}
+            active={action.active}
+            className="bg-overlay text-white hover:bg-overlay"
+            onClick={action.onClick}
+          />
+        </div>
+      ) : (
+        <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
+          <IconButton
+            size="sm"
+            label={pinned ? `Unpin ${name}` : `Pin ${name}`}
+            icon={<PinIcon />}
+            active={pinned}
+            className="bg-overlay text-white hover:bg-overlay"
+            onClick={() => togglePin(p.identity)}
+          />
+        </div>
+      )}
+
+      {overlay}
 
       {/* The tile group's aria-label already names the person + status, so the
           visual name/mic pill is decorative to a screen reader (avoids a double
