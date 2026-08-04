@@ -37,6 +37,21 @@ const MAX_DPR = 2
 
 const INITIAL_CAPACITY_POINTS = 256
 
+/**
+ * Bounds on what a REMOTE sender can make this client allocate.
+ *
+ * Stroke data is keyed `identity:strokeId`, and strokeId is a u16 off the wire, so
+ * without a cap one peer could open 65536 concurrent strokes — a few hundred KB of
+ * packets turning into hundreds of MB of buffers here. Expiry alone doesn't cover
+ * it: everything inside one ~4s fade window is live at once.
+ *
+ * Both limits sit far above real drawing. A stroke is a few hundred points, and a
+ * fast hand produces maybe a dozen in four seconds; these are 4096 and 64. They're
+ * per SENDER, not global, so a flooder can't crowd out anyone else's ink either.
+ */
+export const MAX_POINTS_PER_STROKE = 4096
+export const MAX_STROKES_PER_SENDER = 64
+
 /** Used only if a palette token can't be resolved (engine detached mid-frame). */
 const FALLBACK_COLOR = 'oklch(0.7 0.19 25)'
 
@@ -60,6 +75,9 @@ interface LiveStroke {
   /** Wire sequence counter for this stroke (local strokes only). */
   seq: number
   local: boolean
+  /** Sender identity for remote strokes — lets prune() decrement the right
+   *  per-sender count without re-parsing the map key. */
+  owner?: string
   /** Cached width of the rendered name label; measured once, never changes. */
   labelW?: number
   /** Cached geometry in PIXEL space, extended point-by-point as the stroke grows.
@@ -82,6 +100,8 @@ export class AnnotationEngine {
 
   /** Keyed `${identity}:${strokeId}` so two peers can draw concurrently. */
   private strokes = new Map<string, LiveStroke>()
+  /** Live remote stroke count per sender — the budget MAX_STROKES_PER_SENDER caps. */
+  private senderStrokes = new Map<string, number>()
   private localKey: string | null = null
   private localStrokeId = 0
   private localColorIdx = 0
@@ -130,6 +150,7 @@ export class AnnotationEngine {
   destroy() {
     this.disposed = true
     this.strokes.clear()
+    this.senderStrokes.clear()
     this.detach()
   }
 
@@ -237,6 +258,9 @@ export class AnnotationEngine {
   }
 
   private appendUnit(stroke: LiveStroke, u: Point) {
+    // Remote strokes are bounded; the local one is bounded by the hand holding
+    // the mouse, and truncating it mid-gesture would be visible.
+    if (!stroke.local && stroke.len >= MAX_POINTS_PER_STROKE) return
     if (stroke.len * 2 + 2 > stroke.points.length) {
       const grown = new Float32Array(stroke.points.length * 2)
       grown.set(stroke.points)
@@ -261,9 +285,15 @@ export class AnnotationEngine {
     const key = `${identity}:${packet.strokeId}`
     let stroke = this.strokes.get(key)
     if (!stroke) {
+      const live = this.senderStrokes.get(identity) ?? 0
+      if (live >= MAX_STROKES_PER_SENDER) return
+      const n = packet.points.length >> 1
       stroke = {
         id: packet.strokeId,
-        points: new Float32Array(Math.max(INITIAL_CAPACITY_POINTS, packet.points.length) * 2),
+        // n is a POINT count; the buffer holds two floats per point. (This read
+        // packet.points.length — already 2n — against a point-count constant, and
+        // so allocated twice what it needed.)
+        points: new Float32Array(Math.max(INITIAL_CAPACITY_POINTS, n) * 2),
         len: 0,
         colorIdx: packet.colorIdx,
         name,
@@ -271,9 +301,11 @@ export class AnnotationEngine {
         sent: 0,
         seq: packet.seq,
         local: false,
+        owner: identity,
         pathLen: 0,
       }
       this.strokes.set(key, stroke)
+      this.senderStrokes.set(identity, live + 1)
     }
     const n = packet.points.length >> 1
     // Packets overlap by one point so segments join; skip the duplicate when
@@ -288,6 +320,7 @@ export class AnnotationEngine {
 
   clearAll() {
     this.strokes.clear()
+    this.senderStrokes.clear()
     this.localKey = null
     this.wake()
   }
@@ -295,6 +328,12 @@ export class AnnotationEngine {
   /** Are any strokes currently visible? Drives the overlay's pointer-events. */
   get hasInk(): boolean {
     return this.strokes.size > 0
+  }
+
+  /** Live stroke count. Diagnostic — it exists so the remote-input bounds can be
+   *  asserted rather than assumed. */
+  get liveStrokes(): number {
+    return this.strokes.size
   }
 
   // ── frame loop ───────────────────────────────────────────────────────────
@@ -336,7 +375,13 @@ export class AnnotationEngine {
     for (const [key, s] of this.strokes) {
       // The stroke being drawn right now never expires mid-gesture.
       if (key === this.localKey) continue
-      if (isExpired(now - s.lastAt)) this.strokes.delete(key)
+      if (!isExpired(now - s.lastAt)) continue
+      this.strokes.delete(key)
+      if (s.owner) {
+        const left = (this.senderStrokes.get(s.owner) ?? 1) - 1
+        if (left > 0) this.senderStrokes.set(s.owner, left)
+        else this.senderStrokes.delete(s.owner)
+      }
     }
   }
 
