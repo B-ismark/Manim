@@ -626,14 +626,15 @@ export async function handleElectHost(env, body, token) {
   const presentCoHosts = participants.filter((p) => coHosts.includes(p.identity)).sort(byTenure)
   const successor = (presentCoHosts[0] || [...participants].sort(byTenure)[0]).identity
 
-  // The new primary shouldn't also sit in its own co-host list. Only synchronous
-  // work since the read above, so the held flags are still fresh.
-  await mergeRoomFlags(
-    roomService,
-    room,
-    { hostId: successor, coHosts: coHosts.filter((id) => id !== successor) },
-    flags,
-  )
+  // The new primary shouldn't also sit in its own co-host list. Deliberately NOT
+  // passing the flags read above as the merge base: they were fetched in parallel
+  // with listParticipants, so by the time that settles they're already a round-trip
+  // stale, and a knock landing in that gap would get its queue entry clobbered.
+  // Election is rare — pay for the fresh read.
+  await mergeRoomFlags(roomService, room, {
+    hostId: successor,
+    coHosts: coHosts.filter((id) => id !== successor),
+  })
   return { status: 200, body: { ok: true, hostId: successor } }
 }
 
