@@ -6,7 +6,7 @@ import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
 /**
- * Mid-call device-loss watch (E5 in RESILIENCE-AUDIT.md).
+ * Mid-call device-loss watch.
  *
  * Pre-join handles permissions well, but nothing watched the device lifecycle
  * ONCE in the call: if a USB camera is unplugged, a Bluetooth mic drops, or the
