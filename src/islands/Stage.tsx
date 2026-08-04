@@ -42,6 +42,8 @@ import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareL
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
+import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
+import { annotateEnabled } from '@/features/annotate/useAnnotate'
 import { cn } from '@/lib/cn'
 
 /** Stable per-tile key (identity + source) — never reshuffles as people speak. */
@@ -704,6 +706,10 @@ function PresentationStage({
                   }
                 />
                 {bigIsShare && <FullscreenControls targetRef={bigRef} />}
+                {/* Ink layer for the shared screen. Inside bigRef so it follows the
+                    share into fullscreen; owns its own canvas and never re-renders
+                    the stage while drawing. */}
+                {bigIsShare && annotateEnabled && <AnnotationOverlay aspect={bigAspect} />}
               </div>
             </div>
 
