@@ -140,3 +140,21 @@ describe('chunk', () => {
     expect(out[1].seq).toBe(13)
   })
 })
+
+describe('decode rejects hostile input', () => {
+  it('refuses a packet larger than the encoder can produce', () => {
+    // The receiver allocates in proportion to payload size, so an oversized packet
+    // is either not ours or is trying to make us allocate. Cheaper to reject than
+    // to decode and then discard.
+    const huge = new Uint8Array(MAX_PACKET_BYTES + 4)
+    huge[0] = WIRE_VERSION
+    expect(decode(huge)).toBeNull()
+  })
+
+  it('still accepts a packet at exactly the cap', () => {
+    const points = new Float32Array(MAX_POINTS_PER_PACKET * 2).fill(0.5)
+    const bytes = encode({ colorIdx: 1, strokeId: 1, seq: 0, points })
+    expect(bytes.byteLength).toBeLessThanOrEqual(MAX_PACKET_BYTES)
+    expect(decode(bytes)).not.toBeNull()
+  })
+})

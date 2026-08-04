@@ -1,5 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { AnnotationEngine } from './AnnotationEngine'
+import {
+  AnnotationEngine,
+  MAX_POINTS_PER_STROKE,
+  MAX_STROKES_PER_SENDER,
+} from './AnnotationEngine'
 import type { StrokePacket } from '@/lib/annotate/wire'
 import { LIFETIME_MS } from '@/lib/annotate/fade'
 
@@ -404,5 +408,63 @@ describe('geometry and rendering', () => {
     engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
     pumpFrame()
     expect(canvas.__ctx.stroke).toHaveBeenCalled()
+  })
+})
+
+describe('bounds on remote input', () => {
+  const packet = (points: number[], strokeId = 7, seq = 0): StrokePacket => ({
+    colorIdx: 2,
+    strokeId,
+    seq,
+    points: Float32Array.from(points),
+  })
+
+  it('caps how many strokes one sender can hold open at once', () => {
+    // strokeId is a u16 off the wire, so an unbounded map would let one peer open
+    // 65536 strokes — a few hundred KB of packets becoming hundreds of MB here.
+    // Expiry doesn't cover it: a whole fade window's worth is live simultaneously.
+    const { engine } = makeEngine()
+    for (let id = 0; id < MAX_STROKES_PER_SENDER * 4; id++) {
+      engine.ingest('Flood#9', packet([0.1, 0.1], id), 'Flood')
+    }
+    expect(engine.liveStrokes).toBe(MAX_STROKES_PER_SENDER)
+  })
+
+  it('budgets per sender, so a flooder cannot crowd out anyone else', () => {
+    const { engine } = makeEngine()
+    for (let id = 0; id < MAX_STROKES_PER_SENDER * 4; id++) {
+      engine.ingest('Flood#9', packet([0.1, 0.1], id), 'Flood')
+    }
+    engine.ingest('Bo#2', packet([0.5, 0.5], 1), 'Bo')
+    expect(engine.liveStrokes).toBe(MAX_STROKES_PER_SENDER + 1)
+  })
+
+  it('releases a sender budget as their strokes expire', () => {
+    const { engine } = makeEngine()
+    for (let id = 0; id < MAX_STROKES_PER_SENDER; id++) {
+      engine.ingest('Flood#9', packet([0.1, 0.1], id), 'Flood')
+    }
+    clock += LIFETIME_MS + 1
+    pumpFrame()
+    expect(engine.liveStrokes).toBe(0)
+    // The cap must not be sticky — a normal sender keeps working afterwards.
+    engine.ingest('Flood#9', packet([0.2, 0.2], 999), 'Flood')
+    expect(engine.liveStrokes).toBe(1)
+  })
+
+  it('caps the points in a single remote stroke', () => {
+    const { engine } = makeEngine()
+    // Packets overlap by one point, so each 2-point packet adds one.
+    for (let i = 0; i < MAX_POINTS_PER_STROKE + 200; i++) {
+      engine.ingest('Flood#9', packet([0.1, 0.1, 0.2, 0.2], 7, i), 'Flood')
+    }
+    pumpFrame()
+    const drawn = pathLineTos
+    expect(drawn).toBeLessThanOrEqual(MAX_POINTS_PER_STROKE)
+
+    // Past the cap the stroke stops growing, so a repaint issues no new segments.
+    for (let i = 0; i < 100; i++) engine.ingest('Flood#9', packet([0.3, 0.3], 7, 9000 + i), 'Flood')
+    pumpFrame()
+    expect(pathLineTos).toBe(drawn)
   })
 })

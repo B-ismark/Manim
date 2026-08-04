@@ -76,6 +76,9 @@ export function encode(p: StrokePacket): Uint8Array {
  */
 export function decode(bytes: Uint8Array): StrokePacket | null {
   if (bytes.byteLength < HEADER_BYTES) return null
+  // Our encoder never emits more than this, so anything larger is either not ours
+  // or is trying to make the receiver allocate. Reject before touching the buffer.
+  if (bytes.byteLength > MAX_PACKET_BYTES) return null
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength)
   if (view.getUint8(0) !== WIRE_VERSION) return null
   const payload = bytes.byteLength - HEADER_BYTES

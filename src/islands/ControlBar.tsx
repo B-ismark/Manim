@@ -188,7 +188,7 @@ export function ControlBar({
           await target.requestPictureInPicture()
           setPipActive(true)
         } else {
-          toast("Picture-in-Picture isn't available here", 'warning')
+          toast("The mini player isn't available here", 'warning')
         }
         return
       }
@@ -201,9 +201,9 @@ export function ControlBar({
         return
       }
 
-      toast("Picture-in-Picture isn't available here", 'warning')
+      toast("The mini player isn't available here", 'warning')
     } catch {
-      toast("Couldn't open Picture-in-Picture", 'warning')
+      toast("Couldn't open the mini player", 'warning')
     }
   }, [])
 
