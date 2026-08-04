@@ -25,9 +25,13 @@ Every connection burns monthly participant-minutes and we're close to the cap.
   ```
   The guard hook allows a command only when **every** LiveKit URL on it is inline and
   local — mixing a local client URL with a cloud server URL still blocks, because that
-  combination would bill the cloud project. Verified 2026-08: 39/47 desktop specs pass
-  this way; the 8 failures are all the Krisp noise-filter model failing to load in a
-  network-restricted sandbox, not product faults.
+  combination would bill the cloud project. Verified 2026-08: **49/54 desktop and 48/52
+  mobile** specs pass this way. Every failure is environmental, not a product fault —
+  four are the Krisp noise-filter model failing to load in a network-restricted sandbox
+  (any spec asserting a clean error sink: `04-chat`, `06-multiparty`, sometimes
+  `03-controls`), and `12-resilience` injects a connection fault that doesn't reproduce
+  against a local server. Confirm anything you suspect by stashing your change and
+  re-running: these all fail identically on an unmodified tree.
 - **CI**: the `e2e` and `loadtest` jobs are gated behind repo variable
   `LIVEKIT_TESTS=true` (unset → skip). `typecheck` still runs every push.
 - **Re-enable** only on explicit owner say-so: set `LIVEKIT_TESTS=true` and delete
@@ -53,6 +57,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   "Close panel" X; the control bar auto-hides (tap to reveal); More is a modal sheet.
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
+- **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a
+  disable, not an enable, so an unset build var still ships it. Strokes are ephemeral:
+  they fade after ~4s, which is *why* there is deliberately no persistence, no
+  late-joiner sync and no clear-all. Desktop draws, touch is view-only, a host can
+  restrict drawing with the `annotateHostOnly` room flag, and a presenter sees their own
+  share only while the pen is armed. Stroke data must never reach React state or a store
+  — read the header of `AnnotationEngine.ts` before touching it.
 - **Design decisions → check Mobbin** (Meet/Teams/Zoom/WhatsApp) before guessing.
 - A11y is gated (axe, light + dark); contrast tokens are oklch — compute real WCAG
   ratios when changing them (see QA-PLAYBOOK §3).
