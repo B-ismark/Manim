@@ -48,7 +48,7 @@ export function InCallIncomingBanner({
             }}
           >
             <MergeIcon />
-            Merge
+            Merge calls
           </Button>
         )}
         <Button

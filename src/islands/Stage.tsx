@@ -24,7 +24,7 @@ import {
   SpotlightIcon,
   GridIcon,
   PeopleIcon,
-  EditIcon,
+  AnnotateIcon,
 } from '@/components/icons'
 import { moderate } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
@@ -388,7 +388,7 @@ function PresentingIndicator({ annotating = false }: { annotating?: boolean }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(4rem,calc(env(safe-area-inset-top)+3.5rem))] z-20 flex justify-center px-4">
       <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
-        {annotating ? <EditIcon /> : <ScreenShareIcon />}
+        {annotating ? <AnnotateIcon /> : <ScreenShareIcon />}
         {/* Say WHY their own screen suddenly appeared — otherwise the switch (and,
             on a full-monitor share, the mirror tunnel) reads as a glitch. */}
         {annotating ? 'You\u2019re drawing on your shared screen' : 'You\u2019re sharing your screen'}
@@ -427,7 +427,7 @@ function GridStage({
       const promote = () => toggleShareDemoted(t.publication?.trackSid ?? tileKey(t))
       return {
         onActivate: promote,
-        action: { icon: <SpotlightIcon />, label: 'Present shared screen', onClick: promote },
+        action: { icon: <ScreenShareIcon />, label: 'Present shared screen', onClick: promote },
       }
     },
     [toggleShareDemoted],

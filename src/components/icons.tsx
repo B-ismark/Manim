@@ -33,12 +33,6 @@ export const GoogleIcon = (p: P) => (
   </svg>
 )
 
-export const NoiseIcon = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M4 10v4M8 6v12M12 9v6M16 4v16M20 10v4" />
-  </svg>
-)
-
 /** Switch front/rear camera — the standard "switch-camera" glyph: a camera body
  *  with rotation chevrons either side of the lens (Lucide switch-camera). */
 export const FlipCameraIcon = (p: P) => (
@@ -181,10 +175,13 @@ export const SpeakerLayoutIcon = (p: P) => (
   </svg>
 )
 
+/** Spotlight — a lamp casting a beam. The old glyph was a rectangle with a dot in
+ *  it, which read as "screen with a record light" and collided with ScreenShare.
+ *  A beam is the literal reading of the word on the label next to it. */
 export const SpotlightIcon = (p: P) => (
   <svg {...base(p)}>
-    <rect x="3" y="4" width="18" height="16" rx="2" />
-    <circle cx="12" cy="12" r="3.5" />
+    <circle cx="12" cy="4" r="2.5" />
+    <path d="M9.9 6.4 4.5 19M14.1 6.4 19.5 19M4.5 19h15" />
   </svg>
 )
 
@@ -222,7 +219,16 @@ export const ChevronDownIcon = (p: P) => (
 export const GifIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="2.5" y="6" width="19" height="12" rx="2.5" />
-    <text x="12" y="14.5" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="currentColor" stroke="none">
+    <text
+      x="12"
+      y="14.5"
+      textAnchor="middle"
+      fontSize="6.5"
+      fontWeight="700"
+      fontFamily="ui-sans-serif, system-ui, sans-serif"
+      fill="currentColor"
+      stroke="none"
+    >
       GIF
     </text>
   </svg>
@@ -343,5 +349,68 @@ export const BanIcon = (p: P) => (
 export const FlagIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M5 21V4M5 4h11l-1.5 3.5L16 11H5" />
+  </svg>
+)
+
+/** Eye — the "shown" half of the self-view pair. Without it the row kept the
+ *  struck-through eye while its label read "Show self view", so the icon
+ *  contradicted the text in exactly the state where it mattered. */
+export const EyeIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+)
+
+/** Draw on a shared screen. A pencil over a WAVY line, where EditIcon is a pencil
+ *  over a straight one — the two actions (annotate a screen, edit a message) were
+ *  sharing a glyph, so neither was memorable. */
+export const AnnotateIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M14.5 3.2a2.1 2.1 0 0 1 3 3L8.2 15.5l-4 1 1-4 9.3-9.3Z" />
+    <path d="M3 20.5c1.3-1.7 2.7-1.7 4 0s2.7 1.7 4 0 2.7-1.7 4 0 2.7 1.7 4 0" />
+  </svg>
+)
+
+/** Waiting room — a person with a clock, i.e. someone is waiting to be let in.
+ *  Previously this toggle borrowed PeopleIcon, which is the Participants panel;
+ *  two different destinations behind one glyph. */
+export const WaitingRoomIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="9" cy="7" r="3.2" />
+    <path d="M2.8 20a6.2 6.2 0 0 1 9.4-5.3" />
+    <circle cx="17.5" cy="17.5" r="4.3" />
+    <path d="M17.5 15.6v2l1.4.9" />
+  </svg>
+)
+
+/** Device pickers (mic / speakers / camera). Sliders, not a microphone — the row
+ *  opens a settings surface, and wearing MicIcon made it read as a mute button. */
+export const SlidersIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 7h16M4 12h16M4 17h16" />
+    <circle cx="9" cy="7" r="2" fill="currentColor" />
+    <circle cx="16" cy="12" r="2" fill="currentColor" />
+    <circle cx="7.5" cy="17" r="2" fill="currentColor" />
+  </svg>
+)
+
+/** "Videos first" — an ordering, so it gets the sort glyph rather than CameraIcon,
+ *  which is the camera on/off control three rows above it. */
+export const SortIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 7h9M4 12h6M4 17h3" />
+    <path d="M19 19V6M16 9l3-3 3 3" />
+  </svg>
+)
+
+/** Contacts — an address book. Was PeopleIcon with a dot, a third caller on the
+ *  same glyph as Participants and the waiting room. */
+export const ContactsIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="5" y="3" width="16" height="18" rx="2.5" />
+    <path d="M3 8h3M3 12h3M3 16h3" />
+    <circle cx="13" cy="10" r="2.4" />
+    <path d="M9.4 17a3.8 3.8 0 0 1 7.2 0" />
   </svg>
 )

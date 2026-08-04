@@ -18,13 +18,22 @@ const ANNOTATE_TOPIC = 'mn.annotate'
 const ANNOUNCE_COOLDOWN_MS = 15_000
 
 /**
- * Annotation is off unless the build flag turns it on (same pattern as the GIF
- * picker). Multi-party stroke agreement can only be verified against a real
- * LiveKit room, so while the test gates are frozen the feature ships dark and is
- * enabled once two participants on different viewport sizes have been confirmed
- * to see strokes in the same place.
+ * Annotation is ON, with an explicit kill switch.
+ *
+ * It shipped dark while the LiveKit test gates were frozen, because multi-party
+ * stroke agreement can only be proven against a real room. That verification has
+ * since been done against a local server: two participants on deliberately
+ * different viewport shapes see a stroke on the same content pixel (17-annotate),
+ * touch stays view-only, axe passes light and dark, and three people drawing at
+ * once on a 4x-throttled observer retains ~85% of the share's decode rate
+ * (18-annotate-perf).
+ *
+ * The sense is inverted rather than the default flipped: an opt-IN flag would
+ * have needed a build variable added in Cloudflare to take effect, so the feature
+ * would have stayed dark in production while looking enabled in the repo. Set
+ * VITE_ANNOTATE=false to turn it off without a revert.
  */
-export const annotateEnabled = import.meta.env.VITE_ANNOTATE === 'true'
+export const annotateEnabled = import.meta.env.VITE_ANNOTATE !== 'false'
 
 const displayName = (identity: string, name?: string) => name || identity.split('#')[0] || 'Guest'
 

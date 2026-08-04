@@ -30,7 +30,8 @@ import {
  * not a phone: it slows the main thread but not the GPU or the video decoder, so
  * treat the result as a main-thread-contention signal.
  *
- * @heavy — five contexts and ~20s of wall clock, so it stays out of the fast gate.
+ * @heavy + ANNOTATE_PERF=1 — five contexts and minutes of wall clock, so it runs
+ * only when asked for.
  */
 
 const SHARE_W = 1280
@@ -54,10 +55,10 @@ async function viewer(browser: Browser, room: string, name: string) {
 }
 
 test.describe('Annotation performance @heavy @annotate', () => {
-  test.skip(
-    process.env.VITE_ANNOTATE !== 'true',
-    'annotation is off (set VITE_ANNOTATE=true on the dev server and this run)',
-  )
+  // Opt-in, like the loadtest spec. It was previously hidden by the annotation
+  // build flag; with the feature on by default, nothing else would keep a 5-context,
+  // ~4-minute measurement out of `test:visual`, which also greps @heavy.
+  test.skip(!process.env.ANNOTATE_PERF, 'set ANNOTATE_PERF=1 to run the perf measurement')
 
   test('three people drawing does not starve the share decoder', async ({ page, browser }) => {
     test.setTimeout(240_000)

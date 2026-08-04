@@ -53,7 +53,7 @@ test('the annotation author palette resolves and is distinct', async ({ page }) 
  * sizes, so their letterbox insets differ. If strokes were normalised against the
  * container rather than the video's content box, this test fails.
  *
- * Requires VITE_ANNOTATE=true (the feature ships dark) and a screen share, which
+ * Requires a screen share, which
  * headless Chromium can't source for real — `fakeScreenShare` substitutes a
  * canvas capture of known intrinsic size.
  */
@@ -127,8 +127,8 @@ test.describe('Annotation over a shared screen @annotate', () => {
   // bundle unless it's on. Skip rather than fail when it's off, matching how the
   // stress/loadtest specs gate themselves.
   test.skip(
-    process.env.VITE_ANNOTATE !== 'true',
-    'annotation is off (set VITE_ANNOTATE=true on the dev server and this run)',
+    process.env.VITE_ANNOTATE === 'false',
+    'annotation is disabled (VITE_ANNOTATE=false)',
   )
 
   test('a stroke lands at the same content position for a viewer on a different viewport', async ({

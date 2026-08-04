@@ -60,12 +60,12 @@ test.describe('Multi-party', () => {
     const room = uniqueRoom('lobby')
     await join(page, room, 'Host')
 
-    // Host turns the lobby on (More → Lobby off→on toggle), then closes the menu
+    // Host turns the waiting room on (More → Waiting room toggle), then closes the menu
     // by TAPPING its X — on mobile More is a modal bottom-sheet whose scrim would
     // otherwise block the admit banner (phones have no Esc key).
     await revealChrome(page)
     await page.getByRole('button', { name: 'More options' }).click()
-    await page.getByRole('button', { name: /Lobby/ }).click()
+    await page.getByRole('button', { name: 'Waiting room' }).click()
     await closePanel(page)
 
     // Guest tries to join → should land in the waiting screen.
