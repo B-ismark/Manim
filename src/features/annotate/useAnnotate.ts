@@ -9,9 +9,13 @@ import { AnnotationEngine } from './AnnotationEngine'
 import { decode, encode, type StrokePacket } from '@/lib/annotate/wire'
 import { colorIndexFor } from '@/lib/annotate/palette'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
+import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 
 /** Ephemeral stroke broadcast topic. */
 const ANNOTATE_TOPIC = 'mn.annotate'
+
+/** Minimum gap between "X is annotating" announcements for the same author. */
+const ANNOUNCE_COOLDOWN_MS = 15_000
 
 /**
  * Annotation is off unless the build flag turns it on (same pattern as the GIF
@@ -50,6 +54,12 @@ export function useAnnotate() {
 
   useEffect(() => () => engine.destroy(), [engine])
 
+  const announce = useAnnounce()
+  // Last announcement per author, so a burst of packets doesn't spam the live
+  // region. Strokes are invisible to a screen reader, so "X is annotating" is the
+  // only signal those users get — it has to be present but not constant.
+  const announcedAt = useRef(new Map<string, number>())
+
   const { send } = useDataChannel(ANNOTATE_TOPIC, (msg) => {
     // Attribution comes from the SFU-attributed sender, never the payload — a
     // payload field would let anyone draw under someone else's name.
@@ -57,7 +67,15 @@ export function useAnnotate() {
     if (!identity || identity === localParticipant.identity) return
     const packet = decode(msg.payload)
     if (!packet) return
-    engine.ingest(identity, packet, displayName(identity, msg.from?.name))
+    const name = displayName(identity, msg.from?.name)
+    engine.ingest(identity, packet, name)
+
+    const last = announcedAt.current.get(identity) ?? 0
+    const nowMs = Date.now()
+    if (nowMs - last > ANNOUNCE_COOLDOWN_MS) {
+      announcedAt.current.set(identity, nowMs)
+      announce(`${name} is annotating the shared screen`)
+    }
   })
 
   useEffect(() => {
