@@ -1,8 +1,9 @@
 # Manim
 
 A free, lightweight video-calling app built on [LiveKit](https://livekit.io). Start a
-call, share the link, talk — no account needed to join. Chat, screen share, reactions,
-background blur, noise suppression, waiting rooms, and optional end-to-end encryption.
+call, share the link, talk — no account needed to join. Chat, screen share, drawing on
+a shared screen, reactions, background blur, noise suppression, waiting rooms, and
+optional end-to-end encryption.
 
 Runs entirely on free managed tiers: a React SPA on Cloudflare Workers, LiveKit Cloud
 for media, Supabase for accounts and contacts.

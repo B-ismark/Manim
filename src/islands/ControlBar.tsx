@@ -30,7 +30,6 @@ import {
   MicIcon,
   MicOffIcon,
   MoreIcon,
-  PeopleIcon,
   PipIcon,
   ReactionIcon,
   ScreenShareIcon,
@@ -39,8 +38,12 @@ import {
   EffectsIcon,
   KeyboardIcon,
   EyeOffIcon,
+  EyeIcon,
+  SlidersIcon,
+  SortIcon,
+  WaitingRoomIcon,
   SoundOnIcon,
-  EditIcon,
+  AnnotateIcon,
 } from '@/components/icons'
 import { DeviceSettings, DeviceRow } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
@@ -304,7 +307,7 @@ export function ControlBar({
           <GridTile
             className="pointer-fine:hidden"
             icon={<ScreenShareIcon />}
-            label={isScreenShareEnabled ? 'Stop share' : 'Share'}
+            label="Share screen"
             active={isScreenShareEnabled}
             onClick={() => {
               localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
@@ -319,7 +322,7 @@ export function ControlBar({
             is manual/tap-driven on purpose: gesture-less auto-PiP crashed mobile. */}
         <GridTile
           icon={<PipIcon />}
-          label="PiP"
+          label="Mini player"
           active={docPip.supported ? docPip.active : pipActive}
           onClick={() => {
             if (docPip.supported) docPip.toggle()
@@ -329,7 +332,7 @@ export function ControlBar({
         />
         <GridTile
           icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
-          label={isFullscreen ? 'Exit' : 'Full'}
+          label="Full screen"
           active={isFullscreen}
           onClick={() => {
             toggleFullscreen()
@@ -339,15 +342,15 @@ export function ControlBar({
         {isHost && (
           <GridTile
             icon={<LockIcon />}
-            label={locked ? 'Unlock' : 'Lock'}
+            label="Lock room"
             active={locked}
             onClick={onToggleLock}
           />
         )}
         {isHost && (
           <GridTile
-            icon={<PeopleIcon />}
-            label={waiting ? 'Lobby on' : 'Lobby off'}
+            icon={<WaitingRoomIcon />}
+            label="Waiting room"
             active={waiting}
             onClick={onToggleWaiting}
           />
@@ -423,7 +426,7 @@ export function ControlBar({
           }}
         />
         <MenuRow
-          icon={<MicIcon />}
+          icon={<SlidersIcon />}
           label="Audio & video"
           onClick={() => {
             setDevicesOpen(true)
@@ -431,7 +434,7 @@ export function ControlBar({
           }}
         />
         <MenuRow
-          icon={<EyeOffIcon />}
+          icon={selfViewHidden ? <EyeIcon /> : <EyeOffIcon />}
           label={selfViewHidden ? 'Show self view' : 'Hide self view'}
           active={selfViewHidden}
           onClick={() => {
@@ -440,8 +443,8 @@ export function ControlBar({
           }}
         />
         <MenuRow
-          icon={<CameraIcon />}
-          label={videosFirst ? 'Showing videos first' : 'Show videos first'}
+          icon={<SortIcon />}
+          label="Videos first"
           active={videosFirst}
           onClick={() => {
             toggleVideosFirst()
@@ -453,7 +456,7 @@ export function ControlBar({
             picker, the exact confusion users reported. Framed as incoming video
             (Discord "Allow incoming video" / Skype), with a data-saver hint. */}
         <MenuRow
-          icon={<CameraOffIcon />}
+          icon={audioOnly ? <CameraIcon /> : <CameraOffIcon />}
           label={audioOnly ? 'Turn on incoming video' : 'Turn off incoming video (save data)'}
           active={audioOnly}
           onClick={() => {
@@ -535,7 +538,7 @@ export function ControlBar({
               onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
             />
           </Tooltip>
-          <DeviceCaret label="Audio settings" className="hidden pointer-fine:inline-flex">
+          <DeviceCaret label="Audio options" className="hidden pointer-fine:inline-flex">
             <AudioDevicePanel noise={noise} />
           </DeviceCaret>
         </div>
@@ -550,7 +553,7 @@ export function ControlBar({
               onClick={() => void toggleCamera()}
             />
           </Tooltip>
-          <DeviceCaret label="Camera settings" className="hidden pointer-fine:inline-flex">
+          <DeviceCaret label="Camera options" className="hidden pointer-fine:inline-flex">
             <CameraDevicePanel />
           </DeviceCaret>
         </div>
@@ -587,7 +590,7 @@ export function ControlBar({
           <Tooltip content={annotateActive ? 'Stop annotating' : 'Draw on the shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
-              icon={<EditIcon />}
+              icon={<AnnotateIcon />}
               tone="neutral"
               active={annotateActive}
               onClick={toggleAnnotate}
@@ -903,7 +906,7 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
   return (
     <div className="flex flex-col gap-3">
       <DeviceRow kind="audioinput" label="Microphone" />
-      <DeviceRow kind="audiooutput" label="Speaker" />
+      <DeviceRow kind="audiooutput" label="Audio output" />
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
       </div>
