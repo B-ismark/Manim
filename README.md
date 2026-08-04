@@ -63,7 +63,9 @@ Full local QA needs LiveKit test credentials passed via **shell env** (don't edi
 - **[TESTING.md](TESTING.md)** — test environment setup (test LiveKit project + secrets).
 - **[Architecture-Plan.md](Architecture-Plan.md)** — the design doc and its rationale.
 - **[STYLE.md](STYLE.md)** — the token/component contract. No hardcoded colors, ever.
-- **[DEPLOY.md](DEPLOY.md)** — Cloudflare deployment, secrets, rollback.
+- **[DEPLOY.md](DEPLOY.md)** — Cloudflare deployment, secrets, rollback, and the
+  Supabase SQL the app expects to have been applied.
+- **[docs/archive/](docs/archive/)** — closed-out audit reports, kept for context only.
 
 ## Constraints worth knowing before you change anything
 

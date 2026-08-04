@@ -11,8 +11,9 @@ import {
  * the room fills / the panel opens / the name is huge / the network drops".
  *
  * Participant counts stay <= 7 — past ~8 real headless Chromium saturate one
- * machine's CPU (a harness limit, not the product's; see E2E-FINDINGS). Real
- * scale lives in the lk load-test rig (npm run loadtest), not here.
+ * machine's CPU (a harness limit, not the product's; see
+ * docs/archive/E2E-FINDINGS.md). Real scale lives in the lk load-test rig
+ * (npm run loadtest), not here.
  */
 const SHOTS = 'audit/scenarios'
 const shoot = (page: Page, name: string) =>
@@ -28,9 +29,9 @@ test.describe('Visual scenarios @heavy', () => {
 
   test('paged grid ramps cleanly 2→5', async ({ page, browser }) => {
     // Each peer is a full browser context; one machine saturates ~8 (CPU-bound,
-    // a harness limit — see E2E-FINDINGS). Cap the browser ramp at 5 and leave
-    // real scale (20/50/100) to the lk load-test rig. Generous timeout for the
-    // serial connects.
+    // a harness limit — see docs/archive/E2E-FINDINGS.md). Cap the browser ramp
+    // at 5 and leave real scale (20/50/100) to the lk load-test rig. Generous
+    // timeout for the serial connects.
     test.setTimeout(180_000)
     const sink = attachErrorSink(page)
     const room = uniqueRoom()
