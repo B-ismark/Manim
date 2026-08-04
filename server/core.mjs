@@ -719,7 +719,7 @@ export async function handleModerate(env, body, token) {
 
 export async function handleRoomflags(env, body, token) {
   const { roomService } = services(env)
-  const { room, locked, waiting, coHosts } = body ?? {}
+  const { room, locked, waiting, annotateHostOnly, coHosts } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const identity = await verifyCaller(env, token, room)
   if (!identity) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
@@ -731,6 +731,10 @@ export async function handleRoomflags(env, body, token) {
   const patch = {}
   if (typeof locked === 'boolean') patch.locked = locked
   if (typeof waiting === 'boolean') patch.waiting = waiting
+  // Annotation policy. Either host tier may set it (unlike the co-host roster) —
+  // it's a moderation control over the shared screen, not a change to who holds
+  // authority. Absent/false means everyone in the room may draw.
+  if (typeof annotateHostOnly === 'boolean') patch.annotateHostOnly = annotateHostOnly
   if (coHosts !== undefined) {
     // Only the primary host may change the co-host roster — otherwise a co-host
     // could demote the host or promote allies.

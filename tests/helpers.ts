@@ -280,3 +280,166 @@ export async function throttleNetwork(page: Page, profile: '3g' | 'offline' | nu
   }
   await client.send('Network.emulateNetworkConditions', presets[profile])
 }
+
+/**
+ * Make `getDisplayMedia` return a synthetic screen-share stream of a KNOWN size.
+ *
+ * Headless Chromium can't pick a real desktop capture source, and the flags that
+ * fake one give you a stream whose dimensions depend on the environment. Anything
+ * verifying share geometry needs the intrinsic size to be fixed and known, so we
+ * substitute a canvas capture instead: a real MediaStreamTrack, published through
+ * LiveKit like any other, but exactly `width`x`height` on every machine.
+ *
+ * The canvas is animated because a fully static capture stream can stop producing
+ * frames, and LiveKit needs frames to keep the track live.
+ *
+ * Must run BEFORE navigation (addInitScript).
+ */
+export async function fakeScreenShare(page: Page, width = 1280, height = 720, fps = 10): Promise<void> {
+  await page.addInitScript(
+    ({ w, h, f }) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')!
+      let tick = 0
+      const paint = () => {
+        // A recognisable, non-uniform frame: light field + a moving marker.
+        ctx.fillStyle = '#e8e8ee'
+        ctx.fillRect(0, 0, w, h)
+        ctx.fillStyle = '#333'
+        ctx.fillRect((tick * 7) % w, h / 2, 40, 40)
+        tick++
+      }
+      paint()
+      setInterval(paint, Math.round(1000 / f))
+      const stream = canvas.captureStream(f)
+      Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+        configurable: true,
+        writable: true,
+        value: async () => stream,
+      })
+    },
+    { w: width, h: height, f: fps },
+  )
+}
+
+/** Start screen sharing from the control bar and wait for the presentation layout. */
+export async function startScreenShare(page: Page): Promise<void> {
+  await revealChrome(page)
+  await page.getByRole('button', { name: /^Share screen$/i }).click()
+  await expect(page.getByRole('button', { name: /^Stop screen share$/i })).toBeVisible({
+    timeout: 30_000,
+  })
+}
+
+/**
+ * Bounding box of drawn ink on an annotation canvas, in UNIT coordinates relative
+ * to the video's content box — the same space strokes travel in. Returns null if
+ * the canvas is blank.
+ *
+ * Normalising here (rather than comparing raw pixels) is the whole point: two
+ * participants on different viewport sizes must agree in unit space even though
+ * their pixel coordinates differ completely.
+ */
+export async function inkBoundsUnit(
+  page: Page,
+  aspect: number,
+): Promise<{ x0: number; y0: number; x1: number; y1: number } | null> {
+  return page.evaluate((a) => {
+    const canvas = document.querySelector(
+      '[data-testid="annotation-canvas"]',
+    ) as HTMLCanvasElement | null
+    if (!canvas) return null
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    const { width, height } = canvas
+    const data = ctx.getImageData(0, 0, width, height).data
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (data[(y * width + x) * 4 + 3] > 12) {
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+        }
+      }
+    }
+    if (minX === Infinity) return null
+    // Content box under object-contain, in BACKING-STORE pixels (canvas.width/height
+    // already include the DPR scale, so this stays consistent across devices).
+    const boxAspect = width / height
+    let cw = width, ch = height, cx = 0, cy = 0
+    if (a > boxAspect) { ch = width / a; cy = (height - ch) / 2 }
+    else { cw = height * a; cx = (width - cw) / 2 }
+    return {
+      x0: (minX - cx) / cw, y0: (minY - cy) / ch,
+      x1: (maxX - cx) / cw, y1: (maxY - cy) / ch,
+    }
+  }, aspect)
+}
+
+
+/**
+ * Decode health of the largest video on screen (the shared screen, in the
+ * presentation layout) sampled over `ms`.
+ *
+ * Uses getVideoPlaybackQuality rather than WebRTC stats because it measures what
+ * the user actually SEES — frames the compositor presented — which is the thing
+ * an annotation overlay could plausibly steal budget from.
+ */
+export async function shareDecodeFps(page: Page, ms: number) {
+  return page.evaluate(async (windowMs) => {
+    const pick = () =>
+      Array.from(document.querySelectorAll('video'))
+        .filter((v) => v.videoWidth > 0)
+        .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]
+    const v = pick()
+    if (!v) return null
+    const q0 = v.getVideoPlaybackQuality()
+    const t0 = performance.now()
+    await new Promise((r) => setTimeout(r, windowMs))
+    const q1 = v.getVideoPlaybackQuality()
+    const t1 = performance.now()
+    const secs = (t1 - t0) / 1000
+    return {
+      fps: (q1.totalVideoFrames - q0.totalVideoFrames) / secs,
+      dropped: q1.droppedVideoFrames - q0.droppedVideoFrames,
+      width: v.videoWidth,
+      height: v.videoHeight,
+    }
+  }, ms)
+}
+
+/** Scribble continuously inside the share's content box for `ms`. */
+export async function scribble(page: Page, ms: number, aspect = 16 / 9): Promise<void> {
+  const g = await page.evaluate((a) => {
+    const el = document.querySelector('[data-testid="annotation-canvas"]') as HTMLCanvasElement
+    const r = el.getBoundingClientRect()
+    const boxAspect = r.width / r.height
+    let cw = r.width, ch = r.height, cx = 0, cy = 0
+    if (a > boxAspect) { ch = r.width / a; cy = (r.height - ch) / 2 }
+    else { cw = r.height * a; cx = (r.width - cw) / 2 }
+    return { left: r.left, top: r.top, cx, cy, cw, ch }
+  }, aspect)
+
+  const at = (ux: number, uy: number) => ({
+    x: g.left + g.cx + ux * g.cw,
+    y: g.top + g.cy + uy * g.ch,
+  })
+  const deadline = Date.now() + ms
+  let i = 0
+  const first = at(0.2, 0.5)
+  await page.mouse.move(first.x, first.y)
+  await page.mouse.down()
+  while (Date.now() < deadline) {
+    // A dense zigzag — worst case for point volume and repaint area.
+    const ux = 0.2 + 0.6 * ((i % 20) / 20)
+    const uy = 0.3 + 0.4 * (((i * 7) % 20) / 20)
+    const p = at(ux, uy)
+    await page.mouse.move(p.x, p.y)
+    i++
+  }
+  await page.mouse.up()
+}

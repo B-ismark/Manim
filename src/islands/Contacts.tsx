@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Avatar, Button, Dialog, IconButton, Popover, Tabs, TabPanel } from '@/components/primitives'
-import { CameraIcon, CheckIcon, CloseIcon, PeopleIcon } from '@/components/icons'
+import { CameraIcon, CheckIcon, CloseIcon, ContactsIcon } from '@/components/icons'
 import { useContactsStore, type ContactRow } from '@/store/useContactsStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { cn } from '@/lib/cn'
@@ -69,12 +69,12 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
   )
 }
 
-/** People icon with an unread-request dot. */
-function ContactsIcon() {
+/** Contacts glyph with an unread-request dot. */
+function ContactsBadgeIcon() {
   const incoming = useContactsStore((s) => s.rows.filter((r) => r.direction === 'incoming').length)
   return (
     <span className="relative inline-flex">
-      <PeopleIcon />
+      <ContactsIcon />
       {incoming > 0 && (
         <span
           className="absolute -right-1 -top-1 size-2 rounded-full bg-accent ring-2 ring-sunken"
@@ -100,7 +100,7 @@ export function ContactsLauncher({ onCall, onAddToCall }: ContactsActions) {
     <>
       <IconButton
         label="Contacts"
-        icon={<ContactsIcon />}
+        icon={<ContactsBadgeIcon />}
         tone="neutral"
         onClick={() => setOpen(true)}
       />
@@ -124,7 +124,7 @@ function ContactsPopover({ onCall, onAddToCall }: ContactsActions) {
         side="bottom"
         align="end"
         className="w-80"
-        trigger={<IconButton label="Contacts" icon={<ContactsIcon />} tone="neutral" />}
+        trigger={<IconButton label="Contacts" icon={<ContactsBadgeIcon />} tone="neutral" />}
       >
         <div className="flex max-h-[26rem] flex-col">
           <p className="px-1 pb-2 text-xs font-medium text-ink-subtle">Contacts</p>

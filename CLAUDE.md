@@ -12,6 +12,22 @@ Every connection burns monthly participant-minutes and we're close to the cap.
 - **Allowed** (no LiveKit): `npm run typecheck` · `npm run test:unit` ·
   `npm run lighthouse` · `node audit/responsive-audit.mjs` · `npm run dev` **without**
   creds (in-call UI absent, but landing/prejoin/static work).
+- **Allowed: the FULL suite against a LOCAL LiveKit** — the freeze protects the *cloud*
+  project's minutes, and a localhost server can't touch them. Grab a
+  [`livekit-server`](https://github.com/livekit/livekit/releases) (**≥1.10** — 1.9 and
+  older 404 the `/rtc/v1` route the client uses), then:
+  ```bash
+  livekit-server --dev            # devkey / secret on :7880
+  LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret \
+  LIVEKIT_URL=ws://127.0.0.1:7880 VITE_LIVEKIT_URL=ws://127.0.0.1:7880 npm run dev
+  # then, in another shell, the same 4 vars prefixed onto any gated command:
+  LIVEKIT_URL=ws://127.0.0.1:7880 VITE_LIVEKIT_URL=ws://127.0.0.1:7880 npm test
+  ```
+  The guard hook allows a command only when **every** LiveKit URL on it is inline and
+  local — mixing a local client URL with a cloud server URL still blocks, because that
+  combination would bill the cloud project. Verified 2026-08: 39/47 desktop specs pass
+  this way; the 8 failures are all the Krisp noise-filter model failing to load in a
+  network-restricted sandbox, not product faults.
 - **CI**: the `e2e` and `loadtest` jobs are gated behind repo variable
   `LIVEKIT_TESTS=true` (unset → skip). `typecheck` still runs every push.
 - **Re-enable** only on explicit owner say-so: set `LIVEKIT_TESTS=true` and delete

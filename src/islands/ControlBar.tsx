@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
+import { useLocalParticipant, useTracks } from '@livekit/components-react'
+import { Track } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
+import { annotateEnabled } from '@/features/annotate/useAnnotate'
+import { useAnnotateStore } from '@/store/useAnnotateStore'
 import {
   Button,
   Dialog,
@@ -27,7 +30,6 @@ import {
   MicIcon,
   MicOffIcon,
   MoreIcon,
-  PeopleIcon,
   PipIcon,
   ReactionIcon,
   ScreenShareIcon,
@@ -36,7 +38,12 @@ import {
   EffectsIcon,
   KeyboardIcon,
   EyeOffIcon,
+  EyeIcon,
+  SlidersIcon,
+  SortIcon,
+  WaitingRoomIcon,
   SoundOnIcon,
+  AnnotateIcon,
 } from '@/components/icons'
 import { DeviceSettings, DeviceRow } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
@@ -102,6 +109,20 @@ export function ControlBar({
   docPip,
 }: ControlBarProps) {
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant()
+  // Annotation only makes sense while there's a shared screen to draw on.
+  const shareTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
+  const someoneSharing = shareTracks.length > 0
+  const annotateActive = useAnnotateStore((s) => s.active)
+  const annotateAllowed = useAnnotateStore((s) => s.allowed)
+  const toggleAnnotate = useAnnotateStore((s) => s.toggle)
+  const setAnnotateActive = useAnnotateStore((s) => s.setActive)
+  // Disarm when the last share ends. The button disappears with it, so a pen left
+  // armed is unreachable — and it would silently re-arm itself the moment the next
+  // person shared. It also matters for the presenter's own share, where being armed
+  // is what pulls that share into their stage.
+  useEffect(() => {
+    if (!someoneSharing) setAnnotateActive(false)
+  }, [someoneSharing, setAnnotateActive])
   // Camera toggle goes through the warm-then-release path (fast re-enable).
   const { isCameraEnabled, toggleCamera } = useCameraToggle()
   const [pipActive, setPipActive] = useState(false)
@@ -167,7 +188,7 @@ export function ControlBar({
           await target.requestPictureInPicture()
           setPipActive(true)
         } else {
-          toast("Picture-in-Picture isn't available here", 'warning')
+          toast("The mini player isn't available here", 'warning')
         }
         return
       }
@@ -180,9 +201,9 @@ export function ControlBar({
         return
       }
 
-      toast("Picture-in-Picture isn't available here", 'warning')
+      toast("The mini player isn't available here", 'warning')
     } catch {
-      toast("Couldn't open Picture-in-Picture", 'warning')
+      toast("Couldn't open the mini player", 'warning')
     }
   }, [])
 
@@ -286,7 +307,7 @@ export function ControlBar({
           <GridTile
             className="pointer-fine:hidden"
             icon={<ScreenShareIcon />}
-            label={isScreenShareEnabled ? 'Stop share' : 'Share'}
+            label="Share screen"
             active={isScreenShareEnabled}
             onClick={() => {
               localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
@@ -301,7 +322,7 @@ export function ControlBar({
             is manual/tap-driven on purpose: gesture-less auto-PiP crashed mobile. */}
         <GridTile
           icon={<PipIcon />}
-          label="PiP"
+          label="Mini player"
           active={docPip.supported ? docPip.active : pipActive}
           onClick={() => {
             if (docPip.supported) docPip.toggle()
@@ -311,7 +332,7 @@ export function ControlBar({
         />
         <GridTile
           icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
-          label={isFullscreen ? 'Exit' : 'Full'}
+          label="Full screen"
           active={isFullscreen}
           onClick={() => {
             toggleFullscreen()
@@ -321,15 +342,15 @@ export function ControlBar({
         {isHost && (
           <GridTile
             icon={<LockIcon />}
-            label={locked ? 'Unlock' : 'Lock'}
+            label="Lock room"
             active={locked}
             onClick={onToggleLock}
           />
         )}
         {isHost && (
           <GridTile
-            icon={<PeopleIcon />}
-            label={waiting ? 'Lobby on' : 'Lobby off'}
+            icon={<WaitingRoomIcon />}
+            label="Waiting room"
             active={waiting}
             onClick={onToggleWaiting}
           />
@@ -405,7 +426,7 @@ export function ControlBar({
           }}
         />
         <MenuRow
-          icon={<MicIcon />}
+          icon={<SlidersIcon />}
           label="Audio & video"
           onClick={() => {
             setDevicesOpen(true)
@@ -413,7 +434,7 @@ export function ControlBar({
           }}
         />
         <MenuRow
-          icon={<EyeOffIcon />}
+          icon={selfViewHidden ? <EyeIcon /> : <EyeOffIcon />}
           label={selfViewHidden ? 'Show self view' : 'Hide self view'}
           active={selfViewHidden}
           onClick={() => {
@@ -422,8 +443,8 @@ export function ControlBar({
           }}
         />
         <MenuRow
-          icon={<CameraIcon />}
-          label={videosFirst ? 'Showing videos first' : 'Show videos first'}
+          icon={<SortIcon />}
+          label="Videos first"
           active={videosFirst}
           onClick={() => {
             toggleVideosFirst()
@@ -435,7 +456,7 @@ export function ControlBar({
             picker, the exact confusion users reported. Framed as incoming video
             (Discord "Allow incoming video" / Skype), with a data-saver hint. */}
         <MenuRow
-          icon={<CameraOffIcon />}
+          icon={audioOnly ? <CameraIcon /> : <CameraOffIcon />}
           label={audioOnly ? 'Turn on incoming video' : 'Turn off incoming video (save data)'}
           active={audioOnly}
           onClick={() => {
@@ -517,7 +538,7 @@ export function ControlBar({
               onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
             />
           </Tooltip>
-          <DeviceCaret label="Audio settings" className="hidden pointer-fine:inline-flex">
+          <DeviceCaret label="Audio options" className="hidden pointer-fine:inline-flex">
             <AudioDevicePanel noise={noise} />
           </DeviceCaret>
         </div>
@@ -532,7 +553,7 @@ export function ControlBar({
               onClick={() => void toggleCamera()}
             />
           </Tooltip>
-          <DeviceCaret label="Camera settings" className="hidden pointer-fine:inline-flex">
+          <DeviceCaret label="Camera options" className="hidden pointer-fine:inline-flex">
             <CameraDevicePanel />
           </DeviceCaret>
         </div>
@@ -543,16 +564,36 @@ export function ControlBar({
         <OutputDeviceButton noise={noise} />
 
         {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
-            where getDisplayMedia is unavailable (iOS). */}
-        {canScreenShare && (
+            where getDisplayMedia is unavailable (iOS).
+
+            Gated on `!touch` rather than the `hidden pointer-fine:inline-flex`
+            class it used to carry: IconButton's own base `inline-flex` beat
+            `hidden` in the cascade, so this stayed visible on touch and phones
+            showed the control TWICE — here and in the More sheet. Rendering
+            conditionally can't lose a specificity race. */}
+        {canScreenShare && !touch && (
           <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
             <IconButton
               label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
               icon={<ScreenShareIcon />}
               tone="neutral"
               active={isScreenShareEnabled}
-              className="hidden pointer-fine:inline-flex"
               onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+            />
+          </Tooltip>
+        )}
+
+        {/* Annotate — only while someone is actually sharing, and desktop only:
+            drawing has to capture touch, which would fight the control bar's
+            tap-to-reveal. Touch devices still SEE everyone's strokes. */}
+        {annotateEnabled && someoneSharing && annotateAllowed && !touch && (
+          <Tooltip content={annotateActive ? 'Stop annotating' : 'Draw on the shared screen'}>
+            <IconButton
+              label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
+              icon={<AnnotateIcon />}
+              tone="neutral"
+              active={annotateActive}
+              onClick={toggleAnnotate}
             />
           </Tooltip>
         )}
@@ -865,7 +906,7 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
   return (
     <div className="flex flex-col gap-3">
       <DeviceRow kind="audioinput" label="Microphone" />
-      <DeviceRow kind="audiooutput" label="Speaker" />
+      <DeviceRow kind="audiooutput" label="Audio output" />
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
       </div>

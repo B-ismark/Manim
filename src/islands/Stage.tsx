@@ -24,6 +24,7 @@ import {
   SpotlightIcon,
   GridIcon,
   PeopleIcon,
+  AnnotateIcon,
 } from '@/components/icons'
 import { moderate } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
@@ -42,6 +43,9 @@ import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareL
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
+import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
+import { annotateEnabled } from '@/features/annotate/useAnnotate'
+import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { cn } from '@/lib/cn'
 
 /** Stable per-tile key (identity + source) — never reshuffles as people speak. */
@@ -258,7 +262,27 @@ export function Stage() {
   const localScreenShare = tracks.find(
     (t) => t.participant.isLocal && t.source === Track.Source.ScreenShare,
   )
-  const visible = localScreenShare ? tracks.filter((t) => t !== localScreenShare) : tracks
+
+  // …with one exception: to draw on your own share you have to be able to SEE it.
+  // A browser tab can't paint over the operating system the way the Teams and Zoom
+  // native apps do, so the presenter's only drawing surface is their own captured
+  // frame. Arming the pen therefore pulls the local share back into the big region,
+  // and disarming pushes it out again — the echo is opt-in and lasts exactly as long
+  // as the gesture. (It only recurses at all when sharing a whole monitor; a window
+  // or a non-call tab has nothing to reflect.)
+  //
+  // Two guards keep this from hijacking the layout. A REMOTE share always wins, so
+  // annotating in a room where someone else is presenting still targets their screen
+  // rather than swapping to yours. And touch is excluded, matching the pen itself.
+  const annotatingOwn = useAnnotateStore((s) => s.active)
+  const remoteSharing = tracks.some(
+    (t) => !t.participant.isLocal && t.source === Track.Source.ScreenShare,
+  )
+  const selfAnnotating =
+    Boolean(localScreenShare) && annotateEnabled && annotatingOwn && !remoteSharing && !coarse
+
+  const visible =
+    localScreenShare && !selfAnnotating ? tracks.filter((t) => t !== localScreenShare) : tracks
   const presenting = Boolean(localScreenShare)
 
   // Prune presentation state (demoted-share flags, a person-spotlight) when the active
@@ -278,7 +302,7 @@ export function Stage() {
     return (
       <>
         <SoloStage selfTrack={visible[0]} />
-        {presenting && <PresentingIndicator />}
+        {presenting && <PresentingIndicator annotating={selfAnnotating} />}
       </>
     )
   }
@@ -294,7 +318,7 @@ export function Stage() {
       return (
         <>
           <PresentationStage visible={visible} coarse={coarse} share={share} shareId={sid} />
-          {presenting && <PresentingIndicator />}
+          {presenting && <PresentingIndicator annotating={selfAnnotating} />}
         </>
       )
     }
@@ -305,7 +329,7 @@ export function Stage() {
     return (
       <>
         <GridStage tracks={gridTracks} coarse={coarse} />
-        {presenting && <PresentingIndicator />}
+        {presenting && <PresentingIndicator annotating={selfAnnotating} />}
       </>
     )
   }
@@ -325,7 +349,7 @@ export function Stage() {
     return (
       <>
         <GridStage tracks={gridTracks} coarse={coarse} />
-        {presenting && <PresentingIndicator />}
+        {presenting && <PresentingIndicator annotating={selfAnnotating} />}
       </>
     )
   }
@@ -352,7 +376,7 @@ export function Stage() {
       )}
 
       {localCam && focus !== localCam && !selfViewHidden && <SelfViewCard trackRef={localCam} />}
-      {presenting && <PresentingIndicator />}
+      {presenting && <PresentingIndicator annotating={selfAnnotating} />}
     </div>
   )
 }
@@ -360,12 +384,14 @@ export function Stage() {
 /** Status pill shown to YOU while you're sharing your screen — the in-app counterpart
  *  to the browser's "you're sharing" bar. Replaces mirroring your own share back into
  *  the stage. Stop sharing lives on the control bar (the Share button toggles off). */
-function PresentingIndicator() {
+function PresentingIndicator({ annotating = false }: { annotating?: boolean }) {
   return (
     <div className="pointer-events-none fixed inset-x-0 top-[max(4rem,calc(env(safe-area-inset-top)+3.5rem))] z-20 flex justify-center px-4">
       <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
-        <ScreenShareIcon />
-        You’re sharing your screen
+        {annotating ? <AnnotateIcon /> : <ScreenShareIcon />}
+        {/* Say WHY their own screen suddenly appeared — otherwise the switch (and,
+            on a full-monitor share, the mirror tunnel) reads as a glitch. */}
+        {annotating ? 'You\u2019re drawing on your shared screen' : 'You\u2019re sharing your screen'}
       </span>
     </div>
   )
@@ -401,7 +427,7 @@ function GridStage({
       const promote = () => toggleShareDemoted(t.publication?.trackSid ?? tileKey(t))
       return {
         onActivate: promote,
-        action: { icon: <SpotlightIcon />, label: 'Present shared screen', onClick: promote },
+        action: { icon: <ScreenShareIcon />, label: 'Present shared screen', onClick: promote },
       }
     },
     [toggleShareDemoted],
@@ -704,6 +730,10 @@ function PresentationStage({
                   }
                 />
                 {bigIsShare && <FullscreenControls targetRef={bigRef} />}
+                {/* Ink layer for the shared screen. Inside bigRef so it follows the
+                    share into fullscreen; owns its own canvas and never re-renders
+                    the stage while drawing. */}
+                {bigIsShare && annotateEnabled && <AnnotationOverlay aspect={bigAspect} />}
               </div>
             </div>
 
