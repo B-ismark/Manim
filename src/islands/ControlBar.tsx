@@ -553,15 +553,20 @@ export function ControlBar({
         <OutputDeviceButton noise={noise} />
 
         {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
-            where getDisplayMedia is unavailable (iOS). */}
-        {canScreenShare && (
+            where getDisplayMedia is unavailable (iOS).
+
+            Gated on `!touch` rather than the `hidden pointer-fine:inline-flex`
+            class it used to carry: IconButton's own base `inline-flex` beat
+            `hidden` in the cascade, so this stayed visible on touch and phones
+            showed the control TWICE — here and in the More sheet. Rendering
+            conditionally can't lose a specificity race. */}
+        {canScreenShare && !touch && (
           <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
             <IconButton
               label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
               icon={<ScreenShareIcon />}
               tone="neutral"
               active={isScreenShareEnabled}
-              className="hidden pointer-fine:inline-flex"
               onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
             />
           </Tooltip>
@@ -570,14 +575,13 @@ export function ControlBar({
         {/* Annotate — only while someone is actually sharing, and desktop only:
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
-        {annotateEnabled && someoneSharing && annotateAllowed && (
+        {annotateEnabled && someoneSharing && annotateAllowed && !touch && (
           <Tooltip content={annotateActive ? 'Stop annotating' : 'Draw on the shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
               icon={<EditIcon />}
               tone="neutral"
               active={annotateActive}
-              className="hidden pointer-fine:inline-flex"
               onClick={toggleAnnotate}
             />
           </Tooltip>

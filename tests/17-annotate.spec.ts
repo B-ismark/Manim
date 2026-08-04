@@ -6,7 +6,34 @@ import {
   fakeScreenShare,
   startScreenShare,
   inkBoundsUnit,
+  isTouch,
+  axeViolations,
+  setColorScheme,
 } from './helpers'
+
+/**
+ * The author palette must actually SHIP. This is not paranoia: the tokens
+ * originally lived in @theme, and Tailwind v4 tree-shakes theme variables that
+ * no generated utility references. Nothing emits a `bg-annotate-3` class — they
+ * are read programmatically by the canvas — so seven of the eight were silently
+ * dropped from the build and every author after the first fell back to one
+ * shared colour, destroying the attribution the palette exists to provide.
+ *
+ * Deliberately outside the describe below so it runs even with the feature dark:
+ * the CSS ships either way, and this is the check that catches the regression.
+ */
+test('the annotation author palette resolves and is distinct', async ({ page }) => {
+  await page.goto('/')
+  const vals = await page.evaluate(() => {
+    const cs = getComputedStyle(document.documentElement)
+    const out: Record<string, string> = {}
+    for (let i = 1; i <= 8; i++) out[`--annotate-${i}`] = cs.getPropertyValue(`--annotate-${i}`).trim()
+    return out
+  })
+  const missing = Object.entries(vals).filter(([, v]) => !v).map(([k]) => k)
+  expect(missing, 'every palette token must survive the CSS build').toEqual([])
+  expect(new Set(Object.values(vals)).size, 'all eight authors must differ').toBe(8)
+})
 
 /**
  * Screen-share annotation across participants.
@@ -36,12 +63,27 @@ const SHARE_W = 1280
 const SHARE_H = 720
 const SHARE_ASPECT = SHARE_W / SHARE_H
 
+/**
+ * Desktop context options. `browser.newContext()` inherits the running PROJECT's
+ * device, so under the mobile projects an auxiliary participant would also be a
+ * touch device — where screen share lives in the More sheet and the pen doesn't
+ * exist at all. These fixtures are incidental to what's under test, so they are
+ * pinned to a mouse-driven desktop regardless of project.
+ */
+const DESKTOP = {
+  permissions: ['camera', 'microphone'] as const,
+  viewport: { width: 1280, height: 800 },
+  hasTouch: false,
+  isMobile: false,
+  deviceScaleFactor: 1,
+}
+
 /** A participant who publishes a synthetic screen share of known dimensions. */
 async function addSharer(
   browser: import('@playwright/test').Browser,
   room: string,
 ): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  const context = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
   const page = await context.newPage()
   await fakeScreenShare(page, SHARE_W, SHARE_H)
   await join(page, room, 'Presenter')
@@ -92,6 +134,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     browser,
   }) => {
     test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only; the touch case is covered below')
     const room = uniqueRoom('annot')
 
     const sharer = await addSharer(browser, room)
@@ -102,7 +145,8 @@ test.describe('Annotation over a shared screen @annotate', () => {
 
     // Viewer B — a very different viewport shape, so different letterboxing.
     const ctxB = await browser.newContext({
-      permissions: ['camera', 'microphone'],
+      ...DESKTOP,
+      permissions: [...DESKTOP.permissions],
       viewport: { width: 900, height: 760 },
     })
     const viewerB = await ctxB.newPage()
@@ -139,8 +183,81 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await sharer.context.close()
   })
 
+  test('touch devices see strokes but cannot draw', async ({ page, browser }) => {
+    test.setTimeout(150_000)
+    test.skip(!(await isTouch(page)), 'touch-only check')
+
+    const room = uniqueRoom('annot')
+    const sharer = await addSharer(browser, room)
+
+    // A desktop viewer who will draw.
+    const deskCtx = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
+    const desktop = await deskCtx.newPage()
+    await join(desktop, room, 'Ada')
+    await expect(desktop.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    // The touch viewer.
+    await join(page, room, 'Mo')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    // No draw affordance on touch: drawing would have to capture touch, which
+    // collides with the control bar's tap-to-reveal.
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toHaveCount(0)
+
+    // ...but a remote stroke still renders, so the phone isn't cut out of the
+    // conversation — view-only, not blind.
+    await drawStroke(desktop, 0.3, 0.7, 0.5)
+    await desktop.waitForTimeout(500)
+    expect(await inkBoundsUnit(page, SHARE_ASPECT), 'touch viewer renders remote ink').not.toBeNull()
+
+    // The control bar must still respond — the overlay must not be swallowing taps.
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible()
+
+    await deskCtx.close()
+    await sharer.context.close()
+  })
+
+  test('no page scroll is introduced on a short phone', async ({ page, browser }) => {
+    test.setTimeout(150_000)
+    test.skip(!(await isTouch(page)), 'touch-only check')
+    const room = uniqueRoom('annot')
+    const sharer = await addSharer(browser, room)
+    await join(page, room, 'Mo')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    const overflow = await page.evaluate(() => ({
+      x: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      y: document.documentElement.scrollHeight - document.documentElement.clientHeight,
+    }))
+    expect(overflow.x, 'no horizontal page scroll').toBeLessThanOrEqual(1)
+    expect(overflow.y, 'no vertical page scroll').toBeLessThanOrEqual(1)
+
+    await sharer.context.close()
+  })
+
+  for (const scheme of ['light', 'dark'] as const) {
+    test(`no accessibility violations with the pen armed (${scheme})`, async ({ page, browser }) => {
+      test.setTimeout(150_000)
+      test.skip(await isTouch(page), 'desktop-only: the pen cannot be armed on touch')
+      await setColorScheme(page, scheme)
+      const room = uniqueRoom('annot')
+      const sharer = await addSharer(browser, room)
+      await join(page, room, 'Ada')
+      await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+      await revealChrome(page)
+      await page.getByRole('button', { name: /Annotate shared screen/i }).click()
+      expect(await axeViolations(page)).toEqual([])
+
+      await sharer.context.close()
+    })
+  }
+
   test('strokes fade away on their own', async ({ page, browser }) => {
     test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
     const room = uniqueRoom('annot')
     const sharer = await addSharer(browser, room)
 
