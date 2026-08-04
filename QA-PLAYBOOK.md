@@ -10,7 +10,8 @@ A replicable QA process for this LiveKit video-call app, written so a future
 Claude agent (or any engineer) can re-run the full audit and know *what* to test,
 *how*, with *which parameters*, and *what counts as a pass*. Pair with:
 - [TESTING.md](TESTING.md) — environment setup (test LiveKit project + secrets).
-- [E2E-FINDINGS.md](E2E-FINDINGS.md) — the original sweep + capacity findings.
+- [docs/archive/](docs/archive/) — closed-out audit + sweep reports, kept for context
+  (including the browser-capacity ceiling that shapes the scale-testing approach).
 
 > **Golden rule:** the in-call UI only exists with LiveKit creds. Verify behaviour
 > against the **running app / served artifact**, never a green build alone.
