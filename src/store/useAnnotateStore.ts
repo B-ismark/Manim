@@ -9,8 +9,11 @@ import { create } from 'zustand'
  * re-render the stage on every pointer sample. Nothing on the hot path reads
  * this store — the engine samples it once, at pointerdown, via getState().
  *
- * Stage must not subscribe to this: arming the pen should not re-render the
- * video grid. Only the control bar and the overlay do.
+ * Stage subscribes to `active` alone, and only because arming the pen changes
+ * the LAYOUT: a presenter's own share is normally excluded from their stage, and
+ * has to be pulled back in for them to draw on it. That costs one render per
+ * deliberate toggle. What must never reach this store is stroke data — points
+ * live in AnnotationEngine, or every pointer sample would re-render the grid.
  */
 interface AnnotateState {
   /** The local user has the pen armed. */

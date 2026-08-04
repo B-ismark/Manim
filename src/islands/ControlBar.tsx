@@ -112,6 +112,14 @@ export function ControlBar({
   const annotateActive = useAnnotateStore((s) => s.active)
   const annotateAllowed = useAnnotateStore((s) => s.allowed)
   const toggleAnnotate = useAnnotateStore((s) => s.toggle)
+  const setAnnotateActive = useAnnotateStore((s) => s.setActive)
+  // Disarm when the last share ends. The button disappears with it, so a pen left
+  // armed is unreachable — and it would silently re-arm itself the moment the next
+  // person shared. It also matters for the presenter's own share, where being armed
+  // is what pulls that share into their stage.
+  useEffect(() => {
+    if (!someoneSharing) setAnnotateActive(false)
+  }, [someoneSharing, setAnnotateActive])
   // Camera toggle goes through the warm-then-release path (fast re-enable).
   const { isCameraEnabled, toggleCamera } = useCameraToggle()
   const [pipActive, setPipActive] = useState(false)
