@@ -62,6 +62,11 @@ interface LiveStroke {
   local: boolean
   /** Cached width of the rendered name label; measured once, never changes. */
   labelW?: number
+  /** Cached geometry in PIXEL space, extended point-by-point as the stroke grows.
+   *  Dropped whenever the container resizes, since pixel coords move. */
+  path?: Path2D
+  /** How many points are already in `path`. */
+  pathLen: number
 }
 
 export interface EngineOptions {
@@ -145,8 +150,13 @@ export class AnnotationEngine {
     this.aspect = aspect
     this.dpr = nextDpr
     this.applyCanvasSize()
-    // Unit coords are resolution-independent, so nothing needs remapping — but
-    // resizing the backing store clears it, so anything live must be repainted.
+    // Unit coords are resolution-independent, so the DATA needs no remapping —
+    // but the cached Path2Ds are in pixel space, so they must be rebuilt.
+    for (const s of this.strokes.values()) {
+      s.path = undefined
+      s.pathLen = 0
+    }
+    // Resizing the backing store also clears it, so anything live must repaint.
     if (this.strokes.size > 0) this.wake()
   }
 
@@ -196,6 +206,7 @@ export class AnnotationEngine {
       sent: 0,
       seq: 0,
       local: true,
+      pathLen: 0,
     }
     this.strokes.set(this.localKey, stroke)
     this.appendUnit(stroke, toUnit(p, rect))
@@ -260,6 +271,7 @@ export class AnnotationEngine {
         sent: 0,
         seq: packet.seq,
         local: false,
+        pathLen: 0,
       }
       this.strokes.set(key, stroke)
     }
@@ -364,35 +376,53 @@ export class AnnotationEngine {
       const alpha = opacityForAge(now - stroke.lastAt)
       if (alpha <= 0 || stroke.len === 0) continue
       ctx.globalAlpha = alpha
-      this.path(ctx, stroke, rect)
+      const path = this.pathFor(stroke, rect)
       // Dark halo first so a light stroke stays legible over pale shared content
       // (a spreadsheet) just as a dark one does over an IDE.
       ctx.lineWidth = width * 1.9
       ctx.strokeStyle = 'oklch(0.15 0 0 / 0.45)'
-      ctx.stroke()
+      ctx.stroke(path)
       ctx.lineWidth = width
       ctx.strokeStyle = this.strokeColor(stroke.colorIdx)
-      ctx.stroke()
+      ctx.stroke(path)
       this.drawLabel(ctx, stroke, rect)
     }
     ctx.globalAlpha = 1
   }
 
-  private path(ctx: CanvasRenderingContext2D, stroke: LiveStroke, rect: Rect) {
-    ctx.beginPath()
-    const first = fromUnit({ x: stroke.points[0], y: stroke.points[1] }, rect)
-    if (stroke.len === 1) {
-      // A tap with no drag still deserves a dot.
-      ctx.moveTo(first.x, first.y)
-      ctx.lineTo(first.x + 0.01, first.y)
-      return
+  /**
+   * Path2D for a stroke, EXTENDED rather than rebuilt.
+   *
+   * The fade means every live stroke repaints on every frame, so rebuilding the
+   * path each time made per-frame cost O(total points) — and it is issued twice
+   * per stroke, once for the halo and once for the colour. Three people scribbling
+   * for a few seconds is thousands of lineTo calls per frame. Holding the Path2D
+   * and appending only what is new makes the steady-state cost O(new points).
+   *
+   * The cache is pixel-space, so setGeometry drops it on resize.
+   */
+  private pathFor(stroke: LiveStroke, rect: Rect): Path2D {
+    let path = stroke.path
+    if (!path) {
+      path = new Path2D()
+      stroke.path = path
+      stroke.pathLen = 0
     }
-    ctx.moveTo(first.x, first.y)
-    for (let i = 1; i < stroke.len; i++) {
+    if (stroke.pathLen === 0 && stroke.len > 0) {
+      const first = fromUnit({ x: stroke.points[0], y: stroke.points[1] }, rect)
+      path.moveTo(first.x, first.y)
+      // A hair of length so a tap with no drag still renders as a round dot.
+      path.lineTo(first.x + 0.01, first.y)
+      stroke.pathLen = 1
+    }
+    for (let i = stroke.pathLen; i < stroke.len; i++) {
       const p = fromUnit({ x: stroke.points[i * 2], y: stroke.points[i * 2 + 1] }, rect)
-      ctx.lineTo(p.x, p.y)
+      path.lineTo(p.x, p.y)
     }
+    stroke.pathLen = stroke.len
+    return path
   }
+
 
   /**
    * Resolve the author's palette token to a real colour, CACHED.

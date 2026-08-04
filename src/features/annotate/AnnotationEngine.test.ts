@@ -16,6 +16,16 @@ import { LIFETIME_MS } from '@/lib/annotate/fade'
 
 let frameQueue: FrameRequestCallback[] = []
 let clock = 0
+/** Total lineTo calls across all Path2D instances — the per-frame path cost. */
+let pathLineTos = 0
+
+/** Node has no Path2D; this records the geometry work the engine issues. */
+class FakePath2D {
+  moveTo() {}
+  lineTo() {
+    pathLineTos++
+  }
+}
 
 /** Run exactly one pending frame, as the browser would. */
 function pumpFrame() {
@@ -71,6 +81,8 @@ beforeEach(() => {
   })
   vi.stubGlobal('cancelAnimationFrame', () => {})
   vi.stubGlobal('getComputedStyle', () => ({ getPropertyValue: () => 'oklch(0.5 0.1 200)' }))
+  vi.stubGlobal('Path2D', FakePath2D)
+  pathLineTos = 0
 })
 
 afterEach(() => {
@@ -347,6 +359,37 @@ describe('geometry and rendering', () => {
     engine.invalidateColors()
     pumpFrame()
     expect(spy.mock.calls.length).toBeGreaterThan(before)
+  })
+
+  it('extends the cached path instead of rebuilding it each frame', () => {
+    // The fade repaints every live stroke every frame, so rebuilding the path
+    // would make per-frame cost O(total points) — issued twice per stroke, for
+    // the halo and the colour. Measured at ~82% decode retention with three
+    // people drawing before this was cached.
+    const { engine, canvas } = makeEngine()
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 200, y: 200 }, { x: 300, y: 300 }])
+    pumpFrame()
+    // Repainting without new points must not re-issue any path construction.
+    const before = pathLineTos
+    pumpFrame()
+    pumpFrame()
+    expect(pathLineTos).toBe(before)
+    // ...but the strokes themselves keep being painted.
+    expect(canvas.__ctx.stroke).toHaveBeenCalled()
+  })
+
+  it('rebuilds cached paths when the container resizes', () => {
+    // Paths are cached in PIXEL space, so a resize must invalidate them or the
+    // ink would stay anchored to the old geometry.
+    const { engine } = makeEngine()
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 200, y: 200 }])
+    pumpFrame()
+    const before = pathLineTos
+    engine.setGeometry(1200, 700, 16 / 9, 1)
+    pumpFrame()
+    expect(pathLineTos).toBeGreaterThan(before)
   })
 
   it('clears the canvas each frame before repainting', () => {
