@@ -37,6 +37,11 @@ const MAX_DPR = 2
 
 const INITIAL_CAPACITY_POINTS = 256
 
+/** Used only if a palette token can't be resolved (engine detached mid-frame). */
+const FALLBACK_COLOR = 'oklch(0.7 0.19 25)'
+
+const LABEL_FONT = '600 12px ui-sans-serif, system-ui, sans-serif'
+
 interface LiveStroke {
   /** Wire id, fixed at creation. Must NOT be read off the engine's current
    *  counter at flush time: a finished stroke can still have an unsent tail when
@@ -55,6 +60,8 @@ interface LiveStroke {
   /** Wire sequence counter for this stroke (local strokes only). */
   seq: number
   local: boolean
+  /** Cached width of the rendered name label; measured once, never changes. */
+  labelW?: number
 }
 
 export interface EngineOptions {
@@ -82,6 +89,8 @@ export class AnnotationEngine {
 
   private raf = 0
   private disposed = false
+  /** Resolved palette tokens, keyed by index. Cleared by invalidateColors(). */
+  private colorCache = new Map<number, string>()
 
   private readonly onFlush: (packet: StrokePacket) => void
   private readonly now: () => number
@@ -379,15 +388,29 @@ export class AnnotationEngine {
   }
 
   /**
-   * Resolve the author's palette token to a real colour. Read from the element so
-   * theme presets (including the Deuteranopia/Tritanopia sets) apply without the
-   * engine knowing anything about theming — and so no colour is hardcoded here.
+   * Resolve the author's palette token to a real colour, CACHED.
+   *
+   * The value is read off the element so theme presets (including the
+   * Deuteranopia/Tritanopia sets) apply without the engine knowing anything about
+   * theming, and so no colour is hardcoded here. But getComputedStyle forces a
+   * style recalculation, and this is called per stroke per frame — uncached it
+   * would be one of the most expensive things in the render loop. Tokens only
+   * change when the theme does, so the cache is cleared by invalidateColors().
    */
   private strokeColor(colorIdx: number): string {
+    const cached = this.colorCache.get(colorIdx)
+    if (cached) return cached
     const el = this.canvas
-    if (!el) return 'oklch(0.7 0.19 25)'
-    const value = getComputedStyle(el).getPropertyValue(colorVar(colorIdx)).trim()
-    return value || 'oklch(0.7 0.19 25)'
+    if (!el) return FALLBACK_COLOR
+    const value = getComputedStyle(el).getPropertyValue(colorVar(colorIdx)).trim() || FALLBACK_COLOR
+    this.colorCache.set(colorIdx, value)
+    return value
+  }
+
+  /** Drop cached palette colours — call when the theme or accent preset changes. */
+  invalidateColors() {
+    this.colorCache.clear()
+    if (this.strokes.size > 0) this.wake()
   }
 
   /**
@@ -406,12 +429,14 @@ export class AnnotationEngine {
       { x: stroke.points[(stroke.len - 1) * 2], y: stroke.points[(stroke.len - 1) * 2 + 1] },
       rect,
     )
-    ctx.font = '600 12px ui-sans-serif, system-ui, sans-serif'
+    ctx.font = LABEL_FONT
     ctx.textBaseline = 'middle'
     const pad = 10
     // Flip to the left of the head when close to the right edge so the label
-    // never runs off the shared content.
-    const w = ctx.measureText(stroke.name).width
+    // never runs off the shared content. Width is measured once per stroke — the
+    // name can't change, and measureText in a per-frame loop is not free.
+    if (stroke.labelW === undefined) stroke.labelW = ctx.measureText(stroke.name).width
+    const w = stroke.labelW
     const x = head.x + pad + w > rect.x + rect.w ? head.x - pad - w : head.x + pad
     const y = head.y - pad
     ctx.lineWidth = 3

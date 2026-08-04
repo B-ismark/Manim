@@ -4,6 +4,7 @@ import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
+import { useThemeStore } from '@/store/useThemeStore'
 
 /**
  * Drawing surface over the shared screen.
@@ -43,6 +44,17 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
     engine.setGeometry(size.width, size.height, aspect)
   }, [engine, size.width, size.height, aspect])
 
+  // The engine caches resolved palette tokens (getComputedStyle per stroke per
+  // frame would be a style recalc in the render loop). Switching theme or accent
+  // rewrites those tokens, so the cache has to be dropped — including the
+  // vision-assistive presets, where the whole palette changes at once.
+  const themeMode = useThemeStore((s) => s.mode)
+  const accentId = useThemeStore((s) => s.accentId)
+  const highContrast = useThemeStore((s) => s.highContrast)
+  useEffect(() => {
+    engine.invalidateColors()
+  }, [engine, themeMode, accentId, highContrast])
+
   // Redraw at the new backing-store scale when the window moves between displays.
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return
@@ -69,7 +81,6 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
       // the same stopPropagation escape hatch the tile's own controls use.
       e.stopPropagation()
       e.preventDefault()
-      announce('You started annotating')
     }
 
     const onMove = (e: PointerEvent) => {
@@ -97,7 +108,17 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
       canvas.removeEventListener('pointerup', onUp)
       canvas.removeEventListener('pointercancel', onUp)
     }
-  }, [engine, beginLocal, canDraw, announce])
+  }, [engine, beginLocal, canDraw])
+
+  // Announce the MODE, not each stroke — a message per pointerdown would be
+  // screen-reader spam. Remote authors are announced separately (useAnnotate),
+  // which is the signal that actually carries information you can't see.
+  const armed = useRef(false)
+  useEffect(() => {
+    if (armed.current === canDraw) return
+    armed.current = canDraw
+    announce(canDraw ? 'Annotation on. Draw on the shared screen.' : 'Annotation off.')
+  }, [canDraw, announce])
 
   return (
     <div ref={boxRef} className="pointer-events-none absolute inset-0 z-20">
