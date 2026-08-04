@@ -45,10 +45,9 @@ test('the annotation author palette resolves and is distinct', async ({ page }) 
  * proves the whole chain — pointer → normalise → wire → data channel → decode →
  * denormalise → paint — agrees end to end.
  *
- * NOTE ON SHAPE: the sharer is always a separate participant. Stage deliberately
- * excludes your OWN share from the presentation layout ("you're already looking
- * at your screen"), so the annotation overlay only exists for viewers. Annotating
- * your own share is therefore not possible today.
+ * NOTE ON SHAPE: in most tests below the sharer is a separate participant, because
+ * Stage excludes your OWN share from the presentation layout by default. Arming the
+ * pen is the exception that pulls it back — covered by its own test at the end.
  *
  * The two viewers below have deliberately different viewport SHAPES, not just
  * sizes, so their letterbox insets differ. If strokes were normalised against the
@@ -108,6 +107,9 @@ async function canvasGeometry(page: Page) {
 async function drawStroke(page: Page, ux0: number, ux1: number, uy: number) {
   await revealChrome(page)
   await page.getByRole('button', { name: /Annotate shared screen/i }).click()
+  // For a presenter the canvas does not exist until the click — arming is what puts
+  // their own share on the stage — so wait rather than querying into a null.
+  await page.getByTestId('annotation-canvas').waitFor({ state: 'visible', timeout: 20_000 })
   const g = await canvasGeometry(page)
   const at = (ux: number) => ({ x: g.left + g.cx + ux * g.cw, y: g.top + g.cy + uy * g.ch })
   const start = at(ux0)
@@ -254,6 +256,84 @@ test.describe('Annotation over a shared screen @annotate', () => {
       await sharer.context.close()
     })
   }
+
+  test('a presenter can draw on their own share, and only while the pen is armed', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+
+    // THIS page is the presenter — the case every other test in this file routes
+    // around. A browser tab cannot paint over the OS the way the Teams and Zoom
+    // native apps do, so the only surface a presenter can draw on is their own
+    // captured frame, which means putting it back on their stage.
+    await fakeScreenShare(page, SHARE_W, SHARE_H)
+    await join(page, room, 'Presenter')
+
+    const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
+    const viewer = await ctxB.newPage()
+    await join(viewer, room, 'Bo')
+
+    await startScreenShare(page)
+    await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    // Default state is unchanged: your own share is NOT echoed back at you.
+    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+
+    // Arming pulls it in, drawing works, and the viewer agrees on where the ink is.
+    await drawStroke(page, 0.3, 0.7, 0.5)
+    await page.waitForTimeout(400)
+
+    const [inkSelf, inkRemote] = await Promise.all([
+      inkBoundsUnit(page, SHARE_ASPECT),
+      inkBoundsUnit(viewer, SHARE_ASPECT),
+    ])
+    expect(inkSelf, 'the presenter sees their own ink').not.toBeNull()
+    expect(inkRemote, 'the viewer received it').not.toBeNull()
+    expect(inkSelf!.x0).toBeCloseTo(0.3, 1)
+    expect(inkRemote!.x0).toBeCloseTo(inkSelf!.x0, 1)
+    expect(inkRemote!.y0).toBeCloseTo(inkSelf!.y0, 1)
+
+    // Disarming puts the stage back — the echo lasts exactly as long as the gesture.
+    await revealChrome(page)
+    await page.getByRole('button', { name: /Stop annotating/i }).click()
+    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+
+    await ctxB.close()
+  })
+
+  test('a remote share still wins over your own while annotating', async ({ page, browser }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+
+    // Someone else is presenting AND so are you. Arming the pen must keep pointing at
+    // THEIR screen — the thing under discussion — not silently swap the stage to yours.
+    const sharer = await addSharer(browser, room)
+
+    await fakeScreenShare(page, 640, 480) // a deliberately different aspect
+    await join(page, room, 'Ada')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await startScreenShare(page)
+
+    await revealChrome(page)
+    await page.getByRole('button', { name: /Annotate shared screen/i }).click()
+
+    // The big tile is still the remote 1280x720 share, so the canvas still matches it.
+    await page.waitForTimeout(1500)
+    const aspect = await page.evaluate(() => {
+      // The big region is by definition the largest rendered video.
+      const v = Array.from(document.querySelectorAll('video'))
+        .filter((el) => el.videoWidth > 0)
+        .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]
+      return v ? v.videoWidth / v.videoHeight : 0
+    })
+    expect(aspect, 'the remote share keeps the big region').toBeCloseTo(SHARE_ASPECT, 1)
+
+    await sharer.context.close()
+  })
 
   test('strokes fade away on their own', async ({ page, browser }) => {
     test.setTimeout(150_000)
