@@ -153,9 +153,17 @@ async function getRoomFlags(roomService, room) {
   }
 }
 
-async function mergeRoomFlags(roomService, room, patch) {
-  const current = await getRoomFlags(roomService, room)
-  await roomService.updateRoomMetadata(room, JSON.stringify({ ...current, ...patch }))
+/**
+ * Read-modify-write of room metadata. The read is what stops a concurrent writer's
+ * unrelated keys from being clobbered, so it is NOT optional in general — but a
+ * caller that already holds a fresh copy can pass it as `current` to skip a second
+ * listRooms round-trip. Only pass it when nothing has been awaited since that read
+ * (the window is then effectively zero); when there are awaits in between — knock,
+ * which does KV and allowlist I/O — omit it and pay for the fresh read.
+ */
+async function mergeRoomFlags(roomService, room, patch, current) {
+  const base = current ?? (await getRoomFlags(roomService, room))
+  await roomService.updateRoomMetadata(room, JSON.stringify({ ...base, ...patch }))
 }
 
 // Resolve the caller's identity from their LiveKit JWT — the same token they hold
@@ -241,15 +249,23 @@ async function verifySupabaseUser(env, accessToken) {
 // a plain identity string, which any participant can read off the room roster and
 // replay. We verify the token, then check the verified identity matches the
 // server-recorded hostId.
+//
+// Returns { ok, flags } rather than a bare boolean: the authority check has to read
+// room metadata anyway, and every caller needs those same flags immediately after
+// (the pending queue, the co-host roster). Handing the already-fetched copy back
+// saves a duplicate listRooms on each call — which matters, because /api/pending is
+// polled every 3s per host.
 async function ensureHost(env, roomService, room, token) {
   const identity = await verifyCaller(env, token, room)
-  if (!identity) return false
+  if (!identity) return { ok: false, flags: {} }
   const flags = await getRoomFlags(roomService, room)
   // The primary host OR a promoted co-host. Co-hosts pass moderation/admit
   // checks; the server performs the privileged action with its own admin creds,
   // so co-hosts never need roomAdmin in their own join token.
-  if (Boolean(flags.hostId) && flags.hostId === identity) return true
-  return Array.isArray(flags.coHosts) && flags.coHosts.includes(identity)
+  const ok =
+    (Boolean(flags.hostId) && flags.hostId === identity) ||
+    (Array.isArray(flags.coHosts) && flags.coHosts.includes(identity))
+  return { ok, flags }
 }
 
 export function handleHealth(env) {
@@ -283,26 +299,7 @@ export async function handleMe(env, body) {
   const gate = env.BETA_GATE === 'true'
   const allowed = !gate || (await isAllowed(env, email))
 
-  // TEMP DIAGNOSTIC — pinpoints why signedIn can be false. Reports only booleans +
-  // an HTTP status about the CALLER's own request (no secrets, no other users).
-  // Remove once the gate is confirmed working.
-  const debug = {
-    gotToken: Boolean(accessToken),
-    supaConfigured: Boolean(env.SUPABASE_URL && env.SUPABASE_ANON_KEY),
-    userStatus: null,
-  }
-  if (debug.gotToken && debug.supaConfigured) {
-    try {
-      const r = await fetch(`${String(env.SUPABASE_URL).replace(/\/+$/, '')}/auth/v1/user`, {
-        headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${accessToken}` },
-      })
-      debug.userStatus = r.status
-    } catch {
-      debug.userStatus = 'fetch_error'
-    }
-  }
-
-  return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed, debug } }
+  return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed } }
 }
 
 export async function handleKnock(env, body) {
@@ -347,8 +344,12 @@ export async function handleKnock(env, body) {
   // Read room flags FIRST so host election keys off the recorded hostId, not just
   // a (racy) participant count. The recorded host reclaims host on reconnect; a
   // brand-new room with no host yet is claimed by its first occupant.
-  const flags = await getRoomFlags(roomService, room)
-  const participants = await listParticipants(roomService, room)
+  // Independent reads — issue them together so the join path pays for one round-trip
+  // instead of two.
+  const [flags, participants] = await Promise.all([
+    getRoomFlags(roomService, room),
+    listParticipants(roomService, room),
+  ])
   const alreadyIn = participants.some((p) => p.identity === identity)
   // Is this same signed-in account ALREADY in the room on a DIFFERENT device? (Guests
   // are device-bound — a different device is a different guest userId — so this only
@@ -539,9 +540,9 @@ export async function handlePending(env, query, token) {
   const { roomService } = services(env)
   if (!roomService) return { status: 200, body: { pending: [] } }
   const { room } = query
-  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
-  const flags = await getRoomFlags(roomService, room)
-  const pending = (Array.isArray(flags.queue) ? flags.queue : [])
+  const auth = await ensureHost(env, roomService, room, token)
+  if (!auth.ok) return { status: 403, body: { error: 'host only' } }
+  const pending = (Array.isArray(auth.flags.queue) ? auth.flags.queue : [])
     .filter((e) => e.status === 'pending')
     .map((e) => ({ id: e.id, name: e.name }))
   return { status: 200, body: { pending } }
@@ -551,13 +552,14 @@ export async function handleAdmit(env, body, token) {
   const { roomService } = services(env)
   const { room, requestId, approve } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
-  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
-  const flags = await getRoomFlags(roomService, room)
-  const queue = Array.isArray(flags.queue) ? flags.queue : []
+  const auth = await ensureHost(env, roomService, room, token)
+  if (!auth.ok) return { status: 403, body: { error: 'host only' } }
+  const queue = Array.isArray(auth.flags.queue) ? auth.flags.queue : []
   const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 404, body: { error: 'request not found' } }
   entry.status = approve ? 'approved' : 'denied'
-  await mergeRoomFlags(roomService, room, { queue })
+  // Nothing awaited since the flags were read, so reuse them instead of re-reading.
+  await mergeRoomFlags(roomService, room, { queue }, auth.flags)
   return { status: 200, body: { ok: true } }
 }
 
@@ -575,7 +577,7 @@ export async function handleEndRoom(env, body, token) {
   const { room } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   if (!room) return { status: 400, body: { error: 'room required' } }
-  if (!(await ensureHost(env, roomService, room, token))) return { status: 403, body: { error: 'host only' } }
+  if (!(await ensureHost(env, roomService, room, token)).ok) return { status: 403, body: { error: 'host only' } }
   try {
     await roomService.deleteRoom(room)
     return { status: 200, body: { ok: true } }
@@ -605,8 +607,10 @@ export async function handleElectHost(env, body, token) {
   const caller = await verifyCaller(env, token, room)
   if (!caller) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
 
-  const flags = await getRoomFlags(roomService, room)
-  const participants = await listParticipants(roomService, room)
+  const [flags, participants] = await Promise.all([
+    getRoomFlags(roomService, room),
+    listParticipants(roomService, room),
+  ])
   // Only a real occupant can trigger an election (no drive-by promotions).
   if (!participants.some((p) => p.identity === caller)) return { status: 403, body: { error: 'not in room' } }
   // Host still present, or the room's empty → nothing to elect.
@@ -622,7 +626,11 @@ export async function handleElectHost(env, body, token) {
   const presentCoHosts = participants.filter((p) => coHosts.includes(p.identity)).sort(byTenure)
   const successor = (presentCoHosts[0] || [...participants].sort(byTenure)[0]).identity
 
-  // The new primary shouldn't also sit in its own co-host list.
+  // The new primary shouldn't also sit in its own co-host list. Deliberately NOT
+  // passing the flags read above as the merge base: they were fetched in parallel
+  // with listParticipants, so by the time that settles they're already a round-trip
+  // stale, and a knock landing in that gap would get its queue entry clobbered.
+  // Election is rare — pay for the fresh read.
   await mergeRoomFlags(roomService, room, {
     hostId: successor,
     coHosts: coHosts.filter((id) => id !== successor),
@@ -733,7 +741,8 @@ export async function handleRoomflags(env, body, token) {
       .slice(0, 20)
   }
   if (Object.keys(patch).length === 0) return { status: 400, body: { error: 'nothing to update' } }
-  await mergeRoomFlags(roomService, room, patch)
+  // Patch built synchronously from the read above — no re-read needed.
+  await mergeRoomFlags(roomService, room, patch, flags)
   return { status: 200, body: { ok: true, ...patch } }
 }
 

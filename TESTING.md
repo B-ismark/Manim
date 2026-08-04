@@ -56,7 +56,8 @@ ramp asserts **no UI overlaps** at every headcount and records `pageMetrics`
 ## Scale stress (past the browser ceiling)
 
 One machine saturates at ~8 real headless Chromium (CPU-bound — a harness limit,
-not the product's; see [E2E-FINDINGS.md](E2E-FINDINGS.md)). For real scale use the
+not the product's; see [docs/archive/E2E-FINDINGS.md](docs/archive/E2E-FINDINGS.md)).
+For real scale use the
 official LiveKit CLI, which simulates participants server-side with no browser:
 
 ```bash

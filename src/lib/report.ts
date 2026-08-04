@@ -1,7 +1,7 @@
 /*
  * Lightweight, transport-agnostic error reporter + breadcrumb trail.
  *
- * E1 in RESILIENCE-AUDIT.md: the app shipped with NO error reporting of any kind —
+ * Why this exists: the app shipped with NO error reporting of any kind —
  * no global handlers, no ErrorBoundary report, and 50+ silent catches. Every
  * failure was invisible in production; you'd learn about a broken join / E2EE
  * silent-fail / dead processor only when a user complained.
