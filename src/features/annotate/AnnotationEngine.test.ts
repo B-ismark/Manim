@@ -280,6 +280,28 @@ describe('lifecycle', () => {
     expect(frameQueue.length).toBe(0)
   })
 
+  it('REGRESSION: survives a StrictMode-style destroy → re-attach', () => {
+    // React StrictMode runs effect cleanup then re-runs the effect against the
+    // SAME memoised engine. If destroy() were terminal the engine would be dead
+    // after mount, and nothing would ever paint — which is exactly what happened
+    // in the browser while every single-attach unit test still passed.
+    const engine = new AnnotationEngine({ onFlush: () => {}, now: () => clock })
+    const canvas = fakeCanvas()
+    engine.attach(canvas)
+    engine.setGeometry(1600, 900, 16 / 9, 1)
+
+    engine.destroy() // StrictMode cleanup
+
+    engine.attach(canvas) // StrictMode re-mount, same instance
+    engine.setGeometry(1600, 900, 16 / 9, 1)
+    engine.setLocalAuthor(0, 'Ada')
+
+    expect(engine.beginLocal({ x: 800, y: 450 }, 'Ada#1')).toBe(true)
+    expect(frameQueue.length).toBeGreaterThan(0) // the loop woke up again
+    pumpFrame()
+    expect(canvas.__ctx.stroke).toHaveBeenCalled() // and it actually painted
+  })
+
   it('tolerates pointer input after detach', () => {
     const { engine } = makeEngine()
     engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')

@@ -103,10 +103,17 @@ export class AnnotationEngine {
   // ── lifecycle ────────────────────────────────────────────────────────────
 
   attach(canvas: HTMLCanvasElement) {
+    // destroy() must NOT be terminal. React StrictMode (and any remount) runs an
+    // effect's cleanup and then re-runs the effect against the SAME memoised
+    // engine — mount → destroy → attach. Without reviving here the engine stays
+    // disposed after that double-invoke, wake() no-ops forever and nothing ever
+    // paints, which silently kills the whole feature in development.
+    this.disposed = false
     this.canvas = canvas
     // `desynchronized` lets the compositor skip a frame of latency on the ink.
     this.ctx = canvas.getContext('2d', { alpha: true, desynchronized: true })
     this.applyCanvasSize()
+    if (this.strokes.size > 0) this.wake()
   }
 
   detach() {

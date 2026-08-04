@@ -124,6 +124,7 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
     <div ref={boxRef} className="pointer-events-none absolute inset-0 z-20">
       <canvas
         ref={canvasRef}
+        data-testid="annotation-canvas"
         // Only the armed pen takes pointer events; otherwise taps fall through to
         // the tile's own spotlight/demote gestures.
         className={canDraw ? 'pointer-events-auto size-full cursor-crosshair' : 'size-full'}

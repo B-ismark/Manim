@@ -280,3 +280,102 @@ export async function throttleNetwork(page: Page, profile: '3g' | 'offline' | nu
   }
   await client.send('Network.emulateNetworkConditions', presets[profile])
 }
+
+/**
+ * Make `getDisplayMedia` return a synthetic screen-share stream of a KNOWN size.
+ *
+ * Headless Chromium can't pick a real desktop capture source, and the flags that
+ * fake one give you a stream whose dimensions depend on the environment. Anything
+ * verifying share geometry needs the intrinsic size to be fixed and known, so we
+ * substitute a canvas capture instead: a real MediaStreamTrack, published through
+ * LiveKit like any other, but exactly `width`x`height` on every machine.
+ *
+ * The canvas is animated because a fully static capture stream can stop producing
+ * frames, and LiveKit needs frames to keep the track live.
+ *
+ * Must run BEFORE navigation (addInitScript).
+ */
+export async function fakeScreenShare(page: Page, width = 1280, height = 720): Promise<void> {
+  await page.addInitScript(
+    ({ w, h }) => {
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d')!
+      let tick = 0
+      const paint = () => {
+        // A recognisable, non-uniform frame: light field + a moving marker.
+        ctx.fillStyle = '#e8e8ee'
+        ctx.fillRect(0, 0, w, h)
+        ctx.fillStyle = '#333'
+        ctx.fillRect((tick * 7) % w, h / 2, 40, 40)
+        tick++
+      }
+      paint()
+      setInterval(paint, 100)
+      const stream = canvas.captureStream(10)
+      Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
+        configurable: true,
+        writable: true,
+        value: async () => stream,
+      })
+    },
+    { w: width, h: height },
+  )
+}
+
+/** Start screen sharing from the control bar and wait for the presentation layout. */
+export async function startScreenShare(page: Page): Promise<void> {
+  await revealChrome(page)
+  await page.getByRole('button', { name: /^Share screen$/i }).click()
+  await expect(page.getByRole('button', { name: /^Stop screen share$/i })).toBeVisible({
+    timeout: 30_000,
+  })
+}
+
+/**
+ * Bounding box of drawn ink on an annotation canvas, in UNIT coordinates relative
+ * to the video's content box — the same space strokes travel in. Returns null if
+ * the canvas is blank.
+ *
+ * Normalising here (rather than comparing raw pixels) is the whole point: two
+ * participants on different viewport sizes must agree in unit space even though
+ * their pixel coordinates differ completely.
+ */
+export async function inkBoundsUnit(
+  page: Page,
+  aspect: number,
+): Promise<{ x0: number; y0: number; x1: number; y1: number } | null> {
+  return page.evaluate((a) => {
+    const canvas = document.querySelector(
+      '[data-testid="annotation-canvas"]',
+    ) as HTMLCanvasElement | null
+    if (!canvas) return null
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    const { width, height } = canvas
+    const data = ctx.getImageData(0, 0, width, height).data
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        if (data[(y * width + x) * 4 + 3] > 12) {
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+          if (y < minY) minY = y
+          if (y > maxY) maxY = y
+        }
+      }
+    }
+    if (minX === Infinity) return null
+    // Content box under object-contain, in BACKING-STORE pixels (canvas.width/height
+    // already include the DPR scale, so this stays consistent across devices).
+    const boxAspect = width / height
+    let cw = width, ch = height, cx = 0, cy = 0
+    if (a > boxAspect) { ch = width / a; cy = (height - ch) / 2 }
+    else { cw = height * a; cx = (width - cw) / 2 }
+    return {
+      x0: (minX - cx) / cw, y0: (minY - cy) / ch,
+      x1: (maxX - cx) / cw, y1: (maxY - cy) / ch,
+    }
+  }, aspect)
+}
