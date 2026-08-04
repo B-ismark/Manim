@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
+import { useLocalParticipant, useTracks } from '@livekit/components-react'
+import { Track } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
+import { annotateEnabled } from '@/features/annotate/useAnnotate'
+import { useAnnotateStore } from '@/store/useAnnotateStore'
 import {
   Button,
   Dialog,
@@ -37,6 +40,7 @@ import {
   KeyboardIcon,
   EyeOffIcon,
   SoundOnIcon,
+  EditIcon,
 } from '@/components/icons'
 import { DeviceSettings, DeviceRow } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
@@ -102,6 +106,12 @@ export function ControlBar({
   docPip,
 }: ControlBarProps) {
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant()
+  // Annotation only makes sense while there's a shared screen to draw on.
+  const shareTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
+  const someoneSharing = shareTracks.length > 0
+  const annotateActive = useAnnotateStore((s) => s.active)
+  const annotateAllowed = useAnnotateStore((s) => s.allowed)
+  const toggleAnnotate = useAnnotateStore((s) => s.toggle)
   // Camera toggle goes through the warm-then-release path (fast re-enable).
   const { isCameraEnabled, toggleCamera } = useCameraToggle()
   const [pipActive, setPipActive] = useState(false)
@@ -553,6 +563,22 @@ export function ControlBar({
               active={isScreenShareEnabled}
               className="hidden pointer-fine:inline-flex"
               onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+            />
+          </Tooltip>
+        )}
+
+        {/* Annotate — only while someone is actually sharing, and desktop only:
+            drawing has to capture touch, which would fight the control bar's
+            tap-to-reveal. Touch devices still SEE everyone's strokes. */}
+        {annotateEnabled && someoneSharing && annotateAllowed && (
+          <Tooltip content={annotateActive ? 'Stop annotating' : 'Draw on the shared screen'}>
+            <IconButton
+              label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
+              icon={<EditIcon />}
+              tone="neutral"
+              active={annotateActive}
+              className="hidden pointer-fine:inline-flex"
+              onClick={toggleAnnotate}
             />
           </Tooltip>
         )}

@@ -125,11 +125,13 @@ export interface RoomFlagsRequest {
   token: string
   locked?: boolean
   waiting?: boolean
+  /** Restrict drawing on a shared screen to hosts/co-hosts. Default (false) = everyone. */
+  annotateHostOnly?: boolean
   /** Co-host identities. Only the primary host may change this (server-enforced). */
   coHosts?: string[]
 }
 
-/** Host: set room flags (lock / waiting room / co-hosts). */
+/** Host: set room flags (lock / waiting room / annotation policy / co-hosts). */
 export function setRoomFlags({ token, ...body }: RoomFlagsRequest): Promise<void> {
   return postJson<{ ok: boolean }>('/api/roomflags', body, token).then(() => undefined)
 }

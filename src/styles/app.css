@@ -86,6 +86,29 @@
   --color-overlay: oklch(0.18 0.02 270 / 0.72);
   --color-speaking: oklch(0.7 0.17 150);       /* active-speaker ring */
 
+  /* ── Annotation authors ───────────────────────────────────────
+     Per-author stroke colours for drawing on a shared screen, assigned by
+     roster position (lib/annotate/palette.ts) so everyone sees the same person
+     in the same colour.
+
+     Hues are the Okabe–Ito colourblind-safe set, and LIGHTNESS is deliberately
+     spread across the eight (0.53 → 0.95). Hue alone is not enough: the
+     Deuteranopia and Tritanopia presets ship as first-class themes and collapse
+     whole hue ranges together, so a lightness gradient is what keeps authors
+     apart when hue can't. Colour is never the only signal either — strokes also
+     carry a name label and an Announcer message (STYLE.md §6).
+
+     Like --color-overlay these are NOT overridden per mode: they sit over video,
+     not over a surface, and are drawn with a dark halo for contrast either way. */
+  --annotate-1: oklch(0.53 0.15 250);   /* blue */
+  --annotate-2: oklch(0.6 0.18 45);     /* vermillion */
+  --annotate-3: oklch(0.65 0.13 165);   /* bluish green */
+  --annotate-4: oklch(0.66 0.12 350);   /* reddish purple */
+  --annotate-5: oklch(0.75 0.15 70);    /* orange */
+  --annotate-6: oklch(0.75 0.11 235);   /* sky blue */
+  --annotate-7: oklch(0.9 0.16 105);    /* yellow */
+  --annotate-8: oklch(0.95 0.01 270);   /* near-white */
+
   /* ── Radius ───────────────────────────────────────────────── */
   --radius-tile: 1.25rem;       /* participant video cards */
   --radius-island: 1.5rem;      /* floating panels */
