@@ -166,6 +166,15 @@ All presets are just token sets → fits §6 perfectly.
 - **Call merging** — active call + incoming call → merge into one room. UI model: [TextNow merge](https://mobbin.com/screens/89220001-0d3e-41f2-91b8-2e81b12dc675), incoming banner [WhatsApp](https://mobbin.com/screens/015c34fb-3854-43a9-b803-c9171ce6ac9b).
 - **Multi-device handoff** — transfer a call from one device to another (`userId#deviceId` identity). **Simultaneous mode shipped:** the same user can hold several live sessions at once; own other-device tiles/roster rows are labelled "(your device)" and an echo hint covers the co-located case.
 - **Picture-in-Picture** — native browser PiP for tiles + when tab backgrounded.
+- **Draw on a shared screen** ✅ — freehand annotation over a screen share, colour-coded
+  and name-labelled per author. Slack's model rather than Zoom's: **strokes fade after
+  ~4s**, which makes annotation a pointing gesture instead of a markup layer — and that
+  one decision deletes late-joiner state sync, eviction policy, a committed canvas layer
+  and clear-all moderation. Points are normalised to the video's *intrinsic* frame (the
+  `object-contain` letterbox inset subtracted), so a stroke lands on the same content
+  pixel at every viewport size. Author identity comes from the SFU-attributed sender,
+  never the payload. No stroke datum touches React state — see §8.9 on why this is not
+  the deferred whiteboard.
 
 ### 8.2 Core call (table stakes — all in scope)
 - Video tiles + active-speaker emphasis; **pin / spotlight**.
@@ -219,7 +228,7 @@ Per-room toggle (balances E2EE vs features):
 ### 8.9 Deferred / out of scope
 - **Live captions / transcription** — deferred (needs STT; conflicts with E2EE like recording). Accessibility focus now = keyboard/ARIA/vision themes.
 - **Recording** — deferred (v1 decision unchanged).
-- **Whiteboard / collaborative canvas** — out of scope. A **modular island slot is reserved** so it can be added later without rework.
+- **Whiteboard / collaborative canvas** — still out of scope; the reserved island slot stands. **Screen annotation (§8.1) is not this**, and deliberately so: it is ephemeral ink over someone *else's* live content, with no document, no persistence and no shared history to reconcile. A whiteboard needs a durable CRDT-ish surface and a late-joiner snapshot — everything the fade lets annotation skip. Reuse its geometry and wire modules if the whiteboard is ever built; do not try to grow one into the other.
 - ~~**Simultaneous multi-device**~~ — ✅ shipped (see §8.1).
 
 ---
@@ -288,7 +297,7 @@ No architecture rework to scale — only a plan upgrade.
 - ✅ Accessibility pass (keyboard/ARIA via Radix), mobile sheet layouts +
   gesture controls, reconnection handling.
 
-> **Status:** Phases 0–5 implemented, plus simultaneous multi-device (§8.1).
-> Remaining work is the explicitly deferred set (§8.9): live
-> captions/transcription, recording, and the whiteboard island. Plus an open
-> polish item: true hair-matting background-blur mode (blocked on model hosting).
+> **Status:** Phases 0–5 implemented, plus simultaneous multi-device (§8.1) and
+> draw-on-shared-screen annotation (§8.1). Remaining work is the explicitly deferred
+> set (§8.9): live captions/transcription, recording, and the whiteboard island. Plus an
+> open polish item: true hair-matting background-blur mode (blocked on model hosting).

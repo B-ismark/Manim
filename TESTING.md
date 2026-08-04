@@ -32,8 +32,19 @@ real LiveKit backend (the in-call UI only exists with creds), so there's a
 | **Scale stress** (lk load-test, hundreds) | `npm run loadtest` | yes | `loadtest` job (manual) |
 | Lighthouse budgets (landing + prejoin) | `npm run lighthouse` | build var | `lighthouse` job |
 
-`npm test` excludes `@heavy` specs (visual + load-test-observe) so the functional
-gate stays fast; `npm run test:visual` runs exactly those, serially.
+`npm test` excludes `@heavy` specs (visual, load-test-observe, annotate-perf) so the
+functional gate stays fast; `npm run test:visual` runs exactly those, serially — with
+one exception. The annotation perf measurement also needs `ANNOTATE_PERF=1`, because it
+alone costs five browser contexts and minutes of wall clock, and nothing else would keep
+it out of the visual gate:
+
+```bash
+ANNOTATE_PERF=1 npx playwright test 18-annotate-perf --project=desktop
+```
+
+It reports the share's decode rate idle vs. while three people draw. Treat a *ratio*
+collapse as the regression signal; the absolute fps is bounded by whatever machine runs
+five Chromium instances at once.
 
 ## Seeing the screens
 

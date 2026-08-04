@@ -44,8 +44,9 @@ Claude agent (or any engineer) can re-run the full audit and know *what* to test
 | Scale stress (50+) | `npm run loadtest` + observe | yes | CI `loadtest` (manual) | host UI clean, no overlaps |
 | Capacity ramp (browser, ≤12) | `npm run test:stress` | yes | gated `STRESS=1` | informational |
 
-`@heavy` specs (visual + load-test-observe) are excluded from the fast functional
-gate; run them via `test:visual`. Spec files live in [tests/](tests/); shared
+`@heavy` specs (visual, load-test-observe, annotate-perf) are excluded from the fast
+functional gate; run them via `test:visual` — the annotation perf run additionally needs
+`ANNOTATE_PERF=1`, since it is the one measurement expensive enough to want opting into. Spec files live in [tests/](tests/); shared
 helpers + every convention below are in [tests/helpers.ts](tests/helpers.ts).
 
 ---
@@ -111,6 +112,28 @@ these automatically.
 ([tests/10-loadtest-observe.spec.ts](tests/10-loadtest-observe.spec.ts)). Keep the
 browser participant ramp ≤5–7.
 
+**Screen annotation.** Four traps, each of which cost a debugging session:
+
+1. **A green unit suite does not mean the feature works.** The engine is a plain class
+   with heavy coverage, and every one of those tests passed while the overlay was
+   completely dead in dev — React StrictMode's mount → cleanup → re-mount left the
+   memoised engine permanently disposed. Nothing that only exercises the class can see
+   that. Open a browser, or run [tests/17-annotate.spec.ts](tests/17-annotate.spec.ts).
+2. **The palette must stay out of `@theme`.** Tailwind v4 tree-shakes theme variables no
+   generated utility references, and nothing emits `bg-annotate-3` — the canvas reads
+   the tokens through `getComputedStyle`. Seven of the eight silently vanished from the
+   build that way, collapsing every author onto one colour. Guarded by a test now; don't
+   "tidy" them back into the theme block.
+3. **Position agreement needs different viewport *shapes*, not sizes.** Two 16:9 windows
+   letterbox identically, so they agree even when the maths is wrong. The spec pairs
+   1280×800 with 900×760 for exactly this reason.
+4. **Headless Chromium cannot screen-share.** `fakeScreenShare()` in
+   [tests/helpers.ts](tests/helpers.ts) substitutes a canvas capture of known intrinsic
+   size — which is also what makes stroke positions assertable in unit space.
+
+Note the sharer is normally excluded from their own share, so a test where one
+participant both shares and annotates only works while the pen is armed.
+
 **Flake.** Real LiveKit + WebRTC negotiation is occasionally flaky under load.
 CI uses `retries: 1`; run WebRTC specs with `--workers=1`. Ignore teardown noise
 (`ConnectionError` / "abort handler called") — already filtered in `appErrors()`.
@@ -154,6 +177,9 @@ matches Brave Talk / Zoom.
 - `07-capacity` (12 browser contexts) is `STRESS`-gated and superseded by load-test.
 - Free-tier LiveKit: don't run load-test + the full e2e concurrently against the same
   project (join contention flakes the e2e).
+- Annotation renders only in the **presentation layout**. A viewer who demotes the share
+  to the grid sees no ink until they restore it — the overlay lives inside the big
+  region so it follows the share into fullscreen.
 
 ---
 
