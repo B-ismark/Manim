@@ -295,9 +295,9 @@ export async function throttleNetwork(page: Page, profile: '3g' | 'offline' | nu
  *
  * Must run BEFORE navigation (addInitScript).
  */
-export async function fakeScreenShare(page: Page, width = 1280, height = 720): Promise<void> {
+export async function fakeScreenShare(page: Page, width = 1280, height = 720, fps = 10): Promise<void> {
   await page.addInitScript(
-    ({ w, h }) => {
+    ({ w, h, f }) => {
       const canvas = document.createElement('canvas')
       canvas.width = w
       canvas.height = h
@@ -312,15 +312,15 @@ export async function fakeScreenShare(page: Page, width = 1280, height = 720): P
         tick++
       }
       paint()
-      setInterval(paint, 100)
-      const stream = canvas.captureStream(10)
+      setInterval(paint, Math.round(1000 / f))
+      const stream = canvas.captureStream(f)
       Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
         configurable: true,
         writable: true,
         value: async () => stream,
       })
     },
-    { w: width, h: height },
+    { w: width, h: height, f: fps },
   )
 }
 
@@ -378,4 +378,68 @@ export async function inkBoundsUnit(
       x1: (maxX - cx) / cw, y1: (maxY - cy) / ch,
     }
   }, aspect)
+}
+
+
+/**
+ * Decode health of the largest video on screen (the shared screen, in the
+ * presentation layout) sampled over `ms`.
+ *
+ * Uses getVideoPlaybackQuality rather than WebRTC stats because it measures what
+ * the user actually SEES — frames the compositor presented — which is the thing
+ * an annotation overlay could plausibly steal budget from.
+ */
+export async function shareDecodeFps(page: Page, ms: number) {
+  return page.evaluate(async (windowMs) => {
+    const pick = () =>
+      Array.from(document.querySelectorAll('video'))
+        .filter((v) => v.videoWidth > 0)
+        .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]
+    const v = pick()
+    if (!v) return null
+    const q0 = v.getVideoPlaybackQuality()
+    const t0 = performance.now()
+    await new Promise((r) => setTimeout(r, windowMs))
+    const q1 = v.getVideoPlaybackQuality()
+    const t1 = performance.now()
+    const secs = (t1 - t0) / 1000
+    return {
+      fps: (q1.totalVideoFrames - q0.totalVideoFrames) / secs,
+      dropped: q1.droppedVideoFrames - q0.droppedVideoFrames,
+      width: v.videoWidth,
+      height: v.videoHeight,
+    }
+  }, ms)
+}
+
+/** Scribble continuously inside the share's content box for `ms`. */
+export async function scribble(page: Page, ms: number, aspect = 16 / 9): Promise<void> {
+  const g = await page.evaluate((a) => {
+    const el = document.querySelector('[data-testid="annotation-canvas"]') as HTMLCanvasElement
+    const r = el.getBoundingClientRect()
+    const boxAspect = r.width / r.height
+    let cw = r.width, ch = r.height, cx = 0, cy = 0
+    if (a > boxAspect) { ch = r.width / a; cy = (r.height - ch) / 2 }
+    else { cw = r.height * a; cx = (r.width - cw) / 2 }
+    return { left: r.left, top: r.top, cx, cy, cw, ch }
+  }, aspect)
+
+  const at = (ux: number, uy: number) => ({
+    x: g.left + g.cx + ux * g.cw,
+    y: g.top + g.cy + uy * g.ch,
+  })
+  const deadline = Date.now() + ms
+  let i = 0
+  const first = at(0.2, 0.5)
+  await page.mouse.move(first.x, first.y)
+  await page.mouse.down()
+  while (Date.now() < deadline) {
+    // A dense zigzag — worst case for point volume and repaint area.
+    const ux = 0.2 + 0.6 * ((i % 20) / 20)
+    const uy = 0.3 + 0.4 * (((i * 7) % 20) / 20)
+    const p = at(ux, uy)
+    await page.mouse.move(p.x, p.y)
+    i++
+  }
+  await page.mouse.up()
 }
