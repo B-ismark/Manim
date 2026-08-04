@@ -472,7 +472,7 @@ function PipPlaceholder({ onBack }: { onBack: () => void }) {
         <PipIcon />
       </div>
       <div>
-        <p className="text-sm font-medium">Your call is in picture-in-picture</p>
+        <p className="text-sm font-medium">Your call is in the mini player</p>
         <p className="mt-1 text-xs text-ink-muted">It's playing in the floating window.</p>
       </div>
       <Button variant="accent" onClick={onBack}>
