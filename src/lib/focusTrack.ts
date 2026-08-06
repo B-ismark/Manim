@@ -35,7 +35,7 @@ export const shareId = (t: TrackReferenceOrPlaceholder) => t.publication?.trackS
  */
 export function featuredShare(
   shares: TrackReferenceOrPlaceholder[],
-  opts: { demotedShares: string[]; spotlightKey: string | null; stickyShareId?: string | null },
+  opts: { demotedShares: string[]; spotlightKey: string | null; stickyShareId: string | null },
 ): TrackReferenceOrPlaceholder | undefined {
   const share = primaryShare(shares, opts.stickyShareId)
   if (!share) return undefined
@@ -49,7 +49,7 @@ export function featuredShare(
 /** Boolean form of featuredShare — "is there a surface to draw on right now". */
 export function shareIsFeatured(
   shares: TrackReferenceOrPlaceholder[],
-  opts: { demotedShares: string[]; spotlightKey: string | null; stickyShareId?: string | null },
+  opts: { demotedShares: string[]; spotlightKey: string | null; stickyShareId: string | null },
 ): boolean {
   return featuredShare(shares, opts) !== undefined
 }
@@ -62,7 +62,10 @@ export function shareIsFeatured(
  */
 export function primaryShare(
   tracks: TrackReferenceOrPlaceholder[],
-  stickyId?: string | null,
+  /** Required, not optional, and deliberately so: an omitted sticky id silently
+   *  re-picks on `isSpeaking`, which is exactly the bug this parameter exists to
+   *  prevent. Callers with genuinely no stored choice pass `null` and say so. */
+  stickyId: string | null,
 ): TrackReferenceOrPlaceholder | undefined {
   const shares = tracks.filter(isScreenShare)
   if (shares.length <= 1) return shares[0]

@@ -100,7 +100,7 @@ describe('hasVideo', () => {
 describe('shareIsFeatured', () => {
   const share = ref({ identity: 'a', source: Track.Source.ScreenShare })
   const cam = ref({ identity: 'b' })
-  const none = { demotedShares: [], spotlightKey: null }
+  const none = { demotedShares: [], spotlightKey: null, stickyShareId: null }
 
   it('false when nobody is sharing', () => {
     expect(shareIsFeatured([], none)).toBe(false)
@@ -112,23 +112,23 @@ describe('shareIsFeatured', () => {
 
   it('false once the viewer demotes that share to the grid', () => {
     const sid = share.publication!.trackSid ?? tileKey(share)
-    expect(shareIsFeatured([share], { demotedShares: [sid], spotlightKey: null })).toBe(false)
+    expect(shareIsFeatured([share], { demotedShares: [sid], spotlightKey: null, stickyShareId: null })).toBe(false)
   })
 
   it('false while a PERSON is spotlighted — they displace the share', () => {
-    expect(shareIsFeatured([share], { demotedShares: [], spotlightKey: tileKey(cam) })).toBe(false)
+    expect(shareIsFeatured([share], { demotedShares: [], spotlightKey: tileKey(cam), stickyShareId: null })).toBe(false)
   })
 
   it('true while a SHARE is spotlighted — a share is still in the big region', () => {
-    expect(shareIsFeatured([share], { demotedShares: [], spotlightKey: tileKey(share) })).toBe(true)
+    expect(shareIsFeatured([share], { demotedShares: [], spotlightKey: tileKey(share), stickyShareId: null })).toBe(true)
   })
 
   it('a demoted share does not suppress a second, undemoted one', () => {
     const other = ref({ identity: 'c', source: Track.Source.ScreenShare })
     const sid = tileKey(share)
     // primaryShare picks by identity order, so 'a' wins and is the one demoted.
-    expect(shareIsFeatured([share, other], { demotedShares: [sid], spotlightKey: null })).toBe(false)
-    expect(shareIsFeatured([other], { demotedShares: [sid], spotlightKey: null })).toBe(true)
+    expect(shareIsFeatured([share, other], { demotedShares: [sid], spotlightKey: null, stickyShareId: null })).toBe(false)
+    expect(shareIsFeatured([other], { demotedShares: [sid], spotlightKey: null, stickyShareId: null })).toBe(true)
   })
 })
 
@@ -155,7 +155,7 @@ describe('primaryShare stickiness', () => {
   const shareB = ref({ identity: 'b', source: Track.Source.ScreenShare, speaking: true })
 
   it('without a sticky id, a speaking publisher wins (the old behaviour)', () => {
-    expect(primaryShare([shareA, shareB])).toBe(shareB)
+    expect(primaryShare([shareA, shareB], null)).toBe(shareB)
   })
 
   it('a held share keeps the big region even while the other publisher speaks', () => {
