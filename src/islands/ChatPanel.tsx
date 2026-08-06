@@ -660,6 +660,9 @@ const MessageList = memo(function MessageList({
           key={item.id}
           item={item}
           grouped={continuesGroup(items[i - 1], item)}
+          sameMinuteAsPrev={
+            !!items[i - 1] && timeOf(items[i - 1].timestamp) === timeOf(item.timestamp)
+          }
           pinned={isPinned(item.id)}
           reactions={reactions[item.id]}
           myIdentity={myIdentity}
@@ -677,6 +680,7 @@ const MessageList = memo(function MessageList({
 function MessageRow({
   item,
   grouped,
+  sameMinuteAsPrev,
   pinned,
   reactions,
   myIdentity,
@@ -689,6 +693,8 @@ function MessageRow({
   item: ChatItem
   /** True when this continues the previous sender's run — avatar/header collapse. */
   grouped: boolean
+  /** The previous row already printed this exact clock time. */
+  sameMinuteAsPrev: boolean
   pinned: boolean
   /** This message's reactions: emoji → identities who reacted. */
   reactions?: ReactionMap[string]
@@ -825,7 +831,12 @@ function MessageRow({
         {!grouped && (
           <div className="flex items-baseline gap-2">
             <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
-            <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
+            {/* Only when it has actually changed. Four groups inside one minute
+                printed "09:52 PM" four times, which is four chances to read a
+                number that carries no new information. */}
+            {!sameMinuteAsPrev && (
+              <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
+            )}
             {item.kind === 'text' && item.edited && (
               <span className="text-[11px] text-ink-subtle">(edited)</span>
             )}
@@ -939,7 +950,25 @@ function MessageRow({
       {!narrow && (
         <div
           className={cn(
-            'absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+            'absolute right-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+            // WHERE this sits decides whether you can read the message you are
+            // about to act on. Measured at the panel's real width: the bar is
+            // 116px wide (154px on your own messages, which add Edit).
+            //
+            // On an ungrouped row `top-0` lines up with the name+time header,
+            // which is short — 139-245px of clearance — so the bar has room and
+            // the text below is untouched. A GROUPED row has no header, so the
+            // same `top-0` lands squarely on the first line of the message: a
+            // line with 83px of clearance lost its last word the moment you
+            // reached for the reaction button.
+            //
+            // Grouped rows therefore float the bar just above themselves. It
+            // still overlaps something — in a 400px panel there is no free
+            // column to retreat to, and reserving 116px permanently would cost
+            // a third of the text width — but what it overlaps is the previous
+            // line of the SAME author's run, which is context you have already
+            // read, rather than the message you are pointing at.
+            grouped ? 'bottom-full z-10 mb-0.5' : 'top-0',
             editing && 'hidden',
           )}
         >
