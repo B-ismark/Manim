@@ -285,19 +285,20 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
 
   <div class="commit">
     <div class="chead"><span class="cnum">C7</span><h3>Polish</h3>
-      <span class="covers">F9 · F10</span></div>
+      <span class="covers">F9 · <s>F10</s></span></div>
     <div class="cbody">
       <ul class="does">
         <li>F9 — a one-shot pill the first time remote ink arrives on a touch device (“<em>Name</em> is
           drawing on the shared screen”), giving the existing Announcer message a visible counterpart.</li>
-        <li>F10 — publish the <b>share track specifically</b> as VP8 via <code>publishOptions</code> so
-          <code>contentHint: 'detail'</code> survives; cameras keep VP9.</li>
+        <li><s>F10 — publish the share track specifically as VP8 so <code>contentHint: 'detail'</code>
+          survives.</s> <b>Not shipped: the finding was withdrawn.</b> The motion-hint stomp is real, but
+          LiveKit already cancels its consequence with <code>degradationPreference: 'maintain-resolution'</code>
+          for screen shares, and so does <code>livekit.ts:68</code>. VP8 would have cost VP9’s efficiency and
+          added a simulcast layer. See the corrected F10 in the audit.</li>
       </ul>
-      <p>F10 stays last and stays separate. It is a codec change on the share path and needs a real
-      bandwidth and sharpness comparison, not just a diff that typechecks. If that comparison doesn’t
-      clearly favour it, dropping it costs nothing else in this plan.</p>
-      <div class="gate"><span class="glabel">gates</span><span>typecheck</span><span>17</span>
-        <span class="new">manual: A/B share sharpness at a bandwidth cap</span></div>
+      <p>The plan said F10 needed a real bandwidth comparison before shipping. It turned out to need one
+      more careful read of the mechanism instead — which is the cheaper check, and should have come first.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span><span>17</span></div>
     </div>
   </div>
 </section>
