@@ -565,6 +565,34 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await first.context.close()
   })
 
+  test('the pen can be put down again from the tile that armed it', async ({ page, browser }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+    const sharer = await addSharer(browser, room)
+
+    await join(page, room, 'Ada')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    // Arming makes the canvas take pointer events across the WHOLE tile, including
+    // the corner the pen button sits in. The canvas used to sit at the same z-index
+    // as the action stack and render after it, so the button that turns the pen off
+    // was underneath the drawing surface: pressing it drew a dot instead of
+    // disarming, and there was no way back out except the control bar.
+    const arm = page.getByRole('button', { name: 'Draw on the shared screen' })
+    const disarm = page.getByRole('button', { name: 'Stop drawing on the shared screen' })
+
+    await arm.click()
+    await expect(disarm).toBeVisible()
+
+    // The assertion is the click itself: Playwright's actionability check fails if
+    // another element would receive the press at those coordinates.
+    await disarm.click({ timeout: 10_000 })
+    await expect(arm).toBeVisible()
+
+    await sharer.context.close()
+  })
+
   test('strokes fade away on their own', async ({ page, browser }) => {
     test.setTimeout(150_000)
     test.skip(await isTouch(page), 'drawing is desktop-only')
