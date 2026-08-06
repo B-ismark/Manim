@@ -5,6 +5,7 @@ import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIco
 import { useAppStore } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
+import { useElementSize } from '@/lib/useElementSize'
 import { APP_NAME } from '@/lib/legal'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
@@ -169,6 +170,23 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
     }
   }, [cameraOn])
 
+  // Size the preview box to the largest rectangle of the camera's OWN aspect that
+  // fits the space the layout leaves it.
+  //
+  // Deliberately measured rather than left to CSS. `aspect-ratio` with `max-width`
+  // and `max-height` looks like it should do this, but the clamps apply to one axis
+  // at a time: once max-width binds, the browser keeps the height it already
+  // computed and the box quietly stops matching the camera — which is the exact
+  // failure this screen exists to avoid, and it showed up as an 8% aspect error the
+  // moment the box had a flexible container instead of a fixed dvh cap.
+  const { ref: stageRef, size: stage } = useElementSize<HTMLDivElement>()
+  const previewBox =
+    stage.width > 0 && stage.height > 0
+      ? stage.width / stage.height > previewAspect
+        ? { w: stage.height * previewAspect, h: stage.height }
+        : { w: stage.width, h: stage.width / previewAspect }
+      : { w: 0, h: 0 }
+
   const canJoin = displayName.trim().length > 0
 
   // Free the preview camera the instant Join is tapped, before LiveKit acquires
@@ -183,19 +201,27 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   }
 
   return (
-    // items-start + scroll so a tall card on a short phone stays reachable
-    // (items-center would strand the top off-screen with no way to scroll).
-    <main className="min-h-dvh flex items-start justify-center overflow-y-auto p-4 sm:items-center">
-      <Island pad="none" className="my-auto w-full max-w-lg p-4 sm:p-6 short:p-3 sm:short:p-4">
+    // The card fills the viewport height (capped, so it doesn't sprawl on a big
+    // desktop) and lays out as a column: fixed chrome, fixed footer, and the preview
+    // taking everything left over. That is the whole point of this change — the
+    // preview used to be capped at a fixed 32dvh, so it stayed the same small size no
+    // matter how much room there was, while nine rows of secondary chrome had the rest.
+    // overflow-y-auto survives as a backstop only: if a translation or a huge font
+    // setting overflows the footer, the card scrolls rather than stranding Join.
+    <main className="flex h-dvh items-center justify-center overflow-y-auto p-4">
+      <Island
+        pad="none"
+        className="flex h-full max-h-[46rem] w-full max-w-lg flex-col p-4 sm:p-6 short:p-3 sm:short:p-4"
+      >
         <button
           type="button"
           onClick={() => navigate('/')}
-          className="-ml-1 mb-2 inline-flex items-center gap-1 rounded-field py-1 pr-2 text-sm text-ink-muted hover:text-ink [&_svg]:size-4"
+          className="-ml-1 mb-2 inline-flex shrink-0 items-center gap-1 rounded-field py-1 pr-2 text-sm text-ink-muted hover:text-ink [&_svg]:size-4"
         >
           <ChevronLeftIcon />
           Back
         </button>
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex shrink-0 items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-medium text-ink-subtle">Joining</p>
             <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
@@ -217,61 +243,38 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
             with object-cover answered it wrongly: it cropped a 4:3 webcam's sides off,
             so the user approved a framing they were never actually shown.
             Sizing it from the stream means no crop AND no letterbox bars: the box IS
-            the frame. Height still caps (--pv-h) so the preview can't push the name
-            field and Join off a short viewport — the original cause of pre-join
-            scrolling — and the paired max-width keeps the box tight to the video when
-            that cap binds, instead of leaving pillarbox bars at full width. */}
+            the frame. What changed is where the size comes from — `flex-1` against the
+            card instead of a fixed `32dvh`, with max-width/height keeping the box tight
+            to the video so a tall or wide camera still fills what it can without bars. */}
         <div
-          className="mx-auto mt-3 w-full overflow-hidden rounded-tile bg-sunken [--pv-h:32dvh] [--pv-w:20rem] short:mt-2 short:[--pv-h:26dvh] pointer-fine:mt-4 pointer-fine:[--pv-h:34dvh] pointer-fine:[--pv-w:100%]"
-          style={{
-            aspectRatio: String(previewAspect),
-            maxHeight: 'var(--pv-h)',
-            maxWidth: `min(var(--pv-w), calc(var(--pv-h) * ${previewAspect}))`,
-          }}
+          ref={stageRef}
+          className="mt-3 flex min-h-0 flex-1 items-center justify-center short:mt-2 pointer-fine:mt-4"
         >
-          {cameraOn ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              muted
-              playsInline
-              // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
-              // the frame is shown whole rather than trimmed to fit.
-              className="size-full object-contain [transform:scaleX(-1)]"
-            />
-          ) : (
-            <div className="grid size-full place-items-center text-sm text-ink-subtle">
-              {prejoin.lowBandwidth ? 'Audio-only / low bandwidth' : 'Camera off'}
-            </div>
-          )}
+          <div
+            className="relative overflow-hidden rounded-tile bg-sunken"
+            style={{ width: previewBox.w, height: previewBox.h }}
+          >
+            {cameraOn ? (
+              <video
+                ref={videoRef}
+                data-testid="prejoin-preview"
+                autoPlay
+                muted
+                playsInline
+                // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
+                // the frame is shown whole rather than trimmed to fit.
+                className="size-full object-contain [transform:scaleX(-1)]"
+              />
+            ) : (
+              <div className="grid size-full place-items-center px-4 text-center text-sm text-ink-subtle">
+                {prejoin.lowBandwidth ? 'Audio-only / low bandwidth' : 'Camera off'}
+              </div>
+            )}
+          </div>
         </div>
-
-        {/* Device toggles sit below the preview (not floating over it) so the
-            keyboard never covers them once the name field is focused. */}
-        <div className="mt-3 flex justify-center gap-3 short:mt-2">
-          <IconButton
-            label={prejoin.micEnabled ? 'Mute microphone' : 'Unmute microphone'}
-            icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
-            tone={prejoin.micEnabled ? 'neutral' : 'danger'}
-            active={!prejoin.micEnabled}
-            onClick={() => setPrejoin({ micEnabled: !prejoin.micEnabled })}
-          />
-          <IconButton
-            label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
-            icon={prejoin.cameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
-            tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
-            active={!prejoin.cameraEnabled}
-            disabled={prejoin.lowBandwidth}
-            onClick={() => setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })}
-          />
-        </div>
-
-        {permission !== 'prompt' && permission !== 'denied' && (
-          <MicSpeakerTest micEnabled={prejoin.micEnabled} />
-        )}
 
         {showPriming && (
-          <div className="mt-3 rounded-field bg-sunken p-3 text-center">
+          <div className="mt-3 shrink-0 rounded-field bg-sunken p-3 text-center">
             <p className="text-sm text-ink">
               We'll ask for camera and microphone access so others can see and hear you.
             </p>
@@ -281,9 +284,39 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
           </div>
         )}
 
-        {error && <p className="mt-2 text-sm text-danger-text">{error}</p>}
+        {error && <p className="mt-2 shrink-0 text-sm text-danger-text">{error}</p>}
 
-        <div className="mt-3 flex flex-col gap-2.5 sm:mt-4 sm:gap-3 short:mt-2 short:gap-2 sm:short:mt-2 sm:short:gap-2">
+        {/* Three footer rows, down from nine.
+            The rows themselves are what was squeezing the preview: device toggles,
+            mic level and speaker test each had a full-width row of their own, and so
+            did low-bandwidth, the encryption assurance and the privacy line. Merging
+            them is what frees the vertical space the preview now takes — raising the
+            old cap on its own would just have re-introduced the page scroll the cap
+            was added to prevent. */}
+        <div className="mt-3 flex shrink-0 flex-col gap-2.5 sm:mt-4 sm:gap-3 short:mt-2 short:gap-2">
+          {/* Row 1 — everything about your devices, on one line. */}
+          <div className="flex items-center gap-2.5">
+            <IconButton
+              label={prejoin.micEnabled ? 'Mute microphone' : 'Unmute microphone'}
+              icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
+              tone={prejoin.micEnabled ? 'neutral' : 'danger'}
+              active={!prejoin.micEnabled}
+              onClick={() => setPrejoin({ micEnabled: !prejoin.micEnabled })}
+            />
+            <IconButton
+              label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+              icon={prejoin.cameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
+              tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
+              active={!prejoin.cameraEnabled}
+              disabled={prejoin.lowBandwidth}
+              onClick={() => setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })}
+            />
+            {permission !== 'prompt' && permission !== 'denied' && (
+              <MicSpeakerTest micEnabled={prejoin.micEnabled} />
+            )}
+          </div>
+
+          {/* Row 2 — who you are, then the way in. */}
           <input
             value={displayName}
             onChange={(e) => setDisplayName(e.target.value)}
@@ -297,37 +330,48 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
             placeholder="Your name"
             aria-label="Your name"
             autoComplete="name"
-            className="h-11 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
-
-          <Toggle
-            checked={prejoin.lowBandwidth}
-            onCheckedChange={(v) => setPrejoin({ lowBandwidth: v, cameraEnabled: v ? false : prejoin.cameraEnabled })}
-            label="Low-bandwidth mode (audio-first)"
-          />
-
-          {/* E2EE is keyed by the invite link (#e), not a typed passphrase — a
-              strong random key everyone gets automatically by opening the link.
-              Show it as a read-only assurance rather than asking for input. */}
-          {encrypted && (
-            <p className="flex items-center gap-1.5 rounded-field bg-sunken px-3 py-2 text-xs text-ink-muted [&_svg]:size-3.5 [&_svg]:text-success">
-              <LockIcon />
-              End-to-end encrypted — secured by your invite link.
-            </p>
-          )}
 
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now
           </Button>
 
-          {/* Turn the (unstated) no-recording fact into trust, and disclose what
-              the camera/mic are for — the audit's L3. */}
-          <p className="text-center text-xs text-ink-subtle">
-            Your camera and mic let others see and hear you. {APP_NAME} doesn't record calls.{' '}
-            <Link to="/privacy" className="underline underline-offset-2 hover:text-ink">
-              Privacy
-            </Link>
-          </p>
+          {/* Row 3 — the things almost nobody changes, and the assurances. Low-bandwidth
+              keeps a real labelled switch (it is a control), but it shares its line with
+              the encryption and no-recording facts instead of owning three rows. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            <p className="flex items-center gap-1.5 text-xs text-ink-subtle [&_svg]:size-3.5 [&_svg]:text-success">
+              {/* E2EE is keyed by the invite link (#e), not a typed passphrase — a
+                  strong random key everyone gets automatically by opening the link.
+                  Shown as a read-only assurance rather than asking for input. */}
+              {encrypted && (
+                <>
+                  <LockIcon />
+                  <span>Encrypted</span>
+                  <span aria-hidden className="opacity-50">
+                    ·
+                  </span>
+                </>
+              )}
+              {/* Turn the (unstated) no-recording fact into trust, and disclose what
+                  the camera/mic are for — the audit's L3. */}
+              <span>{APP_NAME} doesn’t record calls</span>
+              <span aria-hidden className="opacity-50">
+                ·
+              </span>
+              <Link to="/privacy" className="underline underline-offset-2 hover:text-ink">
+                Privacy
+              </Link>
+            </p>
+            <Toggle
+              checked={prejoin.lowBandwidth}
+              onCheckedChange={(v) =>
+                setPrejoin({ lowBandwidth: v, cameraEnabled: v ? false : prejoin.cameraEnabled })
+              }
+              label="Low-bandwidth"
+            />
+          </div>
         </div>
       </Island>
     </main>
@@ -398,19 +442,16 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
   }
 
   return (
-    <div className="mt-3 flex items-center gap-3 short:mt-2">
-      <div className="flex flex-1 items-center gap-2">
-        {micEnabled ? <MicIcon className="size-4 text-ink-muted" /> : <MicOffIcon className="size-4 text-ink-subtle" />}
-        <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
-          <div
-            className="h-full rounded-full bg-success transition-[width] duration-75"
-            style={{ width: `${Math.round(level * 100)}%` }}
-          />
-        </div>
+    <>
+      <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-sunken">
+        <div
+          className="h-full rounded-full bg-success transition-[width] duration-75"
+          style={{ width: `${Math.round(level * 100)}%` }}
+        />
       </div>
-      <Button type="button" variant="neutral" size="sm" onClick={testSpeaker}>
+      <Button type="button" variant="neutral" size="sm" className="shrink-0" onClick={testSpeaker}>
         Test speaker
       </Button>
-    </div>
+    </>
   )
 }

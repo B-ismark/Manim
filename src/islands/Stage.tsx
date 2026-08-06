@@ -38,21 +38,17 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { focusTrack, isLocalCam, isScreenShare, primaryShare } from '@/lib/focusTrack'
+import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
 import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
+import { TileAction, TileActionStack } from '@/islands/TileActionStack'
 import { annotateEnabled } from '@/features/annotate/useAnnotate'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { cn } from '@/lib/cn'
-
-/** Stable per-tile key (identity + source) — never reshuffles as people speak. */
-function tileKey(t: TrackReferenceOrPlaceholder): string {
-  return `${t.participant.identity}-${t.source}`
-}
 
 /** Composed screen-reader label for a tile: who + their current state. Keeps the
  *  visual pills (icons) in sync with an accessible text equivalent (STYLE.md §6 —
@@ -243,6 +239,7 @@ export function Stage() {
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const demotedShares = useRoomStore((s) => s.demotedShares)
+  const stickyShareId = useRoomStore((s) => s.stickyShareId)
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
@@ -273,12 +270,19 @@ export function Stage() {
   // remove a whole region, which is a jarring thing to do underneath a presenter —
   // especially one who is sharing the browser window that's doing the swapping.
   //
-  // One guard survives: a REMOTE share still wins, so annotating in a room where
-  // someone else is presenting targets their screen, not yours. (The echo only
-  // recurses when sharing a whole monitor; a window or a non-call tab has nothing
-  // to reflect, and the "You're sharing your screen" pill names what's happening.)
-  const { remoteSharing } = useSharePresence()
-  const showOwnShare = Boolean(localScreenShare) && !remoteSharing
+  // Two guards. A REMOTE share still wins, so annotating in a room where someone
+  // else is presenting targets their screen, not yours.
+  //
+  // And — the part this comment used to only assert — the echo genuinely does
+  // recurse when the captured surface is a whole MONITOR, because the monitor
+  // contains this window. That was written down here and never expressed in code:
+  // `displaySurface` says which case you're in and nothing read it, so a full-screen
+  // share produced a mirror tunnel AND painted the presenter's own captured cursor
+  // back under their real one. A window or a non-call tab has nothing to reflect and
+  // is unchanged. useSharePresence owns the rule now, because the presenting pill has
+  // to agree with the stage about it (and offers the override that flips it).
+  const { ownShareShown } = useSharePresence()
+  const showOwnShare = Boolean(localScreenShare) && ownShareShown
 
   const visible =
     localScreenShare && !showOwnShare ? tracks.filter((t) => t !== localScreenShare) : tracks
@@ -289,7 +293,7 @@ export function Stage() {
   // on every render (the arrays are re-derived each render).
   const shareIdKey = visible
     .filter(isScreenShare)
-    .map((t) => t.publication?.trackSid ?? tileKey(t))
+    .map(shareId)
     .join('|')
   const tileKeyList = visible.map(tileKey).join('|')
   useEffect(() => {
@@ -304,11 +308,16 @@ export function Stage() {
   // excluded above) takes the big region and everyone else tiles in a segmented grid
   // beside/below it. Auto-on unless the viewer demoted THIS share (remembered per share
   // SID) — demoting falls back to the plain equal-tile grid on every device.
-  const share = primaryShare(visible)
+  // Sticky, and it MUST be — useSharePresence picks the featured share the same way
+  // to decide where the pen points and which share outgoing ink is addressed to. If
+  // this call re-picked on `isSpeaking` while that one held its choice, two presenters
+  // taking turns talking would swap the big tile out from under the canvas: ink drawn
+  // on the tile you can see, wire-addressed to the one you can't.
+  const share = primaryShare(visible, stickyShareId)
   if (share && visible.length > 1) {
-    const sid = share.publication?.trackSid ?? tileKey(share)
+    const sid = shareId(share)
     if (!demotedShares.includes(sid)) {
-      return <PresentationStage visible={visible} coarse={coarse} share={share} shareId={sid} />
+      return <PresentationStage visible={visible} coarse={coarse} share={share} featuredSid={sid} />
     }
     const gridTracks =
       selfViewHidden && visible.some((t) => !isLocalCam(t))
@@ -367,13 +376,43 @@ export function Stage() {
  * top offset chosen to clear the status chip, which is exactly the guess that breaks
  * the moment a second banner shows up.
  */
-export function PresentingIndicator({ annotating = false }: { annotating?: boolean }) {
+export function PresentingIndicator({
+  annotating = false,
+  sharingMonitor = false,
+  ownShareShown = false,
+  onToggleOwnShare,
+}: {
+  annotating?: boolean
+  sharingMonitor?: boolean
+  ownShareShown?: boolean
+  onToggleOwnShare?: () => void
+}) {
   return (
-    <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
+    <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-overlay py-1.5 pl-3.5 pr-2 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
       {annotating ? <AnnotateIcon /> : <ScreenShareIcon />}
-      {/* Say WHY their own screen is on their stage — otherwise, on a full-monitor
-          share, the mirror tunnel reads as a glitch. */}
-      {annotating ? 'You\u2019re drawing on your shared screen' : 'You\u2019re sharing your screen'}
+      {/* Name the SURFACE, not just the act. The presenter's own stage now looks
+          completely different between a window share and a whole-screen one, and an
+          unexplained difference reads as a bug. */}
+      {annotating
+        ? 'You\u2019re drawing on your shared screen'
+        : sharingMonitor
+          ? 'You\u2019re sharing your entire screen'
+          : 'You\u2019re sharing your screen'}
+      {/* The escape hatch — and the reason we can be relaxed about browsers that
+          report no surface type at all: whatever the app inferred, the presenter
+          overrules it in one tap. Wanting to see your own full-screen share is real
+          if niche (it is how you would annotate one), so this offers it rather than
+          deciding for them. It just is not the DEFAULT, because a mirror tunnel is
+          not a thing to hand someone unasked. */}
+      {onToggleOwnShare && (
+        <button
+          type="button"
+          onClick={onToggleOwnShare}
+          className="rounded-control bg-white/15 px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          {ownShareShown ? 'Hide my screen' : 'Show my screen'}
+        </button>
+      )}
     </span>
   )
 }
@@ -405,7 +444,7 @@ function GridStage({
   const shareProps = useCallback(
     (t: TrackReferenceOrPlaceholder) => {
       if (!isScreenShare(t)) return {}
-      const promote = () => toggleShareDemoted(t.publication?.trackSid ?? tileKey(t))
+      const promote = () => toggleShareDemoted(shareId(t))
       return {
         onActivate: promote,
         action: { icon: <ScreenShareIcon />, label: 'Present shared screen', onClick: promote },
@@ -591,21 +630,25 @@ function useFullscreen(ref: { current: HTMLElement | null }) {
  *  way out. Enter sits top-left (clear of the top-right action + bottom name pill). */
 function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement | null } }) {
   const { isFs, enter, exit } = useFullscreen(targetRef)
-  // Exit sits top-right ABOVE the tile's action button (z-30 covers it in fullscreen —
-  // the only control you want then). Enter stacks just below the action (top-right
-  // column), clear of the top-left moderator mute + the bottom name pill.
-  return isFs ? (
-    <div className="absolute right-2 top-2 z-30" onPointerDown={(e) => e.stopPropagation()}>
-      <IconButton
-        size="md"
-        label="Exit fullscreen"
-        icon={<ExitFullscreenIcon />}
-        className="bg-overlay text-white hover:bg-overlay"
-        onClick={exit}
-      />
-    </div>
-  ) : (
-    <div className="absolute right-2 top-14 z-10" onPointerDown={(e) => e.stopPropagation()}>
+  // Enter is an ordinary row in the tile's action stack. Exit is NOT: in fullscreen
+  // it is deliberately the only control that should exist, so it keeps its own
+  // anchor and its own layer (z-30, above the stack) rather than queueing politely
+  // behind buttons that are meaningless there.
+  if (isFs) {
+    return (
+      <div className="absolute right-2 top-2 z-30" onPointerDown={(e) => e.stopPropagation()}>
+        <IconButton
+          size="md"
+          label="Exit fullscreen"
+          icon={<ExitFullscreenIcon />}
+          className="bg-overlay text-white hover:bg-overlay"
+          onClick={exit}
+        />
+      </div>
+    )
+  }
+  return (
+    <TileAction>
       <IconButton
         size="sm"
         label="Fullscreen shared screen"
@@ -613,7 +656,7 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
         className="bg-overlay text-white hover:bg-overlay"
         onClick={enter}
       />
-    </div>
+    </TileAction>
   )
 }
 
@@ -631,12 +674,13 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
  */
 function AnnotateControl() {
   const active = useAnnotateStore((s) => s.active)
-  const allowed = useAnnotateStore((s) => s.allowed)
   const toggle = useAnnotateStore((s) => s.toggle)
-  const coarse = useIsTouch()
-  if (!allowed || coarse) return null
+  // Same single condition the control bar's pen renders on, so the two controls
+  // driving one mode can never disagree about whether that mode is available.
+  const { canAnnotate } = useSharePresence()
+  if (!canAnnotate) return null
   return (
-    <div className="absolute right-2 top-[6.5rem] z-10" onPointerDown={(e) => e.stopPropagation()}>
+    <TileAction>
       <IconButton
         size="sm"
         // Deliberately NOT the control bar's wording. Both controls drive the same
@@ -648,7 +692,7 @@ function AnnotateControl() {
         className={cn('shadow-pop', !active && 'bg-overlay text-white hover:bg-overlay')}
         onClick={toggle}
       />
-    </div>
+    </TileAction>
   )
 }
 
@@ -681,12 +725,13 @@ function PresentationStage({
   visible,
   coarse,
   share,
-  shareId,
+  featuredSid,
 }: {
   visible: TrackReferenceOrPlaceholder[]
   coarse: boolean
   share: TrackReferenceOrPlaceholder
-  shareId: string
+  /** Track SID of the featured share — presentation state (demote) is keyed on it. */
+  featuredSid: string
 }) {
   const { ref, size } = useElementSize<HTMLDivElement>()
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
@@ -745,15 +790,21 @@ function PresentationStage({
                   fill
                   boxAspect={L.big.h > 0 ? L.big.w / L.big.h : undefined}
                   onAspect={setBigAspect}
-                  onActivate={() => (bigIsShare ? toggleShareDemoted(shareId) : setSpotlight(null))}
+                  onActivate={() => (bigIsShare ? toggleShareDemoted(featuredSid) : setSpotlight(null))}
                   action={
                     bigIsShare
-                      ? { icon: <GridIcon />, label: 'Show as grid', onClick: () => toggleShareDemoted(shareId) }
+                      ? { icon: <GridIcon />, label: 'Show as grid', onClick: () => toggleShareDemoted(featuredSid) }
                       : { icon: <ScreenShareIcon />, label: 'Back to shared screen', onClick: () => setSpotlight(null) }
                   }
+                  actions={
+                    bigIsShare && (
+                      <>
+                        <FullscreenControls targetRef={bigRef} />
+                        {annotateEnabled && <AnnotateControl />}
+                      </>
+                    )
+                  }
                 />
-                {bigIsShare && <FullscreenControls targetRef={bigRef} />}
-                {bigIsShare && annotateEnabled && <AnnotateControl />}
                 {/* Ink layer for the shared screen. Inside bigRef so it follows the
                     share into fullscreen; owns its own canvas and never re-renders
                     the stage while drawing. */}
@@ -963,7 +1014,7 @@ function Tile({
   boxAspect,
   onActivate,
   action,
-  overlay,
+  actions,
 }: {
   trackRef: TrackReferenceOrPlaceholder
   fill?: boolean
@@ -981,8 +1032,10 @@ function Tile({
   /** Replace the corner pin button with a custom action (icon + label). Presentation
    *  shows spotlight / exit-presentation here instead of pin. */
   action?: { icon: ReactNode; label: string; onClick: () => void; active?: boolean }
-  /** Extra absolutely-positioned overlay inside the tile (e.g. the fullscreen button). */
-  overlay?: ReactNode
+  /** Extra rows for the tile's top-right action stack (fullscreen, annotate). They
+   *  render as siblings of the tile's own action button, spaced by the stack — no
+   *  caller picks an offset. */
+  actions?: ReactNode
 }) {
   const p = trackRef.participant
   const name = p.name || p.identity.split('#')[0]
@@ -1233,37 +1286,41 @@ function Tile({
           since a persistent button collides with the screen-level participants chip.
           Presentation passes a custom `action` (spotlight / exit presentation) and
           shows it on touch too — those tiles have no other affordance. */}
-      {action ? (
-        <div
-          className={cn(
-            'absolute right-2 top-2 transition-opacity duration-[var(--dur-fast)]',
-            coarse ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100',
-          )}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <IconButton
-            size={coarse ? 'md' : 'sm'}
-            label={action.label}
-            icon={action.icon}
-            active={action.active}
-            className="bg-overlay text-white hover:bg-overlay"
-            onClick={action.onClick}
-          />
-        </div>
-      ) : (
-        <div className="absolute right-2 top-2 opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
-          <IconButton
-            size="sm"
-            label={pinned ? `Unpin ${name}` : `Pin ${name}`}
-            icon={<PinIcon />}
-            active={pinned}
-            className="bg-overlay text-white hover:bg-overlay"
-            onClick={() => togglePin(p.identity)}
-          />
-        </div>
-      )}
-
-      {overlay}
+      <TileActionStack>
+        {action ? (
+          <TileAction>
+            <div
+              className={cn(
+                'transition-opacity duration-[var(--dur-fast)]',
+                coarse ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover:opacity-100',
+              )}
+            >
+              <IconButton
+                size={coarse ? 'md' : 'sm'}
+                label={action.label}
+                icon={action.icon}
+                active={action.active}
+                className="bg-overlay text-white hover:bg-overlay"
+                onClick={action.onClick}
+              />
+            </div>
+          </TileAction>
+        ) : (
+          <TileAction>
+            <div className="opacity-0 transition-opacity duration-[var(--dur-fast)] focus-within:opacity-100 group-hover:opacity-100">
+              <IconButton
+                size="sm"
+                label={pinned ? `Unpin ${name}` : `Pin ${name}`}
+                icon={<PinIcon />}
+                active={pinned}
+                className="bg-overlay text-white hover:bg-overlay"
+                onClick={() => togglePin(p.identity)}
+              />
+            </div>
+          </TileAction>
+        )}
+        {actions}
+      </TileActionStack>
 
       {/* The tile group's aria-label already names the person + status, so the
           visual name/mic pill is decorative to a screen reader (avoids a double

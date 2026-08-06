@@ -81,13 +81,34 @@ const DESKTOP = {
 async function addSharer(
   browser: import('@playwright/test').Browser,
   room: string,
+  name = 'Presenter',
+  w = SHARE_W,
+  h = SHARE_H,
+  mute = false,
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
   const page = await context.newPage()
-  await fakeScreenShare(page, SHARE_W, SHARE_H)
-  await join(page, room, 'Presenter')
+  await fakeScreenShare(page, w, h)
+  await join(page, room, name)
+  if (mute) {
+    // Headless fake audio is a continuous tone, so every participant reads as
+    // permanently speaking — and speaking is the first sort key when choosing which
+    // of several shares is featured. Muting takes that variable out.
+    await revealChrome(page)
+    await page.getByRole('button', { name: /^Mute microphone$/i }).first().click()
+  }
   await startScreenShare(page)
   return { context, page }
+}
+
+/** Aspect of whatever video currently occupies the big region. */
+async function bigVideoAspect(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const v = Array.from(document.querySelectorAll('video'))
+      .filter((el) => el.videoWidth > 0)
+      .sort((a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight)[0]
+    return v ? v.videoWidth / v.videoHeight : 0
+  })
 }
 
 /** Content-box geometry of a viewer's annotation canvas, in page coordinates. */
@@ -213,6 +234,14 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await desktop.waitForTimeout(500)
     expect(await inkBoundsUnit(page, SHARE_ASPECT), 'touch viewer renders remote ink').not.toBeNull()
 
+    // ...and it is EXPLAINED. Ink that just appears, on a device with no pen control
+    // and no way to make it, is unattributed motion over someone's screen. The
+    // author's name is drawn beside the live stroke head, but only while the stroke
+    // is alive — easy to miss on a phone. This is that announcement made visible.
+    await expect(page.getByText(/Ada is drawing on the shared screen/)).toBeVisible({
+      timeout: 10_000,
+    })
+
     // The control bar must still respond — the overlay must not be swallowing taps.
     await revealChrome(page)
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible()
@@ -257,7 +286,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     })
   }
 
-  test('a presenter can draw on their own share, and only while the pen is armed', async ({
+  test('a presenter sharing a WINDOW can draw on their own share, and only while the pen is armed', async ({
     page,
     browser,
   }) => {
@@ -269,7 +298,12 @@ test.describe('Annotation over a shared screen @annotate', () => {
     // around. A browser tab cannot paint over the OS the way the Teams and Zoom
     // native apps do, so the only surface a presenter can draw on is their own
     // captured frame, which is why their own share is on their own stage.
-    await fakeScreenShare(page, SHARE_W, SHARE_H)
+    //
+    // Explicitly a WINDOW share. That is the case where echoing your own capture
+    // back to you is safe: a window cannot contain this call, so there is nothing to
+    // recurse into. The monitor case is the opposite and is covered by the test
+    // below — this one used to stand in for both, which is how the mirror shipped.
+    await fakeScreenShare(page, SHARE_W, SHARE_H, 10, 'window')
     await join(page, room, 'Presenter')
 
     const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
@@ -308,6 +342,102 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await expect(page.getByRole('button', { name: /^Draw on the shared screen$/i })).toBeVisible()
 
     await ctxB.close()
+  })
+
+  /**
+   * Sharing a WHOLE MONITOR is the case the self-echo cannot serve.
+   *
+   * The monitor contains this window, so echoing the capture back onto the stage
+   * recurses into a mirror tunnel — and re-captures the presenter's own cursor, which
+   * is why arming the pen used to put two crosshairs on screen. `displaySurface` says
+   * which case you are in; nothing read it, so both symptoms shipped.
+   *
+   * The default is therefore no echo. But it is a default, not a rule: someone who
+   * genuinely wants to see (or annotate) their full screen can say so, and the pill
+   * carries that switch. Both halves are asserted here, because the escape hatch is
+   * also what makes 'unknown' safe to treat permissively on browsers that report no
+   * surface type at all.
+   */
+  test('sharing an entire screen does not echo it back, until the presenter asks', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'the presenting pill control is desktop-only')
+    const room = uniqueRoom('annot')
+
+    await fakeScreenShare(page, SHARE_W, SHARE_H, 10, 'monitor')
+    await join(page, room, 'Presenter')
+
+    const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
+    const viewer = await ctxB.newPage()
+    await join(viewer, room, 'Bo')
+
+    await startScreenShare(page)
+
+    // The viewer is unaffected — they are not inside the loop, so they see the share
+    // exactly as before. This is the assertion that stops a fix for the presenter
+    // from quietly costing everyone else the thing being shared.
+    await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    await revealChrome(page)
+    await expect(page.getByText(/You.re sharing your entire screen/)).toBeVisible({
+      timeout: 30_000,
+    })
+    // No echo => no drawing surface on the presenter's own stage.
+    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+
+    // ...and the way back. One tap restores the echo, and with it the pen — the
+    // presenter is never stuck with the app's inference.
+    await page.getByRole('button', { name: /^Show my screen$/i }).click()
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: /^Hide my screen$/i })).toBeVisible()
+
+    await ctxB.close()
+  })
+
+  /**
+   * The pen must be offered exactly when there is something to draw on.
+   *
+   * It used to be offered whenever a share EXISTED, which is not the same question:
+   * spotlighting a person moves them into the big region and unmounts the canvas,
+   * while the share carries on being published in the grid. The pen stayed lit,
+   * arming it flipped a store flag with no surface under it, and the Announcer told
+   * a screen-reader user to "Draw on the shared screen" when there was none.
+   *
+   * Asserts the round trip, not just the disappearance — a pen that never came back
+   * would pass half of this.
+   */
+  test('the pen is withdrawn when a person is spotlighted, and returns with the share', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'the pen is desktop-only')
+    const room = uniqueRoom('annot')
+
+    await join(page, room, 'Viewer')
+    const sharer = await addSharer(browser, room)
+
+    // Presentation layout: the share is in the big region, so the pen is available.
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toBeVisible()
+
+    // Spotlight the presenter's CAMERA tile — they take the big region, the share
+    // drops to the grid, and the drawing surface goes with it.
+    await page.getByRole('button', { name: /^Spotlight Presenter$/i }).first().click()
+    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toHaveCount(0)
+
+    // Back to the share: both the surface and the control return together.
+    await page.getByRole('button', { name: /^Back to shared screen$/i }).first().click()
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toBeVisible()
+
+    await sharer.context.close()
   })
 
   /**
@@ -393,6 +523,46 @@ test.describe('Annotation over a shared screen @annotate', () => {
     expect(aspect, 'the remote share keeps the big region').toBeCloseTo(SHARE_ASPECT, 1)
 
     await sharer.context.close()
+  })
+
+  test('a second presenter does not steal the big region from under the ink', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(180_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+
+    // Two people presenting at once. Whichever share got the big region KEEPS it:
+    // the canvas is mounted over that tile and outgoing ink is addressed to that
+    // share, so re-picking underneath would send strokes to the wrong screen.
+    //
+    // The swap is forced deterministically rather than through `isSpeaking`: both
+    // presenters mute, so the unsticky tie-break falls to identity order, where the
+    // LATER-joining 'Ada' sorts ahead of the incumbent 'Zed' and takes the region.
+    // Verified against a build without the fix — the big tile really does become the
+    // 4:3 share there, so this fails if the stickiness is ever dropped again.
+    const first = await addSharer(browser, room, 'Zed', SHARE_W, SHARE_H, true) // 16:9
+    await join(page, room, 'Mia')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await page.waitForTimeout(1000)
+    expect(await bigVideoAspect(page), 'the first share takes the big region').toBeCloseTo(
+      SHARE_ASPECT,
+      1,
+    )
+
+    const second = await addSharer(browser, room, 'Ada', 640, 480, true) // 4:3
+    await page.waitForTimeout(2500)
+
+    expect(await bigVideoAspect(page), 'the incumbent share keeps the big region').toBeCloseTo(
+      SHARE_ASPECT,
+      1,
+    )
+    // And the pen still has a surface — the canvas didn't unmount in the reshuffle.
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible()
+
+    await second.context.close()
+    await first.context.close()
   })
 
   test('strokes fade away on their own', async ({ page, browser }) => {

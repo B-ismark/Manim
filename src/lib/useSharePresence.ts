@@ -1,7 +1,10 @@
+import { useEffect } from 'react'
 import { useTracks } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useRoomStore } from '@/store/useRoomStore'
+import { featuredShare, shareId } from '@/lib/focusTrack'
 import { annotateEnabled } from '@/features/annotate/useAnnotate'
 
 export interface SharePresence {
@@ -11,6 +14,36 @@ export interface SharePresence {
   remoteSharing: boolean
   /** You are drawing on your OWN share (armed, allowed, and yours is the one shown). */
   annotatingOwnShare: boolean
+  /**
+   * Your own share is echoed onto your stage.
+   *
+   * False when a remote share wins, and false by default when you're sharing a whole
+   * MONITOR: that echo is what recursed into a mirror tunnel and re-captured your own
+   * cursor. An explicit override (the toggle on the presenting pill) beats both the
+   * surface-type default and a browser that reports no surface type at all.
+   */
+  ownShareShown: boolean
+  /** You're sharing your whole screen — the case where echoing it back recurses. */
+  sharingMonitor: boolean
+  /**
+   * A screen share is in the BIG region right now — so a drawing surface exists.
+   *
+   * Not "a share exists". Demote the share to the grid, or spotlight a person, and
+   * the canvas unmounts while a share is still very much being published.
+   */
+  shareFeatured: boolean
+  /**
+   * Drawing is possible AND permitted right now. The single condition the pen
+   * controls render on and the single one that disarms it.
+   *
+   * There were two disarm paths before this (the last share ending, and losing
+   * permission), and F6/F8 would have added a third and a fourth. Four independent
+   * effects racing to clear one flag is how they drift; this is one derived value
+   * with one effect behind it.
+   */
+  canAnnotate: boolean
+  /** Track SID of the share in the big region — what ink drawn now is aimed at. */
+  featuredShareId: string | null
 }
 
 /**
@@ -28,9 +61,48 @@ export function useSharePresence(): SharePresence {
   const remoteSharing = shares.some((t) => !t.participant.isLocal)
   const active = useAnnotateStore((s) => s.active)
   const coarse = useIsTouch()
+  const allowed = useAnnotateStore((s) => s.allowed)
+  const shareSurface = useRoomStore((s) => s.shareSurface)
+  const override = useRoomStore((s) => s.showOwnShareOverride)
+  const demotedShares = useRoomStore((s) => s.demotedShares)
+  const spotlightKey = useRoomStore((s) => s.spotlightKey)
+  const stickyShareId = useRoomStore((s) => s.stickyShareId)
+  const setStickyShare = useRoomStore((s) => s.setStickyShare)
+
+  const sharingMonitor = presenting && shareSurface === 'monitor'
+  // 'unknown' lands on the permissive side deliberately — a browser that doesn't
+  // report displaySurface would otherwise lose the self-view (and with it the
+  // discoverable path to annotation) on every share it ever starts.
+  const ownShareShown =
+    presenting && !remoteSharing && (override ?? !sharingMonitor)
+
+  // Only shares that are actually on this viewer's stage can be featured — your own
+  // is excluded exactly when the stage excludes it, so the pen can never point at a
+  // surface you are not being shown.
+  const onStage = shares.filter((t) => !t.participant.isLocal || ownShareShown)
+  const featured = featuredShare(onStage, { demotedShares, spotlightKey, stickyShareId })
+  const shareFeatured = featured !== undefined
+  const featuredShareId = featured ? shareId(featured) : null
+
+  // Remember the choice so it survives someone starting to talk. Written in an
+  // effect, not during render — this is a store write, and the store is what the
+  // next render reads back.
+  useEffect(() => {
+    if (featuredShareId) setStickyShare(featuredShareId)
+  }, [featuredShareId, setStickyShare])
+
+  // Touch is view-only by design: drawing has to capture touch, which fights the
+  // control bar's tap-to-reveal. Touch devices still SEE everyone's ink.
+  const canAnnotate = annotateEnabled && shareFeatured && allowed && !coarse
+
   return {
     presenting,
     remoteSharing,
-    annotatingOwnShare: presenting && !remoteSharing && annotateEnabled && active && !coarse,
+    ownShareShown,
+    sharingMonitor,
+    shareFeatured,
+    canAnnotate,
+    featuredShareId,
+    annotatingOwnShare: ownShareShown && active && canAnnotate,
   }
 }

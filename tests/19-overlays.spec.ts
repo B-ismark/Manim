@@ -71,6 +71,75 @@ test('top banners queue in one column instead of stacking on each other', async 
   }
 })
 
+/**
+ * The same rule, one level down: inside a video tile.
+ *
+ * The shared-screen tile carries three controls in its top-right corner — demote,
+ * fullscreen, annotate — and each of them used to pick its own vertical offset
+ * (`top-2`, `top-14`, `top-[6.5rem]`), which is three independent assumptions about
+ * the other two's heights. Nothing checked them, so the collision only showed up on
+ * a short big region, where the third one ran into the name pill.
+ *
+ * Asserts three things a hand-tuned column can silently lose: the controls don't
+ * overlap each other, they stay packed (no phantom gap from a control that hides by
+ * fading rather than unmounting), and they stay clear of the name pill at the bottom.
+ */
+test('tile corner controls queue in one column instead of overlapping', async ({ page }) => {
+  test.setTimeout(150_000)
+  test.skip(await isTouch(page), 'the annotate control is desktop-only')
+  const room = uniqueRoom('tilestack')
+
+  await fakeScreenShare(page, 1280, 720, 10, 'window')
+  await join(page, room, 'Presenter')
+  await startScreenShare(page)
+  await revealChrome(page)
+  await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+  // Hover the tile so the desktop reveal-on-hover action is actually rendered.
+  await page.getByTestId('tile-action-stack').first().hover()
+  await page.waitForTimeout(300)
+
+  const rows = await page.evaluate(() => {
+    const stack = document.querySelector('[data-testid="tile-action-stack"]')
+    if (!stack) return null
+    return Array.from(stack.querySelectorAll('button'))
+      .map((b) => {
+        const r = b.getBoundingClientRect()
+        return { top: r.top, bottom: r.bottom, label: b.getAttribute('aria-label') ?? '' }
+      })
+      .filter((r) => r.bottom > r.top)
+      .sort((a, b) => a.top - b.top)
+  })
+
+  expect(rows, 'the tile action stack exists').not.toBeNull()
+  expect(rows!.length, 'demote + fullscreen + annotate are all in it').toBeGreaterThanOrEqual(3)
+
+  for (let i = 1; i < rows!.length; i++) {
+    const above = rows![i - 1]
+    const below = rows![i]
+    expect(
+      below.top,
+      `"${below.label}" starts before "${above.label}" ends — the tile controls overlap`,
+    ).toBeGreaterThanOrEqual(above.bottom - 1)
+    expect(
+      below.top - above.bottom,
+      `a phantom slot sits between "${above.label}" and "${below.label}"`,
+    ).toBeLessThan(24)
+  }
+
+  // The bottom of the column must clear the tile's own name pill — the collision
+  // the third hand-picked offset actually produced on a short big region.
+  const clears = await page.evaluate(() => {
+    const stack = document.querySelector('[data-testid="tile-action-stack"]')
+    const tile = stack?.closest('[role="group"]')
+    const pill = tile?.querySelector('span[aria-hidden]')
+    if (!stack || !pill) return null
+    return pill.getBoundingClientRect().top - stack.getBoundingClientRect().bottom
+  })
+  expect(clears, 'the tile name pill was found').not.toBeNull()
+  expect(clears!, 'the action column runs into the name pill').toBeGreaterThan(0)
+})
+
 test('only one modal surface is ever mounted', async ({ page }) => {
   test.setTimeout(120_000)
   test.skip(await isTouch(page), 'uses the desktop More popover + keyboard shortcuts')
