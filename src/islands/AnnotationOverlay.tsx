@@ -5,9 +5,7 @@ import { useElementSize } from '@/lib/useElementSize'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { useThemeStore } from '@/store/useThemeStore'
 import { useSharePresence } from '@/lib/useSharePresence'
-import { penCursor, setCapturedCursorHidden } from '@/features/annotate/penCursor'
-import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalVideoTrack } from 'livekit-client'
+import { penCursor } from '@/features/annotate/penCursor'
 import { colorVar } from '@/lib/annotate/palette'
 
 /**
@@ -31,7 +29,7 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
   // pen buttons render on and the same one that disarms the pen. This used to be
   // re-derived here from `allowed && !touch`, which is most of that condition but
   // not all of it, and the gap is how an armed pen outlived its own canvas.
-  const { canAnnotate, ownShareShown, featuredShareId } = useSharePresence()
+  const { canAnnotate, featuredShareId } = useSharePresence()
   const { engine, beginLocal, localColorIdx } = useAnnotate(featuredShareId)
   const active = useAnnotateStore((s) => s.active)
   const announce = useAnnounce()
@@ -129,7 +127,6 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
   // Resolved from the CSS custom property rather than hardcoded (STYLE.md §1), and
   // re-resolved whenever the theme rewrites the palette — the same invalidation the
   // engine's own colour cache needs, for the same reason.
-  const { localParticipant } = useLocalParticipant()
   const [cursor, setCursor] = useState('crosshair')
   useEffect(() => {
     if (!canDraw) return
@@ -139,27 +136,22 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
     setCursor(resolved ? penCursor(resolved) : 'crosshair')
   }, [canDraw, localColorIdx, themeMode, accentId, highContrast])
 
-  // Hide the OS pointer from the OUTGOING capture while the pen is armed on your
-  // OWN share. This is the other half of the doubled-cursor fix: not echoing a
-  // monitor share removes the duplicate for the default case, and this removes it
-  // for anyone who has deliberately turned the echo back on.
+  // NOTE: there used to be an effect here that called applyConstraints({cursor:'never'})
+  // on the live share track to keep the OS pointer out of the outgoing capture while
+  // the pen was armed. It is gone, and the reasoning it rested on is worth recording.
   //
-  // Scoped to "armed", not the whole share, because the presenter's pointer is what
-  // viewers follow during a walkthrough — but while a stroke is being drawn the ink
-  // says everything the arrow would, and in an attributed colour.
-  const shareMst = (
-    localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track as
-      | LocalVideoTrack
-      | undefined
-  )?.mediaStreamTrack
-  useEffect(() => {
-    if (!shareMst) return
-    const hide = canDraw && ownShareShown
-    setCapturedCursorHidden(shareMst, hide)
-    // Always hand the cursor back on the way out — disarming, unmounting, or the
-    // share ending must not leave viewers with a pointerless capture.
-    return () => setCapturedCursorHidden(shareMst, false)
-  }, [shareMst, canDraw, ownShareShown])
+  // I shipped it because Chrome ACCEPTS the constraint: applyConstraints resolves and
+  // getSettings() reports `cursor: 'never'` back. That is an API-level check, and it
+  // is not the same claim as "the captured pixels lose the pointer" — which is the
+  // only claim that mattered. Reported from real use: the mirrored pointer was still
+  // there. The constraint is honoured as bookkeeping and ignored by the capturer.
+  //
+  // Worse than useless, then, because it was not free: it reconfigures a live capture
+  // every time the pen is armed or disarmed. Suppressing a duplicate cursor is not
+  // worth touching the capture at all, let alone for no effect.
+  //
+  // If this is ever attempted again, the surface-type branch in useSharePresence is
+  // the lever that actually works — don't echo the share back — not a constraint.
 
   // Announce the MODE, not each stroke — a message per pointerdown would be
   // screen-reader spam. Remote authors are announced separately (useAnnotate),
@@ -172,7 +164,14 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
   }, [canDraw, announce])
 
   return (
-    <div ref={boxRef} className="pointer-events-none absolute inset-0 z-20">
+    // Ink sits ABOVE the video and BELOW every control in the tile. It was at z-20,
+    // level with TileActionStack and rendered after it, so an armed canvas — which
+    // takes pointer events across the whole tile — covered the very button you use to
+    // disarm the pen. Pressing "stop annotating" drew a dot on it instead.
+    //
+    // The tile's layer scale, low to high: video 0 · ink 5 · name/state pills 10 ·
+    // action stack 20 · fullscreen exit 30. A control must never be under the ink.
+    <div ref={boxRef} className="pointer-events-none absolute inset-0 z-[5]">
       <canvas
         ref={canvasRef}
         data-testid="annotation-canvas"
