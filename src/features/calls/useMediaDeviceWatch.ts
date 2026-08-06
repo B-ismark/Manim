@@ -4,6 +4,7 @@ import { RoomEvent, Track, type LocalAudioTrack, type LocalVideoTrack } from 'li
 import { toast } from '@/store/useToastStore'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { addBreadcrumb, reportError } from '@/lib/report'
+import { useScreenShare } from '@/features/calls/useScreenShare'
 
 /**
  * Mid-call device-loss watch.
@@ -27,6 +28,9 @@ export function useMediaDeviceWatch() {
   const { localParticipant } = useLocalParticipant()
   const room = useRoomContext()
   const announce = useAnnounce()
+  // Re-sharing goes through the same entry point as every other share, so the
+  // recovery path can't drift from the one the control bar uses.
+  const { start: startShare } = useScreenShare()
 
   // The live MediaStreamTracks behind the published camera/mic, if any. While the
   // camera is in its warm-off window there's no publication, so these are
@@ -91,13 +95,13 @@ export function useMediaDeviceWatch() {
         duration: 8000,
         action: {
           label: 'Share again',
-          onClick: () => void localParticipant.setScreenShareEnabled(true),
+          onClick: startShare,
         },
       })
     }
     shareMst.addEventListener('ended', onEnded)
     return () => shareMst.removeEventListener('ended', onEnded)
-  }, [shareMst, localParticipant, announce])
+  }, [shareMst, startShare, announce])
 
   // The set of devices changed (unplug / plug). We can't tell WHICH from this
   // event alone — the `ended` handlers above carry the user-facing message — but
