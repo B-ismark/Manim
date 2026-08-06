@@ -52,7 +52,7 @@ import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore, type GridSize } from '@/store/useRoomStore'
 import { useDeviceStore } from '@/store/useDeviceStore'
 import { useCameraToggle } from '@/lib/useCameraToggle'
-import { useScreenShare } from '@/features/calls/useScreenShare'
+import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScreenShare'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
@@ -116,7 +116,7 @@ export function ControlBar({
   // to the grid or a person was spotlighted: arming it then flipped a store flag
   // with no canvas mounted anywhere, and announced "Draw on the shared screen" to a
   // screen-reader user who had no surface at all.
-  const { canAnnotate } = useSharePresence()
+  const { canAnnotate, shareSlotsFull } = useSharePresence()
   const annotateActive = useAnnotateStore((s) => s.active)
   const toggleAnnotate = useAnnotateStore((s) => s.toggle)
   const setAnnotateActive = useAnnotateStore((s) => s.setActive)
@@ -321,8 +321,9 @@ export function ControlBar({
           <GridTile
             className="pointer-fine:hidden"
             icon={<ScreenShareIcon />}
-            label="Share screen"
+            label={shareSlotsFull ? 'Share screen (in use)' : 'Share screen'}
             active={screenShare.enabled}
+            disabled={shareSlotsFull}
             onClick={() => {
               screenShare.toggle()
               closeMore()
@@ -586,12 +587,27 @@ export function ControlBar({
             showed the control TWICE — here and in the More sheet. Rendering
             conditionally can't lose a specificity race. */}
         {canScreenShare && !touch && (
-          <Tooltip content={screenShare.enabled ? 'Stop sharing' : 'Share screen'}>
+          <Tooltip
+            content={
+              shareSlotsFull
+                ? `${MAX_CONCURRENT_SHARES} people are already sharing`
+                : screenShare.enabled
+                  ? 'Stop sharing'
+                  : 'Share screen'
+            }
+          >
             <IconButton
-              label={screenShare.enabled ? 'Stop screen share' : 'Share screen'}
+              label={
+                screenShare.enabled
+                  ? 'Stop screen share'
+                  : shareSlotsFull
+                    ? `Share screen, unavailable — ${MAX_CONCURRENT_SHARES} people are already sharing`
+                    : 'Share screen'
+              }
               icon={<ScreenShareIcon />}
               tone="neutral"
               active={screenShare.enabled}
+              disabled={shareSlotsFull}
               onClick={screenShare.toggle}
             />
           </Tooltip>
@@ -988,12 +1004,16 @@ function GridTile({
   icon,
   label,
   active,
+  disabled,
   onClick,
   className,
 }: {
   icon: ReactNode
   label: string
   active?: boolean
+  /** Greys the tile and blocks the press, keeping it in place. A quick action that
+   *  vanishes when unavailable moves every tile after it under the user's thumb. */
+  disabled?: boolean
   onClick: () => void
   className?: string
 }) {
@@ -1001,8 +1021,13 @@ function GridTile({
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       aria-pressed={active}
-      className={cn('flex flex-col items-center gap-1 rounded-field px-1 py-2 hover:bg-sunken', className)}
+      className={cn(
+        'flex flex-col items-center gap-1 rounded-field px-1 py-2 hover:bg-sunken',
+        disabled && 'pointer-events-none opacity-40',
+        className,
+      )}
     >
       <span
         className={cn(
