@@ -35,6 +35,8 @@ export function useMediaDeviceWatch() {
   const camMst = (camPub?.track as LocalVideoTrack | undefined)?.mediaStreamTrack
   const micPub = localParticipant.getTrackPublication(Track.Source.Microphone)
   const micMst = (micPub?.track as LocalAudioTrack | undefined)?.mediaStreamTrack
+  const sharePub = localParticipant.getTrackPublication(Track.Source.ScreenShare)
+  const shareMst = (sharePub?.track as LocalVideoTrack | undefined)?.mediaStreamTrack
 
   useEffect(() => {
     if (!camMst) return
@@ -65,6 +67,37 @@ export function useMediaDeviceWatch() {
     micMst.addEventListener('ended', onEnded)
     return () => micMst.removeEventListener('ended', onEnded)
   }, [micMst, localParticipant, announce])
+
+  /**
+   * A screen share can end WITHOUT the user touching our Stop button: they hit
+   * Chrome's own "Stop sharing" bar, or — the case that actually bites — they
+   * were sharing a single application WINDOW and that window got closed. The
+   * capture ends, LiveKit unpublishes, and the tile vanishes for everyone.
+   *
+   * Camera and mic have been watched for this since the device-loss work; the
+   * screen share never was, so that vanishing came with no explanation at all.
+   * From the presenter's seat their screen simply stopped being shared, and the
+   * likeliest moment to notice is when someone tells you they can't see it.
+   *
+   * Not `danger`: ending a share is usually deliberate. This states what happened
+   * and offers the way back.
+   */
+  useEffect(() => {
+    if (!shareMst) return
+    const onEnded = () => {
+      addBreadcrumb('local screen share track ended')
+      announce('Screen sharing stopped', 'assertive')
+      toast('Screen sharing stopped', 'neutral', {
+        duration: 8000,
+        action: {
+          label: 'Share again',
+          onClick: () => void localParticipant.setScreenShareEnabled(true),
+        },
+      })
+    }
+    shareMst.addEventListener('ended', onEnded)
+    return () => shareMst.removeEventListener('ended', onEnded)
+  }, [shareMst, localParticipant, announce])
 
   // The set of devices changed (unplug / plug). We can't tell WHICH from this
   // event alone — the `ended` handlers above carry the user-facing message — but
