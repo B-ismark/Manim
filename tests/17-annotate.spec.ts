@@ -565,6 +565,95 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await first.context.close()
   })
 
+  test('the pen can be put down again from the tile that armed it', async ({ page, browser }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+    const sharer = await addSharer(browser, room)
+
+    await join(page, room, 'Ada')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    // Arming makes the canvas take pointer events across the WHOLE tile, including
+    // the corner the pen button sits in. The canvas used to sit at the same z-index
+    // as the action stack and render after it, so the button that turns the pen off
+    // was underneath the drawing surface: pressing it drew a dot instead of
+    // disarming, and there was no way back out except the control bar.
+    const arm = page.getByRole('button', { name: 'Draw on the shared screen' })
+    const disarm = page.getByRole('button', { name: 'Stop drawing on the shared screen' })
+
+    await arm.click()
+    await expect(disarm).toBeVisible()
+
+    // What the bug actually looked like: the pen-nib cursor stayed a pen over the
+    // button, because the canvas — not the button — was the element under the
+    // pointer there. Assert the topmost element at the button's centre IS the
+    // button; that one fact decides both the cursor and where the press goes.
+    const onTop = await disarm.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      // Which element inside the button answers (button, svg, path) is styling
+      // detail; that it is INSIDE the button rather than the canvas is the point.
+      return {
+        isButton: el === hit || el.contains(hit),
+        isCanvas: hit?.tagName.toLowerCase() === 'canvas',
+      }
+    })
+    expect(onTop, 'the pen button is the element under the pointer, not the canvas').toEqual({
+      isButton: true,
+      isCanvas: false,
+    })
+
+    // And the click itself: Playwright's actionability check fails if another
+    // element would receive the press at those coordinates.
+    await disarm.click({ timeout: 10_000 })
+    await expect(arm).toBeVisible()
+
+    await sharer.context.close()
+  })
+
+  test('a third person cannot start sharing while two already are', async ({ page, browser }) => {
+    test.setTimeout(180_000)
+    test.skip(await isTouch(page), 'the desktop share button is the one under test')
+    const room = uniqueRoom('annot')
+
+    // Two shares is the cap: a share is a full-resolution stream no matter how
+    // small it is drawn (single spatial layer on the VP9 path), so the third one
+    // costs everyone real bandwidth for a thumbnail nobody can read.
+    const first = await addSharer(browser, room, 'Zed')
+    const second = await addSharer(browser, room, 'Ada', 640, 480)
+
+    await fakeScreenShare(page, SHARE_W, SHARE_H)
+    await join(page, room, 'Mia')
+    await revealChrome(page)
+
+    // Disabled with the reason ON the control — a button that silently does
+    // nothing reads as broken, and "ask someone to stop" is not guessable.
+    const blocked = page.getByRole('button', {
+      name: /Share screen, unavailable — 2 people are already sharing/i,
+    })
+    await expect(blocked).toBeVisible({ timeout: 30_000 })
+    // aria-disabled rather than disabled, so the control stays hoverable,
+    // focusable, and able to say why. A `disabled` button here would carry
+    // pointer-events-none and explain itself to nobody.
+    await expect(blocked).toHaveAttribute('aria-disabled', 'true')
+
+    // Pressing it must still explain rather than doing nothing at all. `force`
+    // because Playwright treats aria-disabled as non-actionable, while a real
+    // pointer is not stopped by an advisory attribute — which is the whole point
+    // of using it here instead of `disabled`.
+    await blocked.click({ force: true })
+    await expect(page.getByText(/already sharing/i).first()).toBeVisible({ timeout: 10_000 })
+
+    // A slot opening puts it back, without a reload.
+    await first.context.close()
+    await expect(page.getByRole('button', { name: /^Share screen$/i })).toBeEnabled({
+      timeout: 30_000,
+    })
+
+    await second.context.close()
+  })
+
   test('strokes fade away on their own', async ({ page, browser }) => {
     test.setTimeout(150_000)
     test.skip(await isTouch(page), 'drawing is desktop-only')
