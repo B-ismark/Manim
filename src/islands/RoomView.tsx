@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
 import { ConnectionState, RoomEvent } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
-import { Stage } from '@/islands/Stage'
+import { Stage, PresentingIndicator } from '@/islands/Stage'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { PipPanel } from '@/islands/PipPanel'
 import { ControlBar } from '@/islands/ControlBar'
@@ -18,6 +18,7 @@ import { StageTopBar } from '@/islands/StageTopBar'
 import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
+import { TopStack } from '@/islands/TopStack'
 import { useChatMessages } from '@/features/chat/useChatMessages'
 import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
@@ -35,6 +36,7 @@ import { HandIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
 import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
 import { isTouch } from '@/lib/device'
+import { useSharePresence } from '@/lib/useSharePresence'
 import { parseRoomHash } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
@@ -315,6 +317,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   }, [])
   const carouselOpen = useEffectsUi((s) => s.carouselOpen)
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
+  // Same source Stage derives its layout from, so the pill and the stage can't
+  // disagree about whose screen is on show.
+  const { presenting, annotatingOwnShare } = useSharePresence()
   // Opening the effects carousel must reveal + pin the chrome. The Effects button
   // lives on the self-view tile (always visible on touch), but the carousel is a
   // sibling of the auto-hiding control bar — so after the 4s auto-hide a tap would
@@ -392,19 +397,26 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           !chromeVisible && 'opacity-0',
         )}
       />
-      <ConnectionBanner />
-      <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
       <StageTopBar visible={chromeVisible} />
-      <PinCoachmark />
-      <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
 
-      {companion ? (
-        <CompanionBanner onTakeOver={() => setCompanion(false)} onTransfer={switchToThisDevice} />
-      ) : (
-        sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
-      )}
-      <WaitingRoomBanner active={isHost && waiting} />
-      <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
+      {/* One top-centre column, most urgent first. Order here IS the visual order —
+          each banner used to place itself, and four of them had independently picked
+          the same offset, so any two on screen at once landed on top of each other.
+          Anything new goes in this list, not into a fresh `fixed` div. */}
+      <TopStack>
+        <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
+        <ConnectionBanner />
+        <WaitingRoomBanner active={isHost && waiting} />
+        {companion ? (
+          <CompanionBanner onTakeOver={() => setCompanion(false)} onTransfer={switchToThisDevice} />
+        ) : (
+          sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
+        )}
+        <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
+        {presenting && <PresentingIndicator annotating={annotatingOwnShare} />}
+        <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
+        <PinCoachmark />
+      </TopStack>
 
       <div
         {...stageHandlers}

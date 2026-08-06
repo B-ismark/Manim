@@ -94,32 +94,33 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
   const elapsed = useCallTimer()
 
   return (
+    // Positioned by TopStack — see the layer scale there. The chrome hide/reveal
+    // transform moves the pill itself now, so hiding it doesn't drag the banners
+    // stacked beneath it off-screen too.
     <div
       className={cn(
-        'pointer-events-none fixed inset-x-0 top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 flex justify-center px-4',
+        'flex min-h-11 items-center gap-2 rounded-control bg-overlay px-3 text-xs font-medium text-white backdrop-blur',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !visible && '-translate-y-[150%] opacity-0',
       )}
     >
-      <div className="flex min-h-11 items-center gap-2 rounded-control bg-overlay px-3 text-xs font-medium text-white backdrop-blur">
-        {encrypted && <LockIcon className="size-3.5" aria-label="End-to-end encrypted" />}
-        <span className="tabular-nums" aria-label="Call duration">
-          {elapsed}
-        </span>
-        {poor && (
-          <>
-            <span className="h-3 w-px bg-white/30" aria-hidden />
-            <span className="flex items-center gap-1.5">
-              <ConnectionQuality participant={localParticipant} />
-              {/* Label only where there's room — the bars carry the meaning on
-                  narrow phones (avoids the top pill overflowing). */}
-              <span className="hidden min-[380px]:inline">
-                {quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}
-              </span>
+      {encrypted && <LockIcon className="size-3.5" aria-label="End-to-end encrypted" />}
+      <span className="tabular-nums" aria-label="Call duration">
+        {elapsed}
+      </span>
+      {poor && (
+        <>
+          <span className="h-3 w-px bg-white/30" aria-hidden />
+          <span className="flex items-center gap-1.5">
+            <ConnectionQuality participant={localParticipant} />
+            {/* Label only where there's room — the bars carry the meaning on
+                narrow phones (avoids the top pill overflowing). */}
+            <span className="hidden min-[380px]:inline">
+              {quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}
             </span>
-          </>
-        )}
-      </div>
+          </span>
+        </>
+      )}
     </div>
   )
 }
