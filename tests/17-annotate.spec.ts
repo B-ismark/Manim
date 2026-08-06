@@ -213,6 +213,14 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await desktop.waitForTimeout(500)
     expect(await inkBoundsUnit(page, SHARE_ASPECT), 'touch viewer renders remote ink').not.toBeNull()
 
+    // ...and it is EXPLAINED. Ink that just appears, on a device with no pen control
+    // and no way to make it, is unattributed motion over someone's screen. The
+    // author's name is drawn beside the live stroke head, but only while the stroke
+    // is alive — easy to miss on a phone. This is that announcement made visible.
+    await expect(page.getByText(/Ada is drawing on the shared screen/)).toBeVisible({
+      timeout: 10_000,
+    })
+
     // The control bar must still respond — the overlay must not be swallowing taps.
     await revealChrome(page)
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible()

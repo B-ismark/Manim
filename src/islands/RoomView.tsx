@@ -17,6 +17,7 @@ import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { StageTopBar } from '@/islands/StageTopBar'
 import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
+import { RemoteInkPill } from '@/islands/RemoteInkPill'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
 import { TopStack } from '@/islands/TopStack'
 import { useChatMessages } from '@/features/chat/useChatMessages'
@@ -427,6 +428,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
             onToggleOwnShare={() => toggleOwnShareShown(ownShareShown)}
           />
         )}
+        <RemoteInkPill />
         <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
         <PinCoachmark />
       </TopStack>
