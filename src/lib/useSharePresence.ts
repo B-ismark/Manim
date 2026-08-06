@@ -1,9 +1,10 @@
+import { useEffect } from 'react'
 import { useTracks } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useRoomStore } from '@/store/useRoomStore'
-import { shareIsFeatured } from '@/lib/focusTrack'
+import { featuredShare, shareId } from '@/lib/focusTrack'
 import { annotateEnabled } from '@/features/annotate/useAnnotate'
 
 export interface SharePresence {
@@ -41,6 +42,8 @@ export interface SharePresence {
    * with one effect behind it.
    */
   canAnnotate: boolean
+  /** Track SID of the share in the big region — what ink drawn now is aimed at. */
+  featuredShareId: string | null
 }
 
 /**
@@ -63,6 +66,8 @@ export function useSharePresence(): SharePresence {
   const override = useRoomStore((s) => s.showOwnShareOverride)
   const demotedShares = useRoomStore((s) => s.demotedShares)
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
+  const stickyShareId = useRoomStore((s) => s.stickyShareId)
+  const setStickyShare = useRoomStore((s) => s.setStickyShare)
 
   const sharingMonitor = presenting && shareSurface === 'monitor'
   // 'unknown' lands on the permissive side deliberately — a browser that doesn't
@@ -75,7 +80,16 @@ export function useSharePresence(): SharePresence {
   // is excluded exactly when the stage excludes it, so the pen can never point at a
   // surface you are not being shown.
   const onStage = shares.filter((t) => !t.participant.isLocal || ownShareShown)
-  const shareFeatured = shareIsFeatured(onStage, { demotedShares, spotlightKey })
+  const featured = featuredShare(onStage, { demotedShares, spotlightKey, stickyShareId })
+  const shareFeatured = featured !== undefined
+  const featuredShareId = featured ? shareId(featured) : null
+
+  // Remember the choice so it survives someone starting to talk. Written in an
+  // effect, not during render — this is a store write, and the store is what the
+  // next render reads back.
+  useEffect(() => {
+    if (featuredShareId) setStickyShare(featuredShareId)
+  }, [featuredShareId, setStickyShare])
 
   // Touch is view-only by design: drawing has to capture touch, which fights the
   // control bar's tap-to-reveal. Touch devices still SEE everyone's ink.
@@ -88,6 +102,7 @@ export function useSharePresence(): SharePresence {
     sharingMonitor,
     shareFeatured,
     canAnnotate,
+    featuredShareId,
     annotatingOwnShare: ownShareShown && active && canAnnotate,
   }
 }

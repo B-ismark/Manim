@@ -27,24 +27,31 @@ import { colorVar } from '@/lib/annotate/palette'
  * phone screen is too cramped to draw on usefully. Remote strokes still render.
  */
 export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { aspect: number }) {
-  const { engine, beginLocal, localColorIdx } = useAnnotate()
+  // One shared answer to "is drawing possible right now" — the same value the two
+  // pen buttons render on and the same one that disarms the pen. This used to be
+  // re-derived here from `allowed && !touch`, which is most of that condition but
+  // not all of it, and the gap is how an armed pen outlived its own canvas.
+  const { canAnnotate, ownShareShown, featuredShareId } = useSharePresence()
+  const { engine, beginLocal, localColorIdx } = useAnnotate(featuredShareId)
   const active = useAnnotateStore((s) => s.active)
   const announce = useAnnounce()
   const { ref: boxRef, size } = useElementSize<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  // One shared answer to "is drawing possible right now" — the same value the two
-  // pen buttons render on and the same one that disarms the pen. This used to be
-  // re-derived here from `allowed && !touch`, which is most of that condition but
-  // not all of it, and the gap is how an armed pen outlived its own canvas.
-  const { canAnnotate, ownShareShown } = useSharePresence()
   const canDraw = active && canAnnotate
 
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     engine.attach(canvas)
-    return () => engine.detach()
+    // Finish any stroke still in progress before letting go of the canvas.
+    // Spotlighting a person unmounts this component from under the pointer, and
+    // without the endLocal() the stroke never got its final flush: the tail was
+    // never sent, and the engine kept a live stroke that nothing would ever close.
+    return () => {
+      engine.endLocal()
+      engine.detach()
+    }
   }, [engine])
 
   useEffect(() => {

@@ -177,6 +177,7 @@ describe('ingest (remote strokes)', () => {
     colorIdx: 2,
     strokeId,
     seq,
+    target: 0,
     points: Float32Array.from(points),
   })
 
@@ -220,7 +221,7 @@ describe('fade and the frame loop', () => {
     const { engine } = makeEngine()
     engine.ingest(
       'Bo#2',
-      { colorIdx: 1, strokeId: 1, seq: 0, points: Float32Array.from([0.1, 0.1]) },
+      { colorIdx: 1, strokeId: 1, seq: 0, target: 0, points: Float32Array.from([0.1, 0.1]) },
       'Bo',
     )
     expect(engine.hasInk).toBe(true)
@@ -235,7 +236,7 @@ describe('fade and the frame loop', () => {
     const { engine } = makeEngine()
     engine.ingest(
       'Bo#2',
-      { colorIdx: 1, strokeId: 1, seq: 0, points: Float32Array.from([0.1, 0.1]) },
+      { colorIdx: 1, strokeId: 1, seq: 0, target: 0, points: Float32Array.from([0.1, 0.1]) },
       'Bo',
     )
     pumpFrame()
@@ -250,7 +251,7 @@ describe('fade and the frame loop', () => {
     const { engine } = makeEngine()
     engine.ingest(
       'Bo#2',
-      { colorIdx: 1, strokeId: 1, seq: 0, points: Float32Array.from([0.1, 0.1]) },
+      { colorIdx: 1, strokeId: 1, seq: 0, target: 0, points: Float32Array.from([0.1, 0.1]) },
       'Bo',
     )
     clock += LIFETIME_MS + 1
@@ -259,7 +260,7 @@ describe('fade and the frame loop', () => {
 
     engine.ingest(
       'Cy#3',
-      { colorIdx: 2, strokeId: 2, seq: 0, points: Float32Array.from([0.5, 0.5]) },
+      { colorIdx: 2, strokeId: 2, seq: 0, target: 0, points: Float32Array.from([0.5, 0.5]) },
       'Cy',
     )
     expect(frameQueue.length).toBe(1)
@@ -290,7 +291,7 @@ describe('lifecycle', () => {
     frameQueue = []
     engine.ingest(
       'Bo#2',
-      { colorIdx: 1, strokeId: 1, seq: 0, points: Float32Array.from([0.1, 0.1]) },
+      { colorIdx: 1, strokeId: 1, seq: 0, target: 0, points: Float32Array.from([0.1, 0.1]) },
       'Bo',
     )
     expect(frameQueue.length).toBe(0)
@@ -416,6 +417,7 @@ describe('bounds on remote input', () => {
     colorIdx: 2,
     strokeId,
     seq,
+    target: 0,
     points: Float32Array.from(points),
   })
 

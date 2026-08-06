@@ -7,13 +7,14 @@ import {
   MAX_POINTS_PER_PACKET,
   HEADER_BYTES,
   WIRE_VERSION,
+  targetHash,
 } from './wire'
 
 const pts = (...xs: number[]) => Float32Array.from(xs)
 
 describe('encode / decode', () => {
   it('round-trips header fields exactly', () => {
-    const out = decode(encode({ colorIdx: 5, strokeId: 4242, seq: 7, points: pts(0.25, 0.75) }))
+    const out = decode(encode({ colorIdx: 5, strokeId: 4242, seq: 7, target: 0, points: pts(0.25, 0.75) }))
     expect(out).not.toBeNull()
     expect(out!.colorIdx).toBe(5)
     expect(out!.strokeId).toBe(4242)
@@ -22,7 +23,7 @@ describe('encode / decode', () => {
 
   it('round-trips points within quantisation error', () => {
     const points = pts(0, 0, 0.5, 0.5, 1, 1, 0.123456, 0.987654)
-    const out = decode(encode({ colorIdx: 0, strokeId: 1, seq: 0, points }))!
+    const out = decode(encode({ colorIdx: 0, strokeId: 1, seq: 0, target: 0, points }))!
     expect(out.points.length).toBe(points.length)
     for (let i = 0; i < points.length; i++) {
       // 16-bit quantisation: 1/65535 is far below one screen pixel.
@@ -31,19 +32,19 @@ describe('encode / decode', () => {
   })
 
   it('preserves the exact endpoints 0 and 1', () => {
-    const out = decode(encode({ colorIdx: 0, strokeId: 1, seq: 0, points: pts(0, 1) }))!
+    const out = decode(encode({ colorIdx: 0, strokeId: 1, seq: 0, target: 0, points: pts(0, 1) }))!
     expect(out.points[0]).toBe(0)
     expect(out.points[1]).toBe(1)
   })
 
   it('clamps out-of-range coordinates instead of wrapping', () => {
-    const out = decode(encode({ colorIdx: 0, strokeId: 1, seq: 0, points: pts(-3, 4) }))!
+    const out = decode(encode({ colorIdx: 0, strokeId: 1, seq: 0, target: 0, points: pts(-3, 4) }))!
     expect(out.points[0]).toBe(0)
     expect(out.points[1]).toBe(1)
   })
 
   it('encodes an empty stroke as a bare header', () => {
-    expect(encode({ colorIdx: 0, strokeId: 1, seq: 0, points: pts() }).byteLength).toBe(HEADER_BYTES)
+    expect(encode({ colorIdx: 0, strokeId: 1, seq: 0, target: 0, points: pts() }).byteLength).toBe(HEADER_BYTES)
   })
 })
 
@@ -55,7 +56,7 @@ describe('decode rejects bad input rather than throwing', () => {
   })
 
   it('returns null for an unknown wire version', () => {
-    const bytes = encode({ colorIdx: 1, strokeId: 1, seq: 0, points: pts(0.5, 0.5) })
+    const bytes = encode({ colorIdx: 1, strokeId: 1, seq: 0, target: 0, points: pts(0.5, 0.5) })
     bytes[0] = WIRE_VERSION + 1
     expect(decode(bytes)).toBeNull()
   })
@@ -66,7 +67,7 @@ describe('decode rejects bad input rather than throwing', () => {
 
   it('decodes correctly when the view is offset inside a larger buffer', () => {
     // Data channel payloads often arrive as a view into a pooled buffer.
-    const inner = encode({ colorIdx: 3, strokeId: 9, seq: 2, points: pts(0.5, 0.25) })
+    const inner = encode({ colorIdx: 3, strokeId: 9, seq: 2, target: 0, points: pts(0.5, 0.25) })
     const backing = new Uint8Array(inner.byteLength + 16)
     backing.set(inner, 8)
     const view = backing.subarray(8, 8 + inner.byteLength)
@@ -153,8 +154,77 @@ describe('decode rejects hostile input', () => {
 
   it('still accepts a packet at exactly the cap', () => {
     const points = new Float32Array(MAX_POINTS_PER_PACKET * 2).fill(0.5)
-    const bytes = encode({ colorIdx: 1, strokeId: 1, seq: 0, points })
+    const bytes = encode({ colorIdx: 1, strokeId: 1, seq: 0, target: 0, points })
     expect(bytes.byteLength).toBeLessThanOrEqual(MAX_PACKET_BYTES)
     expect(decode(bytes)).not.toBeNull()
+  })
+})
+
+/**
+ * The target field, and the compatibility rule that stops a wire bump becoming a
+ * silent outage.
+ *
+ * decode() used to reject any version mismatch outright, in BOTH directions. A call
+ * that spans a deploy has some tabs on the old encoder and some on the new one, so
+ * ink would simply stop arriving — no error, no announcement, nothing to notice
+ * until someone says "I can't see what you're drawing".
+ */
+describe('wire v2 target + v1 compatibility', () => {
+  it('round-trips the target hash', () => {
+    const t = targetHash('TR_abc123')
+    const out = decode(encode({ colorIdx: 1, strokeId: 2, seq: 3, target: t, points: pts(0.5, 0.5) }))!
+    expect(out.target).toBe(t)
+  })
+
+  it('hashes distinct SIDs to distinct values', () => {
+    expect(targetHash('TR_aaa')).not.toBe(targetHash('TR_bbb'))
+  })
+
+  it('reserves 0 for "unspecified" — no SID ever hashes to it', () => {
+    expect(targetHash(null)).toBe(0)
+    expect(targetHash(undefined)).toBe(0)
+    expect(targetHash('')).toBe(0)
+    // Every real SID must be non-zero, or it would silently mean "any share".
+    for (let i = 0; i < 2000; i++) expect(targetHash(`TR_${i}`)).not.toBe(0)
+  })
+
+  it('decodes a v1 packet, reporting target 0 so receivers still accept it', () => {
+    // Hand-built v1: 6-byte header, no target field.
+    const buf = new ArrayBuffer(6 + 4)
+    const view = new DataView(buf)
+    view.setUint8(0, 1)
+    view.setUint8(1, 4)
+    view.setUint16(2, 77, true)
+    view.setUint16(4, 9, true)
+    view.setUint16(6, 65535, true)
+    view.setUint16(8, 0, true)
+    const out = decode(new Uint8Array(buf))
+    expect(out).not.toBeNull()
+    expect(out!.colorIdx).toBe(4)
+    expect(out!.strokeId).toBe(77)
+    expect(out!.seq).toBe(9)
+    expect(out!.target).toBe(0)
+    expect(out!.points[0]).toBe(1)
+    expect(out!.points[1]).toBe(0)
+  })
+
+  it('rejects a v1 packet whose payload is not a whole number of points', () => {
+    const bad = new Uint8Array(6 + 3)
+    bad[0] = 1
+    expect(decode(bad)).toBeNull()
+  })
+
+  it('still rejects a version it has never heard of', () => {
+    const bytes = encode({ colorIdx: 1, strokeId: 1, seq: 0, target: 0, points: pts(0.5, 0.5) })
+    bytes[0] = WIRE_VERSION + 1
+    expect(decode(bytes)).toBeNull()
+  })
+
+  it('chunked packets all carry the same target', () => {
+    const many = new Float32Array(MAX_POINTS_PER_PACKET * 4).fill(0.5)
+    const t = targetHash('TR_zzz')
+    const packets = chunk(many, 1, 1, 0, t)
+    expect(packets.length).toBeGreaterThan(1)
+    for (const p of packets) expect(p.target).toBe(t)
   })
 })
