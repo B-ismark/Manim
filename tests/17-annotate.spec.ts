@@ -585,8 +585,27 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await arm.click()
     await expect(disarm).toBeVisible()
 
-    // The assertion is the click itself: Playwright's actionability check fails if
-    // another element would receive the press at those coordinates.
+    // What the bug actually looked like: the pen-nib cursor stayed a pen over the
+    // button, because the canvas — not the button — was the element under the
+    // pointer there. Assert the topmost element at the button's centre IS the
+    // button; that one fact decides both the cursor and where the press goes.
+    const onTop = await disarm.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)
+      // Which element inside the button answers (button, svg, path) is styling
+      // detail; that it is INSIDE the button rather than the canvas is the point.
+      return {
+        isButton: el === hit || el.contains(hit),
+        isCanvas: hit?.tagName.toLowerCase() === 'canvas',
+      }
+    })
+    expect(onTop, 'the pen button is the element under the pointer, not the canvas').toEqual({
+      isButton: true,
+      isCanvas: false,
+    })
+
+    // And the click itself: Playwright's actionability check fails if another
+    // element would receive the press at those coordinates.
     await disarm.click({ timeout: 10_000 })
     await expect(arm).toBeVisible()
 
@@ -614,7 +633,17 @@ test.describe('Annotation over a shared screen @annotate', () => {
       name: /Share screen, unavailable — 2 people are already sharing/i,
     })
     await expect(blocked).toBeVisible({ timeout: 30_000 })
-    await expect(blocked).toBeDisabled()
+    // aria-disabled rather than disabled, so the control stays hoverable,
+    // focusable, and able to say why. A `disabled` button here would carry
+    // pointer-events-none and explain itself to nobody.
+    await expect(blocked).toHaveAttribute('aria-disabled', 'true')
+
+    // Pressing it must still explain rather than doing nothing at all. `force`
+    // because Playwright treats aria-disabled as non-actionable, while a real
+    // pointer is not stopped by an advisory attribute — which is the whole point
+    // of using it here instead of `disabled`.
+    await blocked.click({ force: true })
+    await expect(page.getByText(/already sharing/i).first()).toBeVisible({ timeout: 10_000 })
 
     // A slot opening puts it back, without a reload.
     await first.context.close()
