@@ -293,11 +293,26 @@ export async function throttleNetwork(page: Page, profile: '3g' | 'offline' | nu
  * The canvas is animated because a fully static capture stream can stop producing
  * frames, and LiveKit needs frames to keep the track live.
  *
+ * `surface` stamps `getSettings().displaySurface`, which the app reads to decide
+ * whether echoing your own share back to you is safe (a whole monitor contains this
+ * window, so the echo recurses; a window or tab cannot). A canvas capture reports
+ * NOTHING for that field, so without this every test here would silently exercise
+ * the 'unknown' fallback and the monitor branch would ship untested. Left undefined
+ * by default precisely so it keeps reporting nothing — that is a real case too
+ * (Firefox, and any synthetic capture), and it deserves coverage as much as the
+ * others do.
+ *
  * Must run BEFORE navigation (addInitScript).
  */
-export async function fakeScreenShare(page: Page, width = 1280, height = 720, fps = 10): Promise<void> {
+export async function fakeScreenShare(
+  page: Page,
+  width = 1280,
+  height = 720,
+  fps = 10,
+  surface?: 'monitor' | 'window' | 'browser',
+): Promise<void> {
   await page.addInitScript(
-    ({ w, h, f }) => {
+    ({ w, h, f, surface: s }) => {
       const canvas = document.createElement('canvas')
       canvas.width = w
       canvas.height = h
@@ -314,13 +329,20 @@ export async function fakeScreenShare(page: Page, width = 1280, height = 720, fp
       paint()
       setInterval(paint, Math.round(1000 / f))
       const stream = canvas.captureStream(f)
+      if (s) {
+        // Wrap rather than replace: the app reads width/height off the same object
+        // to size the share, so the real settings have to survive.
+        const track = stream.getVideoTracks()[0]
+        const original = track.getSettings.bind(track)
+        track.getSettings = () => ({ ...original(), displaySurface: s })
+      }
       Object.defineProperty(navigator.mediaDevices, 'getDisplayMedia', {
         configurable: true,
         writable: true,
         value: async () => stream,
       })
     },
-    { w: width, h: height, f: fps },
+    { w: width, h: height, f: fps, surface },
   )
 }
 

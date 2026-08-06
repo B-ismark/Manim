@@ -273,12 +273,19 @@ export function Stage() {
   // remove a whole region, which is a jarring thing to do underneath a presenter —
   // especially one who is sharing the browser window that's doing the swapping.
   //
-  // One guard survives: a REMOTE share still wins, so annotating in a room where
-  // someone else is presenting targets their screen, not yours. (The echo only
-  // recurses when sharing a whole monitor; a window or a non-call tab has nothing
-  // to reflect, and the "You're sharing your screen" pill names what's happening.)
-  const { remoteSharing } = useSharePresence()
-  const showOwnShare = Boolean(localScreenShare) && !remoteSharing
+  // Two guards. A REMOTE share still wins, so annotating in a room where someone
+  // else is presenting targets their screen, not yours.
+  //
+  // And — the part this comment used to only assert — the echo genuinely does
+  // recurse when the captured surface is a whole MONITOR, because the monitor
+  // contains this window. That was written down here and never expressed in code:
+  // `displaySurface` says which case you're in and nothing read it, so a full-screen
+  // share produced a mirror tunnel AND painted the presenter's own captured cursor
+  // back under their real one. A window or a non-call tab has nothing to reflect and
+  // is unchanged. useSharePresence owns the rule now, because the presenting pill has
+  // to agree with the stage about it (and offers the override that flips it).
+  const { ownShareShown } = useSharePresence()
+  const showOwnShare = Boolean(localScreenShare) && ownShareShown
 
   const visible =
     localScreenShare && !showOwnShare ? tracks.filter((t) => t !== localScreenShare) : tracks
@@ -367,13 +374,43 @@ export function Stage() {
  * top offset chosen to clear the status chip, which is exactly the guess that breaks
  * the moment a second banner shows up.
  */
-export function PresentingIndicator({ annotating = false }: { annotating?: boolean }) {
+export function PresentingIndicator({
+  annotating = false,
+  sharingMonitor = false,
+  ownShareShown = false,
+  onToggleOwnShare,
+}: {
+  annotating?: boolean
+  sharingMonitor?: boolean
+  ownShareShown?: boolean
+  onToggleOwnShare?: () => void
+}) {
   return (
-    <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
+    <span className="pointer-events-auto flex items-center gap-2 rounded-full bg-overlay py-1.5 pl-3.5 pr-2 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
       {annotating ? <AnnotateIcon /> : <ScreenShareIcon />}
-      {/* Say WHY their own screen is on their stage — otherwise, on a full-monitor
-          share, the mirror tunnel reads as a glitch. */}
-      {annotating ? 'You\u2019re drawing on your shared screen' : 'You\u2019re sharing your screen'}
+      {/* Name the SURFACE, not just the act. The presenter's own stage now looks
+          completely different between a window share and a whole-screen one, and an
+          unexplained difference reads as a bug. */}
+      {annotating
+        ? 'You\u2019re drawing on your shared screen'
+        : sharingMonitor
+          ? 'You\u2019re sharing your entire screen'
+          : 'You\u2019re sharing your screen'}
+      {/* The escape hatch — and the reason we can be relaxed about browsers that
+          report no surface type at all: whatever the app inferred, the presenter
+          overrules it in one tap. Wanting to see your own full-screen share is real
+          if niche (it is how you would annotate one), so this offers it rather than
+          deciding for them. It just is not the DEFAULT, because a mirror tunnel is
+          not a thing to hand someone unasked. */}
+      {onToggleOwnShare && (
+        <button
+          type="button"
+          onClick={onToggleOwnShare}
+          className="rounded-control bg-white/15 px-2.5 py-0.5 text-xs font-medium transition-colors hover:bg-white/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+        >
+          {ownShareShown ? 'Hide my screen' : 'Show my screen'}
+        </button>
+      )}
     </span>
   )
 }
