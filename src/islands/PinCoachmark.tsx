@@ -38,15 +38,14 @@ export function PinCoachmark() {
 
   if (!show) return null
 
+  // Positioned by TopStack — see the layer scale there.
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[max(3rem,calc(env(safe-area-inset-top)+2.5rem))] z-20 flex justify-center px-6">
-      <button
-        type="button"
-        onClick={dismiss}
-        className="mn-pop pointer-events-auto rounded-control bg-overlay px-3 py-2 text-center text-xs text-white shadow-raised backdrop-blur"
-      >
-        Double-tap a video to pin · drag your own to move · swipe to switch layout
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={dismiss}
+      className="mn-pop pointer-events-auto rounded-control bg-overlay px-3 py-2 text-center text-xs text-white shadow-raised backdrop-blur"
+    >
+      Double-tap a video to pin · drag your own to move · swipe to switch layout
+    </button>
   )
 }
