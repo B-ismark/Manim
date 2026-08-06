@@ -18,6 +18,7 @@ import {
 import { focusTrack, hasVideo, isLocalCam } from '@/lib/focusTrack'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useScreenShare } from '@/features/calls/useScreenShare'
 import { cn } from '@/lib/cn'
 
 /**
@@ -30,8 +31,8 @@ import { cn } from '@/lib/cn'
  */
 export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: () => void }) {
   const participants = useParticipants()
-  const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
-    useLocalParticipant()
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
+  const screenShare = useScreenShare()
   const pinned = useRoomStore((s) => s.pinned)
   const coarse = useIsTouch()
   const tracks = useTracks(
@@ -116,11 +117,11 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
           {!coarse && (
             <IconButton
               size="sm"
-              label={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}
+              label={screenShare.enabled ? 'Stop sharing' : 'Share screen'}
               icon={<ScreenShareIcon />}
-              active={isScreenShareEnabled}
-              className={!isScreenShareEnabled ? 'bg-transparent text-white hover:bg-white/15' : undefined}
-              onClick={() => void localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+              active={screenShare.enabled}
+              className={!screenShare.enabled ? 'bg-transparent text-white hover:bg-white/15' : undefined}
+              onClick={screenShare.toggle}
             />
           )}
           <IconButton size="sm" label="Leave call" icon={<LeaveIcon />} tone="danger" onClick={onLeave} />

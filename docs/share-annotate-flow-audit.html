@@ -1,0 +1,549 @@
+<title>Screen share &amp; annotation — flow audit</title>
+
+<style>
+/* ───────── tokens (shared identity with prejoin-feed-prototypes.html) ───────── */
+:root{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --crit:oklch(.52 .2 25); --crit-soft:color-mix(in oklch,var(--crit) 10%,var(--bg-2));
+  --warn:oklch(.55 .13 65); --warn-soft:color-mix(in oklch,var(--warn) 12%,var(--bg-2));
+  --good:oklch(.48 .14 150); --good-soft:color-mix(in oklch,var(--good) 11%,var(--bg-2));
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --crit:oklch(.72 .16 25); --crit-soft:color-mix(in oklch,var(--crit) 14%,var(--bg-2));
+  --warn:oklch(.8 .13 75); --warn-soft:color-mix(in oklch,var(--warn) 14%,var(--bg-2));
+  --good:oklch(.76 .15 150); --good-soft:color-mix(in oklch,var(--good) 13%,var(--bg-2));
+}}
+:root[data-theme="dark"]{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --crit:oklch(.72 .16 25); --crit-soft:color-mix(in oklch,var(--crit) 14%,var(--bg-2));
+  --warn:oklch(.8 .13 75); --warn-soft:color-mix(in oklch,var(--warn) 14%,var(--bg-2));
+  --good:oklch(.76 .15 150); --good-soft:color-mix(in oklch,var(--good) 13%,var(--bg-2));
+}
+:root[data-theme="light"]{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --crit:oklch(.52 .2 25); --crit-soft:color-mix(in oklch,var(--crit) 10%,var(--bg-2));
+  --warn:oklch(.55 .13 65); --warn-soft:color-mix(in oklch,var(--warn) 12%,var(--bg-2));
+  --good:oklch(.48 .14 150); --good-soft:color-mix(in oklch,var(--good) 11%,var(--bg-2));
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+  line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 5px;
+  border-radius:4px;color:var(--ink);overflow-wrap:anywhere}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+
+.masthead{padding:72px 0 30px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 18px}
+h1{font-size:clamp(28px,4.6vw,42px);line-height:1.07;letter-spacing:-.028em;font-weight:640}
+.stand{margin:20px 0 0;max-width:62ch;font-size:17px;color:var(--ink-2)}
+
+section.block{padding:44px 0 0}
+h2{font-size:22px;letter-spacing:-.015em;font-weight:640}
+.lede{margin:10px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+
+/* ── reported symptoms → cause map ── */
+.map{margin:24px 0 0;display:grid;gap:14px}
+.maprow{display:grid;grid-template-columns:1fr auto 1fr;gap:14px;align-items:stretch}
+@media (max-width:640px){.maprow{grid-template-columns:1fr;gap:8px}
+  .maparrow{transform:rotate(90deg);justify-self:start}}
+.symptom,.cause{border:1px solid var(--rule);border-radius:10px;padding:13px 15px;
+  background:var(--bg-2);font-size:14px;color:var(--ink-2)}
+.symptom b,.cause b{display:block;color:var(--ink);font-weight:600;font-size:14.5px;margin-bottom:4px}
+.symptom{border-left:3px solid var(--crit)}
+.cause{border-left:3px solid var(--accent)}
+.maparrow{align-self:center;font-family:var(--mono);font-size:16px;color:var(--ink-3)}
+
+/* ── flow lanes ── */
+.flow{margin:22px 0 0;border:1px solid var(--rule);border-radius:12px;overflow:hidden;
+  background:var(--bg-2)}
+.flow h4{margin:0;font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:500;
+  padding:12px 16px;border-bottom:1px solid var(--rule);background:var(--sunk)}
+.lane{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:16px}
+.step{border:1px solid var(--rule-2);border-radius:8px;padding:7px 11px;font-size:13px;
+  color:var(--ink);background:var(--bg);white-space:nowrap}
+.step.bad{border-color:var(--crit);background:var(--crit-soft);color:var(--ink)}
+.step.new{border-color:var(--good);background:var(--good-soft)}
+.arw{font-family:var(--mono);font-size:13px;color:var(--ink-3)}
+.lanenote{padding:0 16px 15px;font-size:13.5px;color:var(--ink-2);max-width:70ch}
+.lanenote b{color:var(--ink);font-weight:600}
+
+/* ── findings ── */
+.finding{border-top:1px solid var(--rule-2);padding:22px 0 0;margin-top:26px}
+.fhead{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline}
+.fid{font-family:var(--mono);font-size:12.5px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;padding:1px 6px;flex:none;translate:0 -2px}
+.fhead h3{font-size:19px;letter-spacing:-.012em;font-weight:640;flex:1;min-width:12ch}
+.sev{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  padding:3px 8px;border-radius:999px;align-self:center;white-space:nowrap}
+.sev.blocker{background:var(--crit-soft);color:var(--crit);border:1px solid var(--crit)}
+.sev.high{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn)}
+.sev.med{background:var(--sunk);color:var(--ink-2);border:1px solid var(--rule-2)}
+
+.fgrid{margin:14px 0 0;display:grid;gap:0}
+.frow{display:grid;grid-template-columns:104px 1fr;gap:14px;padding:9px 0;
+  border-bottom:1px solid var(--rule)}
+.frow:last-child{border-bottom:none}
+.frow > dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);padding-top:4px}
+.frow > dd{margin:0;font-size:14.5px;color:var(--ink-2);max-width:68ch}
+.frow > dd b{color:var(--ink);font-weight:600}
+@media (max-width:560px){.frow{grid-template-columns:1fr;gap:3px}}
+
+.ev{list-style:none;padding:0;margin:0;display:grid;gap:4px}
+.ev li{font-size:13.5px;color:var(--ink-2)}
+.ev code{background:none;padding:0;color:var(--accent);font-size:12.5px}
+
+/* ── summary table ── */
+.tblwrap{overflow-x:auto;margin:22px 0 0;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:620px}
+th,td{text-align:left;padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding-top:14px}
+tbody th{font-family:var(--mono);font-weight:600;white-space:nowrap;color:var(--accent)}
+td{color:var(--ink-2)}
+
+/* ── ordered plan ── */
+.plan{list-style:none;padding:0;margin:20px 0 0;display:grid;gap:16px;counter-reset:p}
+.plan li{display:grid;grid-template-columns:28px 1fr;gap:14px;counter-increment:p}
+.plan li::before{content:counter(p);font-family:var(--mono);font-size:12px;color:var(--accent);
+  border:1px solid var(--rule-2);border-radius:50%;width:26px;height:26px;display:grid;
+  place-items:center;translate:0 2px}
+.plan h4{margin:0 0 4px;font-size:15.5px;font-weight:640}
+.plan p{margin:0;font-size:14.5px;color:var(--ink-2);max-width:66ch}
+
+.caveat{margin:30px 0 0;border:1px solid var(--rule-2);border-left:3px solid var(--warn);
+  border-radius:0 10px 10px 0;padding:18px 20px;background:var(--bg-2)}
+.caveat h2{font-size:16px;margin:0 0 8px}
+.caveat p{margin:0 0 9px;font-size:14.5px;color:var(--ink-2);max-width:66ch}
+.caveat p:last-child{margin-bottom:0}
+
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-3)}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Manim · in-call · flow audit</p>
+  <h1>Three reported symptoms, one architectural cause, and seven more waiting behind it.</h1>
+  <p class="stand">A read of the share and annotate paths across <code>Stage.tsx</code>,
+  <code>AnnotationOverlay.tsx</code>, <code>useSharePresence.ts</code>, <code>focusTrack.ts</code>,
+  <code>wire.ts</code> and the four places that start a screen share. Every finding below cites the
+  line it came from; nothing here is inferred from behaviour alone.</p>
+</header>
+
+<section class="block">
+  <h2>The reported three</h2>
+  <p class="lede">Two of them are the same bug seen from different angles. The app decides whether to
+  show you your own screen share purely from “is anyone <em>else</em> sharing?” — it never asks
+  <em>what kind of surface</em> you picked, even though the browser tells it.</p>
+
+  <div class="map">
+    <div class="maprow">
+      <div class="symptom"><b>Two crosshairs while annotating</b>
+        One follows your hand; the other lags behind it inside the video.</div>
+      <div class="maparrow">→</div>
+      <div class="cause"><b>You are watching your own monitor capture</b>
+        The capture bakes the OS cursor into the frame. Since the CSS cursor is
+        <code>crosshair</code> while the pen is armed, the crosshair is captured, re-encoded, and
+        painted back under the real one — offset by the mirror’s scale and a round trip of latency.</div>
+    </div>
+    <div class="maprow">
+      <div class="symptom"><b>Infinite mirror on full-screen share</b>
+        The stage shows the stage showing the stage.</div>
+      <div class="maparrow">→</div>
+      <div class="cause"><b>Same line, same omission</b>
+        <code>Stage.tsx:281</code> renders your own share whenever no one else is sharing. The comment
+        four lines above already says the echo “only recurses when sharing a whole monitor” — but
+        <code>displaySurface</code> is never read anywhere in <code>src/</code>.</div>
+    </div>
+    <div class="maprow">
+      <div class="symptom"><b>Sharing a window jumps you to the window</b>
+        You never see the presentation layout, so the pen is two window-switches away.</div>
+      <div class="maparrow">→</div>
+      <div class="cause"><b>No <code>CaptureController</code> is created</b>
+        Chrome’s default for window and tab capture is <code>focus-captured-surface</code>: it brings
+        the captured surface to the front. The Conditional Focus API exists to opt out of exactly
+        this, and the app never opts out.</div>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Start-a-share, as it runs today</h2>
+
+  <div class="flow">
+    <h4>Current — window or tab share</h4>
+    <div class="lane">
+      <span class="step">Tap Share</span><span class="arw">→</span>
+      <span class="step">Picker</span><span class="arw">→</span>
+      <span class="step">Pick a window</span><span class="arw">→</span>
+      <span class="step bad">Chrome focuses that window</span><span class="arw">→</span>
+      <span class="step bad">Manim is behind it</span><span class="arw">→</span>
+      <span class="step bad">Annotate never seen</span>
+    </div>
+    <p class="lanenote">The presentation layout <b>is</b> built correctly underneath —
+    <code>PresentationStage</code> puts the share in the big region with everyone tiled beside it, and
+    <code>AnnotateControl</code> is pinned to the share tile. The presenter simply isn’t looking at
+    the page any more when it happens.</p>
+  </div>
+
+  <div class="flow">
+    <h4>Current — entire-screen share</h4>
+    <div class="lane">
+      <span class="step">Tap Share</span><span class="arw">→</span>
+      <span class="step">Pick “Entire screen”</span><span class="arw">→</span>
+      <span class="step bad">Own share fills the big region</span><span class="arw">→</span>
+      <span class="step bad">Mirror tunnel</span><span class="arw">→</span>
+      <span class="step">Arm pen</span><span class="arw">→</span>
+      <span class="step bad">Cursor captured + drawn twice</span>
+    </div>
+    <p class="lanenote">The self-view was deliberately turned on so annotation would be discoverable
+    (<code>Stage.tsx:263–281</code>) — a sound call for a <b>window</b> share, where nothing can
+    recurse. It was applied to every surface type, which is where it breaks.</p>
+  </div>
+
+  <div class="flow">
+    <h4>Proposed — one branch on <code>displaySurface</code>, one controller</h4>
+    <div class="lane">
+      <span class="step">Tap Share</span><span class="arw">→</span>
+      <span class="step new">Picker, Manim tab excluded</span><span class="arw">→</span>
+      <span class="step new">Read <code>displaySurface</code></span><span class="arw">→</span>
+      <span class="step new">no-focus-change</span><span class="arw">→</span>
+      <span class="step new">Stay on the presentation layout</span>
+    </div>
+    <div class="lane">
+      <span class="step">window / tab</span><span class="arw">→</span>
+      <span class="step new">Live share in the big region + pen</span>
+      <span style="width:20px"></span>
+      <span class="step">monitor</span><span class="arw">→</span>
+      <span class="step new">Presenter card, no self-echo, pen disabled with a reason</span>
+    </div>
+    <p class="lanenote">“Switch to a different app”, translated to the web: we can’t move the OS
+    focus, but we can move the <b>stage</b> off the share — which is the part that actually causes
+    the tunnel and the doubled cursor. Teams and Slack reach the same end state by minimising their
+    own window; the observable result for the presenter is identical.</p>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Findings</h2>
+  <p class="lede">Ten, ordered by how much they cost a real call. F1–F3 are the reported three;
+  F4–F10 came out of reading the paths around them.</p>
+
+  <!-- F1 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F1</span><h3>The armed pen shows two cursors</h3>
+      <span class="sev blocker">blocker</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/AnnotationOverlay.tsx:130</code> — canvas gets <code>cursor-crosshair</code> while armed</li>
+        <li><code>src/islands/Stage.tsx:281</code> — the presenter is shown their own share</li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>Chrome captures the OS pointer into the display stream by
+        default. Arming the pen changes the OS pointer to a crosshair, so the crosshair is what gets
+        captured. The presenter then sees the real pointer <b>and</b> its captured copy — the second one
+        scaled by the mirror and delayed by an encode/decode round trip, which is why it reads as two
+        separate cursors rather than one blurry one.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>Resolving F2 removes the duplicate on monitor shares (there is no
+        self-echo left to carry it). Separately, replace the generic <code>crosshair</code> with a
+        <b>pen-tip cursor</b> in the author’s own palette colour: armed state becomes unambiguous, and if
+        a captured copy ever appears again it is visibly the pen, not a second pointer.</dd></div>
+      <div class="frow"><dt>Corrected</dt><dd>This audit originally ruled out constraining the capture
+        with <code>cursor: 'never'</code>, calling it a legacy constraint with uneven support. <b>That was
+        wrong, and testing rather than reading the API surface is what caught it:</b>
+        <code>getSupportedConstraints().cursor</code> reports <code>false</code>, but Chromium honours the
+        constraint anyway — <code>applyConstraints({cursor:'never'})</code> resolves on a live track and
+        <code>getSettings()</code> reports it back. The second objection was sound though, so the shipped
+        version is <b>scoped</b>: the captured pointer is suppressed only <em>while the pen is armed</em>
+        and handed straight back on disarm. Viewers still follow the presenter’s pointer during a
+        walkthrough; during a stroke the ink says what the arrow would, in an attributed colour.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F2 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F2</span><h3>Own-share self-view ignores the surface type</h3>
+      <span class="sev blocker">blocker</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/Stage.tsx:281</code> — <code>showOwnShare = Boolean(localScreenShare) &amp;&amp; !remoteSharing</code></li>
+        <li><code>src/islands/Stage.tsx:279</code> — comment: “The echo only recurses when sharing a whole monitor”</li>
+        <li><code>grep -rn "displaySurface" src/</code> → <b>no hits</b></li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>The recursion condition is written down in the comment and
+        never expressed in code. <code>track.getSettings().displaySurface</code> returns
+        <code>'monitor' | 'window' | 'browser'</code> and is available the moment the capture starts.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>Read <code>displaySurface</code> at publish time into the room
+        store, then branch the big region: <b>window/browser</b> keeps today’s behaviour (live share, pen
+        available — nothing can recurse); <b>monitor</b> replaces the live tile with a presenter card
+        (“You’re sharing your entire screen” + Stop sharing + what viewers can see), and hides the pen with
+        a stated reason rather than a dead button.</dd></div>
+      <div class="frow"><dt>Also</dt><dd>Pass <code>selfBrowserSurface: 'exclude'</code> so the Manim tab
+        can’t be picked at all, and <code>surfaceSwitching: 'include'</code> so a presenter can change
+        what they’re sharing without stopping and restarting. Both are typed options on
+        <code>ScreenShareCaptureOptions</code> in livekit-client 2.9.5.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F3 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F3</span><h3>Capture steals window focus, so the pen is never found</h3>
+      <span class="sev blocker">blocker</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>grep -rn "CaptureController" src/</code> → <b>no hits</b></li>
+        <li><code>livekit-client@2.9.5</code> <code>options.d.ts:175</code> — <code>controller?: unknown</code> is accepted and forwarded</li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>For window and tab captures Chrome defaults to
+        <code>focus-captured-surface</code> and raises the captured surface. The presenter lands in the
+        shared window, not in Manim, so the presentation layout and the Annotate button on the share tile
+        are behind another window at the exact moment they’d be used.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>Create a <code>CaptureController</code>, pass it through
+        <code>ScreenShareCaptureOptions.controller</code>, and call
+        <code>setFocusBehavior('no-focus-change')</code> so the presenter stays on the call.</dd></div>
+      <div class="frow"><dt>Risk</dt><dd><b>Needs verification.</b> Conditional Focus must be invoked
+        within the microtask in which the capture promise settles, and LiveKit awaits
+        <code>getDisplayMedia</code> internally — so the call may land too late. Fallback if it does:
+        capture with <code>getDisplayMedia</code> directly in our own hook and publish the resulting
+        track, which also gives us <code>displaySurface</code> at the same point (F2) and one place to
+        own capture options (F4).</dd></div>
+    </dl>
+  </div>
+
+  <!-- F4 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F4</span><h3>Four entry points start a share; none share options</h3>
+      <span class="sev high">high</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/ControlBar.tsx:323</code> — More-sheet tile (touch)</li>
+        <li><code>src/islands/ControlBar.tsx:591</code> — control-bar button (desktop)</li>
+        <li><code>src/islands/PipPanel.tsx:123</code> — mini-player button</li>
+        <li><code>src/features/calls/useMediaDeviceWatch.ts:94</code> — the “Share again” toast action</li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>All four call
+        <code>localParticipant.setScreenShareEnabled(...)</code> bare. Every fix above adds capture
+        options — and would apply to whichever call sites we remembered to edit. The toast is the one
+        that gets missed: it’s the recovery path, so a share restarted after an accidental stop would
+        silently lose the focus controller and the surface-type read.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>One <code>useScreenShare()</code> hook that owns the options
+        object, the controller, the <code>displaySurface</code> read and the store write. The four call
+        sites become <code>start()</code> / <code>stop()</code>. This is the change that makes F2 and F3
+        implementable once rather than four times.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F5 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F5</span><h3>Ink carries no target — two shares means strokes land on the wrong screen</h3>
+      <span class="sev high">high</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/lib/annotate/wire.ts:21–25</code> — header is <code>version, colorIdx, strokeId, seq</code>. No track id.</li>
+        <li><code>src/lib/annotate/geometry.ts</code> — coordinates are unit-space against <em>whatever</em> is in the big region</li>
+        <li><code>src/lib/focusTrack.ts:20–24</code> — <code>primaryShare()</code> re-sorts on <code>participant.isSpeaking</code></li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>A stroke means “65% across, 30% down the featured share”,
+        and the featured share is chosen by <b>who is currently talking</b>. With two people presenting,
+        the big region swaps as they take turns — and live ink, which lasts ~4s, re-lands on a different
+        screen entirely. Receivers can’t detect it: the packet doesn’t say what it was drawn on.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>Two parts. Put the target track SID in the packet header (bump
+        <code>WIRE_VERSION</code>; drop strokes whose target isn’t the currently featured share) — and make
+        <code>primaryShare()</code> <b>sticky</b>: once a share is featured it stays featured until it ends
+        or someone explicitly switches. Speaking is a bad reason to re-aim a shared drawing surface.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F6 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F6</span><h3>Spotlighting a person orphans the stroke in progress</h3>
+      <span class="sev high">high</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/Stage.tsx:756–760</code> — the overlay mounts only while <code>bigIsShare</code></li>
+        <li><code>src/islands/AnnotationOverlay.tsx:36–41</code> — unmount calls <code>engine.detach()</code></li>
+        <li><code>src/store/useAnnotateStore.ts</code> — <code>active</code> is untouched by any of this</li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>Spotlight someone mid-stroke and the canvas unmounts under
+        the pointer. <code>endLocal()</code> never runs, so the stroke never gets its final flush; the pen
+        stays armed in the store with nothing to draw on, and silently re-arms when the spotlight clears —
+        the next click starts drawing with no announcement and no visible mode change.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>End any live local stroke in the overlay’s cleanup, and disarm the
+        pen whenever the featured tile stops being a share — the same disarm that already exists for
+        “the last share ended” (<code>ControlBar.tsx:122–124</code>), extended to cover this case.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F7 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F7</span><h3>Three hand-picked offsets stack in one corner of the share tile</h3>
+      <span class="sev high">high</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/Stage.tsx:1239</code> — tile action at <code>right-2 top-2</code></li>
+        <li><code>src/islands/Stage.tsx:608</code> — fullscreen at <code>right-2 top-14</code></li>
+        <li><code>src/islands/Stage.tsx:639</code> — annotate at <code>right-2 top-[6.5rem]</code></li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>Three siblings independently choosing a vertical offset in
+        the same column, each assuming the other two’s sizes. This is precisely the failure
+        <code>TopStack</code> was introduced to eliminate at screen level (CLAUDE.md: “never a new
+        <code>fixed</code> + hand-picked z-index”), reproduced one level down inside the tile. On a short
+        big region — the vertical split on a phone, or a share demoted into a grid cell — the third button
+        runs into the name pill at the bottom.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>A single <code>TileActionStack</code> that lays the column out with
+        <code>gap</code> and takes children in priority order, exactly as <code>TopStack</code> does. Adding a
+        fourth control then costs nothing.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F8 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F8</span><h3>The pen appears when a share exists, not when one is featured</h3>
+      <span class="sev med">medium</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/ControlBar.tsx:113–114</code> — <code>someoneSharing = shareTracks.length &gt; 0</code></li>
+        <li><code>src/islands/Stage.tsx:756</code> — the canvas mounts only when the big tile is a share</li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>Spotlight a person, or demote the share to the grid, and the
+        control-bar pen is still enabled — arming it toggles a store flag with no canvas anywhere. The
+        Announcer even says “Annotation on. Draw on the shared screen.” to a screen-reader user who now has
+        no surface at all.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>Derive the pen’s availability from the same value the canvas mounts
+        on. <code>useSharePresence()</code> is already the shared-truth hook for exactly this class of
+        disagreement — add “a share is currently featured” to it and read it in both places.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F9 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F9</span><h3>Touch users see ink appear with no explanation</h3>
+      <span class="sev med">medium</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/islands/AnnotationOverlay.tsx:34</code> — <code>canDraw = active &amp;&amp; allowed &amp;&amp; !touch</code></li>
+        <li><code>src/islands/ControlBar.tsx</code> — the pen control is hidden entirely on touch</li>
+      </ul></dd></div>
+      <div class="frow"><dt>Mechanism</dt><dd>View-only on touch is the right v1 call and is well argued in
+        the code. But a phone user watching strokes bloom and fade over a shared screen gets no label, no
+        control, and no reason — the author name is drawn beside the live stroke head only while it’s alive,
+        which on a small screen is easy to miss.</dd></div>
+      <div class="frow"><dt>Fix</dt><dd>A one-shot pill the first time remote ink arrives on a touch device:
+        “<em>Name</em> is drawing on the shared screen”. Reuses the existing announcement the Announcer
+        already emits — this just gives it a visible counterpart.</dd></div>
+    </dl>
+  </div>
+
+  <!-- F10 -->
+  <div class="finding">
+    <div class="fhead"><span class="fid">F10</span><h3><s>Shared text is encoded as motion, and <code>contentHint</code> can’t fix it on the desktop path</s> — <b>withdrawn, the premise was wrong</b></h3>
+      <span class="sev med">withdrawn</span></div>
+    <dl class="fgrid">
+      <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
+        <li><code>src/lib/livekit.ts:62</code> — desktop publishes <code>vp9</code></li>
+        <li><code>livekit-client</code> — for an SVC codec on a ScreenShare track it forces
+          <code>mediaStreamTrack.contentHint = 'motion'</code> and <code>scalabilityMode = 'L1T3'</code>,
+          overriding whatever the caller passed</li>
+        <li><b>and, five lines of comment later:</b> <code>getDefaultDegradationPreference()</code> returns
+          <code>'maintain-resolution'</code> for <code>Track.Source.ScreenShare</code> — its own comment says
+          this exists <i>“since we are overriding contentHint to motion … it overrides the default
+          degradationPreference to <code>balanced</code>”</i></li>
+      </ul></dd></div>
+      <div class="frow"><dt>What I got wrong</dt><dd>The stomp is real; the harm attributed to it is not.
+        The motion hint’s consequence — dropping resolution before frame rate — is already cancelled by
+        LiveKit, deliberately, and <code>src/lib/livekit.ts:68</code> sets the same
+        <code>maintain-resolution</code> explicitly on top. I read the first half of the mechanism and
+        stopped before the half that compensates for it.</dd></div>
+      <div class="frow"><dt>Why the proposed fix was backwards</dt><dd>Publishing the share as VP8 would
+        <i>lose</i> VP9’s efficiency (VP8 is worse on text at equal bitrate), and drop the track out of the
+        SVC path into <code>simulcast: true</code>, adding a second ~540p layer that spends uplink on nothing.
+        Setting <code>contentHint: 'detail'</code> while keeping VP9 is worse still — the L1T3 workaround the
+        stomp exists to avoid caps Chrome at ~5&nbsp;fps. Both directions regress.</dd></div>
+      <div class="frow"><dt>Standing recommendation</dt><dd><b>Ship nothing.</b> If a share ever does look
+        soft, the lever is <code>screenShareEncoding</code> / <code>screenShareSimulcastLayers</code> in
+        <code>publishDefaults</code> — never the codec. Unverified either way without real bandwidth
+        measurement: VP9-vs-VP8 sharpness at these bitrates, and whether ~4&nbsp;Mbps is ever the binding
+        constraint.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Summary</h2>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>&nbsp;</th><th>Finding</th><th>Severity</th><th>Blast radius</th></tr></thead>
+      <tbody>
+        <tr><th>F1</th><td>Doubled cursor while annotating</td><td>Blocker</td><td>1 file</td></tr>
+        <tr><th>F2</th><td>Self-view ignores <code>displaySurface</code></td><td>Blocker</td><td>Stage + store + capture</td></tr>
+        <tr><th>F3</th><td>Capture steals window focus</td><td>Blocker</td><td>Capture path</td></tr>
+        <tr><th>F4</th><td>Four un-shared share entry points</td><td>High</td><td>4 files → 1 hook</td></tr>
+        <tr><th>F5</th><td>Ink has no target identity</td><td>High</td><td>Wire format bump</td></tr>
+        <tr><th>F6</th><td>Spotlight orphans a live stroke</td><td>High</td><td>Overlay + store</td></tr>
+        <tr><th>F7</th><td>Three hand-picked tile offsets</td><td>High</td><td>New primitive</td></tr>
+        <tr><th>F8</th><td>Pen shown when no canvas is mounted</td><td>Medium</td><td><code>useSharePresence</code></td></tr>
+        <tr><th>F9</th><td>Unexplained ink on touch</td><td>Medium</td><td>1 pill</td></tr>
+        <tr><th>F10</th><td><s>Screen text encoded as motion</s> — withdrawn, premise wrong</td><td>—</td><td>Nothing to change</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Suggested order</h2>
+  <ol class="plan">
+    <li><div><h4>Land <code>useScreenShare()</code> first (F4)</h4>
+      <p>Nothing else can be done once until there is one place that starts a share. It’s a pure
+      refactor with no behaviour change, so it can go in and be verified on its own.</p></div></li>
+    <li><div><h4>Surface-type branch + focus controller (F2, F3)</h4>
+      <p>Both live inside the new hook. This is the commit that kills the mirror tunnel, the doubled
+      cursor on monitor shares, and the focus jump — the user-visible fix for all three reports.</p></div></li>
+    <li><div><h4>Pen-tip cursor and mode clarity (F1, F8)</h4>
+      <p>Small, and best done while the same code is open: a distinctive armed cursor, and a pen that
+      is only offered when there is a canvas under it.</p></div></li>
+    <li><div><h4>Annotation correctness (F5, F6)</h4>
+      <p>Sticky <code>primaryShare</code>, target SID on the wire, stroke ended on detach. F5 bumps the
+      wire version, so it wants its own commit and its own multi-party check against a local server.</p></div></li>
+    <li><div><h4>Tile action stack (F7), then the polish item (F9)</h4>
+      <p>F7 is a primitive extraction that pays for itself the next time anything is added to a tile
+      corner. F10 was listed last here because it needed a bandwidth comparison; that comparison turned
+      out to be unnecessary — reading the rest of the mechanism withdrew the finding entirely.</p></div></li>
+  </ol>
+</section>
+
+<div class="caveat">
+  <h2>What this audit could not verify</h2>
+  <p>The LiveKit gates are frozen and this environment has no installed dependency tree, so nothing
+  below was executed. Findings are read from source and from
+  <code>livekit-client@2.9.5</code>’s published types and bundle, both of which were fetched and read
+  directly rather than recalled.</p>
+  <p><b>Needs a run against a local <code>livekit-server</code> before any of this ships:</b> whether
+  Conditional Focus fires early enough through LiveKit’s own <code>await</code> (F3 — this decides
+  between passing a controller and taking over the capture ourselves); whether the monitor-share
+  presenter card reads as intentional rather than broken; and the multi-party stroke-target behaviour
+  in F5, which by definition needs two publishers.</p>
+</div>
+
+<footer>Manim · screen share &amp; annotation flow audit · 10 findings · read from source, not run</footer>
+
+</div>

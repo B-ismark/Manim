@@ -6,7 +6,7 @@ import {
   useRoomInfo,
 } from '@livekit/components-react'
 import { AnnotationEngine } from './AnnotationEngine'
-import { decode, encode, type StrokePacket } from '@/lib/annotate/wire'
+import { decode, encode, targetHash, type StrokePacket } from '@/lib/annotate/wire'
 import { colorIndexFor } from '@/lib/annotate/palette'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
@@ -45,9 +45,17 @@ const displayName = (identity: string, name?: string) => name || identity.split(
  * React renders, and the engine's frame loop coalesces packets from every peer
  * into one repaint.
  */
-export function useAnnotate() {
+export function useAnnotate(featuredShareId: string | null) {
   const { localParticipant } = useLocalParticipant()
   const participants = useParticipants()
+
+  // Which share ink is currently aimed at, as the 32-bit form that goes on the wire.
+  // Held in a ref because the engine flushes from its own frame loop, outside React's
+  // render cycle — capturing the value would pin it to whichever render built the
+  // engine (which happens exactly once).
+  const targetRef = useRef(0)
+  const target = targetHash(featuredShareId)
+  targetRef.current = target
 
   // `send` isn't available until useDataChannel has run, and the engine is built
   // before that — so the engine calls through a ref rather than capturing it.
@@ -56,7 +64,8 @@ export function useAnnotate() {
   const engine = useMemo(
     () =>
       new AnnotationEngine({
-        onFlush: (packet: StrokePacket) => sendRef.current?.(encode(packet)),
+        onFlush: (packet: StrokePacket) =>
+          sendRef.current?.(encode({ ...packet, target: targetRef.current })),
       }),
     [],
   )
@@ -64,6 +73,7 @@ export function useAnnotate() {
   useEffect(() => () => engine.destroy(), [engine])
 
   const announce = useAnnounce()
+  const noteRemoteInk = useAnnotateStore((s) => s.noteRemoteInk)
   // Last announcement per author, so a burst of packets doesn't spam the live
   // region. Strokes are invisible to a screen reader, so "X is annotating" is the
   // only signal those users get — it has to be present but not constant.
@@ -76,6 +86,12 @@ export function useAnnotate() {
     if (!identity || identity === localParticipant.identity) return
     const packet = decode(msg.payload)
     if (!packet) return
+    // Ink is addressed in unit coordinates against the share it was drawn on, so a
+    // stroke aimed at a DIFFERENT share would land somewhere arbitrary on this one.
+    // target 0 means "unspecified" — every v1 sender, and anything drawn before a
+    // SID was known — and stays accepted, which is what keeps a mixed-version room
+    // working in one direction rather than neither.
+    if (packet.target !== 0 && packet.target !== targetRef.current) return
     const name = displayName(identity, msg.from?.name)
     engine.ingest(identity, packet, name)
 
@@ -84,6 +100,11 @@ export function useAnnotate() {
     if (nowMs - last > ANNOUNCE_COOLDOWN_MS) {
       announcedAt.current.set(identity, nowMs)
       announce(`${name} is annotating the shared screen`)
+      // The visible counterpart of that announcement, for touch devices where the
+      // pen doesn't exist and ink would otherwise appear unexplained. Rides the same
+      // cooldown deliberately: this is the only store write on the receive path, and
+      // it must stay one-per-author-per-15s rather than one-per-packet.
+      noteRemoteInk(name)
     }
   })
 
@@ -147,5 +168,8 @@ export function useAnnotate() {
     [engine, localParticipant.identity],
   )
 
-  return { engine, beginLocal }
+  // Handed back so the overlay can colour the armed cursor without subscribing to
+  // useParticipants() a second time — that hook re-emits on speaking-state churn,
+  // and the overlay is the one component in the feature that must stay quiet.
+  return { engine, beginLocal, localColorIdx }
 }
