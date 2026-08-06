@@ -71,10 +71,16 @@ export function AddPeople({
     )
   }, [accepted, q])
 
-  // Deliberately loose. This decides whether to OFFER an address, not whether to
-  // accept one — the server validates for real, and being strict here would hide
-  // the action from anyone whose address this regex disagreed with.
-  const looksLikeEmail = /^\S+@\S+\.\S+$/.test(query.trim())
+  // Deliberately loose: an @ with something either side and no spaces. This
+  // decides whether to OFFER to invite an address, not whether to accept one —
+  // the server validates for real, and the mailto fallback handles the rest.
+  //
+  // It started as /^\S+@\S+\.\S+$/, which requires a dot in the domain and so
+  // silently refused `bob@localhost` and intranet addresses: no matching contact,
+  // no invite row, no way through at all. The old form always offered Invite and
+  // let the server judge. Being strict here doesn't validate anything, it just
+  // removes the only path for anyone this pattern disagrees with.
+  const looksLikeEmail = /^\S+@\S+$/.test(query.trim())
   const typed = query.trim()
 
   // Cap the resting list. The point of the section is a few familiar faces and a

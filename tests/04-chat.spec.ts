@@ -1,7 +1,53 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, openChat, openMessageActions, replyToMessage } from './helpers'
+import { uniqueRoom, attachErrorSink, appErrors, join, openChat, openMessageActions, replyToMessage, isTouch } from './helpers'
 
 test.describe('Chat', () => {
+  /**
+   * Where the hover toolbar sits decides whether you can read the message you are
+   * about to act on. It used to sit at the row's top-right, which is fine on an
+   * UNGROUPED row — that aligns with the short name+time header — but a grouped
+   * row has no header, so the bar landed on the first line of the text. Measured
+   * at the panel's real width: a 116px bar against 83px of clearance ate the last
+   * word the moment the pointer arrived.
+   *
+   * Two messages in a row from the same author is all it takes to group.
+   */
+  test('the hover actions never cover the message they act on', async ({ page }) => {
+    test.skip(await isTouch(page), 'the hover toolbar is desktop-only; touch uses a popover')
+    await join(page, uniqueRoom(), 'Ada')
+    const composer = await openChat(page)
+    await composer.fill('First line, short.')
+    await composer.press('Enter')
+    await composer.fill('A second line, deliberately long enough to run to the right edge.')
+    await composer.press('Enter')
+
+    const grouped = page.locator('[data-mid]').last()
+    await expect(grouped).toBeVisible()
+    await grouped.hover()
+
+    // Real 2D intersection of the toolbar with the first rendered line of text —
+    // not a width heuristic, which would miss the vertical move entirely.
+    const covered = await grouped.evaluate((row) => {
+      const bar = row.querySelector(':scope > div.absolute')
+      const el = [...row.querySelectorAll('p, span')].filter((n) => (n.textContent || '').length > 8).pop()
+      const tn = el && [...el.childNodes].find((n) => n.nodeType === 3)
+      if (!bar || !tn) return null
+      const rg = document.createRange()
+      rg.selectNodeContents(tn)
+      const line = [...rg.getClientRects()][0]
+      const b = bar.getBoundingClientRect()
+      if (!line) return null
+      return !(b.right <= line.left || b.left >= line.right || b.bottom <= line.top || b.top >= line.bottom)
+    })
+    expect(covered, 'the action bar must not overlap the text of its own message').toBe(false)
+
+    // Floating it clear of the text is only half the fix — it still has to be
+    // reachable. Scoped to THIS row: unscoped, the other row's (invisible) bar
+    // matches too, and this one legitimately covers it.
+    await grouped.getByRole('button', { name: /^Reply$/i }).click()
+    await expect(page.getByRole('button', { name: /Cancel reply/i })).toBeVisible()
+  })
+
   test('send a message; it renders and the composer clears', async ({ page }) => {
     const sink = attachErrorSink(page)
     await join(page, uniqueRoom(), 'Ada')
