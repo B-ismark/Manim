@@ -127,6 +127,11 @@ jobs:
   e2e-local:
     runs-on: ubuntu-latest
     needs: typecheck
+    # The suite takes ~7 minutes. GitHub's default is SIX HOURS, so a hung WebRTC
+    # test would hold a runner for a working day before anyone noticed — and this
+    # job was added the same evening the repo spent five hours with jobs stuck
+    # waiting on runners. Bound it.
+    timeout-minutes: 30
     env:
       # --dev starts livekit-server with this well-known pair. They are not
       # secrets: they are hardcoded in LiveKit's dev mode and only ever reach a
