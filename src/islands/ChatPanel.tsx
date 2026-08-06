@@ -968,7 +968,10 @@ function MessageRow({
             // a third of the text width — but what it overlaps is the previous
             // line of the SAME author's run, which is context you have already
             // read, rather than the message you are pointing at.
-            grouped ? 'bottom-full z-10 mb-0.5' : 'top-0',
+            // Flush, no gap: any space between the bar and its row is a strip of
+            // the PREVIOUS row, and the pointer crossing it on the way to a
+            // button would leave the group and take the bar with it.
+            grouped ? 'bottom-full z-10' : 'top-0',
             editing && 'hidden',
           )}
         >
