@@ -7,6 +7,7 @@ import {
   startScreenShare,
   inkBoundsUnit,
   isTouch,
+  closeContext,
   axeViolations,
   setColorScheme,
 } from './helpers'
@@ -202,8 +203,8 @@ test.describe('Annotation over a shared screen @annotate', () => {
     expect(inkB!.y0).toBeCloseTo(inkA!.y0, 1)
     expect(inkB!.y1).toBeCloseTo(inkA!.y1, 1)
 
-    await ctxB.close()
-    await sharer.context.close()
+    await closeContext(ctxB)
+    await closeContext(sharer.context)
   })
 
   test('touch devices see strokes but cannot draw', async ({ page, browser }) => {
@@ -246,8 +247,8 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await revealChrome(page)
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible()
 
-    await deskCtx.close()
-    await sharer.context.close()
+    await closeContext(deskCtx)
+    await closeContext(sharer.context)
   })
 
   test('no page scroll is introduced on a short phone', async ({ page, browser }) => {
@@ -265,7 +266,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     expect(overflow.x, 'no horizontal page scroll').toBeLessThanOrEqual(1)
     expect(overflow.y, 'no vertical page scroll').toBeLessThanOrEqual(1)
 
-    await sharer.context.close()
+    await closeContext(sharer.context)
   })
 
   for (const scheme of ['light', 'dark'] as const) {
@@ -282,7 +283,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
       await page.getByRole('button', { name: /Annotate shared screen/i }).click()
       expect(await axeViolations(page)).toEqual([])
 
-      await sharer.context.close()
+      await closeContext(sharer.context)
     })
   }
 
@@ -341,7 +342,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await expect(page.getByTestId('annotation-canvas')).toBeVisible()
     await expect(page.getByRole('button', { name: /^Draw on the shared screen$/i })).toBeVisible()
 
-    await ctxB.close()
+    await closeContext(ctxB)
   })
 
   /**
@@ -393,7 +394,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
     await expect(page.getByRole('button', { name: /^Hide my screen$/i })).toBeVisible()
 
-    await ctxB.close()
+    await closeContext(ctxB)
   })
 
   /**
@@ -437,7 +438,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await revealChrome(page)
     await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toBeVisible()
 
-    await sharer.context.close()
+    await closeContext(sharer.context)
   })
 
   /**
@@ -491,7 +492,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     expect(after!.paused, 'and is still playing').toBe(false)
     expect(after!.t, 'and is still decoding new frames').toBeGreaterThan(before!.t)
 
-    await ctxB.close()
+    await closeContext(ctxB)
   })
 
   test('a remote share still wins over your own while annotating', async ({ page, browser }) => {
@@ -522,7 +523,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     })
     expect(aspect, 'the remote share keeps the big region').toBeCloseTo(SHARE_ASPECT, 1)
 
-    await sharer.context.close()
+    await closeContext(sharer.context)
   })
 
   test('a second presenter does not steal the big region from under the ink', async ({
@@ -561,8 +562,8 @@ test.describe('Annotation over a shared screen @annotate', () => {
     // And the pen still has a surface — the canvas didn't unmount in the reshuffle.
     await expect(page.getByTestId('annotation-canvas')).toBeVisible()
 
-    await second.context.close()
-    await first.context.close()
+    await closeContext(second.context)
+    await closeContext(first.context)
   })
 
   test('the pen can be put down again from the tile that armed it', async ({ page, browser }) => {
@@ -609,7 +610,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await disarm.click({ timeout: 10_000 })
     await expect(arm).toBeVisible()
 
-    await sharer.context.close()
+    await closeContext(sharer.context)
   })
 
   test('a third person cannot start sharing while two already are', async ({ page, browser }) => {
@@ -646,12 +647,12 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await expect(page.getByText(/already sharing/i).first()).toBeVisible({ timeout: 10_000 })
 
     // A slot opening puts it back, without a reload.
-    await first.context.close()
+    await closeContext(first.context)
     await expect(page.getByRole('button', { name: /^Share screen$/i })).toBeEnabled({
       timeout: 30_000,
     })
 
-    await second.context.close()
+    await closeContext(second.context)
   })
 
   test('strokes fade away on their own', async ({ page, browser }) => {
@@ -671,6 +672,6 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await page.waitForTimeout(6000)
     expect(await inkBoundsUnit(page, SHARE_ASPECT), 'ink has faded to nothing').toBeNull()
 
-    await sharer.context.close()
+    await closeContext(sharer.context)
   })
 })

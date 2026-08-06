@@ -79,6 +79,30 @@ export function appErrors(sink: ErrorSink, opts: { strict?: boolean } = {}): str
   return all.filter((e) => !ENV_NOISE_RE.test(e) && !TRANSIENT_CONN_RE.test(e))
 }
 
+/**
+ * Close an auxiliary browser context, tolerating Playwright's trace writer
+ * racing the close.
+ *
+ * With `trace: 'retain-on-failure'` every context writes a trace zip. A spec that
+ * runs three contexts on a 2-core CI runner can still be flushing that zip when
+ * close() lands, and close() then throws "file data stream has unexpected number
+ * of bytes" / "End of central directory record signature not found". Every
+ * assertion in the test has already passed at that point: the failure is the
+ * recorder, not the product. It is exactly why 17-annotate's share-cap spec
+ * passed one CI run and failed the next on the identical commit.
+ *
+ * Scoped on purpose — only those two messages are swallowed. Anything else
+ * propagates, so a context that genuinely fails to close still fails the test.
+ */
+export async function closeContext(context: BrowserContext): Promise<void> {
+  try {
+    await context.close()
+  } catch (err) {
+    const msg = String((err as Error)?.message ?? err)
+    if (!/unexpected number of bytes|end of central directory record/i.test(msg)) throw err
+  }
+}
+
 /** Fill prejoin and enter the call. Returns once in-call chrome (mic button) is visible.
  *  `hash` carries room secrets (#k=…&e=…) — pass an E2EE key (`#e=…`) to exercise the
  *  encrypted path. */
