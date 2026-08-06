@@ -61,6 +61,13 @@ test('top banners queue in one column instead of stacking on each other', async 
       below.top,
       `"${below.text}" starts before "${above.text}" ends — the banners are overlapping`,
     ).toBeGreaterThanOrEqual(above.bottom - 1)
+    // …and they're packed, not spaced out. A pill that hides by translating away
+    // instead of unmounting still holds its slot AND its gap, leaving an empty
+    // band and pushing everything under it down the screen.
+    expect(
+      below.top - above.bottom,
+      `a phantom slot sits between "${above.text}" and "${below.text}"`,
+    ).toBeLessThan(24)
   }
 })
 

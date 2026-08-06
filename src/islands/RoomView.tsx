@@ -508,22 +508,16 @@ function RaisedHandPill({
   onLower: () => void
   visible: boolean
 }) {
-  if (!raised) return null
+  // Unmounted, not translated away, for the same reason as CallStatusBar: a row
+  // that's merely invisible still holds its slot (and its gap) in TopStack.
+  if (!raised || !visible) return null
   return (
-    <div
-      className={cn(
-        'fixed inset-x-0 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-20 flex justify-center px-4',
-        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        !visible && 'pointer-events-none -translate-y-[200%] opacity-0',
-      )}
+    <button
+      type="button"
+      onClick={onLower}
+      className="mn-pop pointer-events-auto flex items-center gap-2 rounded-control bg-overlay px-4 py-2 text-sm font-medium text-warning shadow-raised backdrop-blur [&_svg]:size-4"
     >
-      <button
-        type="button"
-        onClick={onLower}
-        className="pointer-events-auto flex items-center gap-2 rounded-control bg-overlay px-4 py-2 text-sm font-medium text-warning shadow-raised backdrop-blur [&_svg]:size-4"
-      >
-        <HandIcon /> Lower hand
-      </button>
-    </div>
+      <HandIcon /> Lower hand
+    </button>
   )
 }

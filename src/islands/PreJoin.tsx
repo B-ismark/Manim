@@ -149,6 +149,26 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
     }
   }, [cameraOn])
 
+  // Backstop for the aspect read in `start()`: a browser whose getSettings()
+  // reports nothing useful, and a camera that renegotiates mid-preview. Bound
+  // imperatively rather than via React's onResize — `resize` on a media element
+  // is a DOM event, and wiring it here keeps it working regardless of which
+  // media events the React version in use happens to attach.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !cameraOn) return
+    const read = () => {
+      if (v.videoWidth && v.videoHeight) setPreviewAspect(clampAspect(v.videoWidth / v.videoHeight))
+    }
+    v.addEventListener('resize', read)
+    v.addEventListener('loadedmetadata', read)
+    read()
+    return () => {
+      v.removeEventListener('resize', read)
+      v.removeEventListener('loadedmetadata', read)
+    }
+  }, [cameraOn])
+
   const canJoin = displayName.trim().length > 0
 
   // Free the preview camera the instant Join is tapped, before LiveKit acquires
@@ -217,11 +237,6 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               playsInline
               // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
               // the frame is shown whole rather than trimmed to fit.
-              onResize={(e) => {
-                const v = e.currentTarget
-                if (v.videoWidth && v.videoHeight)
-                  setPreviewAspect(clampAspect(v.videoWidth / v.videoHeight))
-              }}
               className="size-full object-contain [transform:scaleX(-1)]"
             />
           ) : (

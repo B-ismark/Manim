@@ -3,7 +3,6 @@ import { useConnectionQualityIndicator, useLocalParticipant } from '@livekit/com
 import { ConnectionQuality as Quality } from 'livekit-client'
 import { LockIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
-import { cn } from '@/lib/cn'
 
 export interface CallStatusBarProps {
   /** True only when E2EE is ACTUALLY active (room.setE2EEEnabled resolved), not
@@ -93,17 +92,16 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
   const poor = useDebouncedPoor(quality)
   const elapsed = useCallTimer()
 
+  // Unmounted rather than translated away when the chrome hides. As a positioned
+  // element it could slide off and leave nothing behind, but as a row in TopStack
+  // an invisible pill still holds its slot — and its gap — so everything below it
+  // would sit ~52px too low with an empty band above. Losing the slide-out is the
+  // cheaper trade; `mn-pop` keeps the reveal from being abrupt.
+  if (!visible) return null
+
   return (
-    // Positioned by TopStack — see the layer scale there. The chrome hide/reveal
-    // transform moves the pill itself now, so hiding it doesn't drag the banners
-    // stacked beneath it off-screen too.
-    <div
-      className={cn(
-        'flex min-h-11 items-center gap-2 rounded-control bg-overlay px-3 text-xs font-medium text-white backdrop-blur',
-        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        !visible && '-translate-y-[150%] opacity-0',
-      )}
-    >
+    // Positioned by TopStack — see the layer scale there.
+    <div className="mn-pop flex min-h-11 items-center gap-2 rounded-control bg-overlay px-3 text-xs font-medium text-white backdrop-blur">
       {encrypted && <LockIcon className="size-3.5" aria-label="End-to-end encrypted" />}
       <span className="tabular-nums" aria-label="Call duration">
         {elapsed}
