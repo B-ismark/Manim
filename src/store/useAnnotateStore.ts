@@ -21,7 +21,20 @@ interface AnnotateState {
   active: boolean
   /** Room policy allows this participant to draw (host may restrict to hosts). */
   allowed: boolean
+  /**
+   * Who most recently drew on the shared screen, for the benefit of people who
+   * cannot draw back.
+   *
+   * Touch is view-only by design, and the pen control is hidden there entirely — so a
+   * phone user watching strokes bloom and fade over a shared screen got no label, no
+   * control and no explanation. The author's name IS drawn beside the live stroke
+   * head, but only while the stroke is alive, which on a small screen is easy to miss.
+   * Written at most once per author per announcement cooldown, never per packet:
+   * stroke data must never reach a store (see AnnotationEngine's header).
+   */
+  remoteInkBy: string | null
   setActive: (active: boolean) => void
+  noteRemoteInk: (name: string | null) => void
   setAllowed: (allowed: boolean) => void
   toggle: () => void
 }
@@ -29,7 +42,9 @@ interface AnnotateState {
 export const useAnnotateStore = create<AnnotateState>()((set, get) => ({
   active: false,
   allowed: true,
+  remoteInkBy: null,
   setActive: (active) => set({ active }),
+  noteRemoteInk: (remoteInkBy) => set({ remoteInkBy }),
   // Losing permission mid-session must also disarm the pen, or the overlay would
   // keep swallowing pointer events with nothing to show for them.
   setAllowed: (allowed) => set({ allowed, active: allowed ? get().active : false }),

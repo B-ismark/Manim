@@ -73,6 +73,7 @@ export function useAnnotate(featuredShareId: string | null) {
   useEffect(() => () => engine.destroy(), [engine])
 
   const announce = useAnnounce()
+  const noteRemoteInk = useAnnotateStore((s) => s.noteRemoteInk)
   // Last announcement per author, so a burst of packets doesn't spam the live
   // region. Strokes are invisible to a screen reader, so "X is annotating" is the
   // only signal those users get — it has to be present but not constant.
@@ -99,6 +100,11 @@ export function useAnnotate(featuredShareId: string | null) {
     if (nowMs - last > ANNOUNCE_COOLDOWN_MS) {
       announcedAt.current.set(identity, nowMs)
       announce(`${name} is annotating the shared screen`)
+      // The visible counterpart of that announcement, for touch devices where the
+      // pen doesn't exist and ink would otherwise appear unexplained. Rides the same
+      // cooldown deliberately: this is the only store write on the receive path, and
+      // it must stay one-per-author-per-15s rather than one-per-packet.
+      noteRemoteInk(name)
     }
   })
 
