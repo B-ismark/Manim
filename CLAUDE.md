@@ -25,15 +25,23 @@ Every connection burns monthly participant-minutes and we're close to the cap.
   ```
   The guard hook allows a command only when **every** LiveKit URL on it is inline and
   local — mixing a local client URL with a cloud server URL still blocks, because that
-  combination would bill the cloud project. Verified 2026-08: **49/54 desktop and 48/52
-  mobile** specs pass this way. Every failure is environmental, not a product fault —
-  four are the Krisp noise-filter model failing to load in a network-restricted sandbox
-  (any spec asserting a clean error sink: `04-chat`, `06-multiparty`, sometimes
-  `03-controls`), and `12-resilience` injects a connection fault that doesn't reproduce
-  against a local server. Confirm anything you suspect by stashing your change and
-  re-running: these all fail identically on an unmodified tree.
-- **CI**: the `e2e` and `loadtest` jobs are gated behind repo variable
-  `LIVEKIT_TESTS=true` (unset → skip). `typecheck` still runs every push.
+  combination would bill the cloud project. The suite passes this way — the local-server
+  gaps that used to be shrugged off as "environmental" are now handled explicitly, so a
+  failure here is a real failure:
+  - The **Krisp noise filter is a LiveKit CLOUD entitlement.** Against a dev server it
+    cannot authenticate and fails with `Could not authenticate … status 404`, which
+    every spec asserting a clean error sink then reported (`04-chat`, `06-multiparty`,
+    sometimes `03-controls`). This was long attributed to a network-restricted sandbox;
+    it isn't — it happens on a fully-networked CI runner too. `appErrors()` tolerates it
+    only when `LIVEKIT_URL` is local; against Cloud a Krisp failure is still a failure.
+  - **`12-resilience`'s fault simulation needs Cloud.** A dev server emits no
+    `reconnecting` event at all, so that one spec skips on a local server via
+    `usingLocalLiveKit` rather than failing where it proves nothing.
+- **CI**: `typecheck` runs every push. `e2e-local` runs the **full desktop suite** on
+  every push and PR against a `livekit-server --dev` started on the runner — ungated,
+  because a localhost server cannot touch the cloud project's minutes. The cloud-backed
+  `e2e` and `loadtest` jobs stay gated behind repo variable `LIVEKIT_TESTS=true`
+  (unset → skip).
 - **Re-enable** only on explicit owner say-so: set `LIVEKIT_TESTS=true` and delete
   this banner.
 

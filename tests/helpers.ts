@@ -35,13 +35,38 @@ const TRANSIENT_CONN_RE =
   /net::ERR_|datachannel|publishing rejected|insertable streams|the user aborted a request|ConnectionError/i
 
 /**
+ * Are we pointed at a LiveKit running on this machine?
+ *
+ * Matters because a `livekit-server --dev` is not a small LiveKit Cloud — some
+ * behaviour simply is not there to test, and pretending otherwise produces
+ * failures that say nothing about this app.
+ */
+export const usingLocalLiveKit = /^(ws|http)s?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(
+  process.env.LIVEKIT_URL ?? '',
+)
+
+/**
+ * The Krisp noise filter is a LiveKit CLOUD entitlement. Against a local dev
+ * server it cannot authenticate and fails with "Could not authenticate. Server
+ * responded with status 404" — a property of the backend under test, not a fault
+ * in this app, and the reason three specs asserting a clean error sink failed the
+ * first time CI ran the suite against a local server.
+ *
+ * Tolerated ONLY when local. Against Cloud the filter is supposed to work, so a
+ * Krisp failure there is real and must still fail the sink.
+ */
+const CLOUD_ONLY_RE = /krisp|noise[- ]?filter/i
+
+/**
  * App-originated errors from the sink, with noise filtered.
  * - default: tolerate transient connection/media errors (happy-path specs).
  * - { strict: true }: only filter true environmental noise, so connection / E2EE /
  *   datachannel failures fail the test instead of being silently swallowed.
  */
 export function appErrors(sink: ErrorSink, opts: { strict?: boolean } = {}): string[] {
-  const all = [...sink.pageErrors, ...sink.consoleErrors]
+  const all = [...sink.pageErrors, ...sink.consoleErrors].filter(
+    (e) => !(usingLocalLiveKit && CLOUD_ONLY_RE.test(e)),
+  )
   if (opts.strict) return all.filter((e) => !ENV_NOISE_RE.test(e))
   return all.filter((e) => !ENV_NOISE_RE.test(e) && !TRANSIENT_CONN_RE.test(e))
 }
