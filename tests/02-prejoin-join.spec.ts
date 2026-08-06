@@ -38,7 +38,7 @@ test.describe('PreJoin + join', () => {
     // Wait for real frames — the box only reshapes once the stream reports a size.
     await page.waitForFunction(
       () => {
-        const v = document.querySelector('video')
+        const v = document.querySelector('[data-testid="prejoin-preview"]') as HTMLVideoElement | null
         return !!v && v.videoWidth > 0
       },
       { timeout: 20_000 },
@@ -46,7 +46,12 @@ test.describe('PreJoin + join', () => {
     await page.waitForTimeout(300) // let the aspect land and lay out
 
     const fit = await page.evaluate(() => {
-      const v = document.querySelector('video') as HTMLVideoElement
+      // Addressed by testid, not "the first <video> on the page". The old selector
+      // silently depended on the preview being the only video element and on its
+      // immediate parent being the aspect-carrying box — two assumptions any layout
+      // change can break, and a broken one here would pass against the wrong element
+      // rather than fail.
+      const v = document.querySelector('[data-testid="prejoin-preview"]') as HTMLVideoElement
       const box = v.parentElement as HTMLElement
       const r = box.getBoundingClientRect()
       return {
