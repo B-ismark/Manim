@@ -45,9 +45,9 @@ test('the annotation author palette resolves and is distinct', async ({ page }) 
  * proves the whole chain — pointer → normalise → wire → data channel → decode →
  * denormalise → paint — agrees end to end.
  *
- * NOTE ON SHAPE: in most tests below the sharer is a separate participant, because
- * Stage excludes your OWN share from the presentation layout by default. Arming the
- * pen is the exception that pulls it back — covered by its own test at the end.
+ * NOTE ON SHAPE: in most tests below the sharer is a separate participant, because a
+ * REMOTE share is what takes the big region when both are present. The presenter's own
+ * share is on their stage from the moment they share — covered by its own test below.
  *
  * The two viewers below have deliberately different viewport SHAPES, not just
  * sizes, so their letterbox insets differ. If strokes were normalised against the
@@ -107,8 +107,8 @@ async function canvasGeometry(page: Page) {
 async function drawStroke(page: Page, ux0: number, ux1: number, uy: number) {
   await revealChrome(page)
   await page.getByRole('button', { name: /Annotate shared screen/i }).click()
-  // For a presenter the canvas does not exist until the click — arming is what puts
-  // their own share on the stage — so wait rather than querying into a null.
+  // The canvas can still be mounting (a share that has only just started), so wait
+  // rather than querying into a null.
   await page.getByTestId('annotation-canvas').waitFor({ state: 'visible', timeout: 20_000 })
   const g = await canvasGeometry(page)
   const at = (ux: number) => ({ x: g.left + g.cx + ux * g.cw, y: g.top + g.cy + uy * g.ch })
@@ -268,7 +268,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     // THIS page is the presenter — the case every other test in this file routes
     // around. A browser tab cannot paint over the OS the way the Teams and Zoom
     // native apps do, so the only surface a presenter can draw on is their own
-    // captured frame, which means putting it back on their stage.
+    // captured frame, which is why their own share is on their own stage.
     await fakeScreenShare(page, SHARE_W, SHARE_H)
     await join(page, room, 'Presenter')
 
@@ -279,10 +279,13 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await startScreenShare(page)
     await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
 
-    // Default state is unchanged: your own share is NOT echoed back at you.
-    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+    // Sharing alone puts the presenter in the split view, pen not yet armed — they
+    // should never have to discover annotation before they can see what they're
+    // sending. The drawing surface is present and the button to arm it is ON it.
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: /^Draw on the shared screen$/i })).toBeVisible()
 
-    // Arming pulls it in, drawing works, and the viewer agrees on where the ink is.
+    // Arming, drawing, and the viewer agreeing on where the ink is.
     await drawStroke(page, 0.3, 0.7, 0.5)
     await page.waitForTimeout(400)
 
@@ -296,10 +299,67 @@ test.describe('Annotation over a shared screen @annotate', () => {
     expect(inkRemote!.x0).toBeCloseTo(inkSelf!.x0, 1)
     expect(inkRemote!.y0).toBeCloseTo(inkSelf!.y0, 1)
 
-    // Disarming puts the stage back — the echo lasts exactly as long as the gesture.
+    // Disarming stops the PEN, not the view: the share stays on the presenter's
+    // stage. Yanking a whole region away on disarm was the layout swap that made
+    // annotating feel like it broke the call underneath you.
     await revealChrome(page)
-    await page.getByRole('button', { name: /Stop annotating/i }).click()
-    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+    await page.getByRole('button', { name: /^Stop annotating$/i }).click()
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible()
+    await expect(page.getByRole('button', { name: /^Draw on the shared screen$/i })).toBeVisible()
+
+    await ctxB.close()
+  })
+
+  /**
+   * A viewer's picture must survive somebody else annotating on it.
+   *
+   * Nothing else here checks this: every other test asserts where the INK lands,
+   * which passes just as happily over a video that has gone black. The share is
+   * the content; the ink is a layer on top of it, and a stroke arriving must not
+   * cost the viewer the thing being drawn on — so this asserts the video element
+   * is still there AND still decoding (currentTime advancing), not merely mounted.
+   */
+  test('a viewer keeps seeing the shared screen while the presenter draws on it', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+
+    await fakeScreenShare(page, SHARE_W, SHARE_H)
+    await join(page, room, 'Presenter')
+
+    const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
+    const viewer = await ctxB.newPage()
+    await join(viewer, room, 'Bo')
+
+    await startScreenShare(page)
+    await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    /** The share as the viewer sees it: its size, and how far it has played. */
+    const shareState = (p: Page) =>
+      p.evaluate(
+        ([w, h]) => {
+          const v = Array.from(document.querySelectorAll('video')).find(
+            (el) => el.videoWidth === w && el.videoHeight === h,
+          )
+          return v ? { t: v.currentTime, paused: v.paused, ready: v.readyState } : null
+        },
+        [SHARE_W, SHARE_H],
+      )
+
+    await viewer.waitForTimeout(1500)
+    const before = await shareState(viewer)
+    expect(before, 'the viewer has the share before any ink').not.toBeNull()
+
+    await drawStroke(page, 0.3, 0.7, 0.5)
+    await viewer.waitForTimeout(2000)
+
+    const after = await shareState(viewer)
+    expect(after, 'the share survives the first stroke').not.toBeNull()
+    expect(after!.paused, 'and is still playing').toBe(false)
+    expect(after!.t, 'and is still decoding new frames').toBeGreaterThan(before!.t)
 
     await ctxB.close()
   })

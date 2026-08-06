@@ -116,21 +116,31 @@ export function ControlBar({
   const annotateAllowed = useAnnotateStore((s) => s.allowed)
   const toggleAnnotate = useAnnotateStore((s) => s.toggle)
   const setAnnotateActive = useAnnotateStore((s) => s.setActive)
-  // Disarm when the last share ends. The button disappears with it, so a pen left
-  // armed is unreachable — and it would silently re-arm itself the moment the next
-  // person shared. It also matters for the presenter's own share, where being armed
-  // is what pulls that share into their stage.
+  // Disarm when the last share ends. Both pen controls disappear with the share, so
+  // an armed pen would be unreachable — and would silently re-arm itself the moment
+  // the next person shared.
   useEffect(() => {
     if (!someoneSharing) setAnnotateActive(false)
   }, [someoneSharing, setAnnotateActive])
   // Camera toggle goes through the warm-then-release path (fast re-enable).
   const { isCameraEnabled, toggleCamera } = useCameraToggle()
   const [pipActive, setPipActive] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
-  const [effectsOpen, setEffectsOpen] = useState(false)
-  const [endConfirmOpen, setEndConfirmOpen] = useState(false)
-  const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [devicesOpen, setDevicesOpen] = useState(false)
+  // ONE modal at a time, by construction.
+  //
+  // These were five independent booleans, so nothing stopped two dialogs being open
+  // together — and two Radix dialogs at the same z-index stack by DOM order, which
+  // put a scrim over a live dialog and left the user with two rings of chrome and
+  // no obvious way out. Opening any of them now closes whatever was open, and a
+  // close is just "no modal". `setModal(null)` is the single exit.
+  const [modal, setModal] = useState<
+    'settings' | 'effects' | 'devices' | 'shortcuts' | 'endConfirm' | null
+  >(null)
+  const closeModal = useCallback(() => setModal(null), [])
+  /** Radix's onOpenChange → this modal when opening, nothing when closing. */
+  const modalToggle = useCallback(
+    (id: NonNullable<typeof modal>) => (open: boolean) => setModal(open ? id : null),
+    [],
+  )
   const [moreOpen, setMoreOpen] = useState(false)
   const touch = useIsTouch()
   const { isFullscreen, toggleFullscreen } = useFullscreen()
@@ -255,7 +265,7 @@ export function ControlBar({
           toggleFullscreen()
           break
         case '?':
-          setShortcutsOpen(true)
+          setModal('shortcuts')
           break
         default:
           return
@@ -421,7 +431,7 @@ export function ControlBar({
           icon={<EffectsIcon />}
           label="Backgrounds & effects"
           onClick={() => {
-            setEffectsOpen(true)
+            setModal('effects')
             closeMore()
           }}
         />
@@ -429,7 +439,7 @@ export function ControlBar({
           icon={<SlidersIcon />}
           label="Audio & video"
           onClick={() => {
-            setDevicesOpen(true)
+            setModal('devices')
             closeMore()
           }}
         />
@@ -469,7 +479,7 @@ export function ControlBar({
           icon={<SettingsIcon />}
           label="Settings"
           onClick={() => {
-            setSettingsOpen(true)
+            setModal('settings')
             closeMore()
           }}
         />
@@ -479,7 +489,7 @@ export function ControlBar({
             icon={<KeyboardIcon />}
             label="Keyboard shortcuts"
             onClick={() => {
-              setShortcutsOpen(true)
+              setModal('shortcuts')
               closeMore()
             }}
           />
@@ -653,11 +663,11 @@ export function ControlBar({
           </Popover>
         )}
 
-        <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-        <EffectsDialog open={effectsOpen} onOpenChange={setEffectsOpen} controls={blur} />
+        <SettingsDialog open={modal === 'settings'} onOpenChange={modalToggle('settings')} />
+        <EffectsDialog open={modal === 'effects'} onOpenChange={modalToggle('effects')} controls={blur} />
         <Dialog
-          open={devicesOpen}
-          onOpenChange={setDevicesOpen}
+          open={modal === 'devices'}
+          onOpenChange={modalToggle('devices')}
           title="Audio & video"
           description="Choose your camera, microphone and speaker, and tune noise suppression."
         >
@@ -668,21 +678,21 @@ export function ControlBar({
             </div>
           </div>
         </Dialog>
-        <ShortcutsDialog open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        <ShortcutsDialog open={modal === 'shortcuts'} onOpenChange={modalToggle('shortcuts')} />
         <Dialog
-          open={endConfirmOpen}
-          onOpenChange={setEndConfirmOpen}
+          open={modal === 'endConfirm'}
+          onOpenChange={modalToggle('endConfirm')}
           title="End the call for everyone?"
           description="This disconnects all participants and can't be undone. To just leave yourself, use Leave instead."
         >
           <div className="flex justify-end gap-2">
-            <Button variant="neutral" onClick={() => setEndConfirmOpen(false)}>
+            <Button variant="neutral" onClick={() => closeModal()}>
               Cancel
             </Button>
             <Button
               variant="danger"
               onClick={() => {
-                setEndConfirmOpen(false)
+                closeModal()
                 onEndForEveryone()
               }}
             >
@@ -724,7 +734,7 @@ export function ControlBar({
                 </button>
               }
             >
-              <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={() => setEndConfirmOpen(true)}>
+              <DropdownItem tone="danger" icon={<LeaveIcon />} onSelect={() => setModal('endConfirm')}>
                 End call for everyone
               </DropdownItem>
             </DropdownMenu>

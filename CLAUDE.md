@@ -60,10 +60,15 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a
   disable, not an enable, so an unset build var still ships it. Strokes are ephemeral:
   they fade after ~4s, which is *why* there is deliberately no persistence, no
-  late-joiner sync and no clear-all. Desktop draws, touch is view-only, a host can
-  restrict drawing with the `annotateHostOnly` room flag, and a presenter sees their own
-  share only while the pen is armed. Stroke data must never reach React state or a store
-  — read the header of `AnnotationEngine.ts` before touching it.
+  late-joiner sync and no clear-all. Desktop draws, touch is view-only, and a host can
+  restrict drawing with the `annotateHostOnly` room flag. A presenter sees their own
+  share the whole time they're sharing (with an Annotate button on the share tile) — a
+  remote share still wins the big region. Stroke data must never reach React state or a
+  store — read the header of `AnnotationEngine.ts` before touching it.
+- **Overlay layering is centralised.** Top banners/pills are children of
+  `TopStack` (one column, priority order) — never a new `fixed` + hand-picked
+  z-index; the layer scale is documented in `TopStack.tsx`. ControlBar holds ONE
+  `modal` value, so two dialogs can't be open at once.
 - **Design decisions → check Mobbin** (Meet/Teams/Zoom/WhatsApp) before guessing.
 - A11y is gated (axe, light + dark); contrast tokens are oklch — compute real WCAG
   ratios when changing them (see QA-PLAYBOOK §3).
