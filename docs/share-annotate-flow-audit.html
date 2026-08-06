@@ -450,23 +450,34 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
 
   <!-- F10 -->
   <div class="finding">
-    <div class="fhead"><span class="fid">F10</span><h3>Shared text is encoded as motion, and <code>contentHint</code> can’t fix it on the desktop path</h3>
-      <span class="sev med">medium</span></div>
+    <div class="fhead"><span class="fid">F10</span><h3><s>Shared text is encoded as motion, and <code>contentHint</code> can’t fix it on the desktop path</s> — <b>withdrawn, the premise was wrong</b></h3>
+      <span class="sev med">withdrawn</span></div>
     <dl class="fgrid">
       <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
         <li><code>src/lib/livekit.ts:62</code> — desktop publishes <code>vp9</code></li>
-        <li><code>livekit-client@2.9.5</code> — for an SVC codec on a ScreenShare track it forces
+        <li><code>livekit-client</code> — for an SVC codec on a ScreenShare track it forces
           <code>mediaStreamTrack.contentHint = 'motion'</code> and <code>scalabilityMode = 'L1T3'</code>,
           overriding whatever the caller passed</li>
+        <li><b>and, five lines of comment later:</b> <code>getDefaultDegradationPreference()</code> returns
+          <code>'maintain-resolution'</code> for <code>Track.Source.ScreenShare</code> — its own comment says
+          this exists <i>“since we are overriding contentHint to motion … it overrides the default
+          degradationPreference to <code>balanced</code>”</i></li>
       </ul></dd></div>
-      <div class="frow"><dt>Mechanism</dt><dd>Screen shares are overwhelmingly text — code, slides,
-        dashboards — and are being encoded with the motion hint, which trades spatial detail for temporal
-        smoothness. Passing <code>contentHint: 'detail'</code> in the capture options looks like the fix and
-        is silently discarded on the VP9 path.</dd></div>
-      <div class="frow"><dt>Fix</dt><dd>Publish the <b>share track specifically</b> as VP8 via
-        <code>publishOptions</code> (cameras keep VP9), then <code>contentHint: 'detail'</code> sticks.
-        Deliberately listed last: it’s a codec change, it needs a real bandwidth comparison, and it is not
-        blocking any of the flows above.</dd></div>
+      <div class="frow"><dt>What I got wrong</dt><dd>The stomp is real; the harm attributed to it is not.
+        The motion hint’s consequence — dropping resolution before frame rate — is already cancelled by
+        LiveKit, deliberately, and <code>src/lib/livekit.ts:68</code> sets the same
+        <code>maintain-resolution</code> explicitly on top. I read the first half of the mechanism and
+        stopped before the half that compensates for it.</dd></div>
+      <div class="frow"><dt>Why the proposed fix was backwards</dt><dd>Publishing the share as VP8 would
+        <i>lose</i> VP9’s efficiency (VP8 is worse on text at equal bitrate), and drop the track out of the
+        SVC path into <code>simulcast: true</code>, adding a second ~540p layer that spends uplink on nothing.
+        Setting <code>contentHint: 'detail'</code> while keeping VP9 is worse still — the L1T3 workaround the
+        stomp exists to avoid caps Chrome at ~5&nbsp;fps. Both directions regress.</dd></div>
+      <div class="frow"><dt>Standing recommendation</dt><dd><b>Ship nothing.</b> If a share ever does look
+        soft, the lever is <code>screenShareEncoding</code> / <code>screenShareSimulcastLayers</code> in
+        <code>publishDefaults</code> — never the codec. Unverified either way without real bandwidth
+        measurement: VP9-vs-VP8 sharpness at these bitrates, and whether ~4&nbsp;Mbps is ever the binding
+        constraint.</dd></div>
     </dl>
   </div>
 </section>
@@ -486,7 +497,7 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
         <tr><th>F7</th><td>Three hand-picked tile offsets</td><td>High</td><td>New primitive</td></tr>
         <tr><th>F8</th><td>Pen shown when no canvas is mounted</td><td>Medium</td><td><code>useSharePresence</code></td></tr>
         <tr><th>F9</th><td>Unexplained ink on touch</td><td>Medium</td><td>1 pill</td></tr>
-        <tr><th>F10</th><td>Screen text encoded as motion</td><td>Medium</td><td>Publish options</td></tr>
+        <tr><th>F10</th><td><s>Screen text encoded as motion</s> — withdrawn, premise wrong</td><td>—</td><td>Nothing to change</td></tr>
       </tbody>
     </table>
   </div>
@@ -507,9 +518,10 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
     <li><div><h4>Annotation correctness (F5, F6)</h4>
       <p>Sticky <code>primaryShare</code>, target SID on the wire, stroke ended on detach. F5 bumps the
       wire version, so it wants its own commit and its own multi-party check against a local server.</p></div></li>
-    <li><div><h4>Tile action stack (F7), then the two polish items (F9, F10)</h4>
+    <li><div><h4>Tile action stack (F7), then the polish item (F9)</h4>
       <p>F7 is a primitive extraction that pays for itself the next time anything is added to a tile
-      corner. F10 stays last — it needs a bandwidth comparison, not just a code change.</p></div></li>
+      corner. F10 was listed last here because it needed a bandwidth comparison; that comparison turned
+      out to be unnecessary — reading the rest of the mechanism withdrew the finding entirely.</p></div></li>
   </ol>
 </section>
 
