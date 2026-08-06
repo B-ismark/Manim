@@ -239,6 +239,7 @@ export function Stage() {
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const demotedShares = useRoomStore((s) => s.demotedShares)
+  const stickyShareId = useRoomStore((s) => s.stickyShareId)
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
@@ -307,7 +308,12 @@ export function Stage() {
   // excluded above) takes the big region and everyone else tiles in a segmented grid
   // beside/below it. Auto-on unless the viewer demoted THIS share (remembered per share
   // SID) — demoting falls back to the plain equal-tile grid on every device.
-  const share = primaryShare(visible)
+  // Sticky, and it MUST be — useSharePresence picks the featured share the same way
+  // to decide where the pen points and which share outgoing ink is addressed to. If
+  // this call re-picked on `isSpeaking` while that one held its choice, two presenters
+  // taking turns talking would swap the big tile out from under the canvas: ink drawn
+  // on the tile you can see, wire-addressed to the one you can't.
+  const share = primaryShare(visible, stickyShareId)
   if (share && visible.length > 1) {
     const sid = shareId(share)
     if (!demotedShares.includes(sid)) {
