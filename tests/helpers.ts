@@ -54,8 +54,16 @@ export const usingLocalLiveKit = /^(ws|http)s?:\/\/(127\.0\.0\.1|localhost|\[::1
  *
  * Tolerated ONLY when local. Against Cloud the filter is supposed to work, so a
  * Krisp failure there is real and must still fail the sink.
+ *
+ * Two entries reach the sink per failure and only one of them names Krisp: the
+ * reported one carries the stack (`…@livekit_krisp-noise-filter.js`), while the
+ * bare console error is just the message. Matching only the module name caught
+ * the first and let the second through — which is why this passed locally, where
+ * the failure reads "Failed to fetch" WITH a Krisp stack, and still failed in CI,
+ * where it reads "Could not authenticate…" with none.
  */
-const CLOUD_ONLY_RE = /krisp|noise[- ]?filter/i
+const CLOUD_ONLY_RE =
+  /krisp|noise[- ]?filter|could not authenticate\. server responded with status 404/i
 
 /**
  * App-originated errors from the sink, with noise filtered.
