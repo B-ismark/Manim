@@ -1,11 +1,56 @@
 import { useCallback, useEffect } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalVideoTrack, type ScreenShareCaptureOptions } from 'livekit-client'
+import { useLocalParticipant, useRoomContext } from '@livekit/components-react'
+import { Track, type LocalVideoTrack, type Room, type ScreenShareCaptureOptions } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
 import { addBreadcrumb, reportError } from '@/lib/report'
 import { useRoomStore } from '@/store/useRoomStore'
 
 type ShareSurface = 'monitor' | 'window' | 'browser' | 'unknown'
+
+/**
+ * How many people may share at once.
+ *
+ * Not a round number picked for feel — it falls out of how shares are published
+ * here. A share goes out at 1920x1080, ~2.13 Mbps, and on the desktop VP9 path
+ * LiveKit encodes it as SVC `L1T3`: ONE spatial layer. Cameras carry three
+ * simulcast layers, so a camera in a thumbnail really does drop to 180p; a share
+ * in that same thumbnail is still shipping and decoding full 1920x1080. Extra
+ * shares therefore cost full price no matter how small they are drawn, and
+ * `lowBandwidth` doesn't help — it degrades cameras only, never the share path.
+ *
+ * The stage also only ever FEATURES one share (primaryShare, and it is sticky).
+ * Anything past the second is a thumbnail nobody can read at the price of a
+ * full-resolution stream.
+ *
+ * Two keeps the cases people actually need — a presenter handing off while the
+ * next one sets up, and comparing two screens side by side — and bounds share
+ * traffic at ~4.3 Mbps, which leaves room for cameras on a 10 Mbps link.
+ *
+ * For reference: Teams allows one at a time, Zoom defaults to one and lets a host
+ * raise it to four, Meet allows ten. Meet can afford ten because everything there
+ * is multi-layer; we are at the other end of that trade until screen shares get
+ * `screenShareSimulcastLayers`, which is the change that would make a higher cap
+ * cheap. Raise this then, not before.
+ */
+export const MAX_CONCURRENT_SHARES = 2
+
+/**
+ * Shares live RIGHT NOW, counted straight off the room rather than from a hook.
+ *
+ * Deliberately imperative: this is only needed at the instant someone clicks, and
+ * useScreenShare() is called from four components. Giving it a useTracks()
+ * subscription would put all four back on the room's event firehose to answer a
+ * question that matters once per click. The reactive form, for disabling the
+ * button, lives in useSharePresence where the subscription already exists.
+ */
+function liveShareCount(room: Room | undefined): number {
+  if (!room) return 0
+  let n = room.localParticipant.getTrackPublication(Track.Source.ScreenShare) ? 1 : 0
+  room.remoteParticipants.forEach((p) => {
+    if (p.getTrackPublication(Track.Source.ScreenShare)) n++
+  })
+  return n
+}
 
 /**
  * The ONE place a screen share starts and stops.
@@ -108,8 +153,22 @@ export function useScreenShare(): ScreenShareControl {
   const supported =
     typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia)
 
+  const room = useRoomContext()
+
   const set = useCallback(
     (on: boolean) => {
+      // Stopping is always allowed; only starting can push the room over.
+      // Checked here rather than in the UI as well, because the button is not the
+      // only way in — the "Share again" recovery toast starts a share too, and by
+      // then someone else may have taken the slot.
+      if (on && !isScreenShareEnabled && liveShareCount(room) >= MAX_CONCURRENT_SHARES) {
+        addBreadcrumb('screen share blocked at capacity', { max: MAX_CONCURRENT_SHARES })
+        toast(
+          `${MAX_CONCURRENT_SHARES} people are already sharing. Ask one of them to stop first.`,
+          'neutral',
+        )
+        return
+      }
       void (async () => {
         try {
           await localParticipant.setScreenShareEnabled(on, on ? captureOptions() : undefined)
@@ -123,7 +182,7 @@ export function useScreenShare(): ScreenShareControl {
         }
       })()
     },
-    [localParticipant],
+    [localParticipant, room, isScreenShareEnabled],
   )
 
   const start = useCallback(() => set(true), [set])

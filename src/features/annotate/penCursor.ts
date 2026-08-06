@@ -5,9 +5,10 @@
  *
  * The reported one: a screen capture bakes the OS pointer into the frame, so a
  * presenter watching their own capture saw the crosshair twice — once under their
- * hand, once inside the video a round-trip behind it. Not showing a monitor share
- * back to yourself removes that (see useSharePresence), and suppressing the captured
- * cursor while drawing removes what's left (see cursorSuppression below).
+ * hand, once inside the video a round-trip behind it. Not showing the share back to
+ * yourself is the only lever that actually removes that; a `cursor: 'never'` capture
+ * constraint was tried and does NOT (Chrome accepts it and captures the pointer
+ * anyway — see the note in AnnotationOverlay).
  *
  * The quieter one: a crosshair says "precision", not "you are holding a pen". Nothing
  * on screen distinguished armed from disarmed except the button's own state, so the
@@ -39,37 +40,4 @@ export function penCursor(color: string): string {
 </svg>`
   const uri = `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`
   return `url("${uri}") ${HOTSPOT_X} ${HOTSPOT_Y}, crosshair`
-}
-
-/**
- * Hide the OS pointer from your own OUTGOING capture while the pen is armed.
- *
- * Chrome does not list `cursor` in `getSupportedConstraints()`, but it does honour
- * it: passing `{ cursor: 'never' }` reports back through `getSettings()`, and
- * `applyConstraints` on a live track resolves — verified against Chromium 141. So
- * the captured pointer can be turned off and on again mid-share, which is what makes
- * this scoped rather than permanent.
- *
- * Scoped on purpose. The presenter's pointer is the main thing viewers follow during
- * a walkthrough, so removing it for the whole share would cost everyone something
- * real. But WHILE someone is drawing, the ink is the pointer — it says everything the
- * arrow would, in a colour attributed to its author — so there is nothing left for
- * the captured cursor to contribute, and plenty for it to confuse.
- *
- * Best-effort throughout: a browser that ignores the constraint simply keeps its
- * cursor, which is exactly today's behaviour. Never throws.
- */
-export function setCapturedCursorHidden(track: MediaStreamTrack | undefined, hidden: boolean): void {
-  if (!track || track.readyState !== 'live') return
-  try {
-    // `cursor` isn't in lib.dom's MediaTrackConstraintSet — it's a Screen Capture
-    // extension — so this is the one place it has to be asserted through.
-    void track
-      .applyConstraints({ cursor: hidden ? 'never' : 'motion' } as MediaTrackConstraints)
-      .catch(() => {
-        /* unsupported — the captured cursor just stays as it was */
-      })
-  } catch {
-    /* ditto, for browsers that throw synchronously */
-  }
 }

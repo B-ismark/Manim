@@ -5,6 +5,7 @@ import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useRoomStore } from '@/store/useRoomStore'
 import { featuredShare, shareId } from '@/lib/focusTrack'
+import { MAX_CONCURRENT_SHARES } from '@/features/calls/useScreenShare'
 import { annotateEnabled } from '@/features/annotate/useAnnotate'
 
 export interface SharePresence {
@@ -44,6 +45,13 @@ export interface SharePresence {
   canAnnotate: boolean
   /** Track SID of the share in the big region — what ink drawn now is aimed at. */
   featuredShareId: string | null
+  /**
+   * Every share slot is taken by someone else, so this person cannot start one.
+   * False while YOU are sharing — you hold one of the slots and may always stop.
+   * The reason lives on the disabled control; a button that silently does nothing
+   * reads as broken, and the fix ("ask someone to stop") is not guessable.
+   */
+  shareSlotsFull: boolean
 }
 
 /**
@@ -68,6 +76,8 @@ export function useSharePresence(): SharePresence {
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const stickyShareId = useRoomStore((s) => s.stickyShareId)
   const setStickyShare = useRoomStore((s) => s.setStickyShare)
+
+  const shareSlotsFull = !presenting && shares.length >= MAX_CONCURRENT_SHARES
 
   const sharingMonitor = presenting && shareSurface === 'monitor'
   // 'unknown' lands on the permissive side deliberately — a browser that doesn't
@@ -103,6 +113,7 @@ export function useSharePresence(): SharePresence {
     shareFeatured,
     canAnnotate,
     featuredShareId,
+    shareSlotsFull,
     annotatingOwnShare: ownShareShown && active && canAnnotate,
   }
 }
