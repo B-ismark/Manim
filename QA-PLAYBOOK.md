@@ -131,8 +131,10 @@ browser participant ramp ≤5–7.
    [tests/helpers.ts](tests/helpers.ts) substitutes a canvas capture of known intrinsic
    size — which is also what makes stroke positions assertable in unit space.
 
-Note the sharer is normally excluded from their own share, so a test where one
-participant both shares and annotates only works while the pen is armed.
+Note a sharer now sees their own share for as long as they're sharing, so one
+participant can both share and annotate without arming the pen first. A *remote*
+share still takes the big region, so a test that wants to target someone else's
+screen must have that someone else share.
 
 **Flake.** Real LiveKit + WebRTC negotiation is occasionally flaky under load.
 CI uses `retries: 1`; run WebRTC specs with `--workers=1`. Ignore teardown noise

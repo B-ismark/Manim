@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
-import { uniqueRoom, join, isTouch } from './helpers'
+import { uniqueRoom, join, isTouch, fakeScreenShare, startScreenShare } from './helpers'
 
 // The app's recovery layer (ConnectionBanner + the assertive "Reconnected"
 // announcement) only fires on a real connection fault — the happy-path suite
@@ -70,5 +70,48 @@ test.describe('Resilience — connection fault recovery', () => {
     // After recovery the in-call chrome is still functional and the banner is gone.
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible()
     await expect(page.getByText(/Reconnecting/)).toBeHidden()
+  })
+})
+
+/**
+ * A screen share can end without the user touching our Stop button — Chrome's own
+ * "Stop sharing" bar, or (the case that actually bites) sharing a single
+ * application WINDOW and then closing that window. The capture ends, LiveKit
+ * unpublishes, and the tile vanishes for everyone.
+ *
+ * Camera and mic have been watched for this since the device-loss work; the screen
+ * share never was, so that vanishing arrived with no explanation — from the
+ * presenter's seat their screen just silently stopped being shared.
+ *
+ * `track.stop()` deliberately does NOT fire `ended` (that's what keeps our own Stop
+ * button from false-firing), so the external termination is simulated the only way
+ * a test can: dispatching the event the browser would have dispatched.
+ */
+test.describe('Resilience — screen share ends externally', () => {
+  test('an externally-ended screen share is explained, with a way back', async ({ page }) => {
+    test.setTimeout(120_000)
+    test.skip(await isTouch(page), 'screen share lives on the desktop control bar')
+
+    await fakeScreenShare(page, 1280, 720)
+    await join(page, uniqueRoom('shareend'), 'Presenter')
+    await startScreenShare(page)
+
+    const fired = await page.evaluate(() => {
+      const room = window.__lkRoom as unknown as {
+        localParticipant: {
+          getTrackPublication: (s: string) => { track?: { mediaStreamTrack?: MediaStreamTrack } } | undefined
+        }
+      }
+      const mst = room?.localParticipant?.getTrackPublication('screen_share')?.track?.mediaStreamTrack
+      if (!mst) return false
+      mst.dispatchEvent(new Event('ended'))
+      return true
+    })
+    expect(fired, 'reached the live screen-share track').toBe(true)
+
+    // The presenter is told what happened, and offered the one-tap way back —
+    // rather than discovering it when someone says they can't see the screen.
+    await expect(page.getByText('Screen sharing stopped')).toBeVisible({ timeout: 10_000 })
+    await expect(page.getByRole('button', { name: 'Share again' })).toBeVisible()
   })
 })

@@ -45,6 +45,7 @@ import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
 import { annotateEnabled } from '@/features/annotate/useAnnotate'
+import { useSharePresence } from '@/lib/useSharePresence'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { cn } from '@/lib/cn'
 
@@ -255,35 +256,32 @@ export function Stage() {
 
   const coarse = useIsTouch()
 
-  // Don't render your OWN screen share back to yourself. You're already sending it
-  // and everyone else sees it; mirroring it into your own stage is a pointless,
-  // recursive echo (you see the window that's showing the window…). Drop it from your
-  // view and show a small "You're presenting" indicator instead. It stays published.
   const localScreenShare = tracks.find(
     (t) => t.participant.isLocal && t.source === Track.Source.ScreenShare,
   )
 
-  // …with one exception: to draw on your own share you have to be able to SEE it.
-  // A browser tab can't paint over the operating system the way the Teams and Zoom
-  // native apps do, so the presenter's only drawing surface is their own captured
-  // frame. Arming the pen therefore pulls the local share back into the big region,
-  // and disarming pushes it out again — the echo is opt-in and lasts exactly as long
-  // as the gesture. (It only recurses at all when sharing a whole monitor; a window
-  // or a non-call tab has nothing to reflect.)
+  // A presenter SEES their own share, from the moment they start sharing.
   //
-  // Two guards keep this from hijacking the layout. A REMOTE share always wins, so
-  // annotating in a room where someone else is presenting still targets their screen
-  // rather than swapping to yours. And touch is excluded, matching the pen itself.
-  const annotatingOwn = useAnnotateStore((s) => s.active)
-  const remoteSharing = tracks.some(
-    (t) => !t.participant.isLocal && t.source === Track.Source.ScreenShare,
-  )
-  const selfAnnotating =
-    Boolean(localScreenShare) && annotateEnabled && annotatingOwn && !remoteSharing && !coarse
+  // This used to be hidden — you're already sending it, so echoing it back read as
+  // pointless — and arming the pen was what pulled it in, because drawing needs a
+  // surface to draw on. That inverted the discovery order: you had to already know
+  // annotation existed, and find it on the control bar, before the app would show
+  // you the thing you'd be annotating. Presenting now lands directly in the split
+  // view (share + everyone else) with an Annotate button on the share itself.
+  //
+  // It also removes a mid-share LAYOUT SWAP. Arming and disarming used to add and
+  // remove a whole region, which is a jarring thing to do underneath a presenter —
+  // especially one who is sharing the browser window that's doing the swapping.
+  //
+  // One guard survives: a REMOTE share still wins, so annotating in a room where
+  // someone else is presenting targets their screen, not yours. (The echo only
+  // recurses when sharing a whole monitor; a window or a non-call tab has nothing
+  // to reflect, and the "You're sharing your screen" pill names what's happening.)
+  const { remoteSharing } = useSharePresence()
+  const showOwnShare = Boolean(localScreenShare) && !remoteSharing
 
   const visible =
-    localScreenShare && !selfAnnotating ? tracks.filter((t) => t !== localScreenShare) : tracks
-  const presenting = Boolean(localScreenShare)
+    localScreenShare && !showOwnShare ? tracks.filter((t) => t !== localScreenShare) : tracks
 
   // Prune presentation state (demoted-share flags, a person-spotlight) when the active
   // shares or tiles change — a share ended, a spotlighted person left. Keyed on the
@@ -299,12 +297,7 @@ export function Stage() {
   }, [shareIdKey, tileKeyList, prunePresentation])
 
   if (participants.length <= 1 && visible.length <= 1) {
-    return (
-      <>
-        <SoloStage selfTrack={visible[0]} />
-        {presenting && <PresentingIndicator annotating={selfAnnotating} />}
-      </>
-    )
+    return <SoloStage selfTrack={visible[0]} />
   }
 
   // Screen-share presentation layout (Meet/Teams model): a REMOTE share (your own is
@@ -315,23 +308,13 @@ export function Stage() {
   if (share && visible.length > 1) {
     const sid = share.publication?.trackSid ?? tileKey(share)
     if (!demotedShares.includes(sid)) {
-      return (
-        <>
-          <PresentationStage visible={visible} coarse={coarse} share={share} shareId={sid} />
-          {presenting && <PresentingIndicator annotating={selfAnnotating} />}
-        </>
-      )
+      return <PresentationStage visible={visible} coarse={coarse} share={share} shareId={sid} />
     }
     const gridTracks =
       selfViewHidden && visible.some((t) => !isLocalCam(t))
         ? visible.filter((t) => !isLocalCam(t))
         : visible
-    return (
-      <>
-        <GridStage tracks={gridTracks} coarse={coarse} />
-        {presenting && <PresentingIndicator annotating={selfAnnotating} />}
-      </>
-    )
+    return <GridStage tracks={gridTracks} coarse={coarse} />
   }
 
   // No remote share below this point (shares are handled above).
@@ -346,12 +329,7 @@ export function Stage() {
       selfViewHidden && visible.some((t) => !isLocalCam(t))
         ? visible.filter((t) => !isLocalCam(t))
         : visible
-    return (
-      <>
-        <GridStage tracks={gridTracks} coarse={coarse} />
-        {presenting && <PresentingIndicator annotating={selfAnnotating} />}
-      </>
-    )
+    return <GridStage tracks={gridTracks} coarse={coarse} />
   }
 
   // Speaker (and phone 1-on-1): a focused remote (or screen share) fills the stage
@@ -363,7 +341,7 @@ export function Stage() {
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-2 sm:p-3">
-      <div className="min-h-0 flex-1">{focus && <Tile trackRef={focus} fill />}</div>
+      <div className="min-h-0 flex-1">{focus && <FocusTile trackRef={focus} />}</div>
 
       {filmstrip.length > 0 && (
         <div className="flex h-24 shrink-0 gap-3 overflow-x-auto sm:h-28">
@@ -376,24 +354,27 @@ export function Stage() {
       )}
 
       {localCam && focus !== localCam && !selfViewHidden && <SelfViewCard trackRef={localCam} />}
-      {presenting && <PresentingIndicator annotating={selfAnnotating} />}
     </div>
   )
 }
 
-/** Status pill shown to YOU while you're sharing your screen — the in-app counterpart
- *  to the browser's "you're sharing" bar. Replaces mirroring your own share back into
- *  the stage. Stop sharing lives on the control bar (the Share button toggles off). */
-function PresentingIndicator({ annotating = false }: { annotating?: boolean }) {
+/**
+ * Status pill shown to YOU while you're sharing your screen — the in-app counterpart
+ * to the browser's "you're sharing" bar. Stop sharing lives on the control bar (the
+ * Share button toggles off).
+ *
+ * Rendered by RoomView inside TopStack, not positioned here: it used to pick a fixed
+ * top offset chosen to clear the status chip, which is exactly the guess that breaks
+ * the moment a second banner shows up.
+ */
+export function PresentingIndicator({ annotating = false }: { annotating?: boolean }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[max(4rem,calc(env(safe-area-inset-top)+3.5rem))] z-20 flex justify-center px-4">
-      <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
-        {annotating ? <AnnotateIcon /> : <ScreenShareIcon />}
-        {/* Say WHY their own screen suddenly appeared — otherwise the switch (and,
-            on a full-monitor share, the mirror tunnel) reads as a glitch. */}
-        {annotating ? 'You\u2019re drawing on your shared screen' : 'You\u2019re sharing your screen'}
-      </span>
-    </div>
+    <span className="flex items-center gap-2 rounded-full bg-overlay px-3.5 py-1.5 text-sm font-medium text-white shadow-pop backdrop-blur [&_svg]:size-4">
+      {annotating ? <AnnotateIcon /> : <ScreenShareIcon />}
+      {/* Say WHY their own screen is on their stage — otherwise, on a full-monitor
+          share, the mirror tunnel reads as a glitch. */}
+      {annotating ? 'You\u2019re drawing on your shared screen' : 'You\u2019re sharing your screen'}
+    </span>
   )
 }
 
@@ -511,7 +492,13 @@ function GridStage({
               <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
                 {row.map(({ tref, w, h }) => (
                   <div key={tileKey(tref)} className="min-h-0" style={{ width: w, height: h }}>
-                    <Tile trackRef={tref} fill onAspect={(r) => reportAspect(tileKey(tref), r)} {...shareProps(tref)} />
+                    <Tile
+                      trackRef={tref}
+                      fill
+                      boxAspect={h > 0 ? w / h : undefined}
+                      onAspect={(r) => reportAspect(tileKey(tref), r)}
+                      {...shareProps(tref)}
+                    />
                   </div>
                 ))}
               </div>
@@ -630,6 +617,41 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
   )
 }
 
+/**
+ * Annotate toggle pinned to the shared-screen tile.
+ *
+ * The control bar keeps its own copy (it's the keyboard-reachable one, and it sits
+ * with the other call controls), but the pen belongs on the surface it draws on:
+ * a presenter who has just started sharing is looking AT the share, not scanning a
+ * bar for a feature they may not know exists. Stacks under the fullscreen button in
+ * the same top-right column.
+ *
+ * Hidden on touch, matching the pen itself — drawing has to capture touch, which
+ * fights the control bar's tap-to-reveal. Touch devices still see everyone's ink.
+ */
+function AnnotateControl() {
+  const active = useAnnotateStore((s) => s.active)
+  const allowed = useAnnotateStore((s) => s.allowed)
+  const toggle = useAnnotateStore((s) => s.toggle)
+  const coarse = useIsTouch()
+  if (!allowed || coarse) return null
+  return (
+    <div className="absolute right-2 top-[6.5rem] z-10" onPointerDown={(e) => e.stopPropagation()}>
+      <IconButton
+        size="sm"
+        // Deliberately NOT the control bar's wording. Both controls drive the same
+        // pen, and two buttons sharing one accessible name is ambiguous to a screen
+        // reader (and to anyone scripting the page) — name them by where they are.
+        label={active ? 'Stop drawing on the shared screen' : 'Draw on the shared screen'}
+        icon={<AnnotateIcon />}
+        active={active}
+        className={cn('shadow-pop', !active && 'bg-overlay text-white hover:bg-overlay')}
+        onClick={toggle}
+      />
+    </div>
+  )
+}
+
 /** Grid-tile-shaped shortcut to the full roster (the "+N view all" overflow). */
 function OverflowTile({ count, onClick }: { count: number; onClick: () => void }) {
   return (
@@ -721,6 +743,7 @@ function PresentationStage({
                 <Tile
                   trackRef={big}
                   fill
+                  boxAspect={L.big.h > 0 ? L.big.w / L.big.h : undefined}
                   onAspect={setBigAspect}
                   onActivate={() => (bigIsShare ? toggleShareDemoted(shareId) : setSpotlight(null))}
                   action={
@@ -730,6 +753,7 @@ function PresentationStage({
                   }
                 />
                 {bigIsShare && <FullscreenControls targetRef={bigRef} />}
+                {bigIsShare && annotateEnabled && <AnnotateControl />}
                 {/* Ink layer for the shared screen. Inside bigRef so it follows the
                     share into fullscreen; owns its own canvas and never re-renders
                     the stage while drawing. */}
@@ -803,6 +827,29 @@ function PresentationStage({
           </>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The speaker layout's big tile, measured.
+ *
+ * Unlike the grid — where the packer already sizes each cell to its publisher —
+ * this tile just inherits whatever the stage's shape is, so nothing upstream knows
+ * whether the video about to land in it is a wild mismatch. This is where a phone
+ * in a 1-on-1 puts a laptop's 16:9 camera into a tall box, and the reason the feed
+ * arrived cropped to a portrait sliver. Measuring here hands Tile the box shape it
+ * needs to decide (see MAX_CROP_RATIO). One observer, on one element.
+ */
+function FocusTile({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
+  const { ref, size } = useElementSize<HTMLDivElement>()
+  return (
+    <div ref={ref} className="size-full">
+      <Tile
+        trackRef={trackRef}
+        fill
+        boxAspect={size.width > 0 && size.height > 0 ? size.width / size.height : undefined}
+      />
     </div>
   )
 }
@@ -890,10 +937,30 @@ function SpeakingBars() {
   )
 }
 
+/**
+ * Beyond this much disagreement between a camera's shape and the box it lands in,
+ * the tile letterboxes instead of cropping.
+ *
+ * `object-cover` is the right default — it fills, and a tile whose box already
+ * matches its source loses nothing to it. But the box does NOT always match: a
+ * phone showing a laptop's 16:9 feed in a tall focus tile crops away most of the
+ * frame's width, which is how a call ends up hiding whoever is sitting off to the
+ * side. Past this ratio the crop costs more than the black bars do.
+ *
+ * 1.4 is picked to split the two real cases apart: landscape-into-portrait (16:9
+ * in a 3:4 box = 2.37) letterboxes, while the modest mismatches that come from
+ * bucketed grid cells (9:16 in a 3:4 box = 1.33) keep filling the tile. Phone-to-
+ * phone calls therefore look exactly as they do today.
+ */
+const MAX_CROP_RATIO = 1.4
+const badlyCropped = (video: number, box: number) =>
+  Math.max(video, box) / Math.min(video, box) > MAX_CROP_RATIO
+
 function Tile({
   trackRef,
   fill = false,
   onAspect,
+  boxAspect,
   onActivate,
   action,
   overlay,
@@ -903,6 +970,11 @@ function Tile({
   /** Report the video's real intrinsic aspect (w/h) up to the grid packer. Only
    *  the mixed-orientation grid passes this; spotlight/filmstrip/self ignore it. */
   onAspect?: (ratio: number) => void
+  /** The tile box's own w/h, when the caller knows it. Supplying it opts the tile
+   *  into letterboxing a badly-mismatched camera (see MAX_CROP_RATIO) instead of
+   *  cropping it. Omitted for small thumbnails (filmstrip, self-view), where bars
+   *  cost more than a crop does. */
+  boxAspect?: number
   /** Override the double-tap / long-press / Enter gesture. Presentation uses this to
    *  spotlight (grid tile) or demote (big tile) instead of the default pin toggle. */
   onActivate?: () => void
@@ -986,15 +1058,21 @@ function Tile({
   // grid packer. 'resize' fires when the publisher rotates their phone mid-call, so
   // the tile re-orients live; rAF retries only until the element mounts.
   const tileRef = useRef<HTMLDivElement>(null)
+  // Also kept locally (not just reported up) so the tile can decide its own
+  // object-fit — the letterbox-vs-crop call needs the source shape too.
+  const [videoAspect, setVideoAspect] = useState(0)
+  const wantsAspect = Boolean(onAspect) || boxAspect !== undefined
   useEffect(() => {
-    if (!onAspect || !hasVideo) return
+    if (!wantsAspect || !hasVideo) return
     const root = tileRef.current
     if (!root) return
     let raf = 0
     let video: HTMLVideoElement | null = null
     const read = () => {
       if (video && video.videoWidth && video.videoHeight) {
-        onAspect(video.videoWidth / video.videoHeight)
+        const ratio = video.videoWidth / video.videoHeight
+        setVideoAspect(ratio)
+        onAspect?.(ratio)
       }
     }
     const attach = () => {
@@ -1014,7 +1092,13 @@ function Tile({
       video?.removeEventListener('resize', read)
       video?.removeEventListener('loadedmetadata', read)
     }
-  }, [onAspect, hasVideo])
+  }, [onAspect, wantsAspect, hasVideo])
+
+  // Letterbox rather than crop when the two shapes are far apart — a laptop's
+  // landscape camera in a phone's tall tile. Shares are always contained (a
+  // cropped screen share is unreadable); an unmeasured tile keeps filling.
+  const letterbox =
+    isScreen || (boxAspect !== undefined && videoAspect > 0 && badlyCropped(videoAspect, boxAspect))
 
   const ariaLabel = tileLabel({
     name,
@@ -1077,7 +1161,7 @@ function Tile({
           data-local-cam={p.isLocal && !isScreen ? '' : undefined}
           className={cn(
             'mn-video-in size-full',
-            isScreen ? 'bg-black object-contain' : 'object-cover',
+            letterbox ? 'bg-black object-contain' : 'object-cover',
             mirror && '[transform:scaleX(-1)]',
           )}
         />

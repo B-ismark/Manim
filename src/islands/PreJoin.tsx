@@ -7,6 +7,15 @@ import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { APP_NAME } from '@/lib/legal'
 
+/** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
+ *  … 16:9 (laptop); anything outside is a bogus or freak mode, and letting it through
+ *  would hand the card an unusable sliver. Clamped ratios letterbox (object-contain)
+ *  rather than crop, so even then nothing is hidden from the user. */
+const MIN_PREVIEW_ASPECT = 9 / 16
+const MAX_PREVIEW_ASPECT = 16 / 9
+const clampAspect = (r: number) =>
+  Number.isFinite(r) && r > 0 ? Math.min(MAX_PREVIEW_ASPECT, Math.max(MIN_PREVIEW_ASPECT, r)) : 4 / 3
+
 export interface PreJoinProps {
   room: string
   onJoin: () => void
@@ -29,6 +38,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // The preview box takes the camera's REAL shape (see PREVIEW_* below). Starts at
+  // 4:3 — the most common webcam mode, and a middle ground that barely moves when
+  // the true ratio lands, instead of the 16:9→4:3 lurch a landscape default gives.
+  const [previewAspect, setPreviewAspect] = useState(4 / 3)
   // 'prompt' → we can prime; 'denied' → guide to OS settings; 'granted'/unknown → nothing.
   const [permission, setPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>(
     'unknown',
@@ -110,6 +123,12 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         streamRef.current = stream
         if (videoRef.current) videoRef.current.srcObject = stream
         setError(null)
+        // Shape the box to the camera before the first frame paints, so the
+        // preview doesn't visibly resize under the user. getSettings() knows the
+        // negotiated mode immediately; `onResize` on the element is the backstop
+        // for browsers that report nothing here (and for a mid-preview change).
+        const s = stream.getVideoTracks()[0]?.getSettings()
+        if (s?.width && s?.height) setPreviewAspect(clampAspect(s.width / s.height))
         // A successful preview means access is already granted — never show the
         // priming card (esp. on browsers without the Permissions API).
         setPermission('granted')
@@ -127,6 +146,26 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
     return () => {
       cancelled = true
       stop()
+    }
+  }, [cameraOn])
+
+  // Backstop for the aspect read in `start()`: a browser whose getSettings()
+  // reports nothing useful, and a camera that renegotiates mid-preview. Bound
+  // imperatively rather than via React's onResize — `resize` on a media element
+  // is a DOM event, and wiring it here keeps it working regardless of which
+  // media events the React version in use happens to attach.
+  useEffect(() => {
+    const v = videoRef.current
+    if (!v || !cameraOn) return
+    const read = () => {
+      if (v.videoWidth && v.videoHeight) setPreviewAspect(clampAspect(v.videoWidth / v.videoHeight))
+    }
+    v.addEventListener('resize', read)
+    v.addEventListener('loadedmetadata', read)
+    read()
+    return () => {
+      v.removeEventListener('resize', read)
+      v.removeEventListener('loadedmetadata', read)
     }
   }, [cameraOn])
 
@@ -173,12 +212,33 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
           />
         </div>
 
-        {/* Portrait on touch (matches the in-call tiles), landscape on desktop.
-            Height is capped (max-h) so the preview never pushes the name field and
-            Join button off a short viewport — the real cause of pre-join scrolling. */}
-        <div className="mx-auto mt-3 aspect-[3/4] max-h-[32dvh] w-full max-w-[20rem] overflow-hidden rounded-tile bg-sunken short:mt-2 short:max-h-[26dvh] pointer-fine:mt-4 pointer-fine:aspect-video pointer-fine:max-h-[34dvh] pointer-fine:max-w-none">
+        {/* The box takes the CAMERA's shape, not a device guess. This screen answers
+            one question — "what will everyone else see?" — and a fixed 3:4 / 16:9 box
+            with object-cover answered it wrongly: it cropped a 4:3 webcam's sides off,
+            so the user approved a framing they were never actually shown.
+            Sizing it from the stream means no crop AND no letterbox bars: the box IS
+            the frame. Height still caps (--pv-h) so the preview can't push the name
+            field and Join off a short viewport — the original cause of pre-join
+            scrolling — and the paired max-width keeps the box tight to the video when
+            that cap binds, instead of leaving pillarbox bars at full width. */}
+        <div
+          className="mx-auto mt-3 w-full overflow-hidden rounded-tile bg-sunken [--pv-h:32dvh] [--pv-w:20rem] short:mt-2 short:[--pv-h:26dvh] pointer-fine:mt-4 pointer-fine:[--pv-h:34dvh] pointer-fine:[--pv-w:100%]"
+          style={{
+            aspectRatio: String(previewAspect),
+            maxHeight: 'var(--pv-h)',
+            maxWidth: `min(var(--pv-w), calc(var(--pv-h) * ${previewAspect}))`,
+          }}
+        >
           {cameraOn ? (
-            <video ref={videoRef} autoPlay muted playsInline className="size-full object-cover [transform:scaleX(-1)]" />
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
+              // the frame is shown whole rather than trimmed to fit.
+              className="size-full object-contain [transform:scaleX(-1)]"
+            />
           ) : (
             <div className="grid size-full place-items-center text-sm text-ink-subtle">
               {prejoin.lowBandwidth ? 'Audio-only / low bandwidth' : 'Camera off'}
