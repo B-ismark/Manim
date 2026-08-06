@@ -268,9 +268,15 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
         self-echo left to carry it). Separately, replace the generic <code>crosshair</code> with a
         <b>pen-tip cursor</b> in the author’s own palette colour: armed state becomes unambiguous, and if
         a captured copy ever appears again it is visibly the pen, not a second pointer.</dd></div>
-      <div class="frow"><dt>Not the fix</dt><dd>Constraining capture with <code>cursor: 'never'</code>.
-        It is a legacy constraint with uneven support, and it would strip the presenter’s pointer from
-        <b>everyone’s</b> view — the pointer is the main thing viewers follow during a walkthrough.</dd></div>
+      <div class="frow"><dt>Corrected</dt><dd>This audit originally ruled out constraining the capture
+        with <code>cursor: 'never'</code>, calling it a legacy constraint with uneven support. <b>That was
+        wrong, and testing rather than reading the API surface is what caught it:</b>
+        <code>getSupportedConstraints().cursor</code> reports <code>false</code>, but Chromium honours the
+        constraint anyway — <code>applyConstraints({cursor:'never'})</code> resolves on a live track and
+        <code>getSettings()</code> reports it back. The second objection was sound though, so the shipped
+        version is <b>scoped</b>: the captured pointer is suppressed only <em>while the pen is armed</em>
+        and handed straight back on disarm. Viewers still follow the presenter’s pointer during a
+        walkthrough; during a stroke the ink says what the arrow would, in an attributed colour.</dd></div>
     </dl>
   </div>
 
