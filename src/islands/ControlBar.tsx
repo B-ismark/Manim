@@ -54,6 +54,7 @@ import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore, type GridSize } from '@/store/useRoomStore'
 import { useDeviceStore } from '@/store/useDeviceStore'
 import { useCameraToggle } from '@/lib/useCameraToggle'
+import { useScreenShare } from '@/features/calls/useScreenShare'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { cn } from '@/lib/cn'
@@ -108,7 +109,9 @@ export function ControlBar({
   noise,
   docPip,
 }: ControlBarProps) {
-  const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant()
+  const { localParticipant, isMicrophoneEnabled } = useLocalParticipant()
+  // One entry point for starting/stopping a share — see useScreenShare's header.
+  const screenShare = useScreenShare()
   // Annotation only makes sense while there's a shared screen to draw on.
   const shareTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
   const someoneSharing = shareTracks.length > 0
@@ -146,9 +149,9 @@ export function ControlBar({
   const { isFullscreen, toggleFullscreen } = useFullscreen()
   // Screen share needs getDisplayMedia — absent on iOS Safari (and iOS Chrome,
   // which is WebKit underneath). Hide the control there instead of offering a
-  // button that silently fails.
-  const canScreenShare =
-    typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getDisplayMedia)
+  // button that silently fails. The check lives in useScreenShare so the two
+  // share controls (here and the mini player) can't disagree about it.
+  const canScreenShare = screenShare.supported
 
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
@@ -318,9 +321,9 @@ export function ControlBar({
             className="pointer-fine:hidden"
             icon={<ScreenShareIcon />}
             label="Share screen"
-            active={isScreenShareEnabled}
+            active={screenShare.enabled}
             onClick={() => {
-              localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
+              screenShare.toggle()
               closeMore()
             }}
           />
@@ -582,13 +585,13 @@ export function ControlBar({
             showed the control TWICE — here and in the More sheet. Rendering
             conditionally can't lose a specificity race. */}
         {canScreenShare && !touch && (
-          <Tooltip content={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}>
+          <Tooltip content={screenShare.enabled ? 'Stop sharing' : 'Share screen'}>
             <IconButton
-              label={isScreenShareEnabled ? 'Stop screen share' : 'Share screen'}
+              label={screenShare.enabled ? 'Stop screen share' : 'Share screen'}
               icon={<ScreenShareIcon />}
               tone="neutral"
-              active={isScreenShareEnabled}
-              onClick={() => localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+              active={screenShare.enabled}
+              onClick={screenShare.toggle}
             />
           </Tooltip>
         )}
