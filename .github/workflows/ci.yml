@@ -113,6 +113,77 @@ jobs:
           path: audit/scenarios/
           retention-days: 7
 
+  # E2E against a LOCAL livekit-server, and deliberately NOT gated on
+  # LIVEKIT_TESTS.
+  #
+  # The freeze protects the CLOUD project's participant-minutes. A server on
+  # localhost cannot touch them — that is the same reasoning CLAUDE.md already
+  # uses to allow the full suite locally, applied to CI. So this job runs on
+  # every push and PR while the cloud-backed `e2e` job above stays frozen.
+  #
+  # Why it exists: with `e2e` gated off, CI ran typecheck, unit tests and
+  # Lighthouse and never executed a single Playwright spec. Specs were being
+  # added that nothing but a developer's memory would ever run again.
+  e2e-local:
+    runs-on: ubuntu-latest
+    needs: typecheck
+    # The suite takes ~7 minutes. GitHub's default is SIX HOURS, so a hung WebRTC
+    # test would hold a runner for a working day before anyone noticed — and this
+    # job was added the same evening the repo spent five hours with jobs stuck
+    # waiting on runners. Bound it.
+    timeout-minutes: 30
+    env:
+      # --dev starts livekit-server with this well-known pair. They are not
+      # secrets: they are hardcoded in LiveKit's dev mode and only ever reach a
+      # server bound to loopback on this runner.
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      VITE_LIVEKIT_URL: ws://127.0.0.1:7880
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # 1.10+ is required: 1.9 and older 404 the /rtc/v1 route this client uses.
+      - name: Start a local livekit-server
+        run: |
+          curl -fsSL -o lk.tar.gz \
+            https://github.com/livekit/livekit/releases/download/v1.10.0/livekit_1.10.0_linux_amd64.tar.gz
+          tar xzf lk.tar.gz livekit-server
+          ./livekit-server --dev --bind 127.0.0.1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:7880/ >/dev/null; then echo "livekit up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::livekit-server did not come up" && exit 1
+
+      - name: Start app (vite + token server)
+        run: npm run dev &
+      - name: Wait for vite
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173 >/dev/null; then echo "up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::vite did not come up" && exit 1
+
+      # Serial: concurrent WebRTC contexts saturate a 2-core runner and flake.
+      - name: Run E2E — desktop
+        run: npm test -- --workers=1
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-local
+          path: playwright-report/
+          retention-days: 7
+
   # Lighthouse budgets on landing + prejoin (the routes that render without a live
   # room). Needs VITE_LIVEKIT_URL to build (the build aborts on empty), so it's
   # gated on that secret and skips cleanly when it's absent. Asserts the budgets
