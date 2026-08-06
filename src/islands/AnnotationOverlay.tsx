@@ -1,10 +1,14 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { useAnnotate } from '@/features/annotate/useAnnotate'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useElementSize } from '@/lib/useElementSize'
-import { useIsTouch } from '@/lib/useIsTouch'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { useThemeStore } from '@/store/useThemeStore'
+import { useSharePresence } from '@/lib/useSharePresence'
+import { penCursor, setCapturedCursorHidden } from '@/features/annotate/penCursor'
+import { useLocalParticipant } from '@livekit/components-react'
+import { Track, type LocalVideoTrack } from 'livekit-client'
+import { colorVar } from '@/lib/annotate/palette'
 
 /**
  * Drawing surface over the shared screen.
@@ -23,15 +27,18 @@ import { useThemeStore } from '@/store/useThemeStore'
  * phone screen is too cramped to draw on usefully. Remote strokes still render.
  */
 export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { aspect: number }) {
-  const { engine, beginLocal } = useAnnotate()
+  const { engine, beginLocal, localColorIdx } = useAnnotate()
   const active = useAnnotateStore((s) => s.active)
-  const allowed = useAnnotateStore((s) => s.allowed)
-  const touch = useIsTouch()
   const announce = useAnnounce()
   const { ref: boxRef, size } = useElementSize<HTMLDivElement>()
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
-  const canDraw = active && allowed && !touch
+  // One shared answer to "is drawing possible right now" — the same value the two
+  // pen buttons render on and the same one that disarms the pen. This used to be
+  // re-derived here from `allowed && !touch`, which is most of that condition but
+  // not all of it, and the gap is how an armed pen outlived its own canvas.
+  const { canAnnotate, ownShareShown } = useSharePresence()
+  const canDraw = active && canAnnotate
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -110,6 +117,43 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
     }
   }, [engine, beginLocal, canDraw])
 
+  // The armed cursor, in this author's own palette colour.
+  //
+  // Resolved from the CSS custom property rather than hardcoded (STYLE.md §1), and
+  // re-resolved whenever the theme rewrites the palette — the same invalidation the
+  // engine's own colour cache needs, for the same reason.
+  const { localParticipant } = useLocalParticipant()
+  const [cursor, setCursor] = useState('crosshair')
+  useEffect(() => {
+    if (!canDraw) return
+    const resolved = getComputedStyle(document.documentElement)
+      .getPropertyValue(colorVar(localColorIdx))
+      .trim()
+    setCursor(resolved ? penCursor(resolved) : 'crosshair')
+  }, [canDraw, localColorIdx, themeMode, accentId, highContrast])
+
+  // Hide the OS pointer from the OUTGOING capture while the pen is armed on your
+  // OWN share. This is the other half of the doubled-cursor fix: not echoing a
+  // monitor share removes the duplicate for the default case, and this removes it
+  // for anyone who has deliberately turned the echo back on.
+  //
+  // Scoped to "armed", not the whole share, because the presenter's pointer is what
+  // viewers follow during a walkthrough — but while a stroke is being drawn the ink
+  // says everything the arrow would, and in an attributed colour.
+  const shareMst = (
+    localParticipant.getTrackPublication(Track.Source.ScreenShare)?.track as
+      | LocalVideoTrack
+      | undefined
+  )?.mediaStreamTrack
+  useEffect(() => {
+    if (!shareMst) return
+    const hide = canDraw && ownShareShown
+    setCapturedCursorHidden(shareMst, hide)
+    // Always hand the cursor back on the way out — disarming, unmounting, or the
+    // share ending must not leave viewers with a pointerless capture.
+    return () => setCapturedCursorHidden(shareMst, false)
+  }, [shareMst, canDraw, ownShareShown])
+
   // Announce the MODE, not each stroke — a message per pointerdown would be
   // screen-reader spam. Remote authors are announced separately (useAnnotate),
   // which is the signal that actually carries information you can't see.
@@ -127,8 +171,8 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { a
         data-testid="annotation-canvas"
         // Only the armed pen takes pointer events; otherwise taps fall through to
         // the tile's own spotlight/demote gestures.
-        className={canDraw ? 'pointer-events-auto size-full cursor-crosshair' : 'size-full'}
-        style={canDraw ? { touchAction: 'none' } : undefined}
+        className={canDraw ? 'pointer-events-auto size-full' : 'size-full'}
+        style={canDraw ? { touchAction: 'none', cursor } : undefined}
         aria-hidden
       />
     </div>
