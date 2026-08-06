@@ -147,5 +147,8 @@ export function useAnnotate() {
     [engine, localParticipant.identity],
   )
 
-  return { engine, beginLocal }
+  // Handed back so the overlay can colour the armed cursor without subscribing to
+  // useParticipants() a second time — that hook re-emits on speaking-state churn,
+  // and the overlay is the one component in the feature that must stay quiet.
+  return { engine, beginLocal, localColorIdx }
 }

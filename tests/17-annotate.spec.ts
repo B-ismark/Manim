@@ -368,6 +368,50 @@ test.describe('Annotation over a shared screen @annotate', () => {
   })
 
   /**
+   * The pen must be offered exactly when there is something to draw on.
+   *
+   * It used to be offered whenever a share EXISTED, which is not the same question:
+   * spotlighting a person moves them into the big region and unmounts the canvas,
+   * while the share carries on being published in the grid. The pen stayed lit,
+   * arming it flipped a store flag with no surface under it, and the Announcer told
+   * a screen-reader user to "Draw on the shared screen" when there was none.
+   *
+   * Asserts the round trip, not just the disappearance — a pen that never came back
+   * would pass half of this.
+   */
+  test('the pen is withdrawn when a person is spotlighted, and returns with the share', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'the pen is desktop-only')
+    const room = uniqueRoom('annot')
+
+    await join(page, room, 'Viewer')
+    const sharer = await addSharer(browser, room)
+
+    // Presentation layout: the share is in the big region, so the pen is available.
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toBeVisible()
+
+    // Spotlight the presenter's CAMERA tile — they take the big region, the share
+    // drops to the grid, and the drawing surface goes with it.
+    await page.getByRole('button', { name: /^Spotlight Presenter$/i }).first().click()
+    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toHaveCount(0)
+
+    // Back to the share: both the surface and the control return together.
+    await page.getByRole('button', { name: /^Back to shared screen$/i }).first().click()
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await revealChrome(page)
+    await expect(page.getByRole('button', { name: /Annotate shared screen/i })).toBeVisible()
+
+    await sharer.context.close()
+  })
+
+  /**
    * A viewer's picture must survive somebody else annotating on it.
    *
    * Nothing else here checks this: every other test asserts where the INK lands,

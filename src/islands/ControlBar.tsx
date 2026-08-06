@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useLocalParticipant, useTracks } from '@livekit/components-react'
-import { Track } from 'livekit-client'
+import { useLocalParticipant } from '@livekit/components-react'
 import { toast } from '@/store/useToastStore'
-import { annotateEnabled } from '@/features/annotate/useAnnotate'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import {
   Button,
@@ -55,6 +53,7 @@ import { useRoomStore, type GridSize } from '@/store/useRoomStore'
 import { useDeviceStore } from '@/store/useDeviceStore'
 import { useCameraToggle } from '@/lib/useCameraToggle'
 import { useScreenShare } from '@/features/calls/useScreenShare'
+import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { cn } from '@/lib/cn'
@@ -112,19 +111,21 @@ export function ControlBar({
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant()
   // One entry point for starting/stopping a share — see useScreenShare's header.
   const screenShare = useScreenShare()
-  // Annotation only makes sense while there's a shared screen to draw on.
-  const shareTracks = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
-  const someoneSharing = shareTracks.length > 0
+  // Annotation needs a share in the BIG region, not merely a share somewhere.
+  // Gating on "does a share exist" left the pen enabled after the share was demoted
+  // to the grid or a person was spotlighted: arming it then flipped a store flag
+  // with no canvas mounted anywhere, and announced "Draw on the shared screen" to a
+  // screen-reader user who had no surface at all.
+  const { canAnnotate } = useSharePresence()
   const annotateActive = useAnnotateStore((s) => s.active)
-  const annotateAllowed = useAnnotateStore((s) => s.allowed)
   const toggleAnnotate = useAnnotateStore((s) => s.toggle)
   const setAnnotateActive = useAnnotateStore((s) => s.setActive)
-  // Disarm when the last share ends. Both pen controls disappear with the share, so
-  // an armed pen would be unreachable — and would silently re-arm itself the moment
-  // the next person shared.
+  // ONE disarm path. An armed pen with no reachable control is a mode the user
+  // cannot see or exit, and it would silently re-arm the moment the next person
+  // shared — so the flag follows the same condition the controls render on.
   useEffect(() => {
-    if (!someoneSharing) setAnnotateActive(false)
-  }, [someoneSharing, setAnnotateActive])
+    if (!canAnnotate) setAnnotateActive(false)
+  }, [canAnnotate, setAnnotateActive])
   // Camera toggle goes through the warm-then-release path (fast re-enable).
   const { isCameraEnabled, toggleCamera } = useCameraToggle()
   const [pipActive, setPipActive] = useState(false)
@@ -599,7 +600,7 @@ export function ControlBar({
         {/* Annotate — only while someone is actually sharing, and desktop only:
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
-        {annotateEnabled && someoneSharing && annotateAllowed && !touch && (
+        {canAnnotate && (
           <Tooltip content={annotateActive ? 'Stop annotating' : 'Draw on the shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}

@@ -38,7 +38,7 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { focusTrack, isLocalCam, isScreenShare, primaryShare } from '@/lib/focusTrack'
+import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
 import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
@@ -48,11 +48,6 @@ import { annotateEnabled } from '@/features/annotate/useAnnotate'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { cn } from '@/lib/cn'
-
-/** Stable per-tile key (identity + source) — never reshuffles as people speak. */
-function tileKey(t: TrackReferenceOrPlaceholder): string {
-  return `${t.participant.identity}-${t.source}`
-}
 
 /** Composed screen-reader label for a tile: who + their current state. Keeps the
  *  visual pills (icons) in sync with an accessible text equivalent (STYLE.md §6 —
@@ -296,7 +291,7 @@ export function Stage() {
   // on every render (the arrays are re-derived each render).
   const shareIdKey = visible
     .filter(isScreenShare)
-    .map((t) => t.publication?.trackSid ?? tileKey(t))
+    .map(shareId)
     .join('|')
   const tileKeyList = visible.map(tileKey).join('|')
   useEffect(() => {
@@ -313,7 +308,7 @@ export function Stage() {
   // SID) — demoting falls back to the plain equal-tile grid on every device.
   const share = primaryShare(visible)
   if (share && visible.length > 1) {
-    const sid = share.publication?.trackSid ?? tileKey(share)
+    const sid = shareId(share)
     if (!demotedShares.includes(sid)) {
       return <PresentationStage visible={visible} coarse={coarse} share={share} shareId={sid} />
     }
@@ -442,7 +437,7 @@ function GridStage({
   const shareProps = useCallback(
     (t: TrackReferenceOrPlaceholder) => {
       if (!isScreenShare(t)) return {}
-      const promote = () => toggleShareDemoted(t.publication?.trackSid ?? tileKey(t))
+      const promote = () => toggleShareDemoted(shareId(t))
       return {
         onActivate: promote,
         action: { icon: <ScreenShareIcon />, label: 'Present shared screen', onClick: promote },
@@ -668,10 +663,11 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
  */
 function AnnotateControl() {
   const active = useAnnotateStore((s) => s.active)
-  const allowed = useAnnotateStore((s) => s.allowed)
   const toggle = useAnnotateStore((s) => s.toggle)
-  const coarse = useIsTouch()
-  if (!allowed || coarse) return null
+  // Same single condition the control bar's pen renders on, so the two controls
+  // driving one mode can never disagree about whether that mode is available.
+  const { canAnnotate } = useSharePresence()
+  if (!canAnnotate) return null
   return (
     <div className="absolute right-2 top-[6.5rem] z-10" onPointerDown={(e) => e.stopPropagation()}>
       <IconButton

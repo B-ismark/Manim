@@ -6,6 +6,46 @@ export const isLocalCam = (t: TrackReferenceOrPlaceholder) =>
 
 export const isScreenShare = (t: TrackReferenceOrPlaceholder) => t.source === Track.Source.ScreenShare
 
+/** Stable per-tile key (identity + source) — never reshuffles as people speak.
+ *  Lives here rather than in Stage so the presentation-state keys and the code
+ *  that interprets them (isShareKey) can't drift apart. */
+export function tileKey(t: TrackReferenceOrPlaceholder): string {
+  return `${t.participant.identity}-${t.source}`
+}
+
+/** Does a spotlight key point at a screen share rather than a person? */
+export const isShareKey = (key: string) => key.endsWith(`-${Track.Source.ScreenShare}`)
+
+/** Identity of a share for presentation state: its track SID, or the tile key
+ *  before a SID exists. Matches what Stage stores in `demotedShares`. */
+export const shareId = (t: TrackReferenceOrPlaceholder) => t.publication?.trackSid ?? tileKey(t)
+
+/**
+ * Is a screen share currently occupying the BIG region — the one thing that
+ * decides whether there is a surface to draw on?
+ *
+ * Three surfaces used to answer this question separately and disagree. The control
+ * bar offered the pen whenever a share merely EXISTED, so spotlighting a person or
+ * demoting the share left an enabled pen with no canvas mounted anywhere — arming it
+ * flipped a store flag and told a screen-reader user "Draw on the shared screen"
+ * when there was nothing to draw on. Stage mounted the canvas on `bigIsShare`, and
+ * the tile's own pen button on something else again.
+ *
+ * One definition, consumed by all of them (via useSharePresence).
+ */
+export function shareIsFeatured(
+  shares: TrackReferenceOrPlaceholder[],
+  opts: { demotedShares: string[]; spotlightKey: string | null },
+): boolean {
+  const share = primaryShare(shares)
+  if (!share) return false
+  if (opts.demotedShares.includes(shareId(share))) return false
+  // A person-spotlight displaces the share from the big region; a share-spotlight
+  // (or no spotlight at all) leaves a share in it.
+  if (opts.spotlightKey && !isShareKey(opts.spotlightKey)) return false
+  return true
+}
+
 /**
  * Choose which screen share to feature in the presentation big slot when more than one
  * person is sharing. A share whose publisher is currently speaking wins (they're likely
