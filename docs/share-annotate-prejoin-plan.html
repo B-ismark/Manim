@@ -1,0 +1,553 @@
+<title>Implementation plan — share, annotate, prejoin</title>
+
+<style>
+:root{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --crit:oklch(.52 .2 25); --crit-soft:color-mix(in oklch,var(--crit) 10%,var(--bg-2));
+  --warn:oklch(.55 .13 65); --warn-soft:color-mix(in oklch,var(--warn) 12%,var(--bg-2));
+  --good:oklch(.48 .14 150); --good-soft:color-mix(in oklch,var(--good) 11%,var(--bg-2));
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --crit:oklch(.72 .16 25); --crit-soft:color-mix(in oklch,var(--crit) 14%,var(--bg-2));
+  --warn:oklch(.8 .13 75); --warn-soft:color-mix(in oklch,var(--warn) 14%,var(--bg-2));
+  --good:oklch(.76 .15 150); --good-soft:color-mix(in oklch,var(--good) 13%,var(--bg-2));
+}}
+:root[data-theme="dark"]{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --crit:oklch(.72 .16 25); --crit-soft:color-mix(in oklch,var(--crit) 14%,var(--bg-2));
+  --warn:oklch(.8 .13 75); --warn-soft:color-mix(in oklch,var(--warn) 14%,var(--bg-2));
+  --good:oklch(.76 .15 150); --good-soft:color-mix(in oklch,var(--good) 13%,var(--bg-2));
+}
+:root[data-theme="light"]{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --crit:oklch(.52 .2 25); --crit-soft:color-mix(in oklch,var(--crit) 10%,var(--bg-2));
+  --warn:oklch(.55 .13 65); --warn-soft:color-mix(in oklch,var(--warn) 12%,var(--bg-2));
+  --good:oklch(.48 .14 150); --good-soft:color-mix(in oklch,var(--good) 11%,var(--bg-2));
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+  line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3,h4{text-wrap:balance;margin:0}
+code{font-family:var(--mono);font-size:.86em;background:var(--sunk);padding:1px 5px;
+  border-radius:4px;color:var(--ink);overflow-wrap:anywhere}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+
+.masthead{padding:72px 0 30px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 18px}
+h1{font-size:clamp(28px,4.6vw,42px);line-height:1.07;letter-spacing:-.028em;font-weight:640}
+.stand{margin:20px 0 0;max-width:62ch;font-size:17px;color:var(--ink-2)}
+
+section.block{padding:46px 0 0}
+h2{font-size:22px;letter-spacing:-.015em;font-weight:640}
+.lede{margin:10px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+
+/* ── commit cards ── */
+.commit{border:1px solid var(--rule);border-radius:12px;background:var(--bg-2);margin:18px 0 0;
+  overflow:hidden}
+.chead{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:baseline;padding:15px 18px;
+  border-bottom:1px solid var(--rule);background:var(--sunk)}
+.cnum{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;padding:1px 7px;flex:none;translate:0 -1px}
+.chead h3{font-size:17.5px;letter-spacing:-.012em;font-weight:640;flex:1;min-width:14ch}
+.covers{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;color:var(--ink-3);
+  align-self:center;white-space:nowrap}
+.cbody{padding:16px 18px}
+.cbody > p{margin:0 0 12px;font-size:14.5px;color:var(--ink-2);max-width:68ch}
+.cbody > p:last-child{margin-bottom:0}
+.cbody b{color:var(--ink);font-weight:600}
+
+.does{list-style:none;padding:0;margin:0 0 13px;display:grid;gap:6px}
+.does li{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:14px;color:var(--ink-2)}
+.does li::before{content:'—';color:var(--ink-3);font-family:var(--mono)}
+.does code{font-size:12.5px}
+
+.gate{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;
+  border-top:1px dashed var(--rule)}
+.gate span{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;padding:3px 8px;
+  border-radius:5px;background:var(--sunk);border:1px solid var(--rule);color:var(--ink-2)}
+.gate span.new{border-color:var(--good);color:var(--good);background:var(--good-soft)}
+.gate .glabel{background:none;border:none;color:var(--ink-3);letter-spacing:.12em;
+  text-transform:uppercase;padding-left:0}
+
+/* ── dead ends ── */
+.de{border-top:1px solid var(--rule-2);padding:20px 0 0;margin-top:22px}
+.dehead{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:baseline}
+.deid{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--crit);
+  border:1px solid var(--crit);border-radius:3px;padding:1px 6px;flex:none;translate:0 -2px}
+.dehead h3{font-size:18px;letter-spacing:-.012em;font-weight:640;flex:1;min-width:12ch}
+.dl2{margin:12px 0 0;display:grid;gap:0}
+.dr{display:grid;grid-template-columns:96px 1fr;gap:14px;padding:8px 0;
+  border-bottom:1px solid var(--rule)}
+.dr:last-child{border-bottom:none}
+.dr dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--ink-3);padding-top:4px}
+.dr dd{margin:0;font-size:14.5px;color:var(--ink-2);max-width:68ch}
+.dr dd b{color:var(--ink);font-weight:600}
+@media (max-width:560px){.dr{grid-template-columns:1fr;gap:3px}}
+
+/* ── decisions ── */
+.dec{margin:18px 0 0;display:grid;gap:14px}
+.decrow{border:1px solid var(--rule-2);border-left:3px solid var(--warn);border-radius:0 10px 10px 0;
+  padding:15px 18px;background:var(--bg-2)}
+.decrow h4{font-size:15.5px;font-weight:640;margin:0 0 6px}
+.decrow p{margin:0 0 8px;font-size:14.5px;color:var(--ink-2);max-width:66ch}
+.decrow p:last-child{margin-bottom:0}
+.decrow .mine{font-size:14px;color:var(--ink-2)}
+.decrow .mine b{color:var(--good);font-weight:600}
+
+/* ── table ── */
+.tblwrap{overflow-x:auto;margin:20px 0 0;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:600px}
+th,td{text-align:left;padding:10px 14px 10px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding-top:13px}
+tbody th{font-family:var(--mono);font-weight:600;white-space:nowrap;color:var(--accent)}
+td{color:var(--ink-2)}
+
+.note{margin:26px 0 0;border:1px solid var(--rule-2);border-left:3px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:18px 20px;background:var(--bg-2)}
+.note h2{font-size:16px;margin:0 0 8px}
+.note p{margin:0 0 9px;font-size:14.5px;color:var(--ink-2);max-width:66ch}
+.note p:last-child{margin-bottom:0}
+
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-3)}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Manim · implementation plan</p>
+  <h1>Seven commits, ten dead-ends found before writing any of them.</h1>
+  <p class="stand">A sequenced plan for all ten share/annotate findings plus the prejoin feed layout.
+  Every commit is independently reviewable, independently revertable, and passes
+  <code>typecheck</code> on its own. The dead-ends section is the part worth reading first — one of
+  them would have silently broken every screen-share test in the suite.</p>
+</header>
+
+<!-- ══════════════ COMMITS ══════════════ -->
+<section class="block">
+  <h2>The sequence</h2>
+  <p class="lede">Ordered so each commit makes the next one smaller. C1 is a pure refactor with no
+  behaviour change; it exists because nothing else can be fixed <em>once</em> until there is a single
+  place that starts a share.</p>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C1</span><h3>Extract <code>useScreenShare()</code></h3>
+      <span class="covers">F4 · no behaviour change</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li>New <code>src/features/calls/useScreenShare.ts</code> owning the capture options object, the
+          <code>CaptureController</code>, the surface-type read and the store write.</li>
+        <li>Four call sites become <code>start()</code>/<code>stop()</code>:
+          <code>ControlBar.tsx:323</code>, <code>ControlBar.tsx:591</code>,
+          <code>PipPanel.tsx:123</code>, <code>useMediaDeviceWatch.ts:94</code>.</li>
+        <li>Options land here and nowhere else: <code>selfBrowserSurface: 'exclude'</code>,
+          <code>surfaceSwitching: 'include'</code>, <code>systemAudio: 'include'</code>.</li>
+      </ul>
+      <p>The toast’s “Share again” action (<code>useMediaDeviceWatch.ts:94</code>) is the call site that
+      makes this non-optional. It’s the <b>recovery</b> path — a share restarted after an accidental stop
+      would otherwise silently lose every option added in C2, and it’s the one nobody would think to test.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span><span>test:unit</span>
+        <span>17 · 18 · 19 · 12 (local LiveKit)</span></div>
+    </div>
+  </div>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C2</span><h3>Surface-type branch + focus controller</h3>
+      <span class="covers">F2 · F3 — the reported fix</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li>Read <code>track.getSettings().displaySurface</code> at publish time into
+          <code>useRoomStore</code> as <code>shareSurface: 'monitor' | 'window' | 'browser' | 'unknown'</code>.</li>
+        <li><code>Stage.tsx:281</code>’s <code>showOwnShare</code> gains the missing condition its own
+          comment already describes.</li>
+        <li><b>monitor</b> → the big region renders a <code>PresenterCard</code> (“You’re sharing your
+          entire screen”, what viewers see, Stop sharing) instead of the live echo. Pen hidden with a
+          stated reason, not a dead button.</li>
+        <li><b>window / browser / unknown</b> → unchanged: live share, pen available.</li>
+        <li><code>CaptureController</code> + <code>setFocusBehavior('no-focus-change')</code> so picking a
+          window doesn’t pull the presenter out of the call.</li>
+        <li>New: a <b>“Hide my screen from my view”</b> toggle on the presenting pill — see D1.</li>
+      </ul>
+      <p>This is the commit that resolves all three reported symptoms. The doubled crosshair goes with the
+      mirror, because there is no longer a self-echo carrying the captured cursor.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span>
+        <span class="new">17 rewritten (D2)</span><span class="new">helpers: surface arg (D1)</span>
+        <span>19 · 12</span></div>
+    </div>
+  </div>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C3</span><h3>Pen cursor and mode honesty</h3>
+      <span class="covers">F1 · F8</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li>Replace <code>cursor-crosshair</code> (<code>AnnotationOverlay.tsx:130</code>) with a pen-tip
+          cursor in the author’s own palette colour — an SVG <code>data:</code> cursor with a hotspot at
+          the nib, falling back to <code>crosshair</code>.</li>
+        <li><code>useSharePresence()</code> gains <code>shareFeatured</code> — “a share is currently in the
+          big region” — and both the ControlBar pen and the tile pen read it, instead of
+          <code>someoneSharing</code> (<code>ControlBar.tsx:114</code>).</li>
+      </ul>
+      <p>F8 today: spotlight a person and the control-bar pen stays enabled, arming a store flag with no
+      canvas mounted anywhere — and the Announcer tells a screen-reader user “Draw on the shared screen”
+      when there is no surface at all. <code>useSharePresence</code> already exists precisely to stop
+      Stage and the chrome disagreeing; this is the same class of disagreement it was built for.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span><span>17</span>
+        <span class="new">spec: pen hidden while a person is spotlit</span><span>test:a11y</span></div>
+    </div>
+  </div>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C4</span><h3>Annotation correctness</h3>
+      <span class="covers">F5 · F6 — wire version bump</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li><code>primaryShare()</code> (<code>focusTrack.ts:20</code>) becomes <b>sticky</b>: once a share
+          is featured it stays featured until it ends or someone switches explicitly. Speaking is a bad
+          reason to re-aim a shared drawing surface.</li>
+        <li>Wire v2: a 4-byte FNV-1a hash of the target track SID in the header. Receivers drop strokes
+          whose target isn’t the share they’re looking at. A hash, not the SID itself, because SIDs are
+          variable-length strings and the header is fixed-width by design.</li>
+        <li><code>AnnotationOverlay</code> cleanup calls <code>engine.endLocal()</code> before
+          <code>detach()</code>, so unmounting mid-stroke can’t orphan one.</li>
+        <li>The sticky key joins <code>prunePresentation</code> — see D4.</li>
+      </ul>
+      <p>Its own commit because it changes the wire. Needs two real publishers to verify, which means a
+      local server and a deliberate two-sharer scenario that no current spec covers.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span>
+        <span class="new">unit: wire v1/v2 round-trip + reject</span>
+        <span class="new">spec: two concurrent shares</span><span>17 · 18</span></div>
+    </div>
+  </div>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C5</span><h3><code>TileActionStack</code> primitive</h3>
+      <span class="covers">F7</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li>One flex column with <code>gap</code>, modelled on <code>TopStack</code>, replacing the three
+          hand-picked offsets: <code>top-2</code> (<code>Stage.tsx:1239</code>), <code>top-14</code>
+          (<code>:608</code>), <code>top-[6.5rem]</code> (<code>:639</code>).</li>
+        <li>Children render their button only — no positioning, no z-index — exactly the contract
+          <code>TopStack</code> already documents.</li>
+        <li>Fullscreen’s <code>z-30</code> exit button stays outside the stack: in fullscreen it is
+          deliberately the only control, which is a different concern from ordering.</li>
+      </ul>
+      <p>This is <code>TopStack</code>’s bug reproduced one level down, inside the tile. Three siblings each
+      picking a vertical offset while assuming the other two’s heights — it collides today on a short big
+      region (the vertical split on a phone, or a share demoted into a grid cell).</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span>
+        <span class="new">19: extend the overlap sweep to tile corners</span><span>test:visual</span></div>
+    </div>
+  </div>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C6</span><h3>Prejoin feed — C’s footer, then D+E’s frame</h3>
+      <span class="covers">prejoin prototypes</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li><b>C6a</b> — footer compression only. Nine rows to three; delete the fixed
+          <code>--pv-h</code>/<code>--pv-w</code> cap (<code>PreJoin.tsx:225</code>) and let the feed size
+          from what’s left. Ships alone and is worth landing alone.</li>
+        <li><b>C6b</b> — the feed becomes the card’s header at full card width, with the header’s
+          <em>height</em> derived from <code>previewAspect</code> so a landscape camera fills it exactly —
+          no bars, and <b>no blurred backdrop fill needed at all</b> (see D7).</li>
+        <li>A portrait camera, where that height would clamp, pivots to E’s side-by-side instead of
+          falling back to a fill. <b>D and E ship as one component</b>, not two variants.</li>
+        <li><code>data-testid="prejoin-preview"</code> on the preview video — see D6.</li>
+      </ul>
+      <p>Splitting C6a out matters: it is the change that fixes the actual defect (a cap that never grows),
+      it is reversible in one revert, and every other prejoin variant depends on it.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span>
+        <span class="new">02 selector → testid (D6)</span><span>11 · mobile-sm no-scroll</span>
+        <span>test:a11y</span><span>lighthouse</span></div>
+    </div>
+  </div>
+
+  <div class="commit">
+    <div class="chead"><span class="cnum">C7</span><h3>Polish</h3>
+      <span class="covers">F9 · F10</span></div>
+    <div class="cbody">
+      <ul class="does">
+        <li>F9 — a one-shot pill the first time remote ink arrives on a touch device (“<em>Name</em> is
+          drawing on the shared screen”), giving the existing Announcer message a visible counterpart.</li>
+        <li>F10 — publish the <b>share track specifically</b> as VP8 via <code>publishOptions</code> so
+          <code>contentHint: 'detail'</code> survives; cameras keep VP9.</li>
+      </ul>
+      <p>F10 stays last and stays separate. It is a codec change on the share path and needs a real
+      bandwidth and sharpness comparison, not just a diff that typechecks. If that comparison doesn’t
+      clearly favour it, dropping it costs nothing else in this plan.</p>
+      <div class="gate"><span class="glabel">gates</span><span>typecheck</span><span>17</span>
+        <span class="new">manual: A/B share sharpness at a bandwidth cap</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ DEAD ENDS ══════════════ -->
+<section class="block">
+  <h2>Dead-ends and inconsistencies found while planning</h2>
+  <p class="lede">These came out of reading the test harness and the surrounding stores rather than the
+  findings themselves. D1 and D2 change how C2 has to be built; D3 changes the wire design; D7 changes
+  which prejoin prototype we should actually ship.</p>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D1</span><h3>The test harness produces no <code>displaySurface</code> at all</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>tests/helpers.ts:298</code> — <code>fakeScreenShare</code>
+        overrides <code>getDisplayMedia</code> to return <code>canvas.captureStream()</code>. A canvas
+        capture track reports <code>getSettings().displaySurface === undefined</code>.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>Every share test in the suite —
+        <code>12-resilience</code>, <code>17-annotate</code> (×4), <code>18-annotate-perf</code>,
+        <code>19-overlays</code> — would land in whatever branch we assign to “unknown”. Written the naive
+        way, C2 would either break all of them or make all of them exercise a path no real user is on.
+        Firefox has historically omitted the field too, so this is not only a test problem.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>Treat <code>unknown</code> as <b>permissive</b> (behave like a
+        window share). A false “monitor” would remove the annotate path from every browser that doesn’t
+        report the field, which is a worse failure than the mirror it prevents. Then extend
+        <code>fakeScreenShare(page, w, h, fps, surface)</code> to stamp <code>getSettings()</code> so
+        <em>both</em> branches become testable.</dd></div>
+      <div class="dr"><dt>And</dt><dd>Because detection can’t be trusted everywhere, C2 also adds an
+        explicit <b>“Hide my screen from my view”</b> toggle on the presenting pill. Whatever the browser
+        reports, the presenter gets a one-tap fix — and we stop depending on a support matrix for a
+        correctness property.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D2</span><h3>An existing test asserts exactly the behaviour C2 changes</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>tests/17-annotate.spec.ts:260</code> — “a presenter can
+        draw on their own share, and only while the pen is armed”, with a comment explaining that a
+        presenter’s own captured frame is the only surface a browser tab can draw on.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>This is not a stale test. It encodes the deliberate design
+        decision that made annotation discoverable, and deleting it would silently give that up.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>Re-specify, don’t remove: keep it verbatim as the <b>window-share</b>
+        case (which is what it actually exercises once D1’s surface argument exists), and add a
+        <b>monitor-share</b> case asserting the presenter card, the absent echo, and a pen that is
+        <em>absent with a reason</em> rather than present-and-dead.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D3</span><h3>A wire bump has no negotiation — mixed clients lose all ink</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>src/lib/annotate/wire.ts:82</code> —
+        <code>if (view.getUint8(0) !== WIRE_VERSION) return null</code>. Exact match, both directions.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>A call spanning a deploy has some tabs on v1 and some on v2, and
+        ink disappears <em>silently in both directions</em> — no error, no announcement, just strokes that
+        never arrive.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>Make v2 decoders accept v1 packets (10-byte header vs 6, discriminated
+        by the version byte; a v1 packet is treated as “target unknown → accept”). New clients then
+        understand old ones. Old clients still drop v2 — asymmetric, but strictly better than mutual loss,
+        and it self-heals on reload. <b>Stating this cost rather than hiding it</b>: for a few minutes
+        after a deploy, an un-reloaded tab won’t see new ink.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D4</span><h3>A sticky featured share can strand the layout</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>Stage.tsx:295–297</code> — <code>prunePresentation</code>
+        already clears demoted-share flags and a stale person-spotlight when tracks change.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>C4’s sticky share key is a fourth piece of presentation state. If
+        it isn’t pruned when that share ends, the big region holds a key pointing at nothing.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>Add it to the same prune call rather than a new effect. There are
+        already three cleanup paths here; a fourth independent one is how they drift.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D5</span><h3>Taking over capture would break the stop-sharing toast</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>useMediaDeviceWatch.ts:38</code> —
+        <code>localParticipant.getTrackPublication(Track.Source.ScreenShare)</code>, then an
+        <code>ended</code> listener on its <code>MediaStreamTrack</code>.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>If F3’s fallback is taken (capturing with
+        <code>getDisplayMedia</code> ourselves and publishing manually), the track must be published with
+        <code>source: Track.Source.ScreenShare</code> explicitly, and the screen-share <em>audio</em> track
+        published alongside it. Miss either and the “Screen sharing stopped / Share again” recovery toast
+        stops firing — the exact path D1 already flagged as the easy one to forget.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>Try the controller-through-LiveKit route first (C2). Only fall back
+        to manual capture if Conditional Focus proves to fire too late, and if so, port the <code>ended</code>
+        wiring in the same commit.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D6</span><h3>The prejoin aspect test selects the first <code>&lt;video&gt;</code> on the page</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>tests/02-prejoin-join.spec.ts:49–51</code> —
+        <code>document.querySelector('video')</code>, then <code>v.parentElement</code> as the
+        aspect-carrying box.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>Prototype D as drawn adds a blurred backdrop copy of the preview.
+        Whichever of the two lands first in the DOM wins the selector, and the parent is no longer the box
+        whose aspect is being asserted. The test would fail — or worse, pass against the wrong element.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd><code>data-testid="prejoin-preview"</code> on the real preview and a
+        selector update. Better spec regardless of which prototype ships.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D7</span><h3>Prototype D’s blurred fill is a second decode — and mostly unnecessary</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Impact</dt><dd>The blur fill exists to kill the bars when the video’s aspect
+        doesn’t match the header’s. But if the header’s <b>height</b> is derived from
+        <code>previewAspect</code> at full card width, a landscape camera fills it <em>exactly</em> — the
+        bars never appear, and the second <code>&lt;video&gt;</code> decoding the same stream is pure cost
+        on a low-end phone, at the moment we’re about to connect.</dd></div>
+      <div class="dr"><dt>Revision</dt><dd>Drop the fill from the common case entirely. It would only be
+        needed where the header height clamps — a portrait camera — and there, <b>prototype E’s
+        side-by-side pivot is the better answer anyway</b>: a tall frame leaves a natural column that the
+        form fills exactly.</dd></div>
+      <div class="dr"><dt>Consequence</dt><dd><b>Ship D and E as one component</b>, not as two variants to
+        choose between. This is a change to the recommendation in the prototypes doc, and it came out of
+        planning the implementation rather than drawing the mockups.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D8</span><h3>Prejoin opens the microphone up to three times</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>PreJoin.tsx:94</code> (<code>requestAccess</code>:
+        video+audio), <code>PreJoin.tsx:118</code> (preview: video only),
+        <code>PreJoin.tsx:352</code> (<code>MicSpeakerTest</code>: audio only).</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>Three independent <code>getUserMedia</code> calls with overlapping
+        lifetimes. Concurrent mic acquisition is a known cause of a stalled preview on mobile. Not caused
+        by the layout work, but it is squarely in C6’s blast radius — any restructure touches all three.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>Consolidate to one prewarm stream that both the preview and the level
+        meter read. Flagged, not scheduled — if it turns out to be more than a small change, it becomes its
+        own commit rather than riding along with C6.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D9</span><h3>The pen already has two disarm paths; F6 and F8 would add a third and fourth</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>ControlBar.tsx:122–124</code> (disarm when the last share
+        ends) and <code>useAnnotateStore.setAllowed</code> (disarm on permission loss).</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>Adding “disarm when the featured tile stops being a share” and
+        “disarm when the canvas unmounts” as two more independent effects is how these drift out of sync —
+        the same failure that produced <code>useSharePresence</code> in the first place.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>One derived rule in <code>useSharePresence()</code>
+        (<code>canAnnotate</code>), with a single effect that disarms when it goes false. C3 and C4 both
+        consume it rather than adding their own.</dd></div>
+    </dl>
+  </div>
+
+  <div class="de">
+    <div class="dehead"><span class="deid">D10</span><h3>A demoted share has no pen, no fullscreen, and a still-enabled control-bar pen</h3></div>
+    <dl class="dl2">
+      <div class="dr"><dt>Evidence</dt><dd><code>Stage.tsx:755–760</code> — <code>FullscreenControls</code>,
+        <code>AnnotateControl</code> and <code>AnnotationOverlay</code> all render only inside
+        <code>PresentationStage</code>, gated on <code>bigIsShare</code>.</dd></div>
+      <div class="dr"><dt>Impact</dt><dd>Demote a share to the grid (<code>toggleShareDemoted</code>) and it
+        keeps a “Present shared screen” button, loses fullscreen and the pen — correct — while the control
+        bar’s pen stays lit. Three surfaces, three different ideas of what “the share” currently is.</dd></div>
+      <div class="dr"><dt>Plan</dt><dd>C3’s <code>shareFeatured</code> is the single answer all three read.
+        No new behaviour — just one concept instead of three implicit ones.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- ══════════════ DECISIONS ══════════════ -->
+<section class="block">
+  <h2>Four calls I’d like confirmed</h2>
+  <p class="lede">Everything else in this plan I’ll just make. These four change what users experience, so
+  they’re yours. My recommendation is on each — say nothing and I’ll take it.</p>
+
+  <div class="dec">
+    <div class="decrow">
+      <h4>1 · What does an unknown <code>displaySurface</code> mean?</h4>
+      <p>Browsers that don’t report it (and the test harness) give us no answer. Permissive keeps
+      annotation working everywhere but leaves the mirror possible on those browsers; safe kills the
+      mirror but removes the pen for users who could have had it.</p>
+      <p class="mine"><b>Recommend: permissive</b>, paired with the explicit “Hide my screen from my view”
+      toggle so the presenter is never stuck either way.</p>
+    </div>
+    <div class="decrow">
+      <h4>2 · Can you annotate your own full-screen share?</h4>
+      <p>Physically you can — you’d be drawing on a mirror, which is what produces the doubled cursor.
+      Teams and Zoom solve this with an OS-level overlay a browser tab cannot have.</p>
+      <p class="mine"><b>Recommend: no, with a stated reason</b> — “Annotation isn’t available while sharing
+      your entire screen. Share a window or tab to draw.” An explained absence beats a control that works
+      badly.</p>
+    </div>
+    <div class="decrow">
+      <h4>3 · Is the asymmetric wire bump acceptable?</h4>
+      <p>New clients would understand old packets; old clients would drop new ones until the tab reloads.
+      The alternative is carrying both versions on the wire indefinitely.</p>
+      <p class="mine"><b>Recommend: accept it.</b> Ink is ephemeral and fades in ~4s, so the worst case is a
+      few minutes of missing strokes for someone who hasn’t reloaded since the deploy.</p>
+    </div>
+    <div class="decrow">
+      <h4>4 · Prejoin — D+E merged, or C6a alone first?</h4>
+      <p>C6a (footer compression) fixes the real defect and is a small, safe diff. C6b is the bigger visual
+      change and, per D7, is now D and E as one component rather than a choice between them.</p>
+      <p class="mine"><b>Recommend: both, as two commits.</b> C6a lands and can be judged on its own; C6b
+      follows on top and is revertable without losing the fix.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ VERIFICATION ══════════════ -->
+<section class="block">
+  <h2>How each of these gets verified</h2>
+  <p class="lede">The LiveKit freeze permits the full suite against a <b>local</b> <code>livekit-server</code>
+  (≥1.10), which is what everything below assumes. This environment has no installed dependency tree, so
+  the first step is <code>npm ci</code>.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>&nbsp;</th><th>Always-available</th><th>Needs local LiveKit</th><th>New specs</th></tr></thead>
+      <tbody>
+        <tr><th>C1</th><td>typecheck, test:unit</td><td>17, 18, 19, 12 unchanged</td><td>—</td></tr>
+        <tr><th>C2</th><td>typecheck</td><td>17 (rewritten), 19</td><td>monitor-share case; helper surface arg</td></tr>
+        <tr><th>C3</th><td>typecheck, test:a11y</td><td>17</td><td>pen absent while a person is spotlit</td></tr>
+        <tr><th>C4</th><td>typecheck, test:unit (wire)</td><td>17, 18</td><td>two concurrent shares</td></tr>
+        <tr><th>C5</th><td>typecheck</td><td>19, test:visual</td><td>tile-corner overlap sweep</td></tr>
+        <tr><th>C6</th><td>typecheck, test:a11y, lighthouse</td><td>—</td><td>02 selector, 11 + mobile-sm</td></tr>
+        <tr><th>C7</th><td>typecheck</td><td>17</td><td>manual bandwidth A/B</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="lede" style="margin-top:20px">Expected environmental failures, so they aren’t mistaken for
+  regressions: four specs asserting a clean error sink fail because the Krisp noise-filter model can’t load
+  in a network-restricted sandbox (<code>04-chat</code>, <code>06-multiparty</code>, sometimes
+  <code>03-controls</code>), and <code>12-resilience</code> injects a connection fault that doesn’t
+  reproduce against a local server. The documented way to confirm any suspicion is to stash the change and
+  re-run — these fail identically on an unmodified tree.</p>
+</section>
+
+<div class="note">
+  <h2>Two things this plan deliberately does not do</h2>
+  <p><b>It doesn’t touch the annotation hot path.</b> <code>AnnotationEngine</code> owns all stroke data
+  outside React by design, and its header says to read it before changing anything. C4 changes the wire
+  format and the overlay’s cleanup — it does not move a single point into state.</p>
+  <p><b>It doesn’t widen prejoin into the split-stage layouts (prototypes A or B).</b> Both are viable and
+  B is the most striking, but B needs a STYLE.md §2 amendment and a full a11y re-run for chrome sitting on
+  video. That’s a lot to spend before C6a proves the space problem is actually solved.</p>
+</div>
+
+<footer>Manim · implementation plan · 7 commits · 10 dead-ends · 4 decisions</footer>
+
+</div>
