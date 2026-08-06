@@ -35,15 +35,72 @@ const TRANSIENT_CONN_RE =
   /net::ERR_|datachannel|publishing rejected|insertable streams|the user aborted a request|ConnectionError/i
 
 /**
+ * Are we pointed at a LiveKit running on this machine?
+ *
+ * Matters because a `livekit-server --dev` is not a small LiveKit Cloud — some
+ * behaviour simply is not there to test, and pretending otherwise produces
+ * failures that say nothing about this app.
+ */
+export const usingLocalLiveKit = /^(ws|http)s?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/.test(
+  process.env.LIVEKIT_URL ?? '',
+)
+
+/**
+ * The Krisp noise filter is a LiveKit CLOUD entitlement. Against a local dev
+ * server it cannot authenticate and fails with "Could not authenticate. Server
+ * responded with status 404" — a property of the backend under test, not a fault
+ * in this app, and the reason three specs asserting a clean error sink failed the
+ * first time CI ran the suite against a local server.
+ *
+ * Tolerated ONLY when local. Against Cloud the filter is supposed to work, so a
+ * Krisp failure there is real and must still fail the sink.
+ *
+ * Two entries reach the sink per failure and only one of them names Krisp: the
+ * reported one carries the stack (`…@livekit_krisp-noise-filter.js`), while the
+ * bare console error is just the message. Matching only the module name caught
+ * the first and let the second through — which is why this passed locally, where
+ * the failure reads "Failed to fetch" WITH a Krisp stack, and still failed in CI,
+ * where it reads "Could not authenticate…" with none.
+ */
+const CLOUD_ONLY_RE =
+  /krisp|noise[- ]?filter|could not authenticate\. server responded with status 404/i
+
+/**
  * App-originated errors from the sink, with noise filtered.
  * - default: tolerate transient connection/media errors (happy-path specs).
  * - { strict: true }: only filter true environmental noise, so connection / E2EE /
  *   datachannel failures fail the test instead of being silently swallowed.
  */
 export function appErrors(sink: ErrorSink, opts: { strict?: boolean } = {}): string[] {
-  const all = [...sink.pageErrors, ...sink.consoleErrors]
+  const all = [...sink.pageErrors, ...sink.consoleErrors].filter(
+    (e) => !(usingLocalLiveKit && CLOUD_ONLY_RE.test(e)),
+  )
   if (opts.strict) return all.filter((e) => !ENV_NOISE_RE.test(e))
   return all.filter((e) => !ENV_NOISE_RE.test(e) && !TRANSIENT_CONN_RE.test(e))
+}
+
+/**
+ * Close an auxiliary browser context, tolerating Playwright's trace writer
+ * racing the close.
+ *
+ * With `trace: 'retain-on-failure'` every context writes a trace zip. A spec that
+ * runs three contexts on a 2-core CI runner can still be flushing that zip when
+ * close() lands, and close() then throws "file data stream has unexpected number
+ * of bytes" / "End of central directory record signature not found". Every
+ * assertion in the test has already passed at that point: the failure is the
+ * recorder, not the product. It is exactly why 17-annotate's share-cap spec
+ * passed one CI run and failed the next on the identical commit.
+ *
+ * Scoped on purpose — only those two messages are swallowed. Anything else
+ * propagates, so a context that genuinely fails to close still fails the test.
+ */
+export async function closeContext(context: BrowserContext): Promise<void> {
+  try {
+    await context.close()
+  } catch (err) {
+    const msg = String((err as Error)?.message ?? err)
+    if (!/unexpected number of bytes|end of central directory record/i.test(msg)) throw err
+  }
 }
 
 /** Fill prejoin and enter the call. Returns once in-call chrome (mic button) is visible.
