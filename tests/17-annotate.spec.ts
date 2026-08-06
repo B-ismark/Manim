@@ -593,6 +593,38 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await sharer.context.close()
   })
 
+  test('a third person cannot start sharing while two already are', async ({ page, browser }) => {
+    test.setTimeout(180_000)
+    test.skip(await isTouch(page), 'the desktop share button is the one under test')
+    const room = uniqueRoom('annot')
+
+    // Two shares is the cap: a share is a full-resolution stream no matter how
+    // small it is drawn (single spatial layer on the VP9 path), so the third one
+    // costs everyone real bandwidth for a thumbnail nobody can read.
+    const first = await addSharer(browser, room, 'Zed')
+    const second = await addSharer(browser, room, 'Ada', 640, 480)
+
+    await fakeScreenShare(page, SHARE_W, SHARE_H)
+    await join(page, room, 'Mia')
+    await revealChrome(page)
+
+    // Disabled with the reason ON the control — a button that silently does
+    // nothing reads as broken, and "ask someone to stop" is not guessable.
+    const blocked = page.getByRole('button', {
+      name: /Share screen, unavailable — 2 people are already sharing/i,
+    })
+    await expect(blocked).toBeVisible({ timeout: 30_000 })
+    await expect(blocked).toBeDisabled()
+
+    // A slot opening puts it back, without a reload.
+    await first.context.close()
+    await expect(page.getByRole('button', { name: /^Share screen$/i })).toBeEnabled({
+      timeout: 30_000,
+    })
+
+    await second.context.close()
+  })
+
   test('strokes fade away on their own', async ({ page, browser }) => {
     test.setTimeout(150_000)
     test.skip(await isTouch(page), 'drawing is desktop-only')
