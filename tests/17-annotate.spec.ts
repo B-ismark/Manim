@@ -257,7 +257,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     })
   }
 
-  test('a presenter can draw on their own share, and only while the pen is armed', async ({
+  test('a presenter sharing a WINDOW can draw on their own share, and only while the pen is armed', async ({
     page,
     browser,
   }) => {
@@ -269,7 +269,12 @@ test.describe('Annotation over a shared screen @annotate', () => {
     // around. A browser tab cannot paint over the OS the way the Teams and Zoom
     // native apps do, so the only surface a presenter can draw on is their own
     // captured frame, which is why their own share is on their own stage.
-    await fakeScreenShare(page, SHARE_W, SHARE_H)
+    //
+    // Explicitly a WINDOW share. That is the case where echoing your own capture
+    // back to you is safe: a window cannot contain this call, so there is nothing to
+    // recurse into. The monitor case is the opposite and is covered by the test
+    // below — this one used to stand in for both, which is how the mirror shipped.
+    await fakeScreenShare(page, SHARE_W, SHARE_H, 10, 'window')
     await join(page, room, 'Presenter')
 
     const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
@@ -306,6 +311,58 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await page.getByRole('button', { name: /^Stop annotating$/i }).click()
     await expect(page.getByTestId('annotation-canvas')).toBeVisible()
     await expect(page.getByRole('button', { name: /^Draw on the shared screen$/i })).toBeVisible()
+
+    await ctxB.close()
+  })
+
+  /**
+   * Sharing a WHOLE MONITOR is the case the self-echo cannot serve.
+   *
+   * The monitor contains this window, so echoing the capture back onto the stage
+   * recurses into a mirror tunnel — and re-captures the presenter's own cursor, which
+   * is why arming the pen used to put two crosshairs on screen. `displaySurface` says
+   * which case you are in; nothing read it, so both symptoms shipped.
+   *
+   * The default is therefore no echo. But it is a default, not a rule: someone who
+   * genuinely wants to see (or annotate) their full screen can say so, and the pill
+   * carries that switch. Both halves are asserted here, because the escape hatch is
+   * also what makes 'unknown' safe to treat permissively on browsers that report no
+   * surface type at all.
+   */
+  test('sharing an entire screen does not echo it back, until the presenter asks', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'the presenting pill control is desktop-only')
+    const room = uniqueRoom('annot')
+
+    await fakeScreenShare(page, SHARE_W, SHARE_H, 10, 'monitor')
+    await join(page, room, 'Presenter')
+
+    const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
+    const viewer = await ctxB.newPage()
+    await join(viewer, room, 'Bo')
+
+    await startScreenShare(page)
+
+    // The viewer is unaffected — they are not inside the loop, so they see the share
+    // exactly as before. This is the assertion that stops a fix for the presenter
+    // from quietly costing everyone else the thing being shared.
+    await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    await revealChrome(page)
+    await expect(page.getByText(/You.re sharing your entire screen/)).toBeVisible({
+      timeout: 30_000,
+    })
+    // No echo => no drawing surface on the presenter's own stage.
+    await expect(page.getByTestId('annotation-canvas')).toHaveCount(0)
+
+    // ...and the way back. One tap restores the echo, and with it the pen — the
+    // presenter is never stuck with the app's inference.
+    await page.getByRole('button', { name: /^Show my screen$/i }).click()
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    await expect(page.getByRole('button', { name: /^Hide my screen$/i })).toBeVisible()
 
     await ctxB.close()
   })

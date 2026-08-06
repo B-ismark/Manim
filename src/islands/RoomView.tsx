@@ -34,6 +34,7 @@ import { useEffectsUi } from '@/store/useEffectsUi'
 import { Button } from '@/components/primitives'
 import { HandIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
+import { useShareSurfaceWatch } from '@/features/calls/useScreenShare'
 import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
@@ -223,6 +224,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Detect mid-call device loss (camera unplugged / mic disconnected / OS revoke)
   // and surface it instead of letting the tile silently freeze (E5).
   useMediaDeviceWatch()
+  // Track WHAT the local share is capturing (window / tab / whole monitor). Mounted
+  // once here rather than inside useScreenShare, which several components call —
+  // three copies would attach the same listeners three times.
+  useShareSurfaceWatch()
   // Auto-route devices: restore the user's remembered mic/speaker/camera, and grab a
   // Bluetooth headset the moment it connects (useDeviceStore prefs).
   useDeviceAutoswitch()
@@ -319,7 +324,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
-  const { presenting, annotatingOwnShare } = useSharePresence()
+  const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
+  const toggleOwnShareShown = useRoomStore((s) => s.toggleOwnShareShown)
   // Opening the effects carousel must reveal + pin the chrome. The Effects button
   // lives on the self-view tile (always visible on touch), but the carousel is a
   // sibling of the auto-hiding control bar — so after the 4s auto-hide a tap would
@@ -413,7 +419,14 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
         )}
         <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
-        {presenting && <PresentingIndicator annotating={annotatingOwnShare} />}
+        {presenting && (
+          <PresentingIndicator
+            annotating={annotatingOwnShare}
+            sharingMonitor={sharingMonitor}
+            ownShareShown={ownShareShown}
+            onToggleOwnShare={() => toggleOwnShareShown(ownShareShown)}
+          />
+        )}
         <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
         <PinCoachmark />
       </TopStack>
