@@ -672,12 +672,13 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
  * Hidden on touch, matching the pen itself — drawing has to capture touch, which
  * fights the control bar's tap-to-reveal. Touch devices still see everyone's ink.
  */
-function AnnotateControl() {
+function AnnotateControl({ canAnnotate }: { canAnnotate: boolean }) {
   const active = useAnnotateStore((s) => s.active)
   const toggle = useAnnotateStore((s) => s.toggle)
-  // Same single condition the control bar's pen renders on, so the two controls
-  // driving one mode can never disagree about whether that mode is available.
-  const { canAnnotate } = useSharePresence()
+  // `canAnnotate` arrives as a prop rather than from useSharePresence here: it is
+  // still the same single condition the control bar's pen renders on, but this
+  // subtree resolves it ONCE (in PresentationStage) instead of subscribing three
+  // separate components to the track list. See AnnotationOverlay's header.
   if (!canAnnotate) return null
   return (
     <TileAction>
@@ -742,6 +743,10 @@ function PresentationStage({
   const [page, setPage] = useState(0)
   const [bigAspect, setBigAspect] = useState(16 / 9)
   const bigRef = useRef<HTMLDivElement>(null)
+  // Resolved once here and passed down. useSharePresence is backed by useTracks,
+  // so every component that calls it re-renders on room traffic — which is fine
+  // for a button and ruinous for the ink layer (see AnnotationOverlay's header).
+  const { canAnnotate, featuredShareId } = useSharePresence()
 
   // The big tile: an explicit spotlight (person-swap) or, by default, the share.
   const big = visible.find((t) => tileKey(t) === spotlightKey) ?? share
@@ -800,7 +805,7 @@ function PresentationStage({
                     bigIsShare && (
                       <>
                         <FullscreenControls targetRef={bigRef} />
-                        {annotateEnabled && <AnnotateControl />}
+                        {annotateEnabled && <AnnotateControl canAnnotate={canAnnotate} />}
                       </>
                     )
                   }
@@ -808,7 +813,13 @@ function PresentationStage({
                 {/* Ink layer for the shared screen. Inside bigRef so it follows the
                     share into fullscreen; owns its own canvas and never re-renders
                     the stage while drawing. */}
-                {bigIsShare && annotateEnabled && <AnnotationOverlay aspect={bigAspect} />}
+                {bigIsShare && annotateEnabled && (
+                  <AnnotationOverlay
+                    aspect={bigAspect}
+                    canAnnotate={canAnnotate}
+                    featuredShareId={featuredShareId}
+                  />
+                )}
               </div>
             </div>
 

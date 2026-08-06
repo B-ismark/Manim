@@ -4,7 +4,6 @@ import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { useThemeStore } from '@/store/useThemeStore'
-import { useSharePresence } from '@/lib/useSharePresence'
 import { penCursor } from '@/features/annotate/penCursor'
 import { colorVar } from '@/lib/annotate/palette'
 
@@ -20,16 +19,30 @@ import { colorVar } from '@/lib/annotate/palette'
  * (React's synthetic events allocate per event, and there are 100+ per second)
  * and the engine paints straight to the canvas.
  *
+ * That claim is load-bearing and easy to break by accident: it held only because
+ * this component subscribes to nothing that changes with room traffic. Calling
+ * useSharePresence() here — which is backed by useTracks — quietly cost it, and
+ * the share's decode rate on a slow viewer went with it. Everything derived from
+ * the track list arrives as a PROP so `memo` can do its job. Read the whole
+ * paragraph before adding a hook to this file.
+ *
  * Touch devices are view-only in v1: drawing would have to capture touch, which
  * collides with the control bar's tap-to-reveal, and a share occupying part of a
  * phone screen is too cramped to draw on usefully. Remote strokes still render.
  */
-export const AnnotationOverlay = memo(function AnnotationOverlay({ aspect }: { aspect: number }) {
-  // One shared answer to "is drawing possible right now" — the same value the two
-  // pen buttons render on and the same one that disarms the pen. This used to be
-  // re-derived here from `allowed && !touch`, which is most of that condition but
-  // not all of it, and the gap is how an armed pen outlived its own canvas.
-  const { canAnnotate, featuredShareId } = useSharePresence()
+export const AnnotationOverlay = memo(function AnnotationOverlay({
+  aspect,
+  canAnnotate,
+  featuredShareId,
+}: {
+  aspect: number
+  /** Still the one shared answer to "is drawing possible right now" — the same
+   *  value both pen buttons render on — but resolved by PresentationStage and
+   *  handed down, NOT subscribed to here. */
+  canAnnotate: boolean
+  /** Track SID of the share in the big region: what ink drawn now is aimed at. */
+  featuredShareId: string | null
+}) {
   const { engine, beginLocal, localColorIdx } = useAnnotate(featuredShareId)
   const active = useAnnotateStore((s) => s.active)
   const announce = useAnnounce()
