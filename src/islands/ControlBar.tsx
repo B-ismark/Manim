@@ -607,7 +607,15 @@ export function ControlBar({
               icon={<ScreenShareIcon />}
               tone="neutral"
               active={screenShare.enabled}
-              disabled={shareSlotsFull}
+              // aria-disabled, NOT disabled. A `disabled` button carries
+              // `pointer-events-none` here, which kills both the tooltip and the
+              // native title — so the one control that most needs to explain itself
+              // would have been a grey circle with no reason attached, and
+              // unreachable by keyboard too. Left interactive: hover explains,
+              // focus explains, and the press falls through to useScreenShare's
+              // capacity toast, which explains a third time.
+              aria-disabled={shareSlotsFull}
+              className={cn(shareSlotsFull && 'opacity-50')}
               onClick={screenShare.toggle}
             />
           </Tooltip>
