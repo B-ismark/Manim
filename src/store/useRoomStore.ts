@@ -56,6 +56,16 @@ interface RoomState {
   spotlightKey: string | null
   demotedShares: string[]
   /**
+   * The share that currently HOLDS the big region, by track SID.
+   *
+   * Exists so the choice is sticky. primaryShare() used to re-pick on
+   * `participant.isSpeaking`, so with two presenters the featured share swapped
+   * every time they took a turn talking — and ink, which is addressed in unit
+   * coordinates against whatever is featured, followed it onto the wrong screen.
+   * Pruned alongside the other presentation state when that share ends.
+   */
+  stickyShareId: string | null
+  /**
    * This device joined as a COMPANION — the same account is already in the call on
    * another device, and the user chose "join anyway". Mic + camera start off and the
    * speaker is muted to avoid echo (Meet/Teams companion model). Cleared when the user
@@ -111,6 +121,8 @@ interface RoomState {
   setSpotlight: (key: string | null) => void
   /** Presentation: demote a share (by SID) back to the plain grid, or re-promote it. */
   toggleShareDemoted: (shareId: string) => void
+  /** Record which share holds the big region, so the choice survives someone talking. */
+  setStickyShare: (shareId: string | null) => void
   /** Drop stale presentation state when shares end/change (called from Stage). Prunes
    *  demoted SIDs no longer active and clears a spotlight whose tile is gone. */
   prunePresentation: (activeShareIds: string[], validKeys: string[]) => void
@@ -138,6 +150,7 @@ export const useRoomStore = create<RoomState>((set) => ({
   pinned: null,
   spotlightKey: null,
   demotedShares: [],
+  stickyShareId: null,
   companion: false,
   panel: null,
   unread: 0,
@@ -179,6 +192,8 @@ export const useRoomStore = create<RoomState>((set) => ({
     }),
   setCompanion: (companion) => set({ companion }),
   setSpotlight: (spotlightKey) => set({ spotlightKey }),
+  setStickyShare: (stickyShareId) =>
+    set((s) => (s.stickyShareId === stickyShareId ? s : { stickyShareId })),
   toggleShareDemoted: (shareId) =>
     set((s) => {
       const demoted = s.demotedShares.includes(shareId)
@@ -193,6 +208,12 @@ export const useRoomStore = create<RoomState>((set) => ({
   prunePresentation: (activeShareIds, validKeys) =>
     set((s) => {
       const demotedShares = s.demotedShares.filter((id) => activeShareIds.includes(id))
+      // The sticky share joins the same prune rather than getting its own effect —
+      // there were already three cleanup paths here, and a fourth independent one is
+      // exactly how they drift. A key pointing at a share that has ended would pin
+      // the big region to nothing.
+      const stickyShareId =
+        s.stickyShareId && activeShareIds.includes(s.stickyShareId) ? s.stickyShareId : null
       // Clear the spotlight when its tile is gone OR once every share has ended (so the
       // next share starts big by default rather than inheriting a stale person-spotlight).
       const spotlightKey =
@@ -202,8 +223,14 @@ export const useRoomStore = create<RoomState>((set) => ({
       // Return a stable reference when nothing changed so the effect that calls this
       // doesn't loop (zustand bails on identical primitives but not new arrays).
       const sameDemoted = demotedShares.length === s.demotedShares.length
-      if (sameDemoted && spotlightKey === s.spotlightKey) return s
-      return { demotedShares: sameDemoted ? s.demotedShares : demotedShares, spotlightKey }
+      if (sameDemoted && spotlightKey === s.spotlightKey && stickyShareId === s.stickyShareId) {
+        return s
+      }
+      return {
+        demotedShares: sameDemoted ? s.demotedShares : demotedShares,
+        spotlightKey,
+        stickyShareId,
+      }
     }),
   setShareSurface: (shareSurface) =>
     set((s) =>

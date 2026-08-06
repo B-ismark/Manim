@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
-import { focusTrack, hasVideo, isShareKey, shareIsFeatured, tileKey } from './focusTrack'
+import { focusTrack, hasVideo, isShareKey, primaryShare, shareIsFeatured, tileKey } from './focusTrack'
 
 // Minimal stand-in for a track ref — focusTrack/hasVideo only read identity,
 // source, isSpeaking/isLocal and the publication's mute/subscription flags.
@@ -140,5 +140,42 @@ describe('isShareKey', () => {
 
   it('is not fooled by an identity that ends in the source name', () => {
     expect(isShareKey(tileKey(ref({ identity: 'screen_share' })))).toBe(false)
+  })
+})
+
+/**
+ * The featured share must not move because somebody started talking.
+ *
+ * Ink travels in unit coordinates against whatever share is featured, so re-picking
+ * on `isSpeaking` meant that with two presenters the target swapped mid-stroke and
+ * everyone's drawing landed on the other person's screen.
+ */
+describe('primaryShare stickiness', () => {
+  const shareA = ref({ identity: 'a', source: Track.Source.ScreenShare })
+  const shareB = ref({ identity: 'b', source: Track.Source.ScreenShare, speaking: true })
+
+  it('without a sticky id, a speaking publisher wins (the old behaviour)', () => {
+    expect(primaryShare([shareA, shareB])).toBe(shareB)
+  })
+
+  it('a held share keeps the big region even while the other publisher speaks', () => {
+    expect(primaryShare([shareA, shareB], tileKey(shareA))).toBe(shareA)
+  })
+
+  it('falls back cleanly when the held share has ended', () => {
+    expect(primaryShare([shareB], tileKey(shareA))).toBe(shareB)
+  })
+
+  it('a single share ignores stickiness entirely', () => {
+    expect(primaryShare([shareA], tileKey(shareB))).toBe(shareA)
+  })
+
+  it('stickiness flows through featuredShare', () => {
+    const held = { demotedShares: [], spotlightKey: null, stickyShareId: tileKey(shareA) }
+    expect(shareIsFeatured([shareA, shareB], held)).toBe(true)
+    // ...but a demote still wins over a hold — the viewer asked for the grid.
+    expect(
+      shareIsFeatured([shareA, shareB], { ...held, demotedShares: [tileKey(shareA)] }),
+    ).toBe(false)
   })
 })

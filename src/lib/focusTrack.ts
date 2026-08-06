@@ -33,17 +33,25 @@ export const shareId = (t: TrackReferenceOrPlaceholder) => t.publication?.trackS
  *
  * One definition, consumed by all of them (via useSharePresence).
  */
-export function shareIsFeatured(
+export function featuredShare(
   shares: TrackReferenceOrPlaceholder[],
-  opts: { demotedShares: string[]; spotlightKey: string | null },
-): boolean {
-  const share = primaryShare(shares)
-  if (!share) return false
-  if (opts.demotedShares.includes(shareId(share))) return false
+  opts: { demotedShares: string[]; spotlightKey: string | null; stickyShareId?: string | null },
+): TrackReferenceOrPlaceholder | undefined {
+  const share = primaryShare(shares, opts.stickyShareId)
+  if (!share) return undefined
+  if (opts.demotedShares.includes(shareId(share))) return undefined
   // A person-spotlight displaces the share from the big region; a share-spotlight
   // (or no spotlight at all) leaves a share in it.
-  if (opts.spotlightKey && !isShareKey(opts.spotlightKey)) return false
-  return true
+  if (opts.spotlightKey && !isShareKey(opts.spotlightKey)) return undefined
+  return share
+}
+
+/** Boolean form of featuredShare — "is there a surface to draw on right now". */
+export function shareIsFeatured(
+  shares: TrackReferenceOrPlaceholder[],
+  opts: { demotedShares: string[]; spotlightKey: string | null; stickyShareId?: string | null },
+): boolean {
+  return featuredShare(shares, opts) !== undefined
 }
 
 /**
@@ -54,13 +62,24 @@ export function shareIsFeatured(
  */
 export function primaryShare(
   tracks: TrackReferenceOrPlaceholder[],
+  stickyId?: string | null,
 ): TrackReferenceOrPlaceholder | undefined {
   const shares = tracks.filter(isScreenShare)
   if (shares.length <= 1) return shares[0]
+  // Once a share has the big region it KEEPS it until it ends or someone switches
+  // deliberately. Re-picking on `isSpeaking` meant that with two presenters the
+  // featured share swapped every time they took a turn talking — under live ink,
+  // which is addressed in unit coordinates against whatever is currently featured.
+  // Strokes drawn on one screen therefore landed on the other. Speaking is a fine
+  // tie-break for choosing; it is a bad reason to re-aim a shared drawing surface.
+  if (stickyId) {
+    const held = shares.find((t) => shareId(t) === stickyId)
+    if (held) return held
+  }
   return [...shares].sort((a, b) => {
     const spk = Number(b.participant.isSpeaking) - Number(a.participant.isSpeaking)
     if (spk) return spk
-    return `${a.participant.identity}-${a.source}`.localeCompare(`${b.participant.identity}-${b.source}`)
+    return tileKey(a).localeCompare(tileKey(b))
   })[0]
 }
 
