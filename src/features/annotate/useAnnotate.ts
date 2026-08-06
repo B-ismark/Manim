@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import {
-  useDataChannel,
   useLocalParticipant,
   useParticipants,
+  useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
+import { RoomEvent, type RemoteParticipant } from 'livekit-client'
 import { AnnotationEngine } from './AnnotationEngine'
 import { decode, encode, targetHash, type StrokePacket } from '@/lib/annotate/wire'
 import { colorIndexFor } from '@/lib/annotate/palette'
@@ -44,6 +45,19 @@ const displayName = (identity: string, name?: string) => name || identity.split(
  * the engine and returns. It calls no setState, so an inbound packet costs zero
  * React renders, and the engine's frame loop coalesces packets from every peer
  * into one repaint.
+ *
+ * That was the intent, and for a long time it was not what happened. The handler
+ * itself is clean, but it used to be registered through `useDataChannel`, which
+ * ALSO keeps the latest message in React state — so every inbound packet re-rendered
+ * this hook's component regardless of what the handler did. Measured on a viewer
+ * while one person scribbled: 105 renders per second, against 0 when idle. The
+ * component carrying the canvas re-rendered on every packet from every peer, which
+ * is exactly the cost the comment above claims is avoided, and it showed up as the
+ * shared screen going choppy while anyone was drawing.
+ *
+ * So the subscription is made directly against RoomEvent.DataReceived and the
+ * handler is reached through a ref. Nothing here calls setState on a packet now.
+ * If you reintroduce useDataChannel, re-measure — its `message` state is the trap.
  */
 export function useAnnotate(featuredShareId: string | null) {
   const { localParticipant } = useLocalParticipant()
@@ -79,12 +93,18 @@ export function useAnnotate(featuredShareId: string | null) {
   // only signal those users get — it has to be present but not constant.
   const announcedAt = useRef(new Map<string, number>())
 
-  const { send } = useDataChannel(ANNOTATE_TOPIC, (msg) => {
+  const room = useRoomContext()
+
+  // The latest handler, reachable from a subscription that is made once. Refreshed
+  // after every render so it always closes over current props/state, without the
+  // subscription itself churning.
+  const onPacket = useRef<(payload: Uint8Array, from?: RemoteParticipant) => void>(() => {})
+  onPacket.current = (payload, from) => {
     // Attribution comes from the SFU-attributed sender, never the payload — a
     // payload field would let anyone draw under someone else's name.
-    const identity = msg.from?.identity
+    const identity = from?.identity
     if (!identity || identity === localParticipant.identity) return
-    const packet = decode(msg.payload)
+    const packet = decode(payload)
     if (!packet) return
     // Ink is addressed in unit coordinates against the share it was drawn on, so a
     // stroke aimed at a DIFFERENT share would land somewhere arbitrary on this one.
@@ -92,7 +112,7 @@ export function useAnnotate(featuredShareId: string | null) {
     // SID was known — and stays accepted, which is what keeps a mixed-version room
     // working in one direction rather than neither.
     if (packet.target !== 0 && packet.target !== targetRef.current) return
-    const name = displayName(identity, msg.from?.name)
+    const name = displayName(identity, from?.name)
     engine.ingest(identity, packet, name)
 
     const last = announcedAt.current.get(identity) ?? 0
@@ -106,20 +126,39 @@ export function useAnnotate(featuredShareId: string | null) {
       // it must stay one-per-author-per-15s rather than one-per-packet.
       noteRemoteInk(name)
     }
-  })
+  }
+
+  useEffect(() => {
+    if (!room) return
+    const onData = (
+      payload: Uint8Array,
+      participant?: RemoteParticipant,
+      _kind?: unknown,
+      topic?: string,
+    ) => {
+      if (topic !== ANNOTATE_TOPIC) return
+      onPacket.current(payload, participant)
+    }
+    room.on(RoomEvent.DataReceived, onData)
+    return () => {
+      room.off(RoomEvent.DataReceived, onData)
+    }
+  }, [room])
 
   useEffect(() => {
     sendRef.current = (bytes) => {
       // Lossy: ink wants freshness over completeness, and because strokes fade a
       // dropped packet is off the screen in a couple of seconds anyway.
-      void send(bytes, { reliable: false, topic: ANNOTATE_TOPIC })?.catch?.(() => {
-        /* best-effort by design */
-      })
+      void room?.localParticipant
+        .publishData(bytes, { reliable: false, topic: ANNOTATE_TOPIC })
+        .catch(() => {
+          /* best-effort by design */
+        })
     }
     return () => {
       sendRef.current = null
     }
-  }, [send])
+  }, [room])
 
   // Colour is assigned by position in the sorted roster, so every client derives
   // the same colour for the same person. Resolved to a NUMBER here: useParticipants()
