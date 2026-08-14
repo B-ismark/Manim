@@ -338,9 +338,38 @@ viable, the choice today is video-or-avatar. A third option: capture one frame e
 over the **existing lossy data channel**, rendering it in the tile where video would
 be.
 
-At ~8 KB / 4 s that is ~16 kbps — an order of magnitude under the ~150 kbps floor
-for watchable video, and it restores the thing avatars destroy: *seeing that the
-other person is present, engaged, and reacting*.
+**Measured (S-d), not estimated.** `docs/spikes/webp-frame-size.mjs` encodes
+synthetic frames spanning smooth → portrait → portrait-with-grain → pure noise, at
+three sizes and three qualities, through Chromium's own WebP encoder:
+
+| content | 160×120 @ q0.5 | bitrate @ 1 frame/4 s |
+|---|---:|---:|
+| smooth background | 640 B | 1.3 kbps |
+| portrait | 972 B | 1.9 kbps |
+| portrait + sensor grain | 1,468 B | **2.9 kbps** |
+| pure noise (hard worst case) | 11,172 B | 22.3 kbps |
+
+So the realistic figure is **~1.5 KB and ~3 kbps**, not the ~8 KB / 16 kbps this
+document originally guessed — roughly 5× cheaper. For scale, the *audio* in our own
+measured call costs **73 kbps**: slideshow video at these settings is under 5% of
+what the audio already spends, and even the incompressible worst case stays under a
+third of it.
+
+Two consequences worth taking:
+- **240×180 is affordable** (2,146 B, 3.4 kbps at 1 frame/5 s), so the tier can ship
+  a noticeably better image than the 160×120 originally proposed.
+- **Quality barely matters on smooth content** (630 → 644 B across q0.3–0.7) and
+  matters a great deal on noisy content (1,002 → 2,414 B). An adaptive quality knob
+  is nearly free on the frames where it doesn't help, and worth real bytes on the
+  ones where it does.
+
+**Limits of this evidence, stated plainly:** the frames are synthetic. A real camera
+image sits somewhere between the grain and noise rows — closer to grain, but higher
+than it. The pure-noise row is the value of a hard ceiling: no camera can exceed it,
+and the budget holds even there. It also measures encode *size* only — not encode
+CPU, not data-channel framing overhead, and **not whether the lossy channel still
+delivers when media saturates the link (S-e), which remains the finding that could
+still sink F-1.**
 
 Why it fits this codebase specifically:
 - The lossy data-channel + self-describing-packet discipline already exists and is
@@ -426,7 +455,7 @@ verdict — but it does mean the receive side is ready whenever encode catches u
 | S-a | **Baseline: the problem is real.** The app is genuinely unusable at 100 kbps / 900 ms / 12 % loss | Local `livekit-server --dev` + `tc netem`, two headless participants, record `getStats()` | If LiveKit already copes, Tier B is polish and **Tier C (bytes-to-join) is the whole job** — a large re-prioritisation |
 | S-b | **The bottleneck is the call, not the load.** | Same rig; separately measure time-to-first-audio vs time-to-interactive from cold | If the app-shell download dominates, C1/C3 jump ahead of everything in Tier B |
 | S-c | Saver can actually hold ~250 kbps | Apply the B1 tier settings by hand, assert via `getStats()` | The tier table is fiction and needs real numbers before it ships as a user-facing promise |
-| S-d | **Slideshow video (F-1) is really ~6 KB/frame** | Pure Node spike: downscale real webcam stills to 160×120, encode WebP at a few quality levels, measure. No app changes | If it's 20 KB, the bitrate advantage narrows and F-1 may not clear the bar |
+| ~~S-d~~ | ~~Slideshow video (F-1) is really ~6 KB/frame~~ | ✅ **Answered — and it is far cheaper than estimated.** See below. Reproduce with `node docs/spikes/webp-frame-size.mjs` | — |
 | S-e | The data channel still delivers when media saturates the link | Extend S-a: push F-1-sized packets during a saturated call, measure arrival | F-1 and F-2 both fail — they assume the lossy channel survives what video can't |
 | S-f | Store-and-forward voice (F-3) is intelligible at ~12 kbps | `MediaRecorder` spike, listen to it | Drop F-3 |
 | S-g | `tc netem` + CDP throttling is applicable in CI | Try it on a GitHub Actions runner (needs `NET_ADMIN`) | The throttled suite becomes local-only — still useful, but not a gate |
