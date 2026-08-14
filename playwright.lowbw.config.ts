@@ -16,21 +16,26 @@ const FAKE_MEDIA = ['--use-fake-ui-for-media-stream', '--use-fake-device-for-med
 
 export default defineConfig({
   testDir: './tests/lowbw',
-  // A join on a 2G-grade link can legitimately take a minute; the hold adds more.
-  timeout: 5 * 60_000,
+  // A join on a 2G-grade link can legitimately take minutes, and the first run
+  // died at the 5-minute mark with nothing to show. The job's own 30-minute cap
+  // is the real backstop.
+  timeout: 12 * 60_000,
   expect: { timeout: 60_000 },
   fullyParallel: false,
   workers: 1,
   retries: 0,
   reporter: [['list'], ['json', { outputFile: 'lowbw-report/playwright.json' }]],
   use: {
-    baseURL: 'http://localhost:5173',
+    // Defaults to the `vite preview` port — the BUILT bundle, which is the only
+    // artifact whose byte count means anything. Override to point at the dev
+    // server (:5173) only if you specifically want to compare the two.
+    baseURL: process.env.LOWBW_BASE_URL ?? 'http://localhost:4173',
     headless: true,
     permissions: ['camera', 'microphone'],
     viewport: { width: 1280, height: 800 },
     // Generous: every navigation here is deliberately running over a bad link.
     actionTimeout: 60_000,
-    navigationTimeout: 120_000,
+    navigationTimeout: 240_000,
     trace: 'off',
     screenshot: 'only-on-failure',
     video: 'off',

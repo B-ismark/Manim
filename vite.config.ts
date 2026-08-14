@@ -47,6 +47,29 @@ export default defineConfig(({ command, mode }) => {
         },
       },
     },
+    // `vite preview` serves the BUILT bundle, and the low-bandwidth harness
+    // (tests/lowbw) measures against it rather than the dev server — the dev
+    // server ships unbundled ESM, so its request count and byte totals say
+    // nothing about what a real user downloads. Affects the preview command
+    // only: never the build output, never the deployed Worker.
+    //
+    // These mirror what worker/index.js does in production, so a measurement
+    // here reflects the real thing: the same cross-origin isolation (without
+    // it SharedArrayBuffer is absent and the Krisp path behaves differently),
+    // and the same /api routing the Worker provides.
+    preview: {
+      port: 4173,
+      headers: {
+        'Cross-Origin-Opener-Policy': 'same-origin',
+        'Cross-Origin-Embedder-Policy': 'credentialless',
+      },
+      proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
+      },
+    },
     server: {
       port: 5173,
       // Cross-origin isolation so SharedArrayBuffer exists in dev too — the Krisp
