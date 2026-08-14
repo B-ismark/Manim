@@ -83,15 +83,22 @@ jobs:
           done
           echo "::error::livekit-server did not come up" && exit 1
 
-      - name: Start app (vite + token server)
-        run: npm run dev &
-      - name: Wait for vite
+      # Serve the BUILT bundle, not the dev server. The dev server ships unbundled
+      # ESM — the first shaped run measured 88 requests / 3.8 MB for a landing page
+      # that actually ships a fraction of that, which made the load half of S-b
+      # unanswerable. `vite preview` serves dist/ and, per the `preview` block in
+      # vite.config.ts, mirrors the Worker's COOP/COEP and /api routing.
+      - name: Start the token server
+        run: npm run dev:token &
+      - name: Serve the built bundle (vite preview)
+        run: npx vite preview --port 4173 &
+      - name: Wait for preview
         run: |
           for i in $(seq 1 60); do
-            if curl -sf http://localhost:5173 >/dev/null; then echo "up"; exit 0; fi
+            if curl -sf http://localhost:4173 >/dev/null; then echo "up"; exit 0; fi
             sleep 1
           done
-          echo "::error::vite did not come up" && exit 1
+          echo "::error::vite preview did not come up" && exit 1
 
       # Shaping happens HERE, on the kernel, not in the browser: CDP's
       # Network.emulateNetworkConditions does not affect an established WebRTC media

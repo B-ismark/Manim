@@ -34,7 +34,7 @@
         "testMatch": [
           "**/*.@(spec|test).?(c|m)[jt]s?(x)"
         ],
-        "timeout": 300000
+        "timeout": 720000
       }
     ],
     "quiet": false,
@@ -75,7 +75,7 @@
           "tags": [],
           "tests": [
             {
-              "timeout": 300000,
+              "timeout": 720000,
               "annotations": [],
               "expectedStatus": "passed",
               "projectId": "lowbw",
@@ -86,7 +86,7 @@
           ],
           "id": "d2923076b323a8336a93-bbc4530506c19dd112c9",
           "file": "baseline.spec.ts",
-          "line": 134,
+          "line": 159,
           "column": 1
         }
       ]
@@ -94,8 +94,8 @@
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-08-14T14:56:43.449Z",
-    "duration": 91.20100000000002,
+    "startTime": "2026-08-14T15:25:36.043Z",
+    "duration": 106.98700000000008,
     "expected": 0,
     "skipped": 1,
     "unexpected": 0,

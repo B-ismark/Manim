@@ -104,9 +104,11 @@ async function sampleRtc(page: Page): Promise<RtcSample> {
   })
 }
 
-/** Navigation + resource totals. Against the vite DEV server the request COUNT is
- *  unrepresentative (unbundled ESM); the timings still show what a high-RTT link
- *  costs. Real byte counts come from the built-bundle step in the workflow. */
+/** Navigation + resource totals. These are meaningful only because the harness now
+ *  points at `vite preview` — the BUILT bundle. Against the dev server the request
+ *  count and byte totals describe unbundled ESM and say nothing about what a real
+ *  user downloads, which is how the first shaped run produced an 88-request, 3.8 MB
+ *  figure for a landing page that actually ships a fraction of that. */
 async function loadMetrics(page: Page) {
   return page.evaluate(() => {
     const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined
@@ -124,15 +126,19 @@ async function loadMetrics(page: Page) {
 }
 
 /**
- * Run a join and record how long it took, WITHOUT letting a failure throw.
+ * Run a step and record how long it took, WITHOUT letting a failure throw.
  *
- * helpers.join() carries its own hardcoded expect timeouts (20s for the name field,
- * 45s for the mic button). Those are right for the normal suite and far too tight
- * for a 2G-grade link — but a timeout here is a MEASUREMENT ("join did not complete
- * inside 45s"), not a broken test. Letting it throw would turn the most interesting
- * result this harness can produce into a red X with no numbers attached.
+ * Every slow-link operation here goes through this. A timeout is a MEASUREMENT
+ * ("the landing page did not finish loading inside the limit", "join did not
+ * complete inside 45s"), not a broken test — and the first shaped run proved the
+ * cost of forgetting that: an unwrapped page.goto threw at 120s and destroyed the
+ * whole run's data, including the parts that had already succeeded.
+ *
+ * helpers.join() additionally carries its own hardcoded expect timeouts (20s for
+ * the name field, 45s for the mic button), right for the normal suite and far too
+ * tight here — the same reasoning applies.
  */
-async function timedJoin(fn: () => Promise<void>): Promise<{ ms: number; ok: boolean; error?: string }> {
+async function timedStep(fn: () => Promise<unknown>): Promise<{ ms: number; ok: boolean; error?: string }> {
   const t = Date.now()
   try {
     await fn()
@@ -163,13 +169,25 @@ test('lowbw baseline: two-party call under the active network profile', async ({
   const pageA = await ctxA.newPage()
   await trackPeerConnections(pageA)
 
-  const tLoad = Date.now()
-  await pageA.goto('/', { waitUntil: 'load' })
-  record.landingLoadMs = Date.now() - tLoad
-  record.landing = await loadMetrics(pageA)
+  const nav = await timedStep(() => pageA.goto('/', { waitUntil: 'load' }))
+  record.landingLoadMs = nav.ms
+  record.landingNav = nav
+  // Worth attempting even after a timeout — a partially-loaded page still reports
+  // how far it got, which is the interesting part when it doesn't finish.
+  record.landing = await loadMetrics(pageA).catch(() => null)
+
+  if (!nav.ok) {
+    mkdirSync(OUT_DIR, { recursive: true })
+    writeFileSync(joinPath(OUT_DIR, `${PROFILE}.json`), JSON.stringify(record, null, 2))
+    console.log(`\n=== lowbw profile: ${PROFILE} — LANDING LOAD FAILED after ${nav.ms}ms ===`)
+    console.log(JSON.stringify(record.landing, null, 2))
+    console.log(nav.error)
+    await closeContext(ctxA)
+    return
+  }
 
   // --- S-a: join, hold, and watch what the media layer actually does.
-  const joinA = await timedJoin(() => join(pageA, room, 'Ama'))
+  const joinA = await timedStep(() => join(pageA, room, 'Ama'))
   record.joinMsA = joinA.ms
   record.joinA = joinA
   record.roomRoute = await loadMetrics(pageA)
@@ -186,7 +204,7 @@ test('lowbw baseline: two-party call under the active network profile', async ({
   }
 
   let b: Awaited<ReturnType<typeof newParticipant>> | null = null
-  const joinB = await timedJoin(async () => {
+  const joinB = await timedStep(async () => {
     b = await newParticipant(browser, room, 'Kofi')
   })
   record.joinMsB = joinB.ms
