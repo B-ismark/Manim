@@ -25,6 +25,7 @@ import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
+import { useNetworkProfile } from '@/features/network/useNetworkProfile'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
 import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
@@ -186,6 +187,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const chat = useChatMessages()
   const blur = useBackgroundBlur()
   const noise = useNoiseFilter()
+  // A1 — network sensing, MEASUREMENT ONLY. Renders nothing, changes nothing; it
+  // samples LiveKit's public per-track stats and reports a settled tier + a
+  // per-call summary through report.ts. It exists because nothing in this app has
+  // ever measured what its users' networks actually do, and every low-bandwidth
+  // proposal is gated on that (docs/low-bandwidth-plan.md §3 Tier A, R-a…R-d).
+  // The returned profile is intentionally unused for now.
+  useNetworkProfile()
   // Uplink adaptation is left entirely to simulcast + dynacast + adaptiveStream (see
   // roomOptions): on a weak uplink WebRTC simply stops sending the higher simulcast
   // layers — subscribers pull a lower one and it auto-recovers — all WITHOUT touching
