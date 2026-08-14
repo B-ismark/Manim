@@ -171,15 +171,23 @@ Three named tiers, changeable at any time, from prejoin *and* the More sheet:
 
 Mid-call transitions do **not** need a reconnect:
 - Receive side: `setVideoQuality()` / `setSubscribed()` per remote publication.
-  Instant, no renegotiation.
-- Send side: `LocalVideoTrack.restartTrack({ resolution })` +
-  `setPublishingLayers()`. This *does* re-acquire the camera — the exact flicker
-  the removed `useAdaptiveQuality` caused (`RoomView.tsx:189-194`). Which is why:
+  Instant, no renegotiation, and confirmed to act as a ceiling adaptiveStream
+  respects (K2).
+- Send side: **`LocalVideoTrack.setPublishingQuality(maxQuality)`** — public, and
+  confirmed (D-b) to gate simulcast layers *without* re-acquiring the camera.
 
-**The receive side changes automatically; the send side only changes on an explicit
-user tap.** That preserves the hard-won "no capture restart on a quality flap" rule
-while still fixing F1 — the user gets a deliberate lever, the app never yanks their
-camera on its own.
+> **Correction (D-b).** This document originally said the send side needed
+> `restartTrack()`, and therefore that automatic send-side degradation had to be
+> ruled out to avoid the preview flicker that got `useAdaptiveQuality` reverted
+> (`RoomView.tsx:189-194`). **That was wrong.** `setPublishingQuality` reaches the
+> same outcome with no capture restart, so automatic send-side degradation is back
+> on the table — which also softens open question O-b.
+>
+> One honest limit: it disables simulcast *layers*, it does not lower the capture
+> resolution. The encoder still captures and encodes at 720p, so this saves
+> **bandwidth, not CPU or battery**. For the low-bandwidth goal that is the
+> variable that matters, but it means Saver should still drop capture resolution on
+> an explicit user tap for the thermal/battery win on cheap phones.
 
 Setting persists per device (`localStorage`, same pattern as `gridSize`), so a user
 on a permanently bad link is not re-choosing every call.
@@ -206,6 +214,18 @@ and needs no new UI.
 ---
 
 ### Tier C — cut the bytes needed to *reach* a call
+
+#### C0. Set `Cache-Control: immutable` on hashed assets ⭐ *new — do this first*
+Confirmed by D-c: Cloudflare serves every asset `max-age=0, must-revalidate`, so a
+returning user pays a conditional request per chunk. `worker/index.js` already
+builds a fresh `Headers` object for every asset response (it's setting COOP/COEP/CSP
+there) — adding a cache header for fingerprinted filenames is a few lines in code
+that already exists, with `index.html` and `sw.js` deliberately left revalidating.
+
+This is now the cheapest item in the entire document, and it **de-risks C1**: much
+of the repeat-load benefit originally attributed to the service worker is available
+without writing one. Do C0, re-measure, and let the result decide how much of C1 is
+still worth building.
 
 #### C1. Turn the service worker into a real app shell (F4)
 Precache the HTML shell, the react + livekit vendor chunks and the CSS on install;
@@ -254,8 +274,11 @@ Bounded queue, drop with a visible error rather than growing forever.
 2. **Scale the cap to the link.** 25 MB is fine on wifi and absurd on 2G. Warn above
    ~2 MB when the profile is `weak`/`dire`, with the real estimate: *"About 8 minutes
    on your connection."*
-3. **Yield to chat** (F7) — one transfer at a time, chunked with pauses, so text
-   never queues behind a file.
+3. **Yield to chat** (F7 — confirmed real by D-e: ~1,667 ordered chunks on the one
+   shared `_reliable` channel). One transfer at a time, chunked with pauses, so text
+   never queues behind a file. The blunter alternative worth costing: send file
+   chunks on `_lossy` with our own ack/retransmit, keeping `_reliable` for chat
+   only — more code, but it removes the coupling entirely.
 4. **Resume** — chunk with an explicit index and re-request missing ranges over the
    lossy channel. Genuinely useful, but non-trivial; do it only after 1–3 land.
 
@@ -271,10 +294,9 @@ now" button, and — after a failed reconnect — a rejoin that reuses the exist
 ### Tier E — media-layer options, with an honest 2026 reality check
 
 **Worth doing now:**
-- **Verify Opus in-band FEC is on.** `red: true` gives RED-style duplication;
-  in-band FEC (`useinbandfec=1`) is a *separate* mechanism and is the cheaper win
-  under moderate loss. Check what LiveKit actually negotiates in the SDP before
-  assuming.
+- ~~Verify Opus in-band FEC is on.~~ ✅ **Done (D-a) — it already is.** Chromium
+  offers `minptime=10;useinbandfec=1` by default and `audio/red` separately, so
+  both loss-resilience mechanisms are active today. No work; nothing to gain here.
 - **Cap audio bitrate in Saver/Audio-only.** Opus at 16–24 kbps mono is entirely
   intelligible for speech; the default is considerably higher.
 - **Temporal-layer ceiling in Saver.** VP8 in WebRTC supports temporal scalability,
@@ -375,15 +397,19 @@ rows they depend on are green.
 K3 is the useful lesson: one of three assumptions was wrong, and it shrank a work
 item. The rest of the register is worth the same treatment.
 
-### Desk checks — hours, no environment needed
+### Desk checks — ✅ all five done
 
-| # | Claim to confirm | How | If false |
-|---|---|---|---|
-| D-a | LiveKit negotiates Opus **in-band FEC** (`useinbandfec=1`), separately from `red: true` | Read the SDP munging in the installed SDK; confirm against a local `livekit-server --dev` offer | E's cheapest audio win either already exists or needs `publishDefaults` work |
-| D-b | `setPublishingLayers()` is usable publicly and does **not** restart capture | It exists on `LocalVideoTrack`; check whether it's `@internal` and whether it renegotiates | Send-side tiering needs `restartTrack` → the flicker that got `useAdaptiveQuality` reverted → B1's send tier becomes user-initiated only (as already planned) or is dropped |
-| D-c | Cloudflare's `ASSETS` binding already sets `immutable` cache headers on hashed chunks | Cloudflare Workers Static Assets docs + `curl -I` against the deployed artifact | C1's repeat-load value drops sharply; it stays justified for *offline* and for the chunk-fetch-hang case only |
-| D-d | A service worker can serve precached responses **without** breaking COOP/COEP | Spec + a spike. **This is the sharpest hazard in the plan:** `worker/index.js` sets `Cross-Origin-Embedder-Policy: credentialless` specifically so `SharedArrayBuffer` exists for Krisp. SW-synthesised responses must preserve those headers or the AI noise filter silently degrades | C1 needs header-preserving construction, or is scoped to non-isolated assets only |
-| D-e | The 25 MB file cap is reachable in practice | Read the byte-stream chunking + any LiveKit-side limits | The cap is already fiction and D2's link-aware cap is simpler than described |
+| # | Claim | Verdict |
+|---|---|---|
+| **D-a** | LiveKit negotiates Opus **in-band FEC** separately from `red: true` | ✅ **Closed — no work needed.** The SDK does no Opus fmtp munging (the one `useinbandfec` hit is a comment in the bundled `sdp-transform` parser table). Probed a real `createOffer()` in the shipped Chromium (141): the Opus fmtp line is `minptime=10;useinbandfec=1`, and `audio/red` is offered as a separate codec. **Both mechanisms are already on.** Delete this from Tier E. |
+| **D-b** | `setPublishingLayers()` is usable publicly and does not restart capture | ⚠️ **Changed — better than assumed.** `setPublishingLayers` *is* `@internal`. But `LocalVideoTrack.setPublishingQuality(maxQuality)` is **public**, and its implementation just builds a `SubscribedQuality[]` and delegates — **no `restartTrack`, no `getUserMedia`, no re-acquire.** So a send-side ceiling is available *without* the capture restart that got `useAdaptiveQuality` reverted. See the B1 correction below. |
+| **D-c** | Cloudflare's `ASSETS` binding already sets `immutable` on hashed chunks | ❌ **False — worse than assumed, but cheaply fixable.** Workers Static Assets serves `Cache-Control: public, max-age=0, must-revalidate` by default and does *not* add `immutable` for fingerprinted files. There is no `_headers` file in the repo and `worker/index.js` sets no cache header. **Every repeat visit revalidates every hashed chunk** — one round trip each, which on a 900 ms link is exactly the cost we're trying to remove, for content that by construction can never change. |
+| **D-d** | A service worker can precache without breaking COOP/COEP | ⚠️ **Hazard confirmed.** A SW that strips response headers silently drops COOP/COEP, so `crossOriginIsolated` flips to `false` on cache hits — `SharedArrayBuffer` disappears and Krisp degrades with no error. Mitigable (replay headers verbatim, or re-set them in the SW), but it must be deliberate, and the test suite needs an explicit `crossOriginIsolated === true` assertion *after* a cache hit. |
+| **D-e** | The 25 MB cap is reachable, and F7 (files starving chat) is real | ✅ **Confirmed, F7 is real.** LiveKit opens exactly two data channels per peer connection — `_lossy` and `_reliable`. Chat text and file byte-streams share the single **ordered, reliable** one. `STREAM_CHUNK_SIZE = 15000` against a 16384-byte max message, so a 25 MB file is **~1,667 ordered chunks** that any subsequent chat message queues behind. Head-of-line blocking is structural, not speculative. |
+
+Incidental: Chrome 141 offers AV1 in its default video m-line. That is *offer*
+capability, not hardware encode availability, so it does not change the Tier E
+verdict — but it does mean the receive side is ready whenever encode catches up.
 
 ### Spikes — a day or two each, throwaway branches, no production code
 
@@ -415,7 +441,7 @@ unblocking — it is how we find out whether the rest is worth building.
 | # | Question |
 |---|---|
 | O-a | Target device and network floor — decides whether Tier F is essential or over-engineering |
-| O-b | Is automatic **send-side** degradation acceptable, given `useAdaptiveQuality` was deliberately reverted? |
+| O-b | Is automatic **send-side** degradation acceptable, given `useAdaptiveQuality` was deliberately reverted? *(D-b removes the technical objection — `setPublishingQuality` needs no capture restart — so this is now purely a product call.)* |
 | O-c | Is "audio + a still every 4 s" an acceptable product statement, or does it read as broken video? |
 | O-d | Is the LiveKit freeze liftable for one measured cloud run, or is local-only the permanent constraint for S-a/S-b? |
 
@@ -427,7 +453,7 @@ unblocking — it is how we find out whether the rest is worth building.
 |---|---|---|
 | **−1 — confirm** | §3b: desk checks D-a…D-e, spikes S-a…S-g, ship A1 in measurement-only mode for R-a…R-d, answer O-a…O-d | No production behaviour changes. Ends at a **go/no-go on each tier**, not on the plan as a whole. |
 | **0 — measure** | A1 (promoted to real use), A2, C4, a throttled Playwright project | Nothing else can be evaluated without these. Prove the current baseline is as bad as claimed. |
-| **1 — cheap wins** | C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), D2.1 (honest file progress), C2 (offline banner) | Days of work, immediately felt, low risk. |
+| **1 — cheap wins** | **C0 (immutable cache headers)**, C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), D2.1 (honest file progress — now a few lines, see F6), C2 (offline banner) | Days of work, immediately felt, low risk. C0 and D2.1 both shrank once confirmed. |
 | **2 — the real lever** | B1 (Data saver tiers), B2 (adaptive default), F9 (`setSubscribed`), B4 (audio-first join) | The core fix for F1. Depends on A1. |
 | **3 — resilience** | C1 (app shell SW), D3 (reconnect UX), D2.2–3 | Structural; needs care around CSP + COOP/COEP. |
 | **4 — differentiate** | F-1 (slideshow video), F-2 (room verdict), F-4 (feature gating) | Only worth it once 0–3 make the ordinary path solid. |
