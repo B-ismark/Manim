@@ -19,6 +19,7 @@
     "test:a11y": "playwright test 08-a11y --project=desktop",
     "test:visual": "playwright test --project=desktop --grep @heavy --workers=1",
     "test:stress": "cross-env STRESS=1 playwright test 07-capacity --project=desktop --workers=1",
+    "test:lowbw": "playwright test -c playwright.lowbw.config.ts",
     "loadtest": "bash scripts/load-test.sh",
     "lighthouse": "lhci autorun"
   },
