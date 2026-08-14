@@ -1,0 +1,152 @@
+name: Low-bandwidth baseline
+
+# MANUAL ONLY. This is a measurement harness for docs/low-bandwidth-plan.md §3b
+# (spikes S-a / S-b), not a gate — it must never run on push or PR. It holds a real
+# call open for tens of seconds under a network shaper, so it is far too slow and far
+# too noisy to sit in the normal CI path.
+#
+# It runs entirely against a `livekit-server --dev` bound to loopback, so it cannot
+# touch the cloud project's participant-minutes and is unaffected by the freeze in
+# CLAUDE.md.
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: 'Network profile to shape loopback with'
+        type: choice
+        default: 'none'
+        options:
+          - none
+          - 3g-rural
+          - 2g-congested
+          - flaky
+      hold_seconds:
+        description: 'Seconds to hold the call open while sampling'
+        default: '30'
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # --dev's well-known pair. Not secrets: hardcoded in LiveKit dev mode, and only
+      # ever reachable on this runner's loopback.
+      LIVEKIT_API_KEY: devkey
+      LIVEKIT_API_SECRET: secret
+      LIVEKIT_URL: ws://127.0.0.1:7880
+      VITE_LIVEKIT_URL: ws://127.0.0.1:7880
+      LOWBW_PROFILE: ${{ inputs.profile }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      # Real deployable byte counts, which the dev server cannot give us (it serves
+      # unbundled ESM, so its request count and sizes are not representative). This
+      # is a measurement build only — never deployed; prod still builds on Cloudflare
+      # from main, per CLAUDE.md.
+      - name: Build and measure the shipped bundle
+        run: |
+          npm run build
+          echo "### Bundle (gzipped)" >> "$GITHUB_STEP_SUMMARY"
+          echo '| file | raw KB | gzip KB |' >> "$GITHUB_STEP_SUMMARY"
+          echo '|---|---:|---:|' >> "$GITHUB_STEP_SUMMARY"
+          total=0
+          for f in dist/assets/*.js dist/assets/*.css; do
+            [ -e "$f" ] || continue
+            raw=$(stat -c%s "$f")
+            gz=$(gzip -c "$f" | wc -c)
+            total=$((total + gz))
+            echo "| $(basename "$f") | $((raw / 1024)) | $((gz / 1024)) |" >> "$GITHUB_STEP_SUMMARY"
+          done
+          echo "| **total** | | **$((total / 1024))** |" >> "$GITHUB_STEP_SUMMARY"
+
+      # 1.10+ required: older 404 the /rtc/v1 route this client uses.
+      - name: Start a local livekit-server
+        run: |
+          curl -fsSL -o lk.tar.gz \
+            https://github.com/livekit/livekit/releases/download/v1.10.0/livekit_1.10.0_linux_amd64.tar.gz
+          tar xzf lk.tar.gz livekit-server
+          ./livekit-server --dev --bind 127.0.0.1 &
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:7880/ >/dev/null; then echo "livekit up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::livekit-server did not come up" && exit 1
+
+      - name: Start app (vite + token server)
+        run: npm run dev &
+      - name: Wait for vite
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5173 >/dev/null; then echo "up"; exit 0; fi
+            sleep 1
+          done
+          echo "::error::vite did not come up" && exit 1
+
+      # Shaping happens HERE, on the kernel, not in the browser: CDP's
+      # Network.emulateNetworkConditions does not affect an established WebRTC media
+      # path, so an in-browser throttle would measure the page load and leave the call
+      # running at full speed — measuring the wrong half of the problem.
+      #
+      # netem's `delay` applies per traversal. On loopback a request and its response
+      # each cross `lo`, so RTT lands at roughly TWICE the configured delay; the
+      # numbers below are therefore half of the target RTT.
+      #
+      # Deliberately fail-soft: if the shaper cannot be installed we still want the
+      # unshaped run's data rather than a dead job. The profile is recorded in the
+      # report either way, and `tc qdisc show` below is the ground truth for what
+      # actually applied.
+      - name: Apply network profile
+        if: inputs.profile != 'none'
+        run: |
+          set -x
+          sudo apt-get install -y iproute2 >/dev/null 2>&1 || true
+          case "${{ inputs.profile }}" in
+            3g-rural)     NETEM="delay 200ms 40ms distribution normal loss 5% rate 400kbit" ;;
+            2g-congested) NETEM="delay 450ms 100ms distribution normal loss 12% rate 100kbit" ;;
+            flaky)        NETEM="delay 60ms loss 25%" ;;
+            *)            NETEM="" ;;
+          esac
+          if [ -n "$NETEM" ]; then
+            sudo tc qdisc add dev lo root netem $NETEM \
+              || echo "::warning::could not apply netem — continuing UNSHAPED"
+          fi
+          tc qdisc show dev lo || true
+
+      - name: Run the baseline measurement
+        env:
+          LOWBW_HOLD_MS: ${{ inputs.hold_seconds }}000
+        run: npm run test:lowbw
+
+      # Always remove the shaper, even on failure — a runner is reused within the job
+      # and a lingering qdisc would corrupt the upload step's own network.
+      - name: Remove network profile
+        if: always()
+        run: sudo tc qdisc del dev lo root || true
+
+      - name: Summarise
+        if: always()
+        run: |
+          echo "### Low-bandwidth baseline — profile \`${{ inputs.profile }}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "lowbw-report/${{ inputs.profile }}.json" ]; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat "lowbw-report/${{ inputs.profile }}.json" \
+              | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const j=JSON.parse(s);console.log(JSON.stringify({rates:j.rates,joinMsA:j.joinMsA,joinMsB:j.joinMsB,landing:j.landing,roomRoute:j.roomRoute},null,2))})" \
+              >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo '_No report produced — see the job log._' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lowbw-report-${{ inputs.profile }}
+          path: lowbw-report/
+          retention-days: 14

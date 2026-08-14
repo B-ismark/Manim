@@ -12,6 +12,11 @@ const FAKE_MEDIA = [
 
 export default defineConfig({
   testDir: './tests',
+  // tests/lowbw/ is the low-bandwidth BASELINE MEASUREMENT, not a gate: it holds a
+  // call open for tens of seconds and is meant to run under a network shaper. It
+  // has its own config (playwright.lowbw.config.ts) and must stay out of `npm test`
+  // — otherwise every CI run would pay for it and e2e-local would time out.
+  testIgnore: 'lowbw/**',
   // LiveKit join + media negotiation is slow; give each test room to breathe.
   timeout: 90_000,
   expect: { timeout: 15_000 },
