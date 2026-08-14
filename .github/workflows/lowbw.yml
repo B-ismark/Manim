@@ -69,7 +69,11 @@ jobs:
       # 1.10+ required: older 404 the /rtc/v1 route this client uses.
       - name: Start a local livekit-server
         run: |
-          curl -fsSL -o lk.tar.gz \
+          # Bounded and retried. An unbounded curl here can sit for the job's whole
+          # 30-minute cap on a stalled connection, and the failure looks exactly like
+          # a slow network — which, in a harness whose entire purpose is measuring
+          # slow networks, is the worst possible ambiguity.
+          curl -fsSL --retry 3 --retry-all-errors --max-time 120 -o lk.tar.gz \
             https://github.com/livekit/livekit/releases/download/v1.10.0/livekit_1.10.0_linux_amd64.tar.gz
           tar xzf lk.tar.gz livekit-server
           ./livekit-server --dev --bind 127.0.0.1 &
