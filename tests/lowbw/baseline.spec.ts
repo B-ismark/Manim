@@ -19,7 +19,7 @@
 import { test, expect } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join as joinPath } from 'node:path'
-import { join, newParticipant, uniqueRoom, closeContext } from '../helpers'
+import { uniqueRoom, closeContext } from '../helpers'
 import type { Page } from '@playwright/test'
 
 const PROFILE = process.env.LOWBW_PROFILE ?? 'unshaped'
@@ -148,6 +148,84 @@ async function timedStep(fn: () => Promise<unknown>): Promise<{ ms: number; ok: 
   }
 }
 
+/**
+ * Join, stage by stage, on a budget this harness controls.
+ *
+ * Deliberately NOT helpers.join(). That helper hardcodes a 45s wait for the mic
+ * button, which is right for the normal suite but is the reason the 2G run could
+ * only report "did not finish in 45s" — and 45s is an arbitrary line, not a
+ * property of the network. It could not distinguish a join that is merely slow
+ * from one that never completes, which is the difference between "painful on 2G"
+ * and "impossible on 2G".
+ *
+ * Timing each stage separately also shows WHERE the time goes, which the single
+ * number never could:
+ *   nav      — the room route's own document + eager chunks
+ *   prejoin  — until the name field is interactive
+ *   click    — filling the name and pressing Join
+ *   inCall   — knock round-trip, the lazy CallRoom + livekit chunks, the WebSocket
+ *              and the WebRTC negotiation. On a thin link this is where the cost is
+ *              expected to sit, and splitting it out is what makes B4 (audio-first
+ *              join) and the Krisp gating arguable from evidence rather than theory.
+ */
+const JOIN_BUDGET_MS = Number(process.env.LOWBW_JOIN_BUDGET_MS ?? 150_000)
+const NAV_BUDGET_MS = 120_000
+const PREJOIN_BUDGET_MS = 60_000
+
+type JoinStage = 'nav' | 'prejoin' | 'click' | 'in-call'
+interface JoinStages {
+  ok: boolean
+  totalMs: number
+  navMs: number
+  prejoinMs: number
+  clickMs: number
+  inCallMs: number
+  budgetMs: number
+  failedAt?: JoinStage
+  error?: string
+}
+
+async function stagedJoin(page: Page, room: string, name: string): Promise<JoinStages> {
+  const t0 = Date.now()
+  const s: JoinStages = {
+    ok: false, totalMs: 0, navMs: 0, prejoinMs: 0, clickMs: 0, inCallMs: 0, budgetMs: JOIN_BUDGET_MS,
+  }
+  // Tracked explicitly rather than inferred from which duration is still zero — a
+  // stage that genuinely completes in under a millisecond would make that inference
+  // point at the wrong one.
+  let stage: JoinStage = 'nav'
+  try {
+    let t = Date.now()
+    await page.goto(`/r/${room}`, { waitUntil: 'domcontentloaded', timeout: NAV_BUDGET_MS })
+    s.navMs = Date.now() - t
+
+    stage = 'prejoin'
+    t = Date.now()
+    const nameInput = page.getByLabel('Your name')
+    await expect(nameInput).toBeVisible({ timeout: PREJOIN_BUDGET_MS })
+    s.prejoinMs = Date.now() - t
+
+    stage = 'click'
+    t = Date.now()
+    await nameInput.fill(name)
+    await page.getByRole('button', { name: 'Join now' }).click({ timeout: PREJOIN_BUDGET_MS })
+    s.clickMs = Date.now() - t
+
+    stage = 'in-call'
+    t = Date.now()
+    await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible({
+      timeout: JOIN_BUDGET_MS,
+    })
+    s.inCallMs = Date.now() - t
+    s.ok = true
+  } catch (e) {
+    s.failedAt = stage
+    s.error = String((e as Error)?.message ?? e).slice(0, 300)
+  }
+  s.totalMs = Date.now() - t0
+  return s
+}
+
 /** Rate in kbps between two cumulative byte samples. */
 function kbps(before: number, after: number, ms: number): number {
   return Math.round((((after - before) * 8) / 1000) * (1000 / ms))
@@ -187,8 +265,8 @@ test('lowbw baseline: two-party call under the active network profile', async ({
   }
 
   // --- S-a: join, hold, and watch what the media layer actually does.
-  const joinA = await timedStep(() => join(pageA, room, 'Ama'))
-  record.joinMsA = joinA.ms
+  const joinA = await stagedJoin(pageA, room, 'Ama')
+  record.joinMsA = joinA.totalMs
   record.joinA = joinA
   record.roomRoute = await loadMetrics(pageA)
 
@@ -197,7 +275,10 @@ test('lowbw baseline: two-party call under the active network profile', async ({
   if (!joinA.ok) {
     mkdirSync(OUT_DIR, { recursive: true })
     writeFileSync(joinPath(OUT_DIR, `${PROFILE}.json`), JSON.stringify(record, null, 2))
-    console.log(`\n=== lowbw profile: ${PROFILE} — JOIN FAILED after ${joinA.ms}ms ===`)
+    console.log(
+      `\n=== lowbw profile: ${PROFILE} — JOIN FAILED at stage "${joinA.failedAt}" after ${joinA.totalMs}ms ===`,
+    )
+    console.log(JSON.stringify(joinA, null, 2))
     // Print the load numbers here too. On the success path they ride along with the
     // rates block, but a failed join is exactly when they matter most — without them
     // the log says the join failed and gives no way to tell a slow network from a
@@ -208,11 +289,12 @@ test('lowbw baseline: two-party call under the active network profile', async ({
     return
   }
 
-  let b: Awaited<ReturnType<typeof newParticipant>> | null = null
-  const joinB = await timedStep(async () => {
-    b = await newParticipant(browser, room, 'Kofi')
-  })
-  record.joinMsB = joinB.ms
+  // Built here rather than via helpers.newParticipant for the same reason as A:
+  // that path routes through helpers.join and its 45s ceiling.
+  const ctxB = await browser.newContext({ permissions: ['camera', 'microphone'] })
+  const pageB = await ctxB.newPage()
+  const joinB = await stagedJoin(pageB, room, 'Kofi')
+  record.joinMsB = joinB.totalMs
   record.joinB = joinB
 
   // Two samples bracketing the hold give real rates rather than lifetime averages.
@@ -246,9 +328,9 @@ test('lowbw baseline: two-party call under the active network profile', async ({
   // Surface the headline numbers in the job log too, so a run is readable without
   // downloading the artifact.
   console.log(`\n=== lowbw profile: ${PROFILE} ===`)
-  console.log(JSON.stringify({ ...(record.rates as object), joinMsA: record.joinMsA, joinMsB: record.joinMsB, landing: record.landing }, null, 2))
+  console.log(JSON.stringify({ ...(record.rates as object), joinA, joinB, landing: record.landing, roomRoute: record.roomRoute }, null, 2))
 
-  if (b) await closeContext((b as { context: Parameters<typeof closeContext>[0] }).context)
+  await closeContext(ctxB)
   await closeContext(ctxA)
 
   // The ONLY assertion: the harness produced a report. Network quality is measured,

@@ -23,6 +23,9 @@ on:
       hold_seconds:
         description: 'Seconds to hold the call open while sampling'
         default: '30'
+      join_budget_seconds:
+        description: 'How long to wait for the call to become usable before calling the join failed'
+        default: '150'
 
 jobs:
   baseline:
@@ -133,6 +136,7 @@ jobs:
       - name: Run the baseline measurement
         env:
           LOWBW_HOLD_MS: ${{ inputs.hold_seconds }}000
+          LOWBW_JOIN_BUDGET_MS: ${{ inputs.join_budget_seconds }}000
         run: npm run test:lowbw
 
       # Always remove the shaper, even on failure — a runner is reused within the job

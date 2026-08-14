@@ -16,10 +16,11 @@ const FAKE_MEDIA = ['--use-fake-ui-for-media-stream', '--use-fake-device-for-med
 
 export default defineConfig({
   testDir: './tests/lowbw',
-  // A join on a 2G-grade link can legitimately take minutes, and the first run
-  // died at the 5-minute mark with nothing to show. The job's own 30-minute cap
-  // is the real backstop.
-  timeout: 12 * 60_000,
+  // Sized from the worst case the staged join can actually reach: a 240s landing
+  // navigation, then two joins each budgeted at nav 120s + prejoin 60s + click 60s
+  // + in-call 150s, plus the hold. Roughly 18 minutes if every stage runs to its
+  // limit. The job's own 30-minute cap is the real backstop.
+  timeout: 20 * 60_000,
   expect: { timeout: 60_000 },
   fullyParallel: false,
   workers: 1,
