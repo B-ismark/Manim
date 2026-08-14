@@ -99,6 +99,27 @@ export default {
     // subresources (Giphy GIF previews, MediaPipe CDN wasm for blur) still load.
     const res = await env.ASSETS.fetch(request)
     const headers = new Headers(res.headers)
+    // Fingerprinted build output (Vite emits /assets/<name>-<hash>.<ext>) can never
+    // change under its own URL — the hash IS the version — so it's safe to cache for
+    // a year. The ASSETS binding serves everything `public, max-age=0,
+    // must-revalidate` by default and does NOT add `immutable` for hashed files, so
+    // without this every repeat visit revalidates every chunk: a conditional request,
+    // and therefore a full round trip, per asset. Free on fibre; on a 900ms mobile
+    // link it's most of what makes a returning user wait.
+    //
+    // index.html and /sw.js are deliberately NOT included — both must be re-fetched
+    // for a deploy to be picked up at all.
+    //
+    // The content-type guard is load-bearing: `not_found_handling` is
+    // single-page-application, so an unknown path — including one under /assets/ —
+    // is answered with index.html. Caching that for a year at an asset URL would
+    // pin a stale SPA shell there with no way to invalidate it.
+    if (
+      url.pathname.startsWith('/assets/') &&
+      !(res.headers.get('content-type') || '').includes('text/html')
+    ) {
+      headers.set('Cache-Control', 'public, max-age=31536000, immutable')
+    }
     headers.set('Cross-Origin-Opener-Policy', 'same-origin')
     headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
     // Defense-in-depth. The app has no known injection sink (chat renders React
