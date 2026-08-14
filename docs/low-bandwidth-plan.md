@@ -75,13 +75,21 @@ signalling even starts, plus DNS + TLS to the LiveKit host from cold — and
 `index.html` has **no `preconnect` / `dns-prefetch`** for the LiveKit or Supabase
 origins.
 
-### F6. The sender's file-transfer progress is a lie
+### F6. The sender's file-transfer progress is a lie ✅ *confirmed — and cheaper to fix than first thought*
 `sendFile` (`useChatMessages.ts:632`) inserts the local card with `progress: 1`
 before `localParticipant.sendFile` is awaited. The receiver gets real progress via
 `reader.onProgress`; the sender sees "done" instantly. On a 100 kbps uplink a 20 MB
 file (allowed — cap is 25 MB, `chat/limits.ts`) takes ~27 minutes while the UI
-claims it finished. There is also no resume: a drop mid-transfer restarts from zero,
-and the `catch` silently removes the card.
+claims it finished.
+
+**Confirmed against livekit-client 2.19.2:** `sendFile(file, options)` already
+accepts `options.onProgress` — *"a callback function used to monitor the upload
+progress percentage"*. We simply don't pass it. So this is a bug in our code against
+an API that already does the right thing, and the fix is a handful of lines rather
+than the `streamBytes` rewrite originally proposed in D2.1.
+
+Resume is still absent: a drop mid-transfer restarts from zero and the `catch`
+silently removes the card.
 
 ### F7. A file transfer can starve chat
 `sendFile` and chat text both ride the **reliable** data channel. A 25 MB transfer
@@ -240,9 +248,9 @@ Queue failed sends in the store with a `pending` / `failed` state, flush on
 Bounded queue, drop with a visible error rather than growing forever.
 
 #### D2. Honest, resumable file transfer (F6, F7)
-1. **Fix the lie first** — drive the sender's card from real progress. LiveKit's
-   `sendFile` wraps `streamBytes`; using the writer directly gives per-chunk
-   progress and a cancel button. Small change, removes a genuine trust bug.
+1. **Fix the lie first** — pass `options.onProgress` to `sendFile` and drive the
+   sender's card from it (confirmed available, see F6). A handful of lines, removes
+   a genuine trust bug. Drop to `streamBytes` only if a cancel button is wanted too.
 2. **Scale the cap to the link.** 25 MB is fine on wifi and absurd on 2G. Warn above
    ~2 MB when the profile is `weak`/`dire`, with the real estimate: *"About 8 minutes
    on your connection."*
@@ -351,11 +359,74 @@ whatever else lands.
 
 ---
 
+## 3b. Confirmation register — settle these before committing to the work
+
+Every row is a claim this plan depends on. None of the build phases start until the
+rows they depend on are green.
+
+### Already confirmed (livekit-client 2.19.2, read from the installed SDK)
+
+| # | Claim | Verdict |
+|---|---|---|
+| K1 | `setSubscribed(false)` / `setVideoQuality()` / `setVideoDimensions()` / `setVideoFPS()` are public on `RemoteTrackPublication` | ✅ All public. B1's receive tier is buildable. |
+| K2 | `adaptiveStream` does **not** clobber a manual quality request | ✅ `emitTrackUpdate()` takes the **minimum** of the manual request and the adaptive dimension — manual acts as a *ceiling* adaptiveStream may go below but never above. Exactly the semantics B1 needs; no fight with the existing setup. The only guard (`isManualOperationAllowed`) is "must be subscribed", not "adaptiveStream must be off". |
+| K3 | Sender-side file progress needs a `streamBytes` rewrite | ❌ **False.** `sendFile` already accepts `options.onProgress`. See F6. |
+
+K3 is the useful lesson: one of three assumptions was wrong, and it shrank a work
+item. The rest of the register is worth the same treatment.
+
+### Desk checks — hours, no environment needed
+
+| # | Claim to confirm | How | If false |
+|---|---|---|---|
+| D-a | LiveKit negotiates Opus **in-band FEC** (`useinbandfec=1`), separately from `red: true` | Read the SDP munging in the installed SDK; confirm against a local `livekit-server --dev` offer | E's cheapest audio win either already exists or needs `publishDefaults` work |
+| D-b | `setPublishingLayers()` is usable publicly and does **not** restart capture | It exists on `LocalVideoTrack`; check whether it's `@internal` and whether it renegotiates | Send-side tiering needs `restartTrack` → the flicker that got `useAdaptiveQuality` reverted → B1's send tier becomes user-initiated only (as already planned) or is dropped |
+| D-c | Cloudflare's `ASSETS` binding already sets `immutable` cache headers on hashed chunks | Cloudflare Workers Static Assets docs + `curl -I` against the deployed artifact | C1's repeat-load value drops sharply; it stays justified for *offline* and for the chunk-fetch-hang case only |
+| D-d | A service worker can serve precached responses **without** breaking COOP/COEP | Spec + a spike. **This is the sharpest hazard in the plan:** `worker/index.js` sets `Cross-Origin-Embedder-Policy: credentialless` specifically so `SharedArrayBuffer` exists for Krisp. SW-synthesised responses must preserve those headers or the AI noise filter silently degrades | C1 needs header-preserving construction, or is scoped to non-isolated assets only |
+| D-e | The 25 MB file cap is reachable in practice | Read the byte-stream chunking + any LiveKit-side limits | The cap is already fiction and D2's link-aware cap is simpler than described |
+
+### Spikes — a day or two each, throwaway branches, no production code
+
+| # | Claim to confirm | How | If false |
+|---|---|---|---|
+| S-a | **Baseline: the problem is real.** The app is genuinely unusable at 100 kbps / 900 ms / 12 % loss | Local `livekit-server --dev` + `tc netem`, two headless participants, record `getStats()` | If LiveKit already copes, Tier B is polish and **Tier C (bytes-to-join) is the whole job** — a large re-prioritisation |
+| S-b | **The bottleneck is the call, not the load.** | Same rig; separately measure time-to-first-audio vs time-to-interactive from cold | If the app-shell download dominates, C1/C3 jump ahead of everything in Tier B |
+| S-c | Saver can actually hold ~250 kbps | Apply the B1 tier settings by hand, assert via `getStats()` | The tier table is fiction and needs real numbers before it ships as a user-facing promise |
+| S-d | **Slideshow video (F-1) is really ~6 KB/frame** | Pure Node spike: downscale real webcam stills to 160×120, encode WebP at a few quality levels, measure. No app changes | If it's 20 KB, the bitrate advantage narrows and F-1 may not clear the bar |
+| S-e | The data channel still delivers when media saturates the link | Extend S-a: push F-1-sized packets during a saturated call, measure arrival | F-1 and F-2 both fail — they assume the lossy channel survives what video can't |
+| S-f | Store-and-forward voice (F-3) is intelligible at ~12 kbps | `MediaRecorder` spike, listen to it | Drop F-3 |
+| S-g | `tc netem` + CDP throttling is applicable in CI | Try it on a GitHub Actions runner (needs `NET_ADMIN`) | The throttled suite becomes local-only — still useful, but not a gate |
+
+### Needs real-world data — ship instrumentation, then wait
+
+| # | Claim to confirm | How |
+|---|---|---|
+| R-a | Our users are actually on bad networks, and *which* kind | **Ship A1 in measurement-only mode** — no UI, no behaviour change — reporting the coarse verdict + `getStats()` summaries through the existing `report.ts`. Read it after ~2 weeks |
+| R-b | Uplink is the scarcer direction (the premise of F1's severity) | Same instrumentation: `qualityLimitationReason` + `availableOutgoingBitrate` |
+| R-c | People hit the reconnect path often enough to justify D3 | Same; count `Reconnecting` transitions and their durations |
+| R-d | Anyone sends large files at all | Same; log transfer sizes and durations |
+
+**A1 is both the first dependency and the measuring instrument.** That is the single
+most important scheduling fact in this document: building it first is not just
+unblocking — it is how we find out whether the rest is worth building.
+
+### Needs the owner (cannot be confirmed from the code)
+
+| # | Question |
+|---|---|
+| O-a | Target device and network floor — decides whether Tier F is essential or over-engineering |
+| O-b | Is automatic **send-side** degradation acceptable, given `useAdaptiveQuality` was deliberately reverted? |
+| O-c | Is "audio + a still every 4 s" an acceptable product statement, or does it read as broken video? |
+| O-d | Is the LiveKit freeze liftable for one measured cloud run, or is local-only the permanent constraint for S-a/S-b? |
+
+---
+
 ## 4. Suggested sequencing
 
 | Phase | Items | Why here |
 |---|---|---|
-| **0 — measure** | A1, A2, C4, a throttled Playwright project | Nothing else can be evaluated without these. Prove the current baseline is as bad as claimed. |
+| **−1 — confirm** | §3b: desk checks D-a…D-e, spikes S-a…S-g, ship A1 in measurement-only mode for R-a…R-d, answer O-a…O-d | No production behaviour changes. Ends at a **go/no-go on each tier**, not on the plan as a whole. |
+| **0 — measure** | A1 (promoted to real use), A2, C4, a throttled Playwright project | Nothing else can be evaluated without these. Prove the current baseline is as bad as claimed. |
 | **1 — cheap wins** | C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), D2.1 (honest file progress), C2 (offline banner) | Days of work, immediately felt, low risk. |
 | **2 — the real lever** | B1 (Data saver tiers), B2 (adaptive default), F9 (`setSubscribed`), B4 (audio-first join) | The core fix for F1. Depends on A1. |
 | **3 — resilience** | C1 (app shell SW), D3 (reconnect UX), D2.2–3 | Structural; needs care around CSP + COOP/COEP. |
