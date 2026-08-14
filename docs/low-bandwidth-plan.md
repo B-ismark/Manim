@@ -1,6 +1,9 @@
 # Low-bandwidth UX & performance — findings and plan
 
-**Status:** research / proposal. Nothing here is implemented yet.
+**Status:** mostly research, now backed by measurement (§2b). Two items are shipped
+(C0 immutable cache headers, D2.1 honest file-send progress); everything else is
+still a proposal. The confirmation register (§3b) records what has been settled and
+what has not — **including the three claims in this document that turned out wrong.**
 **Goal:** a usable call on a 2G-to-weak-3G link (≤150 kbps, 400–1200 ms RTT, 5–30 %
 loss, frequent 5–20 s blackouts) — the profile of a Ghanaian mobile data user on a
 congested cell, which is the real target, not a lab-throttled desktop.
@@ -122,6 +125,76 @@ Krisp pulls a WASM model; blur pulls ~160 KB of MediaPipe from `cdn.jsdelivr.net
 correctly lazy. On a slow link both should be gated on measured bandwidth, not just
 on user intent. GIFs from Giphy auto-load for trusted hosts (`limits.ts`
 `isAutoLoadImageUrl`) — fine on wifi, expensive on 2G.
+
+---
+
+### F12. Krisp — 1.94 MB gzipped, fetched automatically on every call join
+The single largest chunk in the build is `@livekit/krisp-noise-filter`:
+**5,911 kB raw / 1,939 kB gzipped**, larger than every other chunk combined. It
+ships pre-obfuscated (`javascript-obfuscator` in its own devDependencies), so it
+barely compresses and no bundling change will shrink it.
+
+It *is* correctly code-split — `useNoiseFilter.ts:91` dynamic-imports it, which is
+why it has its own chunk and is **not** on the landing critical path. The problem is
+policy, not packaging: `enabled` defaults to `true` (line 29) and the effect fires as
+soon as the mic is live and unmuted, which is the default join for essentially every
+user. So the app fetches 1.94 MB **mid-call, unprompted**, competing with the user's
+own audio and video for the same link — about 155 s of it at 100 kbit. On a bad
+connection it degrades the call it exists to improve.
+
+Related to F11, but its own entry because of the scale: it is twelve times the
+MediaPipe payload F11 was written about.
+
+---
+
+## 2b. What the harness actually measured
+
+Five dispatches of `.github/workflows/lowbw.yml` against a loopback
+`livekit-server --dev` under `tc netem`. **These numbers supersede the arithmetic
+elsewhere in this document**; where they disagree, believe these.
+
+| | unshaped control | `2g-congested` (100 kbit · ~900 ms RTT · 12 % loss) |
+|---|---:|---:|
+| landing | 3 req · 140 KB · DCL 93 ms | 3 req · 140 KB · **DCL 17.5 s** · TTFB 2.3 s |
+| room route | — | 7 req · 206 KB · DCL 6.8 s |
+| join (total) | 1,275 ms | **45,183 ms** |
+| ↳ nav / prejoin / click / **in-call** | — | 6.8 s / 2.3 s / 0.07 s / **36.0 s** |
+| video up | 1,434 kbps | **30 kbps** |
+| audio up | 73 kbps | **73 kbps** |
+| `qualityLimitationReason` | `none` | **`bandwidth`** |
+
+**1. 2G is painful, not impossible.** Cold-to-talking is ~63 s (17.5 s landing +
+45.2 s join). An earlier run reported the join simply failing — that was
+`helpers.join()`'s hardcoded 45 s ceiling landing a hair under the real 45.2 s, not a
+wall.
+
+**2. The in-call stage is 80 % of the join.** 36 s of 45.2 s, against 6.8 s of
+navigation. The join path — knock, the lazy `CallRoom` + `livekit` chunks, the
+WebSocket, the WebRTC negotiation — is *the* target. This is the evidence for B4 and
+for gating F12.
+
+**3. The encoder is starved by bandwidth, not CPU.** `qualityLimitationReason` moves
+`none` → `bandwidth`, and video collapses 1,434 → 30 kbps. Simulcast works. That
+settles the question F1 was posed around.
+
+**4. Audio does not adapt at all — and this is the surprise.** It holds at exactly
+73 kbps shaped and unshaped. On a 100 kbit link that is **73 % of the entire pipe**,
+and audio + video together (103 kbps) oversubscribe it outright. This promotes Tier
+E's audio cap from a minor bullet to arguably the highest-leverage media change
+available: Opus at 16–24 kbps mono would free more headroom than the entire collapsed
+video stream occupies.
+
+**Also confirmed:** the landing page is lean — 3 requests, 140 KB — so the app shell
+is *not* the problem. An earlier estimate here of "~2.37 MB, ~190 s" was wrong on both
+counts: it summed lazy chunks that never load on the landing path, including F12's
+1.94 MB.
+
+> **Limitation, and it is a real one.** netem shapes all of `lo`, so both browser
+> contexts *and* the LiveKit server share **one** 100 kbit pipe. That models two
+> people on a single shared 2G connection, not two users each on their own link.
+> Participant A's figures above are sound (A joined onto an idle pipe); the second
+> participant's failure to load, and every receive-side rate, are artifacts of the
+> rig and are omitted here. Fixing it needs per-port or per-netns shaping.
 
 ---
 
@@ -302,7 +375,12 @@ now" button, and — after a failed reconnect — a rejoin that reuses the exist
 - ~~Verify Opus in-band FEC is on.~~ ✅ **Done (D-a) — it already is.** Chromium
   offers `minptime=10;useinbandfec=1` by default and `audio/red` separately, so
   both loss-resilience mechanisms are active today. No work; nothing to gain here.
-- **Cap audio bitrate in Saver/Audio-only.** Opus at 16–24 kbps mono is entirely
+- ⭐ **Cap audio bitrate in Saver/Audio-only. This is now the highest-leverage item
+  in Tier E, not a footnote.** §2b measured audio holding at a flat **73 kbps**
+  whether the link is clean or 2G — it does not adapt, while video collapses 48×
+  around it. On a 100 kbit link audio alone is 73 % of capacity, and audio + video
+  oversubscribe it. Dropping to 16–24 kbps mono frees more headroom than the entire
+  degraded video stream occupies. Opus at 16–24 kbps mono is entirely
   intelligible for speech; the default is considerably higher.
 - **Temporal-layer ceiling in Saver.** VP8 in WebRTC supports temporal scalability,
   so the SFU can drop frame rate without a keyframe request. Cheaper and smoother
@@ -452,13 +530,13 @@ verdict — but it does mean the receive side is ready whenever encode catches u
 
 | # | Claim to confirm | How | If false |
 |---|---|---|---|
-| S-a | **Baseline: the problem is real.** The app is genuinely unusable at 100 kbps / 900 ms / 12 % loss | Local `livekit-server --dev` + `tc netem`, two headless participants, record `getStats()` | If LiveKit already copes, Tier B is polish and **Tier C (bytes-to-join) is the whole job** — a large re-prioritisation |
-| S-b | **The bottleneck is the call, not the load.** | Same rig; separately measure time-to-first-audio vs time-to-interactive from cold | If the app-shell download dominates, C1/C3 jump ahead of everything in Tier B |
-| S-c | Saver can actually hold ~250 kbps | Apply the B1 tier settings by hand, assert via `getStats()` | The tier table is fiction and needs real numbers before it ships as a user-facing promise |
+| ~~S-a~~ | ~~Baseline: the problem is real~~ | ✅ **Answered — see §2b.** 2G is painful, not impossible: the join completes in 45.2 s, the encoder is `bandwidth`-limited, and audio does not adapt. |
+| ~~S-b~~ | ~~The bottleneck is the call, not the load~~ | ✅ **Answered — see §2b.** Neither, precisely: the landing is lean (140 KB) and the **in-call stage of the join** is 80 % of the cost. Tier C stands, but aimed at the join path rather than the app shell. |
+| S-c | Saver can actually hold ~250 kbps | Apply the B1 tier settings by hand, assert via `getStats()` | The tier table is fiction and needs real numbers before it ships as a user-facing promise. **Now also needs an audio figure** — §2b shows audio alone is 73 kbps |
 | ~~S-d~~ | ~~Slideshow video (F-1) is really ~6 KB/frame~~ | ✅ **Answered — and it is far cheaper than estimated.** See below. Reproduce with `node docs/spikes/webp-frame-size.mjs` | — |
 | S-e | The data channel still delivers when media saturates the link | Extend S-a: push F-1-sized packets during a saturated call, measure arrival | F-1 and F-2 both fail — they assume the lossy channel survives what video can't |
 | S-f | Store-and-forward voice (F-3) is intelligible at ~12 kbps | `MediaRecorder` spike, listen to it | Drop F-3 |
-| S-g | `tc netem` + CDP throttling is applicable in CI | Try it on a GitHub Actions runner (needs `NET_ADMIN`) | The throttled suite becomes local-only — still useful, but not a gate |
+| ~~S-g~~ | ~~`tc netem` is applicable in CI~~ | ✅ **Answered — it works.** `sudo tc qdisc add dev lo root netem …` applies cleanly on `ubuntu-latest`, and it does **not** disturb Playwright's browser control channel (Chromium is driven over a pipe, not a localhost socket). The remaining gap is per-participant shaping, not shaping itself. |
 
 ### Needs real-world data — ship instrumentation, then wait
 
@@ -486,12 +564,20 @@ unblocking — it is how we find out whether the rest is worth building.
 
 ## 4. Suggested sequencing
 
+> **Re-ranked by §2b.** The original order put Tier B (saver tiers) ahead of Tier C
+> (bytes-to-join). The measurements move three things: **Tier C comes first but aims
+> at the join path, not the app shell** (the landing is already lean, and the in-call
+> stage is 80 % of the join); **the Tier E audio cap jumps into phase 1**, because
+> audio is 73 % of a 2G pipe and is the one stream that never adapts; and **F12
+> (Krisp) joins phase 1**, because 1.94 MB fetched mid-call is the largest single
+> avoidable cost measured anywhere in this document.
+
 | Phase | Items | Why here |
 |---|---|---|
-| **−1 — confirm** | §3b: desk checks D-a…D-e, spikes S-a…S-g, ship A1 in measurement-only mode for R-a…R-d, answer O-a…O-d | No production behaviour changes. Ends at a **go/no-go on each tier**, not on the plan as a whole. |
-| **0 — measure** | A1 (promoted to real use), A2, C4, a throttled Playwright project | Nothing else can be evaluated without these. Prove the current baseline is as bad as claimed. |
-| **1 — cheap wins** | **C0 (immutable cache headers)**, C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), D2.1 (honest file progress — now a few lines, see F6), C2 (offline banner) | Days of work, immediately felt, low risk. C0 and D2.1 both shrank once confirmed. |
-| **2 — the real lever** | B1 (Data saver tiers), B2 (adaptive default), F9 (`setSubscribed`), B4 (audio-first join) | The core fix for F1. Depends on A1. |
+| **−1 — confirm** | ~~desk checks D-a…D-e~~ ✅, ~~S-a, S-b, S-d, S-g~~ ✅, remaining spikes S-c/S-e/S-f, ship A1 in measurement-only mode for R-a…R-d, answer O-a…O-d | No production behaviour changes. Ends at a **go/no-go on each tier**, not on the plan as a whole. Mostly done; **A1 and the owner questions are what remain**, and they are the two that decide whether Tiers B and F are worth building at all. |
+| **0 — measure** | A1 (promoted to real use), A2, C4, per-participant shaping in the lowbw harness | Nothing else can be evaluated without these. The baseline is now measured (§2b); what is missing is *real user* data rather than synthetic. |
+| **1 — cheap wins** | ~~C0 (immutable cache headers)~~ ✅ shipped, ~~D2.1 (honest file progress)~~ ✅ shipped, **F12 (stop auto-fetching Krisp)**, **E (cap audio bitrate)**, C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), C2 (offline banner) | Days of work, immediately felt, low risk. F12 and the audio cap are new to this phase and are the two largest measured wins: 1.94 MB off the join, and ~50 kbps back on a 100 kbit pipe. |
+| **2 — the real lever** | **B4 (audio-first join)**, B1 (Data saver tiers), B2 (adaptive default), F9 (`setSubscribed`) | B4 promoted: §2b shows the in-call stage is 80 % of the join, which is exactly what it attacks. The rest is the core fix for F1 and depends on A1. |
 | **3 — resilience** | C1 (app shell SW), D3 (reconnect UX), D2.2–3 | Structural; needs care around CSP + COOP/COEP. |
 | **4 — differentiate** | F-1 (slideshow video), F-2 (room verdict), F-4 (feature gating) | Only worth it once 0–3 make the ordinary path solid. |
 | **later** | F-3 (store-and-forward voice), D2.4 (resumable transfer), E (AV1, DRED) | Genuinely novel or genuinely blocked on the ecosystem. |
@@ -519,6 +605,10 @@ playbook explicitly permits, and which cannot touch cloud minutes.
 ---
 
 ## 6. Open questions for the owner
+
+*(Still unanswered. Two shipped-or-proposed items now depend on them — F12's fix
+depends on O-a, and the audio cap's aggressiveness depends on O-c's tolerance for
+lower fidelity.)*
 
 1. **Target device floor?** Slideshow video (F-1) and store-and-forward voice (F-3)
    are aimed at a genuinely constrained user. If the real audience is on decent
