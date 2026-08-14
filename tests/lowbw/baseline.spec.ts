@@ -198,6 +198,11 @@ test('lowbw baseline: two-party call under the active network profile', async ({
     mkdirSync(OUT_DIR, { recursive: true })
     writeFileSync(joinPath(OUT_DIR, `${PROFILE}.json`), JSON.stringify(record, null, 2))
     console.log(`\n=== lowbw profile: ${PROFILE} — JOIN FAILED after ${joinA.ms}ms ===`)
+    // Print the load numbers here too. On the success path they ride along with the
+    // rates block, but a failed join is exactly when they matter most — without them
+    // the log says the join failed and gives no way to tell a slow network from a
+    // broken one, and the figures sit unread inside the artifact.
+    console.log(JSON.stringify({ landingLoadMs: record.landingLoadMs, landing: record.landing, roomRoute: record.roomRoute }, null, 2))
     console.log(joinA.error)
     await closeContext(ctxA)
     return
