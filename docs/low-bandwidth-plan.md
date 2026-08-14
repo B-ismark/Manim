@@ -1,7 +1,8 @@
 # Low-bandwidth UX & performance — findings and plan
 
-**Status:** mostly research, now backed by measurement (§2b). Two items are shipped
-(C0 immutable cache headers, D2.1 honest file-send progress); everything else is
+**Status:** mostly research, now backed by measurement (§2b). Four items are shipped
+— C0 (immutable cache headers), D2.1 (honest file-send progress), F12 (Krisp no
+longer auto-downloads on join), and A1 in measurement-only mode; everything else is
 still a proposal. The confirmation register (§3b) records what has been settled and
 what has not — **including the three claims in this document that turned out wrong.**
 **Goal:** a usable call on a 2G-to-weak-3G link (≤150 kbps, 400–1200 ms RTT, 5–30 %
@@ -128,7 +129,7 @@ on user intent. GIFs from Giphy auto-load for trusted hosts (`limits.ts`
 
 ---
 
-### F12. Krisp — 1.94 MB gzipped, fetched automatically on every call join
+### F12. Krisp — 1.94 MB gzipped, fetched automatically on every call join ✅ ***fixed***
 The single largest chunk in the build is `@livekit/krisp-noise-filter`:
 **5,911 kB raw / 1,939 kB gzipped**, larger than every other chunk combined. It
 ships pre-obfuscated (`javascript-obfuscator` in its own devDependencies), so it
@@ -144,6 +145,22 @@ connection it degrades the call it exists to improve.
 
 Related to F11, but its own entry because of the scale: it is twelve times the
 MediaPipe payload F11 was written about.
+
+**Fixed** by gating the import on two things: the room having been `Connected` for
+5 s, and the connection not being one where 1.94 MB is unreasonable to spend
+(`saveData`, or `effectiveType` 2g/slow-2g). Skipping is *not* "no noise
+suppression" — `usingKrisp` stays false, which keeps the browser's native filter
+engaged through the existing `applyConstraints` path, so the user still gets
+suppression, just not the AI one.
+
+Deliberately **not** gated on A1's inferred tier, even though A1 now exists. Its
+thresholds have not been validated against real users (that is what R-a…R-d are
+for), and a mis-tuned threshold would silently disable noise suppression for people
+whose network was fine. `saveData` is an explicit user preference and
+`effectiveType` is consulted only to *skip an optional extra* — neither degrades
+anything the user asked for. Revisit once A1 has produced real data.
+
+The skip is breadcrumbed with its reason, so the rate is measurable.
 
 ---
 
@@ -576,7 +593,7 @@ unblocking — it is how we find out whether the rest is worth building.
 |---|---|---|
 | **−1 — confirm** | ~~desk checks D-a…D-e~~ ✅, ~~S-a, S-b, S-d, S-g~~ ✅, remaining spikes S-c/S-e/S-f, ship A1 in measurement-only mode for R-a…R-d, answer O-a…O-d | No production behaviour changes. Ends at a **go/no-go on each tier**, not on the plan as a whole. Mostly done; **A1 and the owner questions are what remain**, and they are the two that decide whether Tiers B and F are worth building at all. |
 | **0 — measure** | A1 (promoted to real use), A2, C4, per-participant shaping in the lowbw harness | Nothing else can be evaluated without these. The baseline is now measured (§2b); what is missing is *real user* data rather than synthetic. |
-| **1 — cheap wins** | ~~C0 (immutable cache headers)~~ ✅ shipped, ~~D2.1 (honest file progress)~~ ✅ shipped, **F12 (stop auto-fetching Krisp)**, **E (cap audio bitrate)**, C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), C2 (offline banner) | Days of work, immediately felt, low risk. F12 and the audio cap are new to this phase and are the two largest measured wins: 1.94 MB off the join, and ~50 kbps back on a 100 kbit pipe. |
+| **1 — cheap wins** | ~~C0 (immutable cache headers)~~ ✅ shipped, ~~D2.1 (honest file progress)~~ ✅ shipped, ~~F12 (stop auto-fetching Krisp)~~ ✅ shipped, **E (cap audio bitrate)**, C3 (preconnect), B3 (subject-ful warnings), D1 (chat outbox), C2 (offline banner) | Days of work, immediately felt, low risk. F12 and the audio cap are new to this phase and are the two largest measured wins: 1.94 MB off the join, and ~50 kbps back on a 100 kbit pipe. |
 | **2 — the real lever** | **B4 (audio-first join)**, B1 (Data saver tiers), B2 (adaptive default), F9 (`setSubscribed`) | B4 promoted: §2b shows the in-call stage is 80 % of the join, which is exactly what it attacks. The rest is the core fix for F1 and depends on A1. |
 | **3 — resilience** | C1 (app shell SW), D3 (reconnect UX), D2.2–3 | Structural; needs care around CSP + COOP/COEP. |
 | **4 — differentiate** | F-1 (slideshow video), F-2 (room verdict), F-4 (feature gating) | Only worth it once 0–3 make the ordinary path solid. |

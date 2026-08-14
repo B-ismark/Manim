@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalAudioTrack } from 'livekit-client'
-import { reportError } from '@/lib/report'
+import { useConnectionState, useLocalParticipant } from '@livekit/components-react'
+import { ConnectionState, Track, type LocalAudioTrack } from 'livekit-client'
+import { addBreadcrumb, reportError } from '@/lib/report'
 
 type KrispModule = typeof import('@livekit/krisp-noise-filter')
 type KrispProcessor = ReturnType<KrispModule['KrispNoiseFilter']>
@@ -15,18 +15,66 @@ type KrispProcessor = ReturnType<KrispModule['KrispNoiseFilter']>
  *              silently fall back to the browser's built-in WebRTC filter.
  *  - **off** → both disabled (browser constraint flipped off via applyConstraints).
  *
- * Krisp is a heavy WASM bundle, dynamically imported only when first turned on.
+ * Krisp is a heavy bundle — **1.94 MB gzipped, the largest chunk in the build by a
+ * wide margin** (it ships pre-obfuscated, so it barely compresses and no bundling
+ * change will shrink it). It is dynamically imported, but "on first turned on" was
+ * misleading: `enabled` defaults to true, so the import fired the moment the mic
+ * went live — i.e. on every join, unprompted, in the middle of the very stage the
+ * measurements show dominates the join. It is now gated; see KRISP_SETTLE_MS and
+ * heavyDownloadAllowed below.
+ *
  * It's also **suspended while the mic is muted** so we only pay its CPU cost
  * while the user is actually transmitting. The expected weight when speaking is
  * an accepted tradeoff for the cleaner audio.
  *
  * Owned by RoomView so it persists across menu open/close.
  */
+/**
+ * How long the room must have been connected before we'll pull Krisp down.
+ *
+ * The measured join (plan §2b) spends 36s of its 45s in the in-call stage —
+ * fetching the lazy CallRoom + livekit chunks, opening the WebSocket, negotiating
+ * WebRTC. Krisp's 1.94 MB used to land in the middle of exactly that, competing
+ * with the media it exists to improve. Waiting until the call is actually up costs
+ * a few seconds of AI suppression and takes the largest single avoidable download
+ * off the critical path.
+ */
+const KRISP_SETTLE_MS = 5000
+
+/**
+ * Whether it is reasonable to pull ~1.94 MB down for an *optional* quality upgrade.
+ *
+ * Deliberately keyed on facts rather than on A1's inferred tier. A1's thresholds
+ * have not been validated against real users yet, and a mis-tuned threshold here
+ * would silently disable noise suppression for people whose network was fine.
+ * `saveData` is an explicit user preference, and `effectiveType` is only ever
+ * consulted to SKIP an extra — never to degrade anything the user asked for.
+ *
+ * Skipping is not "no noise suppression": usingKrisp stays false, which keeps the
+ * browser's native filter engaged via the applyConstraints effect below.
+ */
+function heavyDownloadAllowed(): { ok: boolean; reason?: string } {
+  const c = (
+    navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string } }
+  ).connection
+  if (c?.saveData) return { ok: false, reason: 'save-data' }
+  if (c?.effectiveType === '2g' || c?.effectiveType === 'slow-2g') {
+    return { ok: false, reason: `effective-type:${c.effectiveType}` }
+  }
+  return { ok: true }
+}
+
 export function useNoiseFilter() {
   const { localParticipant } = useLocalParticipant()
+  const connState = useConnectionState()
 
   // Default on — matches the previous always-on browser baseline.
   const [enabled, setEnabled] = useState(true)
+  // Gates the 1.94 MB import (see KRISP_SETTLE_MS / heavyDownloadAllowed). Opens
+  // once, and stays open: the module is cached after the first load, so there is
+  // nothing to reclaim by closing it on a later reconnect.
+  const [downloadGateOpen, setDownloadGateOpen] = useState(false)
+  const gateReported = useRef(false)
   // True once Krisp is the active engine (vs the browser-native fallback).
   const [usingKrisp, setUsingKrisp] = useState(false)
   const procRef = useRef<KrispProcessor | null>(null)
@@ -63,6 +111,23 @@ export function useNoiseFilter() {
       .catch(() => {})
   }, [enabled, usingKrisp, trackSid])
 
+  // Hold the heavy import until the call is actually up and stable, and skip it
+  // entirely on a connection where 1.94 MB is not a reasonable thing to spend.
+  useEffect(() => {
+    if (downloadGateOpen || connState !== ConnectionState.Connected) return
+    const allowed = heavyDownloadAllowed()
+    if (!allowed.ok) {
+      // Reported so the rate is measurable (E2): how often do we skip, and why.
+      if (!gateReported.current) {
+        gateReported.current = true
+        addBreadcrumb('krisp skipped', { reason: allowed.reason })
+      }
+      return
+    }
+    const t = window.setTimeout(() => setDownloadGateOpen(true), KRISP_SETTLE_MS)
+    return () => window.clearTimeout(t)
+  }, [connState, downloadGateOpen])
+
   // Krisp = the strongest filter. Engage it when enabled + mic live + supported;
   // suspend it while muted to reclaim CPU; fall back to the browser filter if it
   // can't load/init.
@@ -70,7 +135,7 @@ export function useNoiseFilter() {
     let cancelled = false
 
     async function sync() {
-      const wantKrisp = enabled && !muted && !krispFailedRef.current
+      const wantKrisp = enabled && !muted && !krispFailedRef.current && downloadGateOpen
       if (!wantKrisp) {
         if (procRef.current) {
           try {
@@ -133,7 +198,7 @@ export function useNoiseFilter() {
     return () => {
       cancelled = true
     }
-  }, [enabled, muted, trackSid])
+  }, [enabled, muted, trackSid, downloadGateOpen])
 
   const toggle = useCallback(() => setEnabled((v) => !v), [])
 
