@@ -647,11 +647,46 @@ export function useChatMessages() {
           mimeType,
           size: file.size,
           url,
-          progress: 1,
+          // Starts at 0 and is driven by bytes actually written (below). It used to
+          // be hard-coded to 1, which showed the SENDER a completed transfer the
+          // instant they picked the file — while the upload was still running. On a
+          // fast link nobody noticed; on a thin uplink a 20MB file reads "done" for
+          // twenty minutes. The receiver always had real progress (reader.onProgress),
+          // so the two ends disagreed about the same transfer.
+          progress: 0,
         },
       ])
+
+      const setProgress = (p: number) =>
+        setFiles((prev) => prev.map((f) => (f.id === localId ? { ...f, progress: p } : f)))
+
       try {
-        await localParticipant.sendFile(file, { topic: FILE_TOPIC, mimeType })
+        // Deliberately NOT localParticipant.sendFile(). Its options type declares
+        // `onProgress`, and its JSDoc documents it — but in livekit-client 2.19.2
+        // _sendFile never forwards or invokes it (the only call sites are the two
+        // incoming readers and sendText). Passing it type-checks and then silently
+        // never fires, which would leave this bar frozen at 0% — a worse lie than the
+        // one it replaces. streamBytes is the public, unannotated API sendFile itself
+        // wraps, so we drive the same loop and count the bytes ourselves.
+        const writer = await localParticipant.streamBytes({
+          name: file.name,
+          topic: FILE_TOPIC,
+          mimeType,
+          totalSize: file.size,
+        })
+        const reader = file.stream().getReader()
+        let sent = 0
+        for (;;) {
+          const { done, value } = await reader.read()
+          if (done) break
+          await writer.write(value)
+          sent += value.byteLength
+          // Guard the divide: a 0-byte file is rejected upstream by uploadError, but
+          // this must not produce NaN and paint an invisible bar if that ever changes.
+          setProgress(file.size ? Math.min(sent / file.size, 1) : 1)
+        }
+        await writer.close()
+        setProgress(1)
       } catch {
         setFiles((prev) => prev.filter((f) => f.id !== localId))
         URL.revokeObjectURL(url)

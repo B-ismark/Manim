@@ -75,18 +75,23 @@ signalling even starts, plus DNS + TLS to the LiveKit host from cold — and
 `index.html` has **no `preconnect` / `dns-prefetch`** for the LiveKit or Supabase
 origins.
 
-### F6. The sender's file-transfer progress is a lie ✅ *confirmed — and cheaper to fix than first thought*
+### F6. The sender's file-transfer progress is a lie ✅ *confirmed — **fixed***
 `sendFile` (`useChatMessages.ts:632`) inserts the local card with `progress: 1`
 before `localParticipant.sendFile` is awaited. The receiver gets real progress via
 `reader.onProgress`; the sender sees "done" instantly. On a 100 kbps uplink a 20 MB
 file (allowed — cap is 25 MB, `chat/limits.ts`) takes ~27 minutes while the UI
 claims it finished.
 
-**Confirmed against livekit-client 2.19.2:** `sendFile(file, options)` already
-accepts `options.onProgress` — *"a callback function used to monitor the upload
-progress percentage"*. We simply don't pass it. So this is a bug in our code against
-an API that already does the right thing, and the fix is a handful of lines rather
-than the `streamBytes` rewrite originally proposed in D2.1.
+**Confirmed against livekit-client 2.19.2, in two passes.** `SendFileOptions`
+declares `onProgress?: (progress: number) => void` and the JSDoc describes it, so the
+first reading concluded we merely had to pass it. Reading `_sendFile` showed
+otherwise: it never forwards the option to `streamBytes` and never calls it. The only
+`onProgress` invocations in the bundle are the two incoming stream readers and
+`sendText`. **Declared, documented, unimplemented.**
+
+**Fixed** by driving the loop ourselves via `localParticipant.streamBytes()` — the
+public API `sendFile` wraps — and counting bytes written. The card now starts at 0
+and tracks the real upload, matching what the receiver already showed.
 
 Resume is still absent: a drop mid-transfer restarts from zero and the `catch`
 silently removes the card.
@@ -215,7 +220,7 @@ and needs no new UI.
 
 ### Tier C — cut the bytes needed to *reach* a call
 
-#### C0. Set `Cache-Control: immutable` on hashed assets ⭐ *new — do this first*
+#### C0. Set `Cache-Control: immutable` on hashed assets ⭐ ***shipped***
 Confirmed by D-c: Cloudflare serves every asset `max-age=0, must-revalidate`, so a
 returning user pays a conditional request per chunk. `worker/index.js` already
 builds a fresh `Headers` object for every asset response (it's setting COOP/COEP/CSP
@@ -268,9 +273,9 @@ Queue failed sends in the store with a `pending` / `failed` state, flush on
 Bounded queue, drop with a visible error rather than growing forever.
 
 #### D2. Honest, resumable file transfer (F6, F7)
-1. **Fix the lie first** — pass `options.onProgress` to `sendFile` and drive the
-   sender's card from it (confirmed available, see F6). A handful of lines, removes
-   a genuine trust bug. Drop to `streamBytes` only if a cancel button is wanted too.
+1. ~~Fix the lie first~~ ✅ **Shipped.** Driven from `streamBytes` and real byte
+   counts — *not* `sendFile`'s `onProgress`, which is declared but never fires (F6).
+   A cancel button is now a small addition on top, since we own the write loop.
 2. **Scale the cap to the link.** 25 MB is fine on wifi and absurd on 2G. Warn above
    ~2 MB when the profile is `weak`/`dire`, with the real estimate: *"About 8 minutes
    on your connection."*
@@ -392,10 +397,13 @@ rows they depend on are green.
 |---|---|---|
 | K1 | `setSubscribed(false)` / `setVideoQuality()` / `setVideoDimensions()` / `setVideoFPS()` are public on `RemoteTrackPublication` | ✅ All public. B1's receive tier is buildable. |
 | K2 | `adaptiveStream` does **not** clobber a manual quality request | ✅ `emitTrackUpdate()` takes the **minimum** of the manual request and the adaptive dimension — manual acts as a *ceiling* adaptiveStream may go below but never above. Exactly the semantics B1 needs; no fight with the existing setup. The only guard (`isManualOperationAllowed`) is "must be subscribed", not "adaptiveStream must be off". |
-| K3 | Sender-side file progress needs a `streamBytes` rewrite | ❌ **False.** `sendFile` already accepts `options.onProgress`. See F6. |
+| K3 | Sender-side file progress needs a `streamBytes` rewrite | ✅ **True after all — this entry was itself wrong once.** First pass said "false, `sendFile` already accepts `options.onProgress`", because `SendFileOptions` declares it *and* the JSDoc documents it. Reading the implementation showed `_sendFile` never forwards or invokes it: in 2.19.2 the only three `onProgress` call sites are the two incoming readers and `sendText`. It is a **declared-but-unimplemented option** — passing it type-checks, then silently never fires. |
 
-K3 is the useful lesson: one of three assumptions was wrong, and it shrank a work
-item. The rest of the register is worth the same treatment.
+K3 is the useful lesson, twice over. A declared option with matching JSDoc looked
+like a confirmation and wasn't; only reading the call sites settled it. Had the first
+answer been trusted, the "fix" would have compiled, passed typecheck, and pinned the
+sender's bar at 0% — a worse lie than the 100% it was replacing. **Confirm against
+implementations, not signatures.**
 
 ### Desk checks — ✅ all five done
 
