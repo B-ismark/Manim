@@ -51,7 +51,7 @@ import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
-import { useRoomStore, type GridSize } from '@/store/useRoomStore'
+import { useRoomStore } from '@/store/useRoomStore'
 import { useDeviceStore, type StoredDeviceKind } from '@/store/useDeviceStore'
 import { useAudioStore } from '@/store/useAudioStore'
 import { recoverMicrophone } from '@/lib/audioRecovery'
@@ -202,8 +202,6 @@ export function ControlBar({
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
-  const gridSize = useRoomStore((s) => s.gridSize)
-  const setGridSize = useRoomStore((s) => s.setGridSize)
   const videosFirst = useRoomStore((s) => s.videosFirst)
   const toggleVideosFirst = useRoomStore((s) => s.toggleVideosFirst)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
@@ -263,12 +261,6 @@ export function ControlBar({
       toast("Couldn't open the mini player", 'warning')
     }
   }, [])
-
-  // Legible gallery-size steps differ by device: phones top out at 9 (2-wide),
-  // desktop at 16. 'Auto' = fit-to-viewport (the default).
-  const gallerySizes: { value: GridSize; label: string }[] = touch
-    ? [{ value: 'auto', label: 'Auto' }, { value: 2, label: '2' }, { value: 4, label: '4' }, { value: 9, label: '9' }]
-    : [{ value: 'auto', label: 'Auto' }, { value: 4, label: '4' }, { value: 9, label: '9' }, { value: 16, label: '16' }]
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
   // Leaving is instant by design, so the one click it must not honour is the one
@@ -430,8 +422,11 @@ export function ControlBar({
         )}
       </div>
 
-      {/* View — layout + density in ONE control. Speaker = one large feed; Grid =
-          gallery. 'Auto' fits the viewport, a number caps the page.
+      {/* View — Speaker (one large feed) or Grid (the gallery). Two values, no
+          density row: the "gallery size" chips (Auto / 4 / 9 / 16) that used to sit
+          under this were clamped to the fit-to-viewport answer anyway, so on real
+          viewports they either did nothing or paginated a page with room to spare.
+          Tile density follows the viewport — see lib/tileGrid.
 
           One `layout` value on both pointer types. Touch used to drive a page INDEX
           from here instead (speaker was page 0 of a horizontal sequence), so these
@@ -466,32 +461,6 @@ export function ControlBar({
             )
           })}
         </div>
-        {layout === 'grid' && (
-          <div className="mt-1.5 flex gap-1" role="group" aria-label="Gallery size — tiles per page">
-            {gallerySizes.map((opt) => {
-              const active = gridSize === opt.value
-              return (
-                <button
-                  key={String(opt.value)}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => {
-                    setGridSize(opt.value)
-                    // Picking a density implies you want to see the gallery.
-                    if (opt.value !== 'auto') setLayout('grid')
-                  }}
-                  className={cn(
-                    'flex-1 rounded-control py-1.5 text-sm font-medium transition-colors',
-                    'pointer-coarse:min-h-11',
-                    active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
-                  )}
-                >
-                  {opt.label}
-                </button>
-              )
-            })}
-          </div>
-        )}
       </div>
 
       {/* A short action list (Google model) — heavy controls live in dialogs, so

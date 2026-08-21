@@ -169,37 +169,30 @@ describe('tileColumns', () => {
 
 describe('gridCapacity', () => {
   it('is 2x2 on a phone and 3x3 on a large phone — the density decision', () => {
-    expect(gridCapacity(stageW(375), 667 - 16, true, 'auto')).toEqual({ cols: 2, perPage: 4 })
-    expect(gridCapacity(stageW(412), 915 - 16, true, 'auto')).toEqual({ cols: 2, perPage: 4 })
-    expect(gridCapacity(stageW(430), 932 - 16, true, 'auto')).toEqual({ cols: 3, perPage: 9 })
+    expect(gridCapacity(stageW(375), 667 - 16, true)).toEqual({ cols: 2, perPage: 4 })
+    expect(gridCapacity(stageW(412), 915 - 16, true)).toEqual({ cols: 2, perPage: 4 })
+    expect(gridCapacity(stageW(430), 932 - 16, true)).toEqual({ cols: 3, perPage: 9 })
   })
 
   it('never exceeds cols x cols on touch', () => {
     for (const [vw, vh] of [[320, 568], [375, 667], [390, 844], [430, 932], [768, 1024]] as const) {
-      const { cols, perPage } = gridCapacity(stageW(vw), vh - 16, true, 'auto')
+      const { cols, perPage } = gridCapacity(stageW(vw), vh - 16, true)
       expect(perPage, `${vw}x${vh}`).toBeLessThanOrEqual(cols * cols)
     }
   })
 
   it('caps a desktop page at 20', () => {
-    expect(gridCapacity(DESK.w, DESK.h, false, 'auto').perPage).toBeLessThanOrEqual(20)
-  })
-
-  it('honours an explicit gallery size, clamped to what the device can hold', () => {
-    expect(gridCapacity(PHONE.w, PHONE.h, true, 4).perPage).toBe(4)
-    expect(gridCapacity(PHONE.w, PHONE.h, true, 16).perPage).toBe(4) // 2 cols -> 2x2
-    expect(gridCapacity(stageW(430), 932 - 16, true, 9).perPage).toBe(9)
-    expect(gridCapacity(DESK.w, DESK.h, false, 16).perPage).toBe(16)
+    expect(gridCapacity(DESK.w, DESK.h, false).perPage).toBeLessThanOrEqual(20)
   })
 
   it('falls back to a small page before the first measure', () => {
-    expect(gridCapacity(0, 0, true, 'auto').perPage).toBe(4)
-    expect(gridCapacity(0, 0, false, 'auto').perPage).toBe(9)
+    expect(gridCapacity(0, 0, true).perPage).toBe(4)
+    expect(gridCapacity(0, 0, false).perPage).toBe(9)
   })
 
   it('always allows at least one tile', () => {
-    expect(gridCapacity(10, 10, true, 'auto').perPage).toBeGreaterThanOrEqual(1)
-    expect(gridCapacity(PHONE.w, PHONE.h, true, 0).perPage).toBeGreaterThanOrEqual(1)
+    expect(gridCapacity(10, 10, true).perPage).toBeGreaterThanOrEqual(1)
+    expect(gridCapacity(1, 1, false).perPage).toBeGreaterThanOrEqual(1)
   })
 })
 
@@ -210,11 +203,19 @@ describe('fitMixedRows column cap', () => {
     rows.forEach((r) => expect(r.length).toBeLessThanOrEqual(2))
   })
 
-  it('falls back rather than rendering nothing when the cap is unsatisfiable', () => {
-    // 9 tiles at 2 columns needs 5 rows, which balancedRows can produce — but if it
-    // could not, an empty stage would be far worse than an over-wide row.
-    const rows = fitMixedRows(PHONE.w, PHONE.h, same(9, PORTRAIT), PHONE.gap, 2)
-    expect(rows.flat()).toHaveLength(9)
+  it('always finds a capped layout, so it never has to ignore the cap', () => {
+    // Why the second, UNCAPPED pass could go: `R = n` is always a candidate (one
+    // tile per row), so a cap of 1 or more can never starve the scorer. This is the
+    // invariant that used to be covered by a fallback — asserted directly now,
+    // because a fallback that silently drops the legibility floor is worse than a
+    // narrow row. Every count against every cap the app can hand it.
+    for (const cap of [1, 2, 3, 4]) {
+      for (let n = 1; n <= 24; n++) {
+        const rows = fitMixedRows(PHONE.w, PHONE.h, same(n, PORTRAIT), PHONE.gap, cap)
+        expect(rows.flat(), `n=${n}, cap=${cap}`).toHaveLength(n)
+        rows.forEach((r) => expect(r.length, `n=${n}, cap=${cap}`).toBeLessThanOrEqual(cap))
+      }
+    }
   })
 
   it('keeps tile size identical across a full page and a remainder page', () => {
