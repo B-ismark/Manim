@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, revealChrome } from './helpers'
+import { uniqueRoom, join, newParticipant, openEndCallConfirm } from './helpers'
 
 // Plain "Leave" is covered by 02-prejoin. The DESTRUCTIVE teardown —
 // end-for-everyone — wasn't (audit T2). The host's split control hides
@@ -19,10 +19,9 @@ test.describe('Session — end for everyone', () => {
         timeout: 30_000,
       })
 
-      // Host opens the caret menu (host-only) and ends for everyone.
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'End call for everyone' }).click()
-      await page.getByRole('menuitem', { name: 'End call for everyone' }).click()
+      // Host reaches end-for-everyone the way their platform offers it (caret menu
+      // on a pointer, More sheet on touch) and confirms.
+      await openEndCallConfirm(page)
       await page.getByRole('button', { name: 'End for everyone' }).click()
 
       // Guest receives the end signal and is taken out of the call: in-call chrome
@@ -57,9 +56,7 @@ test.describe('Session — end for everyone', () => {
         const r = (window as unknown as { __lkRoom?: { simulateScenario: (s: string) => Promise<void> } }).__lkRoom
         void r?.simulateScenario('leave-full-reconnect')
       })
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'End call for everyone' }).click()
-      await page.getByRole('menuitem', { name: 'End call for everyone' }).click()
+      await openEndCallConfirm(page)
       await page.getByRole('button', { name: 'End for everyone' }).click()
 
       // However the guest's reconnect resolves, they must not remain in-call.
