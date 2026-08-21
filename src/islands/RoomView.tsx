@@ -38,6 +38,8 @@ import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
 import { useCameraInterruption } from '@/features/calls/useCameraInterruption'
 import { useShareSurfaceWatch } from '@/features/calls/useScreenShare'
 import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
+import { useAudioSession } from '@/features/calls/useAudioSession'
+import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { parseRoomHash } from '@/lib/roomLink'
@@ -281,6 +283,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Auto-route devices: restore the user's remembered mic/speaker/camera, and grab a
   // Bluetooth headset the moment it connects (useDeviceStore prefs).
   useDeviceAutoswitch()
+  // Owns the audio session: holds it open across an app switch, and repairs
+  // playback + capture on the way back. Nothing did this before, which is why a
+  // trip to another app on a phone silenced the call in both directions for good.
+  const audio = useAudioSession()
 
   // Breadcrumb connection-state transitions so a reported error carries the recent
   // connection history (E1) — e.g. "errored right after a Reconnecting blip".
@@ -461,6 +467,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           Anything new goes in this list, not into a fresh `fixed` div. */}
       <TopStack>
         <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
+        {/* Audio that isn't working outranks a reconnect that's already in hand. */}
+        <MicUnavailableBanner />
+        <AudioBlockedBanner canPlayback={audio.canPlayback} onResume={() => void audio.resume()} />
         <ConnectionBanner />
         <WaitingRoomBanner active={isHost && waiting} />
         {companion ? (

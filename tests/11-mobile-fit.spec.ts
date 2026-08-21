@@ -126,7 +126,7 @@ test.describe('Mobile fit (no page scroll)', () => {
    * close the picker, wait again, and the bar hides normally — a fix that simply
    * pinned the chrome forever would pass the first half and fail here.
    */
-  test('an open device picker keeps the control island anchored (no orphaned menu)', async ({ page }) => {
+  test('an open audio tray keeps the control island on screen (no orphaned menu)', async ({ page }) => {
     const vp = page.viewportSize()!
     await join(page, uniqueRoom(), 'Solo')
     await revealChrome(page)
@@ -137,25 +137,30 @@ test.describe('Mobile fit (no page scroll)', () => {
       return !!box && box.y < vp.height - 4
     }
 
-    await page.getByRole('button', { name: 'Audio output' }).tap()
-    await expect(page.getByRole('dialog')).toBeVisible()
+    const trigger = page.getByRole('button', { name: /Audio (output|settings)/ })
+    await trigger.tap()
+    const tray = page.getByRole('group', { name: 'Audio settings' })
+    await expect(tray).toBeVisible()
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
 
-    // Past the 4s auto-hide with room to spare.
+    // Past the 4s auto-hide with room to spare. The tray is part of the island
+    // now, so this checks the island doesn't take the tray off screen with it —
+    // the tray can't be *separated* from its anchor by construction any more.
     await page.waitForTimeout(6000)
-    expect(await inThumbZone(), 'the island stayed put under its open picker').toBe(true)
-    await expect(page.getByRole('dialog')).toBeVisible()
+    expect(await inThumbZone(), 'the island stayed in the thumb zone').toBe(true)
+    await expect(tray).toBeVisible()
 
     // Close it the way a phone user does — tap the trigger again. (Not Escape:
     // mobile is pure touch, and not an outside tap either, which would ALSO hit
     // the stage's tap-to-toggle and hide the bar for the wrong reason.)
-    await page.getByRole('button', { name: 'Audio output' }).tap()
-    await expect(page.getByRole('dialog')).toBeHidden()
+    await trigger.tap()
+    await expect(tray).toBeHidden()
 
-    // Auto-hide must come back — the island is pinned by the open layer, not
+    // Auto-hide must come back — the island is pinned by what's open, not
     // permanently. The tap above also restarts the countdown, so this waits from
     // there.
     await page.waitForTimeout(6000)
-    expect(await inThumbZone(), 'the auto-hide resumed once the picker closed').toBe(false)
+    expect(await inThumbZone(), 'the auto-hide resumed once the tray closed').toBe(false)
   })
 
   /**
@@ -343,12 +348,13 @@ test.describe('Mobile fit (no page scroll)', () => {
     await expect(page.getByRole('button', { name: 'Camera options' })).toHaveCount(0)
 
     // …and the devices behind them are still reachable on touch.
-    await page.getByRole('button', { name: 'Audio output' }).tap()
-    const picker = page.getByRole('dialog')
-    await expect(picker).toBeVisible()
-    await expect(picker.getByText('Microphone', { exact: true })).toBeVisible()
-    await page.getByRole('button', { name: 'Audio output' }).tap()
-    await expect(picker).toBeHidden()
+    const trigger = page.getByRole('button', { name: /Audio (output|settings)/ })
+    await trigger.tap()
+    const tray = page.getByRole('group', { name: 'Audio settings' })
+    await expect(tray).toBeVisible()
+    await expect(tray.getByText('Microphone', { exact: true })).toBeVisible()
+    await trigger.tap()
+    await expect(tray).toBeHidden()
 
     await revealChrome(page)
     await page.getByRole('button', { name: 'More options' }).tap()
