@@ -495,8 +495,8 @@ export async function overlaps(page: Page) {
       const r = e.getBoundingClientRect()
       if (r.width <= 4 || r.height <= 4) return false
       // checkVisibility walks ANCESTORS — so a button inside an opacity-0 / hidden
-      // container (closed effects carousel, retracted hover controls) is correctly
-      // treated as invisible. Element-only opacity checks missed those.
+      // container (retracted hover controls, the auto-hidden touch chrome) is
+      // correctly treated as invisible. Element-only opacity checks missed those.
       return e.checkVisibility({
         opacityProperty: true,
         visibilityProperty: true,

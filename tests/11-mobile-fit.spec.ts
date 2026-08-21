@@ -573,4 +573,105 @@ test.describe('Mobile fit (no page scroll)', () => {
     expect(Math.round(after.vh - after.bottom), 'sheet back on the bottom edge').toBeLessThanOrEqual(2)
   })
 
+  /**
+   * Background blur is a one-tap toggle on your own tile.
+   *
+   * It used to open a "lens carousel" above the control bar — a horizontal
+   * scroller built for a gallery of effects that no longer exists (image
+   * backgrounds were removed for repeatedly breaking the feed), so it had shrunk
+   * to a two-item strip whose whole content is a subset of More → Backgrounds &
+   * effects. Two taps became one, and an overlay layer, a mirrored store and a
+   * chrome-hold rule went with it.
+   *
+   * Two things are asserted, and neither depends on blur actually rendering:
+   *
+   * 1. **The tap is wired.** Recorded with a MutationObserver rather than a
+   *    polled `toHaveAttribute`, because on a browser that CANNOT build the
+   *    processor `mode` returns to 'none' about 300ms later (by design — see
+   *    useBackgroundBlur's degrade path) and a poll can miss the window. The
+   *    observer sees every value the attribute ever held, so this is deterministic
+   *    whether the processor builds or not. @livekit/track-processors fetches the
+   *    MediaPipe WASM from a CDN, so a sandboxed or offline runner is firmly in
+   *    the "cannot build" case; a developer machine is in the other one.
+   *
+   * 2. **There is only ONE processor.** After things settle, the tile's toggle and
+   *    the Effects dialog under More must agree — whichever way this platform
+   *    resolved. That is the invariant `BlurProvider` exists for, and the one a
+   *    mirrored store (which is what the carousel used) would break.
+   */
+  test('the self-view tile toggles background blur, in step with the More menu', async ({
+    page,
+    browser,
+  }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    // A peer, because solo renders SoloStage — the floating self-view card (which
+    // carries these controls) only exists once someone else is in the call.
+    const peer = await newParticipant(browser, room, 'Guest1')
+    try {
+      const self = page.getByRole('group', { name: /^Your video/ })
+      await expect(self).toBeVisible({ timeout: 45_000 })
+
+      // The tile's tools need a PUBLISHED camera (`hasVideo`), which lands a beat
+      // after the card itself — so wait for the control rather than the card.
+      const blurOn = page.getByRole('button', { name: 'Blur my background' })
+      await expect(blurOn).toBeVisible({ timeout: 30_000 })
+      await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
+
+      // Watch the toggle before touching it (see (1) above). The label states the
+      // action, so it changes with the state — this matches either one.
+      await page.evaluate(() => {
+        const isBlurToggle = (b: Element) =>
+          /^(Blur my background|Turn off background blur)$/.test(b.getAttribute('aria-label') ?? '')
+        const btn = Array.from(document.querySelectorAll('button')).find(isBlurToggle)
+        if (!btn) throw new Error('blur toggle not found')
+        const seen: (string | null)[] = [btn.getAttribute('aria-pressed')]
+        ;(window as unknown as { __blurSeen: (string | null)[] }).__blurSeen = seen
+        new MutationObserver(() => seen.push(btn.getAttribute('aria-pressed'))).observe(btn, {
+          attributes: true,
+          attributeFilter: ['aria-pressed'],
+        })
+      })
+
+      await blurOn.tap()
+      await page.waitForTimeout(2000) // past the processor build / degrade
+      const seen = await page.evaluate(
+        () => (window as unknown as { __blurSeen: (string | null)[] }).__blurSeen,
+      )
+      expect(seen, 'tapping the tile control armed blur').toContain('true')
+
+      // (2) One processor: the tile and the More menu agree on the settled state.
+      const tileOn = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button')).some(
+          (b) =>
+            /^(Blur my background|Turn off background blur)$/.test(b.getAttribute('aria-label') ?? '') &&
+            b.getAttribute('aria-pressed') === 'true',
+        ),
+      )
+      await openMore(page)
+      await page.getByRole('button', { name: /Backgrounds & effects/ }).tap()
+      await expect(page.getByRole('button', { name: 'Blur', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        String(tileOn),
+      )
+      await expect(page.getByRole('button', { name: 'None', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        String(!tileOn),
+      )
+      // The Effects surface is a Dialog, not a Sheet — its own "Close" button, not
+      // closePanel's "Close panel". A modal dialog aria-hides the stage, so the
+      // tile control below is unreachable until this is actually shut.
+      await page.getByRole('button', { name: 'Close', exact: true }).tap()
+      await expect(page.getByRole('dialog')).toBeHidden()
+
+      // Whichever state it settled in, the tile still offers the other one — the
+      // control never ends up stuck with no way back.
+      await revealChrome(page)
+      const label = tileOn ? 'Turn off background blur' : 'Blur my background'
+      await expect(page.getByRole('button', { name: label })).toBeVisible()
+    } finally {
+      await peer.context.close()
+    }
+  })
+
 })

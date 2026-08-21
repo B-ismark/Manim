@@ -18,7 +18,7 @@ import type { ReactNode } from 'react'
  * LAYER SCALE (the whole app, so a new overlay has somewhere to go):
  *   10  stage scrim / in-tile chrome
  *   20  stage-level floats — self-view card, tile controls, corner chips
- *   30  control bar, effects carousel, reactions, and THIS stack
+ *   30  control bar, reactions, and THIS stack
  *   40  modal scrim (Dialog / Sheet overlay)
  *   50  modal surface, and the full-screen incoming-call takeover
  *   60  toasts — always the last word

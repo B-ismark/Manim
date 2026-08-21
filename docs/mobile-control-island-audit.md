@@ -62,7 +62,7 @@ bar that is no longer on screen, with no visible route back to it.
 
 **Root cause.** `useStageChrome` (`RoomView.tsx`) pinned the chrome only for
 controls that remembered to call `setChromeHold`: the More sheet, the host's
-end-call caret, the effects carousel. The three device popovers on the bar never
+end-call caret. The three device popovers on the bar never
 did. Worse, the countdown is armed *on mount* and on every stage tap and by
 nothing else — so a picker opened at t=3.9s had 100ms to live, and tapping a bar
 control did not buy it any more time.
