@@ -531,6 +531,20 @@ export function ControlBar({
           }}
         />
         <div className="my-1 border-t border-line" />
+        {/* Host-only, touch-only: the desktop bar has this behind the leave caret,
+            which is too small to aim at with a thumb. Still routed through the
+            confirm dialog — this is the one action in the sheet that can't be undone. */}
+        {isHost && touch && (
+          <MenuRow
+            icon={<LeaveIcon />}
+            label="End call for everyone"
+            danger
+            onClick={() => {
+              setModal('endConfirm')
+              closeMore()
+            }}
+          />
+        )}
         <MenuRow
           icon={<SettingsIcon />}
           label="Settings"
@@ -558,17 +572,11 @@ export function ControlBar({
    *  last row when the audio tray is open — same buttons, same order, one place. */
   const barRow = (
     <>
-        {locked && (
-          <Tooltip content="Room is locked">
-            <span
-              className="grid size-9 place-items-center rounded-control bg-accent-soft text-accent [&_svg]:size-4"
-              role="img"
-              aria-label="Room is locked"
-            >
-              <LockIcon />
-            </span>
-          </Tooltip>
-        )}
+        {/* The room-locked indicator used to sit here as a 36px pill. It's status,
+            not a control, so it moved to TopStack (RoomLockedPill) — which is where
+            the layering rules say pills belong, and which gets 42px back for the
+            thumb targets. At 375px the host bar needed 372px of a 343px island
+            before this, and 414px with the pill: both were spilling off screen. */}
 
         {/* Mic — toggle + a caret (desktop) that opens the audio device picker right
             at the button (Meet/Zoom/Teams pattern), so device controls are never
@@ -627,7 +635,14 @@ export function ControlBar({
             my audio going?" is answered without opening anything. Desktop keeps the
             popover: there's no auto-hide to fight and no thumb to reach with. */}
         {touch ? (
-          <AudioRouteButton open={audioTrayOpen} onToggle={() => setAudioTrayOpen((o) => !o)} />
+          // Folded away below 360px, where six controls cannot fit: 5 x 44px plus
+          // gaps and padding is 268 of the 288 available at 320px, and adding a
+          // sixth makes 318. More -> "Audio & video" reaches every one of these
+          // devices there. A <span> wrapper, because `hidden` on a component with
+          // its own base display class is inert (see the device carets below).
+          <span className="hidden min-[360px]:inline-flex">
+            <AudioRouteButton open={audioTrayOpen} onToggle={() => setAudioTrayOpen((o) => !o)} />
+          </span>
         ) : (
           <OutputDeviceButton noise={noise} />
         )}
@@ -786,9 +801,14 @@ export function ControlBar({
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
-        {isHost ? (
+        {isHost && !touch ? (
           // Split control: leaving (call continues) is the primary action; ending
           // for everyone is tucked behind the caret. Styled as one danger pill.
+          //
+          // DESKTOP ONLY. On touch the caret is a 26px target — under every touch
+          // guideline — and the pill costs 92px of a bar that has 343px at 375px and
+          // was overflowing by 29px because of it. "End for everyone" is a full-width
+          // row in More on touch instead, which is both reachable and safer to aim at.
           <div className="flex h-11 items-stretch overflow-hidden rounded-control">
             <Tooltip content="Leave — the call continues">
               <button
@@ -989,19 +1009,23 @@ function MenuRow({
   label,
   onClick,
   active,
+  danger,
 }: {
   icon: ReactNode
   label: string
   onClick: () => void
   active?: boolean
+  /** Destructive row (end the call for everyone) — tone matches the bar's control. */
+  danger?: boolean
 }) {
   return (
     <button
       onClick={onClick}
+      data-danger={danger}
       // 44px on a coarse pointer (audit F6). The More sheet is a touch-only surface
       // and these rows were ~36px — clear of WCAG 2.5.8's 24px, short of both
       // platform guidelines, and sitting next to 68px GridTiles.
-      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent"
+      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent data-[danger=true]:text-danger-text"
       data-active={active}
     >
       {icon}
@@ -1091,43 +1115,38 @@ function useAudioRoute(): { label: string | null; canRoute: boolean } {
 }
 
 /**
- * Touch trigger for the audio tray: a chip that names the route it's on.
+ * Touch trigger for the audio tray. A plain 44px icon button — NOT the labelled
+ * chip the prototype drew.
  *
- * FIXED WIDTH, deliberately. A chip sized to its content changes width when the
- * route changes — "Speaker" to "Jabra Evolve2 85" — and shoves the buttons either
- * side of it along, which is the moving-target problem the whole rework exists to
- * remove. Truncation is the cheaper price.
+ * The chip was meant to answer "where is my audio going?" without opening
+ * anything, and it's a good idea that does not fit. Measured at 375px: the island
+ * has 343px to work with, six 44px controls plus gaps and padding come to 318, and
+ * a 104px chip in place of one of them makes 378 — 35px over, spilling off both
+ * screen edges. Controls don't compress to absorb it (`size-11` fixes both axes),
+ * they just hang off. The route name moved into the tray's header instead, which is
+ * one tap away rather than zero, and the bar keeps its thumb targets.
+ *
+ * The accessible name still carries the route, so a screen-reader user gets the
+ * label the chip would have shown without needing the pixels.
  */
 function AudioRouteButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
   const { label, canRoute } = useAudioRoute()
-  // Nothing to name: fall back to an icon button, labelled for what it actually
-  // offers there rather than promising routing the platform can't do.
-  if (!canRoute || !label) {
-    return (
-      <IconButton
-        label={open ? 'Close audio settings' : 'Audio settings'}
-        icon={<SoundOnIcon />}
-        tone="neutral"
-        active={open}
-        onClick={onToggle}
-      />
-    )
-  }
   return (
-    <button
-      type="button"
+    <IconButton
+      // Named for what the platform can actually do: iOS Safari exposes no
+      // audiooutput devices and no setSinkId, so there is no route to promise.
+      label={
+        canRoute && label
+          ? `Audio output: ${label}. Tap to change.`
+          : open
+            ? 'Close audio settings'
+            : 'Audio settings'
+      }
+      icon={<SoundOnIcon />}
+      tone="neutral"
+      active={open}
       onClick={onToggle}
-      aria-expanded={open}
-      aria-label={`Audio output: ${label}. Tap to change.`}
-      className={cn(
-        'flex h-11 w-[6.5rem] shrink-0 items-center gap-1.5 rounded-control px-2.5 text-left',
-        'transition-colors duration-[var(--dur-fast)] [&_svg]:size-4 [&_svg]:shrink-0',
-        open ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink',
-      )}
-    >
-      <SoundOnIcon />
-      <span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
-    </button>
+    />
   )
 }
 
@@ -1160,11 +1179,16 @@ function AudioTray({
   onClose: () => void
   onAllDevices: () => void
 }) {
-  const { canRoute } = useAudioRoute()
+  const { canRoute, label } = useAudioRoute()
   return (
     <div className="flex max-h-[min(60dvh,26rem)] flex-col overflow-y-auto no-scrollbar">
       <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
         <h2 className="text-sm font-semibold">Audio</h2>
+        {/* The route the collapsed chip would have named, where there IS room for
+            it. See AudioRouteButton for why it isn't on the bar. */}
+        {canRoute && label && (
+          <span className="min-w-0 truncate text-xs text-ink-muted">{label}</span>
+        )}
         <span className="flex-1" />
         <IconButton label="Close audio settings" size="sm" icon={<CloseIcon />} onClick={onClose} />
       </div>

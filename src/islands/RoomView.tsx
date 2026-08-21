@@ -33,7 +33,7 @@ import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
 import { Button } from '@/components/primitives'
-import { HandIcon, PipIcon } from '@/components/icons'
+import { HandIcon, LockIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
 import { useCameraInterruption } from '@/features/calls/useCameraInterruption'
 import { useShareSurfaceWatch } from '@/features/calls/useScreenShare'
@@ -478,6 +478,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           />
         )}
         <RemoteInkPill />
+        <RoomLockedPill locked={locked} visible={chromeVisible} />
         <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
         <PinCoachmark />
       </TopStack>
@@ -556,6 +557,30 @@ function PipPlaceholder({ onBack }: { onBack: () => void }) {
         Bring back to window
       </Button>
     </div>
+  )
+}
+
+/**
+ * "Room locked" status pill.
+ *
+ * This used to be a 36px pill on the control island, which is the wrong place
+ * twice over: it's status rather than a control, and TopStack is where the layering
+ * rules put status (never a fresh `fixed` div with a hand-picked z-index). It also
+ * cost 42px of a bar that had 343px to spend at 375px and was already overflowing —
+ * with the pill showing, the host bar wanted 414px and spilled off both edges.
+ *
+ * Not folded into CallStatusBar's row: that one already carries a padlock for
+ * end-to-end encryption, and two padlocks a few pixels apart meaning different
+ * things is worse than either alone.
+ */
+function RoomLockedPill({ locked, visible }: { locked: boolean; visible: boolean }) {
+  // Unmounted, not hidden, for the same reason as CallStatusBar: an invisible row
+  // still holds its slot and its gap in TopStack.
+  if (!locked || !visible) return null
+  return (
+    <span className="mn-pop pointer-events-none flex items-center gap-2 rounded-control bg-overlay px-3 py-1.5 text-xs font-medium text-white shadow-raised backdrop-blur [&_svg]:size-3.5">
+      <LockIcon /> Room locked
+    </span>
   )
 }
 
