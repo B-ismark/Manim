@@ -6,7 +6,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
  * Why this exists: opening the chat/people panel used to re-centre the control
  * bar in whatever space was left (`md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]` on
  * a `fixed inset-x-0 flex justify-center` wrapper), which slid the WHOLE bar left
- * by half that padding — 160 / 176 / 200px. The Leave control sits 151–280px to
+ * by half that padding — 160 / 176 / 200px. The Leave control sits 151–284px to
  * the right of the Chat button that triggers the reflow, so at every desktop
  * breakpoint the slide parked Leave under a pointer that had not moved: click
  * chat, click the same spot again to close it, and you have left the call. The
@@ -35,7 +35,11 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
  * places, and changing one without the other silently re-opens the bug.
  */
 
-/** `right-3` / `top-3` / `bottom-3` — the gutter around the docked panel. */
+/**
+ * `right-3` / `top-3` — the gutter around the docked panel. (Its BOTTOM is
+ * `bottom-3` only at `xl`; below that it stops well clear of the control bar —
+ * see Sheet's `md:bottom-[5.75rem]`.)
+ */
 export const PANEL_GUTTER = 12
 /**
  * Tailwind `xl`. Below this the panel STOPS ABOVE the control bar (Sheet's

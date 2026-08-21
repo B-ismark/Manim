@@ -6,7 +6,10 @@ import type { GridSize } from '@/store/useRoomStore'
  * 5-person call doesn't spread to 4 thin columns); rows by height at a minimum
  * tile height. Recomputed on every resize so the layout adapts gracefully
  * (window resize, orientation) instead of clipping or shrinking tiles to dots.
- * Returns {cols, perPage} — cols also drives the rendered grid.
+ *
+ * `perPage` is what the grid consumes: the packer (fitMixedRows) decides the
+ * actual rows and their widths, so `cols` is only the column count this capacity
+ * was derived at — useful for reasoning and asserted in tests, not a layout input.
  *
  * `width` is the stage's width WITHOUT the docked side panel's inset — see
  * panelDock's dockedStageInset and the callers in Stage. Feeding it the narrowed
