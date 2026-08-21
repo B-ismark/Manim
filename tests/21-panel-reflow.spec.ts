@@ -45,7 +45,10 @@ test.describe('Side panel reflow', () => {
     // Every desktop width the panel behaves differently at: it overlays below lg,
     // docks and shifts the bar at lg/xl, and docks with no shift at all once the
     // bar already clears it.
-    for (const width of [768, 1024, 1280, 1440]) {
+    // 1279 earns its place: it is the widest viewport where the panel still docks
+    // beside a MOTIONLESS bar, so the two overlap horizontally by ~15px and only
+    // the panel's vertical clearance keeps Leave pressable.
+    for (const width of [768, 1024, 1279, 1280, 1440]) {
       await page.setViewportSize({ width, height: 800 })
       await page.waitForTimeout(400)
 

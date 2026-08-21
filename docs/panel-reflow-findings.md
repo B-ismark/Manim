@@ -52,7 +52,7 @@ Net bar travel, measured:
 | | 768 | 1024 | 1280 | 1440 | 1728 |
 |---|---|---|---|---|---|
 | before | 160 ⚠ | 176 ⚠ | 200 ⚠ | 200 ⚠ | 200 ⚠ |
-| after | 0 | 0 | 74 | 0 | 0 |
+| after | 0 | 0 | 75 | 0 | 0 |
 
 ⚠ = the pointer lands on a Leave control.
 
@@ -63,7 +63,7 @@ The prototype originally reported the bar at **560px**, because its mock was mis
 
 That mattered. The first plan was collision-only offset from `lg` up, which was reported
 as clearing the Leave control by 23px at 1024px. With the real bar the offset is 154px
-and it lands 3px *onto* Leave — the first end-to-end run failed at exactly that width.
+and it lands 4px *onto* Leave — the first end-to-end run failed at exactly that width.
 Hence the `xl` threshold: below it, the geometry is removed rather than sized around.
 
 It is also the case for the guard. "The offset is smaller than the gap" is only true of
