@@ -34,7 +34,7 @@ import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
-import { useEffectsUi } from '@/store/useEffectsUi'
+import { useBlurControls } from '@/features/effects/BlurContext'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
@@ -876,8 +876,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
       {/* Paged-grid navigation. Arrows live on the left/right EDGES, vertically
           centred (Zoom model) — clear of the top chrome and the floating control
           bar, which a bottom-centre pager collided with. A small page pill +
-          off-page-speaker jump sit on the same shelf as the effects carousel
-          (above the control bar). */}
+          off-page-speaker jump sit on the shelf just above the control bar. */}
       {paged && (
         <>
           <button
@@ -1740,12 +1739,21 @@ function Tile({
   const selfFacing = useRoomStore((s) => s.selfFacing)
   const mirror = p.isLocal && !isScreen && selfFacing === 'user'
 
-  // Self-view tile controls (flip camera / effects) live ON the tile now, like
+  // Self-view tile controls (flip camera / blur) live ON the tile now, like
   // WhatsApp/Snapchat — keeps them off the control bar. Touch only (desktop uses
   // the device picker + the More menu).
+  //
+  // Blur is a DIRECT toggle. It used to open a "lens carousel" above the control
+  // bar, which was a horizontal scroller built for a gallery of effects that no
+  // longer exists: image backgrounds were removed for repeatedly breaking the
+  // feed, leaving a two-item strip (None / Blur) that cost a tap to open, a tap to
+  // pick, its own overlay layer, a mirrored store, and a chrome-hold rule to stop
+  // the auto-hiding bar taking it off screen. One tap does the same job, and blur
+  // STRENGTH and quality — the only settings the strip never carried — stay in
+  // More → Backgrounds & effects.
   const coarse = useIsTouch()
   const flipCamera = useFlipCamera()
-  const toggleEffects = useEffectsUi((s) => s.toggleCarousel)
+  const blur = useBlurControls()
   const showSelfTools = p.isLocal && !isScreen && hasVideo && coarse
 
   // Double-tap / long-press / Enter action. Default = toggle pin; presentation overrides
@@ -1924,13 +1932,22 @@ function Tile({
             className="bg-overlay text-white hover:bg-overlay"
             onClick={() => void flipCamera()}
           />
-          <IconButton
-            size="sm"
-            label="Effects"
-            icon={<EffectsIcon />}
-            className="bg-overlay text-white hover:bg-overlay"
-            onClick={toggleEffects}
-          />
+          {/* Hidden where the platform can't build the processor at all, the same
+              call screen share makes on iOS — a button that silently does nothing
+              is worse than no button. `mode` flips synchronously, so `active`
+              lands on the first tap even though the ~160KB MediaPipe import means
+              the blur itself arrives a beat later. */}
+          {blur?.supported && (
+            <IconButton
+              size="sm"
+              label={blur.mode === 'blur' ? 'Turn off background blur' : 'Blur my background'}
+              icon={<EffectsIcon />}
+              tone={blur.mode === 'blur' ? 'accent' : 'neutral'}
+              active={blur.mode === 'blur'}
+              className={cn(blur.mode !== 'blur' && 'bg-overlay text-white hover:bg-overlay')}
+              onClick={() => (blur.mode === 'blur' ? blur.useNone() : blur.useBlur())}
+            />
+          )}
         </div>
       )}
 

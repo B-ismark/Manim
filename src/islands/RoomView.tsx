@@ -15,7 +15,6 @@ import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { CallStatusBar } from '@/islands/CallStatusBar'
 import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { StageTopBar } from '@/islands/StageTopBar'
-import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
 import { RemoteInkPill } from '@/islands/RemoteInkPill'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
@@ -24,6 +23,7 @@ import { useChatMessages } from '@/features/chat/useChatMessages'
 import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
+import { BlurProvider } from '@/features/effects/BlurContext'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
@@ -31,7 +31,6 @@ import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
-import { useEffectsUi } from '@/store/useEffectsUi'
 import { Button } from '@/components/primitives'
 import { HandIcon, LockIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
@@ -60,12 +59,12 @@ const CHROME_HIDE_MS = 4000
  *
  * That generality is the point. The auto-hide used to be held open only by the
  * controls that remembered to call `setChromeHold` (the More sheet, the host's
- * end-call caret, the effects carousel). The device pickers on the control bar
- * never did, so opening one and waiting four seconds slid the island out from
- * under its own open popover: a menu floating over the stage, anchored to a
- * control bar that was no longer there, with no visible way back to it. Wiring
- * one more callback would have fixed those three and left the trap armed for the
- * next control someone adds. Asking the DOM cannot be forgotten.
+ * end-call caret). The device pickers on the control bar never did, so opening one
+ * and waiting four seconds slid the island out from under its own open popover: a
+ * menu floating over the stage, anchored to a control bar that was no longer
+ * there, with no visible way back to it. Wiring one more callback would have fixed
+ * those and left the trap armed for the next control someone adds. Asking the DOM
+ * cannot be forgotten.
  */
 function overlayOpen(): boolean {
   return !!document.querySelector('[role="dialog"], [role="menu"]')
@@ -381,20 +380,11 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     void import('@/islands/SidePanel')
   }, [])
-  const carouselOpen = useEffectsUi((s) => s.carouselOpen)
   const { chromeVisible, show: keepChromeUp, setChromeHold, stageHandlers } = useStageChrome()
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
   const toggleOwnShareShown = useRoomStore((s) => s.toggleOwnShareShown)
-  // Opening the effects carousel must reveal + pin the chrome. The Effects button
-  // lives on the self-view tile (always visible on touch), but the carousel is a
-  // sibling of the auto-hiding control bar — so after the 4s auto-hide a tap would
-  // flip carouselOpen with the chrome gone, and the strip never appeared. Treat an
-  // open carousel like an open menu: hold the chrome up until it closes.
-  useEffect(() => {
-    setChromeHold(carouselOpen)
-  }, [carouselOpen, setChromeHold])
   // Leave via the control bar is instant by design (a sound choice on desktop), but
   // on a thumb-zone mobile bar a fat-finger drops you and rejoin can mean re-knocking
   // the waiting room. Pair the explicit Leave button with an undo toast that rejoins
@@ -452,7 +442,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   }
 
   return (
-    <>
+    // BlurProvider wraps the whole call subtree, not just the stage: the control
+    // bar's Effects dialog and the self-view tile's blur toggle have to be driving
+    // the SAME processor instance, and a provider around both is what guarantees it.
+    <BlurProvider controls={blur}>
       {/* Companion (same account on another device) mutes the speaker to avoid echo —
           the user hears the call on their other device. "Turn on sound" clears it. */}
       <RoomAudioRenderer muted={companion} />
@@ -541,7 +534,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         noise={noise}
         docPip={{ supported: docPip.supported, active: docPip.active, toggle: docPip.toggle }}
       />
-      <EffectsCarousel controls={blur} visible={chromeVisible && carouselOpen} />
       <ReactionsOverlay reactions={active} />
 
       {panel !== null && (
@@ -557,7 +549,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           <PipPanel onLeave={doLeave} onClose={docPip.toggle} />,
           docPip.pipWindow.document.body,
         )}
-    </>
+    </BlurProvider>
   )
 }
 
