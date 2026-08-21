@@ -56,6 +56,8 @@ import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScree
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useFullscreen } from '@/lib/useFullscreen'
+import { useBarDockShift } from '@/lib/panelDock'
+import { useSettleGuard } from '@/lib/useSettleGuard'
 import { cn } from '@/lib/cn'
 
 export interface ControlBarProps {
@@ -155,6 +157,11 @@ export function ControlBar({
   const canScreenShare = screenShare.supported
 
   const panel = useRoomStore((s) => s.panel)
+  // How far the bar has to move to clear the docked panel — usually not at all.
+  // See lib/panelDock for why this replaced re-centring the bar in the leftovers.
+  const { ref: barRef, shift } = useBarDockShift(panel !== null)
+  // ...and the backstop for the widths where it DOES still move.
+  const settleBlocks = useSettleGuard(shift)
   const setPanel = useRoomStore((s) => s.setPanel)
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
@@ -228,6 +235,17 @@ export function ControlBar({
     : [{ value: 'auto', label: 'Auto' }, { value: 4, label: '4' }, { value: 9, label: '9' }, { value: 16, label: '16' }]
 
   const togglePanel = (tab: 'chat' | 'people') => setPanel(panel === tab ? null : tab)
+  // Leaving is instant by design, so the one click it must not honour is the one
+  // the pointer never aimed — the click that lands on Leave only because opening
+  // the panel slid the bar under a resting cursor. The guard rejects that click
+  // and disarms, so pressing again leaves immediately.
+  const leaveGuarded = (e: { detail: number }) => {
+    if (settleBlocks(e)) {
+      toast('The controls just moved — press Leave again to confirm', 'neutral')
+      return
+    }
+    onLeave()
+  }
 
   // Single open/close path for the More menu so the chrome hold always tracks
   // it — including programmatic closes (controlled prop changes don't fire the
@@ -509,19 +527,20 @@ export function ControlBar({
     <div
       className={cn(
         'pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4',
-        'transition-[transform,opacity,padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        // Reflow left of the docked side panel on desktop — same inset the stage
-        // uses (RoomView) — so the bar centres in the visible area instead of
-        // sliding under the chat/people panel.
-        panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
+        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !chromeVisible && 'translate-y-[150%] opacity-0',
       )}
     >
       <Island
+        ref={barRef}
         pad="none"
         elevation="raised"
+        // Slide clear of the docked panel — by the real overlap, not by half the
+        // panel's width. 0 on most desktops, so the bar simply doesn't move.
+        style={shift ? { transform: `translateX(-${shift}px)` } : undefined}
         className={cn(
           'flex items-center gap-1.5 rounded-control px-3 py-2 sm:gap-2',
+          'transition-transform duration-[var(--dur-base)] ease-[var(--ease-island)]',
           // Only interactive while shown — otherwise the off-screen bar still
           // caught taps/focus.
           chromeVisible ? 'pointer-events-auto' : 'pointer-events-none',
@@ -739,7 +758,7 @@ export function ControlBar({
             <Tooltip content="Leave — the call continues">
               <button
                 type="button"
-                onClick={onLeave}
+                onClick={leaveGuarded}
                 aria-label="Leave call"
                 className="flex items-center gap-2 bg-danger pl-4 pr-3.5 text-sm font-medium text-danger-ink transition-colors hover:bg-danger-hover [&_svg]:size-5"
               >
@@ -769,7 +788,7 @@ export function ControlBar({
           </div>
         ) : (
           <Tooltip content="Leave">
-            <IconButton label="Leave call" icon={<LeaveIcon />} tone="danger" onClick={onLeave} />
+            <IconButton label="Leave call" icon={<LeaveIcon />} tone="danger" onClick={leaveGuarded} />
           </Tooltip>
         )}
       </Island>
