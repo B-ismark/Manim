@@ -21,10 +21,21 @@ export function attachErrorSink(page: Page): ErrorSink {
   return sink
 }
 
-/** Truly environmental noise — third-party / browser chrome, never an app bug.
- *  Always filtered, even in strict mode. */
+/**
+ * Truly environmental noise — third-party / browser chrome, never an app bug.
+ * Always filtered, even in strict mode.
+ *
+ * `ERR_TUNNEL_CONNECTION_FAILED` is in here because it is the one net:: error the
+ * application cannot cause: it means an HTTP proxy declined to open a tunnel, so it
+ * only exists where a proxy is configured at all. What trips it is the LiveKit SDK's
+ * telemetry beacon to `https://livekit.io/integrations/enc/v2`, which a sandboxed or
+ * egress-filtered runner refuses; the console text carries the error code but not
+ * the URL, so there is nothing narrower to match on. It cannot hide a broken call
+ * either — the media and signal paths fail as ERR_CONNECTION_* or as SDK errors, and
+ * the specs that care assert on participants and the encryption badge besides.
+ */
 const ENV_NOISE_RE =
-  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called/i
+  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called|ERR_TUNNEL_CONNECTION_FAILED/i
 
 /** Transient connection / media-pipeline errors that LiveKit emits during normal
  *  teardown (leave) and on the unhappy paths we DON'T assert in a given spec. These
@@ -163,19 +174,110 @@ export async function isTouch(page: Page): Promise<boolean> {
   return page.evaluate(() => matchMedia('(pointer: coarse)').matches)
 }
 
-/** Wake the auto-hiding control chrome on touch — exactly as a user would: a real
- *  finger TAP on the top scrim (above the tiles, so it never hits a tile's
- *  pin/double-tap). No keyboard, no hover. No-op on desktop (controls always
- *  shown), and only taps when the control bar is actually off-viewport. */
+/**
+ * Where the control island is right now, once it has stopped moving.
+ *
+ * The island slides in and out on a 220ms transform, and `boundingBox()` reports
+ * the *transformed* rect — so a single read taken mid-slide is a position the
+ * island is not going to be in. Reading until two consecutive samples agree is
+ * what makes "is it up?" a question with an answer.
+ */
+async function settledIslandBox(page: Page) {
+  const leave = page.getByRole('button', { name: 'Leave call' })
+  // A SHORT timeout, because boundingBox() waits for the element by default — on a
+  // surface with no island (landing, prejoin, a call already left) the default 30s
+  // would be spent once per sample rather than once per call.
+  const read = () => leave.boundingBox({ timeout: 1000 }).catch(() => null)
+  let prev = await read()
+  if (!prev) return null
+  for (let i = 0; i < 12; i++) {
+    await page.waitForTimeout(60)
+    const cur = await read()
+    if (prev && cur && Math.abs(prev.y - cur.y) < 1) return cur
+    prev = cur
+  }
+  return prev
+}
+
+/**
+ * Wake the auto-hiding control chrome on touch — exactly as a user would: a real
+ * finger TAP on the top scrim (above the tiles, so it never hits a tile's
+ * pin/double-tap). No keyboard, no hover. No-op on desktop (controls always shown).
+ *
+ * Two things make this harder than "tap if it looks hidden", and the one-shot
+ * version got both wrong:
+ *
+ *  - **The stage tap TOGGLES.** A reveal that misreads the island's position does
+ *    not merely fail to help, it actively hides a bar that was on its way in.
+ *    Sampling mid-slide is exactly when that misread happens, which is why the
+ *    position has to settle BEFORE we decide whether to tap at all.
+ *  - **One tap is not a guarantee.** The countdown restarts on every tap, the app
+ *    can be mid-render, and the tap can land while another layer is closing. So it
+ *    retries, re-settling before each decision.
+ *
+ * Silent when it gives up: callers assert on what they were actually after, and a
+ * throw here would only relabel their failure.
+ */
 export async function revealChrome(page: Page) {
   const vp = page.viewportSize()
   if (!vp || !(await isTouch(page))) return
-  const box = await page.getByRole('button', { name: 'Leave call' }).boundingBox().catch(() => null)
-  const hidden = !box || box.y > vp.height - 4
-  if (hidden) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const box = await settledIslandBox(page)
+    // No island on this surface at all — there is nothing to wake, and tapping the
+    // stage anyway would just toggle whatever IS there.
+    if (!box) return
+    // The WHOLE box inside the viewport, not just its top edge: hidden is a 150%
+    // translate, so a partially-visible bar is one that is still moving.
+    if (box.y >= 0 && box.y + box.height <= vp.height) return
     await page.touchscreen.tap(Math.round(vp.width / 2), 4)
     await page.waitForTimeout(300)
   }
+}
+
+/**
+ * Press a control that lives ON the auto-hiding island, re-revealing as needed,
+ * and wait for `until` — the thing whose appearance means the press landed.
+ *
+ * `revealChrome` then `.tap()` is a race the test loses under load: the island
+ * hides 4s after the last touch, and Playwright's actionability loop will happily
+ * spin for its whole timeout without ever re-revealing — the failure it eventually
+ * reports is "element is outside of the viewport", 15 seconds later. That is the
+ * `08-a11y › grid + chat panel open` flake exactly, and it gets likelier the busier
+ * the machine, i.e. precisely in CI.
+ *
+ * So each attempt re-reveals and presses with a SHORT timeout: an island that
+ * slipped away again costs one quick retry rather than the whole budget.
+ *
+ * `until` is what makes retrying safe on a control that TOGGLES — "Share screen"
+ * becomes "Stop screen share", and a blind second press would undo the first. It
+ * is checked before pressing, so an attempt that delivered its tap and then threw
+ * on the way out is recognised as done instead of reversed. Every caller here has
+ * such a signal; if a future one doesn't, give it one rather than dropping the
+ * argument.
+ *
+ * `settle` is how long one attempt waits for that signal, and it has to cover the
+ * SLOWEST honest response — not the typical one. Time it too tightly and a press
+ * that simply hasn't finished yet reads as a press that missed, and the retry
+ * toggles off the thing the first attempt turned on. Screen share negotiates media,
+ * so it keeps the 30s it always had.
+ */
+export async function pressChrome(
+  page: Page,
+  control: Locator,
+  until: Locator,
+  settle = 10_000,
+): Promise<void> {
+  const touch = await isTouch(page)
+  await expect(async () => {
+    if (await until.isVisible().catch(() => false)) return
+    if (touch) {
+      await revealChrome(page)
+      await control.tap({ timeout: 4000 })
+    } else {
+      await control.click({ timeout: 4000 })
+    }
+    await expect(until).toBeVisible({ timeout: settle })
+  }).toPass({ timeout: settle + 30_000, intervals: [200, 400, 800] })
 }
 
 /** Close any open Sheet (chat / participants / More) the way a real user does:
@@ -208,14 +310,15 @@ export async function activate(page: Page, control: Locator): Promise<void> {
  * Leaves the menu/sheet OPEN, so a11y checks can sample it before confirming.
  */
 export async function openEndCallMenu(page: Page): Promise<Locator> {
-  await revealChrome(page)
   if (await isTouch(page)) {
-    await activate(page, page.getByRole('button', { name: 'More options' }))
     // A row in the sheet, not a menuitem — the sheet is not a menu.
-    return page.getByRole('button', { name: 'End call for everyone' })
+    const row = page.getByRole('button', { name: 'End call for everyone' })
+    await pressChrome(page, page.getByRole('button', { name: 'More options' }), row)
+    return row
   }
-  await activate(page, page.getByRole('button', { name: 'End call for everyone' }))
-  return page.getByRole('menuitem', { name: 'End call for everyone' })
+  const item = page.getByRole('menuitem', { name: 'End call for everyone' })
+  await pressChrome(page, page.getByRole('button', { name: 'End call for everyone' }), item)
+  return item
 }
 
 /** ...and go through it to the confirm dialog, which both platforms share. */
@@ -226,13 +329,71 @@ export async function openEndCallConfirm(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
 }
 
+/**
+ * Assert something that only exists WHILE the touch chrome is up.
+ *
+ * `revealChrome` promises the island is up *now*, not that it will still be up in
+ * twenty seconds — and several status elements (the call timer, the E2EE padlock)
+ * live in `CallStatusBar`, which UNMOUNTS with the chrome rather than sliding away.
+ * So a plain `revealChrome` + `expect(...).toBeVisible()` can reveal a bar with
+ * 200ms left on its countdown and then spend the whole timeout waiting for an
+ * element that left the DOM. Re-revealing on each attempt is the difference.
+ */
+export async function expectChromeVisible(page: Page, target: Locator, timeout = 30_000) {
+  await expect(async () => {
+    await revealChrome(page)
+    await expect(target).toBeVisible({ timeout: 2000 })
+  }).toPass({ timeout, intervals: [200, 400, 800] })
+}
+
+/**
+ * Switch the touch stage's view through its chip.
+ *
+ * Not the island's race — the chip deliberately does not auto-hide — just a busy
+ * page: with six participants renegotiating video underneath it, a menu item can be
+ * resolved, visible and stable and still lose its tap. Retried against the chip's
+ * own label, which is the only thing that says the switch actually happened.
+ *
+ * The open-menu check matters more than it looks. The chip TOGGLES its menu, so a
+ * retry that blindly tapped the chip again would close the menu it needs, and the
+ * two would alternate for the whole timeout without ever landing.
+ */
+export async function selectStageView(
+  page: Page,
+  view: 'Speaker' | 'Gallery' | 'Shared screen',
+): Promise<void> {
+  const chip = page.getByRole('button', { name: /^View: / })
+  const wanted = new RegExp(`^View: ${view}`)
+  await expect(chip).toBeVisible({ timeout: 45_000 })
+  await expect(async () => {
+    if (wanted.test((await chip.getAttribute('aria-label')) ?? '')) return
+    if (!(await page.getByRole('menu').isVisible().catch(() => false))) {
+      await chip.tap({ timeout: 4000 })
+    }
+    await page.getByRole('menuitem', { name: view, exact: true }).tap({ timeout: 4000 })
+    await expect(chip).toHaveAccessibleName(wanted, { timeout: 4000 })
+  }).toPass({ timeout: 60_000, intervals: [300, 600, 1200] })
+}
+
+/**
+ * Open the More surface — a bottom sheet on touch, a popover on desktop.
+ *
+ * "Quick actions" is the heading of its body on both platforms, which makes it the
+ * signal that the surface is actually up rather than merely asked for.
+ */
+export async function openMore(page: Page): Promise<void> {
+  await pressChrome(
+    page,
+    page.getByRole('button', { name: 'More options' }),
+    page.getByText('Quick actions', { exact: true }),
+  )
+}
+
 /** Open the chat side panel and return the message composer. */
 export async function openChat(page: Page) {
-  await revealChrome(page)
-  await page.getByRole('button', { name: 'Open chat' }).click()
   // The composer is an ARIA combobox (it hosts the @-mention autocomplete).
   const composer = page.getByRole('combobox', { name: 'Message', exact: true })
-  await expect(composer).toBeVisible()
+  await pressChrome(page, page.getByRole('button', { name: 'Open chat' }), composer)
   return composer
 }
 
@@ -446,11 +607,12 @@ export async function fakeScreenShare(
 
 /** Start screen sharing from the control bar and wait for the presentation layout. */
 export async function startScreenShare(page: Page): Promise<void> {
-  await revealChrome(page)
-  await page.getByRole('button', { name: /^Share screen$/i }).click()
-  await expect(page.getByRole('button', { name: /^Stop screen share$/i })).toBeVisible({
-    timeout: 30_000,
-  })
+  await pressChrome(
+    page,
+    page.getByRole('button', { name: /^Share screen$/i }),
+    page.getByRole('button', { name: /^Stop screen share$/i }),
+    30_000,
+  )
 }
 
 /**

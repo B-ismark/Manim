@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, revealChrome, closePanel } from './helpers'
+import { uniqueRoom, join, newParticipant, openMore, revealChrome, selectStageView, closePanel } from './helpers'
+import { ISLAND_H, ISLAND_INSET } from '../src/lib/chromeBands'
 
 /**
  * Mobile real-estate: the core surfaces must FIT the viewport — a phone user
@@ -105,8 +106,7 @@ test.describe('Mobile fit (no page scroll)', () => {
 
   test('More sheet open — page stays fixed (sheet scrolls internally, not the page)', async ({ page }) => {
     await join(page, uniqueRoom(), 'Solo')
-    await revealChrome(page)
-    await page.getByRole('button', { name: 'More options' }).click()
+    await openMore(page)
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.waitForTimeout(400)
     expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
@@ -191,30 +191,42 @@ test.describe('Mobile fit (no page scroll)', () => {
           const cr = b.getBoundingClientRect()
           return { w: Math.round(cr.width), h: Math.round(cr.height) }
         })
-        return { left: Math.round(r.left), right: Math.round(r.right), controls }
+        const fixed = island.closest('.fixed')!.getBoundingClientRect()
+        return {
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          controls,
+          band: Math.round(window.innerHeight - fixed.top),
+        }
       })
 
     expect(box.left, 'island not clipped on the left').toBeGreaterThanOrEqual(0)
     expect(box.right, 'island not clipped on the right').toBeLessThanOrEqual(vp.width)
     const tooSmall = box.controls.filter((c) => c.h > 0 && c.h < 44)
     expect(tooSmall, 'every control clears 44px').toEqual([])
+    // `chromeBands.ISLAND_H` is the one number in that module not read from the
+    // platform, and the stage reserves its band from it. Pin it to the bar as
+    // actually rendered, so restyling the island can't quietly un-reserve the space
+    // the gallery scrolls its last row into. (This device reports no safe-area
+    // inset, so the band is the 1rem floor plus the island's height.)
+    expect(box.band, 'the reserved band matches islandBand(0)').toBe(ISLAND_INSET + ISLAND_H)
   })
 
   /**
-   * A speaker change must not move anyone between gallery pages.
+   * A speaker change must not reshuffle the gallery.
    *
-   * The pager slices one ordered list by index, so that list's MEMBERSHIP has to be
-   * stable. The tempting definition — "everyone the focus page isn't showing" —
-   * excludes the focused track, and the focus follows the active speaker, so every
-   * "yeah" from across the room swapped one member for another and renumbered
-   * everyone between them. Tiles jumping mid-sentence is what tilePriority's stable
-   * sort and the sticky featured share both exist to prevent.
+   * This began as a paging bug — the pager sliced one ordered list by index, so a
+   * membership change renumbered everyone and tiles jumped pages mid-sentence — and
+   * the paging is gone now. The property it was protecting is not: a list that
+   * reorders under a thumb is just as bad in a scroller, where the tile you were
+   * looking at slides out from under you instead of vanishing to another page.
    *
-   * The fix is that the gallery holds everyone, speaker included — so they appear
-   * big on page 0 AND as a cell, which is what Zoom does. This asserts the tiles on
-   * a gallery page are the same set before and after someone else starts talking.
+   * So membership and order still change only on deliberate events (someone joins
+   * or leaves, a share starts or stops leading, self-view is toggled) and never on
+   * speech. Asserted the same way: the same set of tiles before and after someone
+   * else starts talking.
    */
-  test('a speaker change does not reshuffle gallery pages', async ({ page, browser }) => {
+  test('a speaker change does not reshuffle the gallery', async ({ page, browser }) => {
     const room = uniqueRoom()
     await join(page, room, 'Host')
     const peers = await Promise.all([
@@ -224,8 +236,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     ])
     try {
       await page.waitForTimeout(2000)
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'More options' }).tap()
+      await openMore(page)
       await page.getByRole('button', { name: 'Grid', exact: true }).tap()
       await closePanel(page)
       await page.waitForTimeout(600)
@@ -249,16 +260,19 @@ test.describe('Mobile fit (no page scroll)', () => {
   })
 
   /**
-   * The stage is one horizontal page sequence, and speaker view is page 0.
+   * Changing view is a named control, not a gesture.
    *
-   * Swipe used to toggle grid/speaker, which took the gesture a phone user reaches
-   * for to turn a page — so the gallery pager fell back to two arrow buttons
-   * floating in the middle of the video. Now the swipe is the pager AND the mode
-   * switch, because there is no mode: page 0 is the focus feed, 1..n are gallery
-   * pages, and the dots advertise that they exist.
+   * The stage used to be a horizontal page sequence — page 0 the focus feed, 1..n
+   * gallery pages — switched by swiping, with a row of 1.5px dots underneath as the
+   * only hint that any of it existed. Nobody found the gallery on purpose and
+   * nobody who swiped into it knew how to get back. It is now a chip that says what
+   * you are looking at and opens a menu of the three views, which is what Teams,
+   * Meet and WhatsApp all put on a phone call.
+   *
+   * Asserts the chip is there, says "Speaker" on arrival (a call opens on whoever
+   * is talking, not on a grid), and actually changes the view.
    */
-  test('swiping the stage moves along the page sequence, starting from the speaker', async ({ page, browser }) => {
-    const vp = page.viewportSize()!
+  test('the stage view chip names the current view and switches it', async ({ page, browser }) => {
     const room = uniqueRoom()
     await join(page, room, 'Host')
     const peers = await Promise.all([
@@ -267,26 +281,67 @@ test.describe('Mobile fit (no page scroll)', () => {
     ])
     try {
       await page.waitForTimeout(1500)
-      await revealChrome(page)
 
-      // Page 0 by default — a call opens on whoever is talking, not on a grid.
-      const dots = page.getByRole('button', { name: /^(Speaker view|Gallery page )/ })
-      await expect(dots.first()).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Speaker view' })).toHaveAttribute('aria-current', 'true')
+      // Deliberately NOT part of the auto-hiding chrome: the only route between
+      // views must not disappear four seconds after the last tap.
+      const chip = page.getByRole('button', { name: /^View: / })
+      await expect(chip).toBeVisible({ timeout: 45_000 })
+      await expect(chip).toHaveAccessibleName(/^View: Speaker/)
 
-      // Swipe left → the first gallery page.
-      const mid = { x: Math.round(vp.width / 2), y: Math.round(vp.height / 2) }
-      await page.touchscreen.tap(mid.x, mid.y) // ensure the stage has the gesture
-      await page.mouse.move(mid.x + 90, mid.y)
-      await page.mouse.down()
-      await page.mouse.move(mid.x - 90, mid.y, { steps: 8 })
-      await page.mouse.up()
-      await expect(page.getByRole('button', { name: /^Gallery page 1/ })).toHaveAttribute('aria-current', 'true')
+      await selectStageView(page, 'Gallery')
+      await expect(chip).toHaveAccessibleName(/^View: Gallery/)
 
-      // …and the page must still fit. This is the whole point of paging.
+      // …and the gallery still fits the phone. That is the whole point of it.
       expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
+
+      await selectStageView(page, 'Speaker')
+      await expect(chip).toHaveAccessibleName(/^View: Speaker/)
     } finally {
       await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
+  /**
+   * You must be able to see yourself, at a size that answers the question.
+   *
+   * The self-view was a 96px card — too small to tell whether you were in frame,
+   * which is the one thing a self-view is for — and it was suppressed entirely
+   * during a screen share. It is now a third of the viewport, present on every
+   * view, and a tap opens it to roughly double that.
+   */
+  test('the self-view is legible and opens on tap', async ({ page, browser }) => {
+    const vp = page.viewportSize()!
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peer = await newParticipant(browser, room, 'Guest1')
+    try {
+      // Not a fixed wait: `join()` is satisfied by the PREJOIN screen's own
+      // microphone button, so it can return while the room is still connecting.
+      // The self-view card only exists in-call, so waiting for it is the check.
+      const self = page.getByRole('group', { name: /^Your video/ })
+      await expect(self).toBeVisible({ timeout: 45_000 })
+
+      const collapsed = (await self.boundingBox())!
+      expect(collapsed.width, 'a glance-able but legible self-view').toBeGreaterThanOrEqual(
+        vp.width * 0.28,
+      )
+
+      await self.tap()
+      await page.waitForTimeout(400)
+      const expanded = (await self.boundingBox())!
+      expect(expanded.width, 'tapping opens it').toBeGreaterThan(collapsed.width * 1.4)
+
+      // …and it still clears the control island, at either size.
+      const barTop = await page
+        .getByRole('button', { name: 'Leave call' })
+        // offsetTop, not a client rect: the island slides out of the thumb zone with
+        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
+        // hidden bar reports a top below the fold, and every "clears the bar"
+        // assertion measured against it passes for the wrong reason.
+        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
+      expect(expanded.y + expanded.height).toBeLessThanOrEqual(barTop + 1)
+    } finally {
+      await peer.context.close()
     }
   })
 
@@ -294,9 +349,11 @@ test.describe('Mobile fit (no page scroll)', () => {
    * The gallery must clear the floating control island.
    *
    * Only SoloStage ever reserved a band for it (`pb-24`), which is how the speaker
-   * filmstrip ended up with 60 of its 96px underneath the bar. Tiled pages now
-   * reserve ISLAND_BAND; the focus page deliberately doesn't, the way a video
-   * player puts its controls on glass.
+   * filmstrip ended up with 60 of its 96px underneath the bar. Every tiled layout
+   * now reserves ISLAND_BAND — including the scroller, as bottom padding, so the
+   * last row can be scrolled clear of the bar instead of parking under it. A single
+   * full-bleed feed deliberately doesn't, the way a video player puts its controls
+   * on glass.
    */
   test('gallery tiles clear the control island', async ({ page, browser }) => {
     const room = uniqueRoom()
@@ -308,8 +365,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     ])
     try {
       await page.waitForTimeout(1500)
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'More options' }).tap()
+      await openMore(page)
       await page.getByRole('button', { name: 'Grid', exact: true }).tap()
       await closePanel(page)
       await revealChrome(page)
@@ -317,7 +373,11 @@ test.describe('Mobile fit (no page scroll)', () => {
 
       const barTop = await page
         .getByRole('button', { name: 'Leave call' })
-        .evaluate((el) => el.closest('div')!.getBoundingClientRect().top)
+        // offsetTop, not a client rect: the island slides out of the thumb zone with
+        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
+        // hidden bar reports a top below the fold, and every "clears the bar"
+        // assertion measured against it passes for the wrong reason.
+        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
       const lowestTile = await page.evaluate(() => {
         const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]'))
           .filter((e) => (e as HTMLElement).offsetHeight > 40)
@@ -356,9 +416,79 @@ test.describe('Mobile fit (no page scroll)', () => {
     await trigger.tap()
     await expect(tray).toBeHidden()
 
-    await revealChrome(page)
-    await page.getByRole('button', { name: 'More options' }).tap()
+    await openMore(page)
     await expect(page.getByRole('button', { name: 'Audio & video' })).toBeVisible()
     await closePanel(page)
   })
+
+  /**
+   * The band reserved for the control island has to track the island, not a number
+   * that happens to equal it.
+   *
+   * The island sits at `bottom: max(1rem, env(safe-area-inset-bottom))` and is 60px
+   * tall. Stage reserved a flat 76px — exactly `16 + 60`, and therefore correct only
+   * where the bottom inset is 0. Every emulated device Playwright ships reports 0, so
+   * the suite agreed with the constant on every viewport it drove and on none of the
+   * ones with a home indicator or a gesture bar, where the bar floats HIGHER than its
+   * band and the last gallery row can't be scrolled out from under it.
+   *
+   * So this forces a 34px inset (iOS home indicator) onto both halves — the probe
+   * `useSafeAreaBottom` measures, and the island's own offset — and checks they still
+   * agree. With the constant back in place the scroller under-reserves by 18px and
+   * the last row lands under the bar.
+   */
+  test('the gallery clears the control island on a device with a home indicator', async ({
+    page,
+    browser,
+  }) => {
+    const SAFE_B = 34
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all(
+      ['Abena', 'Ama', 'Kofi', 'Kojo', 'Yaw'].map((n) => newParticipant(browser, room, n)),
+    )
+    try {
+      // Via the view chip, not More → Grid: the chip never auto-hides, so the setup
+      // can't lose a race with the control island sliding out of the thumb zone.
+      await selectStageView(page, 'Gallery')
+      await page.waitForTimeout(500)
+
+      await page.addStyleTag({ content: `[data-safe-area-probe]{height:${SAFE_B}px !important}` })
+      await page.evaluate((sb) => {
+        const bar = document.querySelector('button[aria-label="Leave call"]')
+        bar?.closest('.fixed')?.setAttribute('style', `bottom:${sb}px`)
+        window.dispatchEvent(new Event('resize'))
+      }, SAFE_B)
+      await page.waitForTimeout(300)
+
+      const scrolled = await page.evaluate(() => {
+        const sc = Array.from(document.querySelectorAll('div')).find(
+          (d) => d.scrollHeight > d.clientHeight + 4 && d.clientHeight > 200,
+        )
+        if (!sc) return false
+        sc.scrollTop = sc.scrollHeight
+        return true
+      })
+      expect(scrolled, 'six people should not fit without scrolling').toBe(true)
+      await page.waitForTimeout(300)
+
+      const { barTop, lowestTile, vh } = await page.evaluate(() => {
+        const bar = document.querySelector('button[aria-label="Leave call"]')!.closest('.fixed') as HTMLElement
+        const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]')).filter(
+          (e) => (e as HTMLElement).offsetHeight > 40 && !e.getAttribute('aria-label')!.includes('drag'),
+        )
+        return {
+          barTop: bar.offsetTop,
+          vh: window.innerHeight,
+          lowestTile: Math.max(...tiles.map((e) => e.getBoundingClientRect().bottom)),
+        }
+      })
+      expect(barTop, 'the island rests on screen').toBeGreaterThan(0)
+      expect(barTop, 'the island rests on screen').toBeLessThan(vh)
+      expect(lowestTile, 'the last row scrolls clear of the bar').toBeLessThanOrEqual(barTop + 1)
+    } finally {
+      await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
 })
