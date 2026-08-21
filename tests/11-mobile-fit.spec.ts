@@ -99,7 +99,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       // Cover would show box/src of the width — about 30% for 9:16-ish in 16:9.
       expect(fit!.shown, 'the whole landscape frame reaches the phone').toBeGreaterThan(0.95)
     } finally {
-      await peer.close()
+      await peer.context.close()
     }
   })
 
@@ -201,20 +201,20 @@ test.describe('Mobile fit (no page scroll)', () => {
   })
 
   /**
-   * A speaker change must not move anyone between gallery pages.
+   * A speaker change must not reshuffle the gallery.
    *
-   * The pager slices one ordered list by index, so that list's MEMBERSHIP has to be
-   * stable. The tempting definition — "everyone the focus page isn't showing" —
-   * excludes the focused track, and the focus follows the active speaker, so every
-   * "yeah" from across the room swapped one member for another and renumbered
-   * everyone between them. Tiles jumping mid-sentence is what tilePriority's stable
-   * sort and the sticky featured share both exist to prevent.
+   * This began as a paging bug — the pager sliced one ordered list by index, so a
+   * membership change renumbered everyone and tiles jumped pages mid-sentence — and
+   * the paging is gone now. The property it was protecting is not: a list that
+   * reorders under a thumb is just as bad in a scroller, where the tile you were
+   * looking at slides out from under you instead of vanishing to another page.
    *
-   * The fix is that the gallery holds everyone, speaker included — so they appear
-   * big on page 0 AND as a cell, which is what Zoom does. This asserts the tiles on
-   * a gallery page are the same set before and after someone else starts talking.
+   * So membership and order still change only on deliberate events (someone joins
+   * or leaves, a share starts or stops leading, self-view is toggled) and never on
+   * speech. Asserted the same way: the same set of tiles before and after someone
+   * else starts talking.
    */
-  test('a speaker change does not reshuffle gallery pages', async ({ page, browser }) => {
+  test('a speaker change does not reshuffle the gallery', async ({ page, browser }) => {
     const room = uniqueRoom()
     await join(page, room, 'Host')
     const peers = await Promise.all([
@@ -244,21 +244,24 @@ test.describe('Mobile fit (no page scroll)', () => {
       await page.waitForTimeout(4000)
       expect(await names(), 'the same people are on this page').toEqual(before)
     } finally {
-      await Promise.all(peers.map((p) => p.close()))
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 
   /**
-   * The stage is one horizontal page sequence, and speaker view is page 0.
+   * Changing view is a named control, not a gesture.
    *
-   * Swipe used to toggle grid/speaker, which took the gesture a phone user reaches
-   * for to turn a page — so the gallery pager fell back to two arrow buttons
-   * floating in the middle of the video. Now the swipe is the pager AND the mode
-   * switch, because there is no mode: page 0 is the focus feed, 1..n are gallery
-   * pages, and the dots advertise that they exist.
+   * The stage used to be a horizontal page sequence — page 0 the focus feed, 1..n
+   * gallery pages — switched by swiping, with a row of 1.5px dots underneath as the
+   * only hint that any of it existed. Nobody found the gallery on purpose and
+   * nobody who swiped into it knew how to get back. It is now a chip that says what
+   * you are looking at and opens a menu of the three views, which is what Teams,
+   * Meet and WhatsApp all put on a phone call.
+   *
+   * Asserts the chip is there, says "Speaker" on arrival (a call opens on whoever
+   * is talking, not on a grid), and actually changes the view.
    */
-  test('swiping the stage moves along the page sequence, starting from the speaker', async ({ page, browser }) => {
-    const vp = page.viewportSize()!
+  test('the stage view chip names the current view and switches it', async ({ page, browser }) => {
     const room = uniqueRoom()
     await join(page, room, 'Host')
     const peers = await Promise.all([
@@ -267,26 +270,63 @@ test.describe('Mobile fit (no page scroll)', () => {
     ])
     try {
       await page.waitForTimeout(1500)
-      await revealChrome(page)
 
-      // Page 0 by default — a call opens on whoever is talking, not on a grid.
-      const dots = page.getByRole('button', { name: /^(Speaker view|Gallery page )/ })
-      await expect(dots.first()).toBeVisible()
-      await expect(page.getByRole('button', { name: 'Speaker view' })).toHaveAttribute('aria-current', 'true')
+      // Deliberately NOT part of the auto-hiding chrome: the only route between
+      // views must not disappear four seconds after the last tap.
+      const chip = page.getByRole('button', { name: /^View: / })
+      await expect(chip).toBeVisible()
+      await expect(chip).toHaveAccessibleName(/^View: Speaker/)
 
-      // Swipe left → the first gallery page.
-      const mid = { x: Math.round(vp.width / 2), y: Math.round(vp.height / 2) }
-      await page.touchscreen.tap(mid.x, mid.y) // ensure the stage has the gesture
-      await page.mouse.move(mid.x + 90, mid.y)
-      await page.mouse.down()
-      await page.mouse.move(mid.x - 90, mid.y, { steps: 8 })
-      await page.mouse.up()
-      await expect(page.getByRole('button', { name: /^Gallery page 1/ })).toHaveAttribute('aria-current', 'true')
+      await chip.tap()
+      await page.getByRole('menuitem', { name: 'Gallery' }).tap()
+      await expect(chip).toHaveAccessibleName(/^View: Gallery/)
 
-      // …and the page must still fit. This is the whole point of paging.
+      // …and the gallery still fits the phone. That is the whole point of it.
       expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
+
+      await chip.tap()
+      await page.getByRole('menuitem', { name: 'Speaker' }).tap()
+      await expect(chip).toHaveAccessibleName(/^View: Speaker/)
     } finally {
-      await Promise.all(peers.map((p) => p.close()))
+      await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
+  /**
+   * You must be able to see yourself, at a size that answers the question.
+   *
+   * The self-view was a 96px card — too small to tell whether you were in frame,
+   * which is the one thing a self-view is for — and it was suppressed entirely
+   * during a screen share. It is now a third of the viewport, present on every
+   * view, and a tap opens it to roughly double that.
+   */
+  test('the self-view is legible and opens on tap', async ({ page, browser }) => {
+    const vp = page.viewportSize()!
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peer = await newParticipant(browser, room, 'Guest1')
+    try {
+      await page.waitForTimeout(1500)
+      const self = page.getByRole('group', { name: /^Your video/ })
+      await expect(self).toBeVisible()
+
+      const collapsed = (await self.boundingBox())!
+      expect(collapsed.width, 'a glance-able but legible self-view').toBeGreaterThanOrEqual(
+        vp.width * 0.28,
+      )
+
+      await self.tap()
+      await page.waitForTimeout(400)
+      const expanded = (await self.boundingBox())!
+      expect(expanded.width, 'tapping opens it').toBeGreaterThan(collapsed.width * 1.4)
+
+      // …and it still clears the control island, at either size.
+      const barTop = await page
+        .getByRole('button', { name: 'Leave call' })
+        .evaluate((el) => el.closest('div')!.getBoundingClientRect().top)
+      expect(expanded.y + expanded.height).toBeLessThanOrEqual(barTop + 1)
+    } finally {
+      await peer.context.close()
     }
   })
 
@@ -294,9 +334,11 @@ test.describe('Mobile fit (no page scroll)', () => {
    * The gallery must clear the floating control island.
    *
    * Only SoloStage ever reserved a band for it (`pb-24`), which is how the speaker
-   * filmstrip ended up with 60 of its 96px underneath the bar. Tiled pages now
-   * reserve ISLAND_BAND; the focus page deliberately doesn't, the way a video
-   * player puts its controls on glass.
+   * filmstrip ended up with 60 of its 96px underneath the bar. Every tiled layout
+   * now reserves ISLAND_BAND — including the scroller, as bottom padding, so the
+   * last row can be scrolled clear of the bar instead of parking under it. A single
+   * full-bleed feed deliberately doesn't, the way a video player puts its controls
+   * on glass.
    */
   test('gallery tiles clear the control island', async ({ page, browser }) => {
     const room = uniqueRoom()
@@ -325,7 +367,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       })
       expect(lowestTile, 'no tile reaches into the control island band').toBeLessThanOrEqual(barTop + 1)
     } finally {
-      await Promise.all(peers.map((p) => p.close()))
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 
