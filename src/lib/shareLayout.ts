@@ -115,7 +115,21 @@ export function speakerLayout(width: number, height: number, count: number, gap 
  * (the share is width-bound and the slack is vertical), which is the same
  * observation `rosterFits` makes on a phone.
  */
-export function contentLayout(width: number, height: number, count: number, gap = 12): StripLayout {
+export function contentLayout(
+  width: number,
+  height: number,
+  count: number,
+  gap = 12,
+  /**
+   * Dead space at the TOP of a right-hand rail, for the top-right stage chrome
+   * (the participants chip) that shares that corner. Taken off the rail only —
+   * the share keeps its full height, which is the whole reason the rail is on the
+   * right — and taken off before capacity is computed, so the count reflects the
+   * space the tiles actually get rather than the space the region nominally has.
+   * Irrelevant to a bottom strip, which nothing overlays.
+   */
+  railTopInset = 0,
+): StripLayout {
   const empty = { x: 0, y: 0, w: 0, h: 0 }
   const none: StripLayout = {
     side: 'right',
@@ -130,7 +144,9 @@ export function contentLayout(width: number, height: number, count: number, gap 
     const railW = clamp(width * 0.17, 168, 232)
     const bigW = width - railW - gap
     const tileH = railW / TILE_ASPECT
-    const capacity = Math.floor((height + gap) / (tileH + gap))
+    const railTop = Math.max(0, Math.min(railTopInset, height))
+    const railH = height - railTop
+    const capacity = Math.floor((railH + gap) / (tileH + gap))
     // A narrow window (or a docked side panel) can leave too little for both. The
     // share is the thing being presented — it keeps the space, and the strip flips
     // to the bottom where it costs less, rather than squeezing the content to a
@@ -139,7 +155,7 @@ export function contentLayout(width: number, height: number, count: number, gap 
       return {
         side: 'right',
         big: { x: 0, y: 0, w: bigW, h: height },
-        strip: { x: bigW + gap, y: 0, w: railW, h: height },
+        strip: { x: bigW + gap, y: railTop, w: railW, h: railH },
         tile: { w: railW, h: tileH },
         capacity,
       }

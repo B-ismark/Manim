@@ -84,6 +84,24 @@ describe('contentLayout', () => {
     expect(L.big.w).toBe(500)
   })
 
+  it('insets the right rail for the top-right chrome, and charges the RAIL for it', () => {
+    const plain = contentLayout(1440, 810, 5)
+    const inset = contentLayout(1440, 810, 5, 12, 68)
+    expect(inset.strip.y).toBe(68)
+    expect(inset.strip.h).toBe(810 - 68)
+    // The share is untouched — the rail pays, not the content.
+    expect(inset.big).toEqual(plain.big)
+    // …and capacity reflects the space the tiles actually get.
+    expect(inset.capacity).toBeLessThanOrEqual(plain.capacity)
+  })
+
+  it('a bottom strip is not inset — nothing overlays it', () => {
+    const L = contentLayout(420, 900, 5, 12, 68)
+    expect(L.side).toBe('bottom')
+    expect(L.big.y).toBe(0)
+    expect(L.strip.y).toBe(L.big.h + 12)
+  })
+
   it('no people -> the share fills the stage', () => {
     const L = contentLayout(1440, 810, 0)
     expect(L.capacity).toBe(0)
