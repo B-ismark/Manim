@@ -225,9 +225,14 @@ export function Stage() {
     )
   }
 
+  // Everything from here is DESKTOP-only — the touch branch returned above — which
+  // is why none of these three take a `coarse` prop any more. They used to, and it
+  // was always false, which is exactly the kind of parameter that quietly grows a
+  // second meaning.
+  //
   // Content view — the share takes the stage, everyone else rides a filmstrip.
   if (shareLeads && share && shareSid) {
-    return <ContentStage visible={visible} coarse={coarse} share={share} featuredSid={shareSid} />
+    return <ContentStage visible={visible} share={share} featuredSid={shareSid} />
   }
 
   // Past that early return, "a share exists" means "and it's demoted" — so it has
@@ -242,7 +247,7 @@ export function Stage() {
       selfViewHidden && visible.some((t) => !isLocalCam(t))
         ? visible.filter((t) => !isLocalCam(t))
         : visible
-    return <GridStage tracks={gridTracks} coarse={coarse} />
+    return <GridStage tracks={gridTracks} />
   }
 
   return <SpeakerStage visible={visible} />
@@ -439,7 +444,11 @@ function ScrollGallery({
       // gesture layer above stays live: a scroll drag fails both the tap test
       // (moves too far) and the swipe test (wrong axis), so nothing double-fires.
       className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain no-scrollbar"
-      style={{ paddingBottom: ISLAND_BAND }}
+      // Both bands as PADDING, not margin: the first row can still be scrolled up
+      // under the timer and the last one down past the island, which is how a
+      // scroller should behave — nothing is permanently unreachable, and at rest
+      // nothing is hidden.
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND }}
     >
       <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap }}>
         {tracks.map((t) => (
@@ -558,7 +567,7 @@ function TouchStage({
   // island's band is reserved), and against the UNDOCKED width — a phone never
   // docks a panel, but a large touch tablet does, and deciding capacity from the
   // narrowed stage is what used to page people out on every chat toggle.
-  const galleryH = Math.max(1, size.height - ISLAND_BAND)
+  const galleryH = Math.max(1, size.height - ISLAND_BAND - TOPSTACK_BAND)
   const realCap = gridCapacity(size.width, galleryH, true, gridSize)
   const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true, gridSize)
   const cols = realCap.cols
@@ -616,7 +625,7 @@ function TouchStage({
             // measured box would paint one size and then jump to another.
             <div
               className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2"
-              style={{ paddingBottom: ISLAND_BAND }}
+              style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND }}
             >
               <TileRows
                 tracks={gallery}
@@ -758,13 +767,7 @@ function TileRows({
  * room decodes one page's worth, not 40. Screen shares + your self-view are
  * pinned to page 1; a stable order keeps tiles from reshuffling as people speak.
  */
-function GridStage({
-  tracks,
-  coarse,
-}: {
-  tracks: TrackReferenceOrPlaceholder[]
-  coarse: boolean
-}) {
+function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
   const gridSize = useRoomStore((s) => s.gridSize)
@@ -817,8 +820,8 @@ function GridStage({
   // actually occupy (tileGrid's fitMixedRows treats it as a ceiling), so it has to
   // follow the real, narrowed width. Panel closed, both widths are equal and none
   // of this does anything.
-  const real = gridCapacity(size.width, size.height, coarse, gridSize)
-  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, coarse, gridSize)
+  const real = gridCapacity(size.width, size.height, false, gridSize)
+  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, false, gridSize)
   const cols = real.cols
   const perPage = Math.max(real.perPage, undocked.perPage)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
@@ -833,7 +836,7 @@ function GridStage({
   const paged = pageCount > 1
 
   const { aspects, report: reportAspect } = useTileAspects()
-  const gap = coarse ? 8 : 12
+  const gap = 12
 
   // If someone is speaking on a page you're not looking at, offer a one-tap jump
   // (no auto-jump — that's jarring). Manual + clearly labelled.
@@ -844,7 +847,13 @@ function GridStage({
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
+    // Both chrome bands reserved — see ISLAND_BAND and TOPSTACK_BAND. This layout
+    // had NEITHER: its top row rendered behind the call timer and its bottom row
+    // ran underneath the floating control island, at every desktop viewport.
+    <div
+      className="relative flex min-h-0 flex-1 flex-col px-2 sm:px-3"
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND + 12 }}
+    >
       <div
         ref={ref}
         className="flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2 sm:gap-3"
@@ -922,6 +931,25 @@ const ISLAND_BAND = 76
 /** The floating self-view's resting distance from the bottom (px) — the island's
  *  band plus a gutter, so the card sits just above the bar rather than on it. */
 const SELF_CARD_BOTTOM = 92
+
+/**
+ * Vertical band TopStack's first row occupies: its 16px inset plus a 44px pill plus
+ * a gutter.
+ *
+ * The mirror image of ISLAND_BAND, and it exists for the same reason. The call
+ * timer is always up there, centred, and any layout whose content reaches the top
+ * edge puts something underneath it: the speaker filmstrip rendered its middle
+ * thumbnails behind the timer, and the desktop gallery's top row did the same. A
+ * TILED layout reserves this band. A single full-bleed feed or a shared screen
+ * deliberately does not — chrome on glass over one big video is the video-player
+ * convention, and that content is letterboxed anyway, so the pill lands on a black
+ * band rather than on anyone's face.
+ *
+ * Only the FIRST row is reserved. TopStack's banners (reconnecting, waiting room)
+ * are transient and can stack; reserving for every combination would give every
+ * layout a permanent empty third. They overlay, as overlays do.
+ */
+const TOPSTACK_BAND = 68
 
 /** Strip height on touch — a 3:4 thumbnail wide enough to recognise a face. */
 const STRIP_TILE_H = 80
@@ -1254,9 +1282,13 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
   const { shown, overflow } = splitVisible(ordered, L.capacity)
 
   return (
-    // pb reserves the floating control island's band; the strip is at the top, so
-    // nothing in here is negotiating with the bar for the same pixels.
-    <div className="relative flex min-h-0 flex-1 p-2 pb-[5.5rem] sm:p-3 sm:pb-[5.5rem]">
+    // Both bands reserved. The bottom one keeps the big tile off the control
+    // island; the top one keeps the FILMSTRIP off the call timer, which is centred
+    // up there and was landing squarely on the middle thumbnails.
+    <div
+      className="relative flex min-h-0 flex-1 px-2 sm:px-3"
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND + 12 }}
+    >
       <div ref={ref} className="relative min-h-0 flex-1">
         {size.width > 2 && size.height > 2 && (
           <>
@@ -1301,12 +1333,10 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
  */
 function ContentStage({
   visible,
-  coarse,
   share,
   featuredSid,
 }: {
   visible: TrackReferenceOrPlaceholder[]
-  coarse: boolean
   share: TrackReferenceOrPlaceholder
   /** Track SID of the featured share — presentation state (demote) is keyed on it. */
   featuredSid: string
@@ -1333,7 +1363,7 @@ function ContentStage({
   if (selfViewHidden && rest.some((t) => !isLocalCam(t))) rest = rest.filter((t) => !isLocalCam(t))
   const ordered = orderUsers(rest, hasLiveVideo, tileKey)
 
-  const gap = coarse ? 8 : 12
+  const gap = 12
   const measured = size.width > 2 && size.height > 2
   // No undocked-width correction here, unlike the galleries. A right-hand rail's
   // capacity is decided by HEIGHT, which docking the chat panel doesn't touch — so
@@ -1545,7 +1575,12 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
         expanded ? 'w-[62vw] max-w-[20rem]' : 'w-[33vw] max-w-[11rem]',
       )}
     >
-      <Tile trackRef={trackRef} fill boxAspect={3 / 4} />
+      {/* No `boxAspect`: this crops to fill rather than letterboxing. A phone
+          camera is already 3:4 so it makes no difference there, but a tablet held
+          in landscape would otherwise show your face in a small band between two
+          black bars — and in a card this size, bars cost more than a crop does
+          (the rule Tile documents for thumbnails). */}
+      <Tile trackRef={trackRef} fill />
       <span className="sr-only">{expanded ? 'Tap to shrink your video' : 'Tap to enlarge your video'}</span>
     </div>
   )

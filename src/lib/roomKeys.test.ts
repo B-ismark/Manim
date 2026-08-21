@@ -103,11 +103,14 @@ describe('storage failures', () => {
     expect(recallRoomSecrets('standup')).toEqual({})
   })
 
-  it('keeps the map bounded', () => {
+  it('keeps the map bounded, and the newest write always survives the cap', () => {
+    // All 40 land in the same millisecond, so `ts` ties on every one of them —
+    // which is exactly the case where a plain sort let the engine decide who got
+    // evicted, and it sometimes chose the entry being written. Insertion order
+    // breaks the tie now, so this is deterministic rather than usually right.
     for (let i = 0; i < 40; i++) rememberRoomSecrets(`room-${i}`, { secret: `1.s${i}` })
     const map = JSON.parse(localStorage.getItem('mn.roomKeys')!)
     expect(Object.keys(map).length).toBeLessThanOrEqual(24)
-    // Newest survive; oldest fall off.
     expect(map['room-39']).toBeTruthy()
     expect(map['room-0']).toBeUndefined()
   })
