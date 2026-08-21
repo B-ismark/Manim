@@ -186,3 +186,6 @@ which is also a toggle and does close.
   Zoom, WhatsApp, FaceTime and Discord.
 - [`mobile-video-layout-prototypes.html`](mobile-video-layout-prototypes.html) — the stage
   itself: screen-share, speaker, small group and 20+, with the geometry measured at 375×667.
+- [`mobile-stage-resolved.html`](mobile-stage-resolved.html) — **the decisions**. Which
+  prototypes were picked, which two needed amending, and the combination they resolve to
+  (speaker view as page zero of a horizontal pager, width-gated tile density).
