@@ -62,7 +62,7 @@ The prototype originally reported the bar at **560px**, because its mock was mis
 **Audio output** button. The running app measures **614px**.
 
 That mattered. The first plan was collision-only offset from `lg` up, which was reported
-as clearing the Leave control by 23px at 1024px. With the real bar the offset is 154px
+as clearing the Leave control by 23px at 1024px. With the real bar the offset is 155px
 and it lands 4px *onto* Leave — the first end-to-end run failed at exactly that width.
 Hence the `xl` threshold: below it, the geometry is removed rather than sized around.
 
