@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
-import { useConnectionQualityIndicator, useLocalParticipant } from '@livekit/components-react'
-import { ConnectionQuality as Quality } from 'livekit-client'
+import {
+  useConnectionQualityIndicator,
+  useConnectionState,
+  useLocalParticipant,
+} from '@livekit/components-react'
+import { ConnectionQuality as Quality, ConnectionState } from 'livekit-client'
 import { LockIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 
@@ -37,19 +41,45 @@ function useCallTimer(): string {
   return formatElapsed(Math.floor((now - startedAt) / 1000))
 }
 
-/** Poor must hold before we warn. */
-const POOR_HOLD_MS = 5000
+/** A degraded reading must hold this long before we say anything about it. */
+const DEGRADED_HOLD_MS = 5000
 
 /**
- * Debounced weak-connection signal. `Lost` surfaces instantly (a real drop, not
- * noise), but `Poor` must persist {@link POOR_HOLD_MS} before we warn — many
- * regions (e.g. West Africa → the nearest LiveKit edge in Marseille, ~150ms RTT)
- * sit at a latency that LiveKit buckets as `Poor` yet calls fine. Without the
- * hold the chip flashes "Weak connection" at a perfectly usable baseline.
- * Recovery clears the warning immediately.
+ * Is the connection in trouble, and is it actually LOST?
+ *
+ * Two separate questions, and conflating them is what put "Connection lost" over a
+ * call that was working perfectly for forty minutes.
+ *
+ * `ConnectionQuality` is a per-subscriber BANDWIDTH heuristic the SFU publishes on
+ * an interval. It reports `Lost` for reasons that are not "your call has dropped" —
+ * a packet-loss spike, a participant with nothing published, an interval that
+ * arrived late — and, because the value simply persists until the next update, a
+ * single bad sample stays on screen indefinitely. The chip took that one sample and
+ * announced the strongest possible claim about the whole call, instantly, with no
+ * hold. Meanwhile the client's actual answer to "am I connected" — the one the
+ * reconnect logic itself runs on, and the one the Reconnecting banner and the
+ * screen-reader announcement both use — is `ConnectionState`, and it said Connected
+ * the entire time.
+ *
+ * So: `ConnectionState` decides whether we may use the word "lost". Quality decides
+ * whether to warn at all, and now has to hold {@link DEGRADED_HOLD_MS} before it
+ * may — which it already had to for `Poor` (many regions, e.g. West Africa → the
+ * Marseille edge at ~150ms RTT, sit at a latency LiveKit buckets as Poor and call
+ * fine), and which `Lost` was exempted from precisely because it was assumed to be
+ * definitive. A real drop still surfaces immediately, via the state, so nothing is
+ * slower than it was — the hold only delays the readings that were wrong.
+ *
+ * Recovery clears the warning at once, in both directions.
  */
-function useDebouncedPoor(quality: Quality): boolean {
-  const [warn, setWarn] = useState(false)
+function useConnectionWarning(quality: Quality): { warn: boolean; lost: boolean } {
+  const state = useConnectionState()
+  // The authoritative "we are not connected right now" — this is what makes the
+  // banner appear and the announcer speak, so the chip agreeing with it is also the
+  // thing that stops three surfaces telling the user three different stories.
+  const lost =
+    state === ConnectionState.Reconnecting || state === ConnectionState.SignalReconnecting
+  const degraded = quality === Quality.Poor || quality === Quality.Lost
+  const [held, setHeld] = useState(false)
   const timer = useRef<number | undefined>(undefined)
 
   useEffect(() => {
@@ -59,26 +89,23 @@ function useDebouncedPoor(quality: Quality): boolean {
         timer.current = undefined
       }
     }
-    if (quality === Quality.Lost) {
+    if (!degraded) {
       clear()
-      setWarn(true)
-    } else if (quality === Quality.Poor) {
-      // Start the hold only if one isn't already pending and we aren't warning.
-      if (timer.current === undefined && !warn) {
-        timer.current = window.setTimeout(() => {
-          timer.current = undefined
-          setWarn(true)
-        }, POOR_HOLD_MS)
-      }
-    } else {
-      // Good / Excellent / Unknown → recovered: drop the warning at once.
-      clear()
-      setWarn(false)
+      setHeld(false)
+      return clear
+    }
+    // One hold per continuous degraded spell: Poor→Lost→Poor doesn't restart it,
+    // because `degraded` never went false.
+    if (!held && timer.current === undefined) {
+      timer.current = window.setTimeout(() => {
+        timer.current = undefined
+        setHeld(true)
+      }, DEGRADED_HOLD_MS)
     }
     return clear
-  }, [quality, warn])
+  }, [degraded, held])
 
-  return warn
+  return { warn: held || lost, lost }
 }
 
 /**
@@ -89,7 +116,7 @@ function useDebouncedPoor(quality: Quality): boolean {
 export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
   const { localParticipant } = useLocalParticipant()
   const { quality } = useConnectionQualityIndicator({ participant: localParticipant })
-  const poor = useDebouncedPoor(quality)
+  const { warn, lost } = useConnectionWarning(quality)
   const elapsed = useCallTimer()
 
   // Unmounted rather than translated away when the chrome hides. As a positioned
@@ -106,7 +133,7 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
       <span className="tabular-nums" aria-label="Call duration">
         {elapsed}
       </span>
-      {poor && (
+      {warn && (
         <>
           <span className="h-3 w-px bg-white/30" aria-hidden />
           <span className="flex items-center gap-1.5">
@@ -114,7 +141,7 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
             {/* Label only where there's room — the bars carry the meaning on
                 narrow phones (avoids the top pill overflowing). */}
             <span className="hidden min-[380px]:inline">
-              {quality === Quality.Lost ? 'Connection lost' : 'Weak connection'}
+              {lost ? 'Connection lost' : 'Weak connection'}
             </span>
           </span>
         </>

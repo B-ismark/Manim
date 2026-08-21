@@ -42,7 +42,8 @@ import { useAudioSession } from '@/features/calls/useAudioSession'
 import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
-import { parseRoomHash } from '@/lib/roomLink'
+import { parseRoomHash, roomTo } from '@/lib/roomLink'
+import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
@@ -222,7 +223,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // the store: the E2EE key keys the media, the join secret is re-advertised to the
   // user's own other devices for quick-join. A strong random key shared only via
   // the link — no typed passphrase.
-  const linkSecrets = useMemo(() => parseRoomHash(window.location.hash), [])
+  // Resolved the same way RoomRoute resolves it — the link's fragment if it has
+  // one, this browser's memory of that link if it doesn't (lib/roomKeys). Reading
+  // the raw fragment here meant that in a tab whose fragment had been eaten (the
+  // sign-in round trip), the QUICK-JOIN advertisement to your other devices went
+  // out with no secret in it, so the phone you picked it up on couldn't get in
+  // either — the loss propagated device to device.
+  const linkSecrets = useMemo(() => resolveRoomSecrets(room.name, parseRoomHash(window.location.hash)), [room.name])
   const e2eePassphrase = linkSecrets.e2ee
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   // Chat state is owned here (persists across the side panel opening/closing —
@@ -401,10 +408,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       duration: 8000,
       action: {
         label: 'Rejoin',
-        onClick: () => navigate(`/r/${encodeURIComponent(slug)}`, { state: { autojoin: true } }),
+        // WITH the link secrets. Rejoining to a bare `/r/<slug>` dropped the join
+        // secret, so undoing an accidental leave failed the server's link gate and
+        // told you the room needed an invite link you were holding a second ago.
+        onClick: () => navigate(roomTo(slug, linkSecrets), { state: { autojoin: true } }),
       },
     })
-  }, [doLeave, navigate, room.name])
+  }, [doLeave, navigate, room.name, linkSecrets])
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.

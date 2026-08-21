@@ -7,7 +7,8 @@ import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
 import { supabase } from '@/lib/supabase'
-import { parseRoomHash } from '@/lib/roomLink'
+import { parseRoomHash, roomHash } from '@/lib/roomLink'
+import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roomKeys'
 import { toast } from '@/store/useToastStore'
 import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
@@ -106,7 +107,35 @@ export function RoomRoute() {
   // Security material rides in the URL #fragment (see lib/roomLink): the join
   // secret gates server-side entry, the E2EE key keys the media. Both live only in
   // the link, never the path/store.
-  const { secret, e2ee } = useMemo(() => parseRoomHash(location.hash), [location.hash])
+  //
+  // …but a fragment is the most fragile part of a URL, and we were losing it — most
+  // damagingly on the round trip through sign-in, which comes back with the
+  // provider's own `#access_token=…` where the room's credential used to be. So the
+  // link is the AUTHORITY and lib/roomKeys is the memory: whatever the link carries
+  // wins and is remembered, and a fragment-less arrival falls back to what this
+  // browser saw last time. Read lib/roomKeys before changing any of this.
+  const fromLink = useMemo(() => parseRoomHash(location.hash), [location.hash])
+  const { secret, e2ee } = useMemo(() => resolveRoomSecrets(room, fromLink), [room, fromLink])
+
+  // Put the recovered fragment back in the address bar. Not cosmetic: copy-link,
+  // native share and the email invite all read `window.location.href`, so a tab
+  // whose fragment was eaten by the auth redirect was handing out dead invite links
+  // to everyone it shared with — one person signing in mid-call could break the
+  // link for the whole room. Restoring it here fixes every one of those callers at
+  // once.
+  //
+  // Never over an auth fragment: Supabase has to consume its own tokens from the
+  // hash at startup, and replacing it first would trade one lost credential for
+  // another (isAuthFragment).
+  useEffect(() => {
+    if (!secret && !e2ee) return
+    if (fromLink.secret || fromLink.e2ee) return
+    if (isAuthFragment(location.hash)) return
+    navigate({ pathname: location.pathname, search: location.search, hash: roomHash({ secret, e2ee }) }, {
+      replace: true,
+      state: location.state,
+    })
+  }, [secret, e2ee, fromLink, location.hash, location.pathname, location.search, location.state, navigate])
 
   const [token, setToken] = useState<string | null>(null)
 
@@ -171,6 +200,16 @@ export function RoomRoute() {
         // the dedicated "link expired" screen that tells the user what to do next.
         if (e instanceof ApiError && e.code === 'link_expired') {
           setExpired(true)
+          setConnecting(false)
+          return
+        }
+        // The join-secret gate turned us away. If we got here on a REMEMBERED secret
+        // it is stale (the room was recreated, or the link epoch moved), and keeping
+        // it would make every future attempt fail the same way with nothing the user
+        // could do about it — so forget it and let the next real link win.
+        if (e instanceof ApiError && e.code === 'need_link') {
+          forgetRoomSecrets(room)
+          setError(e.message)
           setConnecting(false)
           return
         }
