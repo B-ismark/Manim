@@ -7,7 +7,7 @@ import { uniqueRoom, attachErrorSink, appErrors, join, isTouch } from './helpers
  *
  * The bar used to re-centre in whatever space the docked panel left over, which
  * slid it left by half the panel's width — 160/176/200px. The Leave control sits
- * 151-280px right of the Chat button that triggers the reflow, so at every
+ * 151-284px right of the Chat button that triggers the reflow, so at every
  * desktop breakpoint the slide put Leave exactly where the user's cursor already
  * was: click chat, click the same spot to close it, and you've left the call.
  * Only the 8s Rejoin toast made that survivable.
@@ -21,6 +21,34 @@ async function centre(page: Page, name: string) {
   const box = await page.getByRole('button', { name, exact: true }).first().boundingBox()
   if (!box) throw new Error(`no bounding box for "${name}"`)
   return { x: box.x + box.width / 2, y: box.y + box.height / 2 }
+}
+
+/**
+ * Wait for the control bar to stop moving, rather than guessing at the 220ms
+ * reflow with a fixed sleep — this suite runs serially on a 2-core CI runner
+ * where a transition can outlast any guess. Resolves once the bar's left edge has
+ * held the same whole pixel for 250ms.
+ */
+async function barSettled(page: Page) {
+  await page.evaluate(() => delete (window as unknown as { __barX?: unknown }).__barX)
+  await page.waitForFunction(
+    () => {
+      const bar = document
+        .querySelector('[aria-label="Leave call"]')
+        ?.closest('div[class*="shadow-raised"]') as HTMLElement | null
+      if (!bar) return false
+      const w = window as unknown as { __barX?: { x: number; since: number } }
+      const x = Math.round(bar.getBoundingClientRect().left)
+      const now = performance.now()
+      if (!w.__barX || w.__barX.x !== x) {
+        w.__barX = { x, since: now }
+        return false
+      }
+      return now - w.__barX.since > 250
+    },
+    undefined,
+    { timeout: 15_000 },
+  )
 }
 
 /** What sits on top at this point: a Leave control, the bar, or something else. */
@@ -50,7 +78,7 @@ test.describe('Side panel reflow', () => {
     // the panel's vertical clearance keeps Leave pressable.
     for (const width of [768, 1024, 1279, 1280, 1440]) {
       await page.setViewportSize({ width, height: 800 })
-      await page.waitForTimeout(400)
+      await barSettled(page)
 
       // Rest the pointer on Chat and press it, exactly as a user does.
       const resting = await centre(page, 'Open chat')
@@ -58,7 +86,7 @@ test.describe('Side panel reflow', () => {
       await page.mouse.down()
       await page.mouse.up()
       await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
-      await page.waitForTimeout(400) // --dur-base, plus room
+      await barSettled(page)
 
       expect(
         await hitAt(page, resting.x, resting.y),
@@ -74,7 +102,7 @@ test.describe('Side panel reflow', () => {
       ).toBe('leave')
 
       await page.getByRole('button', { name: 'Close panel' }).last().click()
-      await page.waitForTimeout(400)
+      await barSettled(page)
     }
 
     expect(await appErrors(sink)).toEqual([])
@@ -94,7 +122,7 @@ test.describe('Side panel reflow', () => {
     // dockedStageInset as 0 / 352 / 400.
     for (const [width, inset] of [[768, 0], [1024, 352], [1280, 400], [1440, 400]] as const) {
       await page.setViewportSize({ width, height: 800 })
-      await page.waitForTimeout(400)
+      await barSettled(page)
 
       const pad = () =>
         page.evaluate(() => {
@@ -110,7 +138,7 @@ test.describe('Side panel reflow', () => {
 
       await page.getByRole('button', { name: 'Open chat' }).click()
       await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
-      await page.waitForTimeout(400)
+      await barSettled(page)
 
       const open = await pad()
       expect(open.padding, `${width}px, panel open`).toBe(inset)
@@ -119,7 +147,7 @@ test.describe('Side panel reflow', () => {
       expect(open.content + inset, `${width}px content width`).toBe(closed.content)
 
       await page.getByRole('button', { name: 'Close panel' }).last().click()
-      await page.waitForTimeout(400)
+      await barSettled(page)
     }
   })
 
@@ -153,7 +181,7 @@ test.describe('Side panel reflow', () => {
         timeout: 60_000,
       })
       await page.setViewportSize({ width: 1024, height: 420 })
-      await page.waitForTimeout(1500)
+      await barSettled(page)
 
       const tiles = () => page.locator('[aria-label="In call"] [role="group"]').count()
       const closed = await tiles()
@@ -161,7 +189,7 @@ test.describe('Side panel reflow', () => {
 
       await page.getByRole('button', { name: 'Open chat' }).click()
       await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
-      await page.waitForTimeout(1200)
+      await barSettled(page)
 
       expect(await tiles(), 'opening the panel paged someone out').toBe(closed)
     } finally {
@@ -175,11 +203,11 @@ test.describe('Side panel reflow', () => {
     // xl, the one range where the panel sits beside the bar and the bar really
     // does shift — so the settle guard actually arms and has to be disarmed.
     await page.setViewportSize({ width: 1280, height: 800 })
-    await page.waitForTimeout(400)
+    await barSettled(page)
 
     await page.getByRole('button', { name: 'Open chat' }).click()
     await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
-    await page.waitForTimeout(400)
+    await barSettled(page)
 
     // The guard must only ever reject a click the pointer never aimed. Travelling
     // to Leave and pressing it is aimed, so it has to work first time — no second
