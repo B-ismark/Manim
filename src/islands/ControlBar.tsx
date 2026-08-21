@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
 import { toast } from '@/store/useToastStore'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import {
@@ -42,7 +41,10 @@ import {
   WaitingRoomIcon,
   SoundOnIcon,
   AnnotateIcon,
+  CheckIcon,
+  CloseIcon,
 } from '@/components/icons'
+import { useLocalParticipant, useMediaDeviceSelect } from '@livekit/components-react'
 import { DeviceSettings, DeviceRow } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
 import { SettingsDialog } from '@/islands/Settings'
@@ -50,7 +52,7 @@ import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore, type GridSize } from '@/store/useRoomStore'
-import { useDeviceStore } from '@/store/useDeviceStore'
+import { useDeviceStore, type StoredDeviceKind } from '@/store/useDeviceStore'
 import { useCameraToggle } from '@/lib/useCameraToggle'
 import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScreenShare'
 import { useSharePresence } from '@/lib/useSharePresence'
@@ -162,7 +164,19 @@ export function ControlBar({
     [],
   )
   const [moreOpen, setMoreOpen] = useState(false)
+  // The audio tray. Not a Radix layer, so the DOM-based auto-hide guard in
+  // useStageChrome can't see it — it needs the explicit hold below or the island
+  // would slide out of the thumb zone taking an open tray with it.
+  const [audioTrayOpen, setAudioTrayOpen] = useState(false)
   const touch = useIsTouch()
+  useEffect(() => {
+    onMenuOpenChange?.(audioTrayOpen)
+  }, [audioTrayOpen, onMenuOpenChange])
+  // A modal and the tray must not be up together — the modal would scrim the tray
+  // it was opened from.
+  useEffect(() => {
+    if (modal) setAudioTrayOpen(false)
+  }, [modal])
   const { supported: canFullscreen, isFullscreen, toggleFullscreen } = useFullscreen()
   // Screen share needs getDisplayMedia — absent on iOS Safari (and iOS Chrome,
   // which is WebKit underneath). Hide the control there instead of offering a
@@ -425,6 +439,7 @@ export function ControlBar({
                 }}
                 className={cn(
                   'flex flex-1 items-center justify-center gap-1.5 rounded-control py-1.5 text-sm font-medium transition-colors [&_svg]:size-4',
+                  'pointer-coarse:min-h-11',
                   active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
                 )}
               >
@@ -453,6 +468,7 @@ export function ControlBar({
                   }}
                   className={cn(
                     'flex-1 rounded-control py-1.5 text-sm font-medium transition-colors',
+                    'pointer-coarse:min-h-11',
                     active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
                   )}
                 >
@@ -538,33 +554,10 @@ export function ControlBar({
     </div>
   )
 
-  return (
-    // bottom inset clears the iOS home indicator (viewport-fit=cover is set).
-    // Slides out of the thumb zone when chrome is hidden (mobile tap-to-hide).
-    <div
-      className={cn(
-        'pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4',
-        'transition-[transform,opacity,padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        // Reflow left of the docked side panel on desktop — same inset the stage
-        // uses (RoomView) — so the bar centres in the visible area instead of
-        // sliding under the chat/people panel.
-        panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
-        !chromeVisible && 'translate-y-[150%] opacity-0',
-      )}
-    >
-      <Island
-        pad="none"
-        elevation="raised"
-        // Capture phase, on the whole island: a press anywhere on it — including
-        // one a child button stops propagating — counts as "keep this up".
-        onPointerDownCapture={onInteract}
-        className={cn(
-          'flex items-center gap-1.5 rounded-control px-3 py-2 sm:gap-2',
-          // Only interactive while shown — otherwise the off-screen bar still
-          // caught taps/focus.
-          chromeVisible ? 'pointer-events-auto' : 'pointer-events-none',
-        )}
-      >
+  /** The island's control row. Rendered bare when collapsed, and as the tray's
+   *  last row when the audio tray is open — same buttons, same order, one place. */
+  const barRow = (
+    <>
         {locked && (
           <Tooltip content="Room is locked">
             <span
@@ -626,10 +619,18 @@ export function ControlBar({
           )}
         </div>
 
-        {/* Audio output — always visible (Brave/Skype/WhatsApp pattern). One tap to
-            see and switch which speaker/headset audio plays through, the control
-            users hunt for most on mobile. */}
-        <OutputDeviceButton noise={noise} />
+        {/* Audio routing — always visible (Brave/Skype/WhatsApp pattern), the control
+            users hunt for most on mobile.
+
+            Touch opens the island's own tray and the button STATES the route it's
+            on ("AirPods") rather than showing a generic speaker glyph, so "where is
+            my audio going?" is answered without opening anything. Desktop keeps the
+            popover: there's no auto-hide to fight and no thumb to reach with. */}
+        {touch ? (
+          <AudioRouteButton open={audioTrayOpen} onToggle={() => setAudioTrayOpen((o) => !o)} />
+        ) : (
+          <OutputDeviceButton noise={noise} />
+        )}
 
         {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
             where getDisplayMedia is unavailable (iOS).
@@ -825,6 +826,58 @@ export function ControlBar({
             <IconButton label="Leave call" icon={<LeaveIcon />} tone="danger" onClick={onLeave} />
           </Tooltip>
         )}
+    </>
+  )
+
+  return (
+    // bottom inset clears the iOS home indicator (viewport-fit=cover is set).
+    // Slides out of the thumb zone when chrome is hidden (mobile tap-to-hide).
+    <div
+      className={cn(
+        'pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4',
+        'transition-[transform,opacity,padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        // Reflow left of the docked side panel on desktop — same inset the stage
+        // uses (RoomView) — so the bar centres in the visible area instead of
+        // sliding under the chat/people panel.
+        panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
+        !chromeVisible && 'translate-y-[150%] opacity-0',
+      )}
+    >
+      <Island
+        pad="none"
+        elevation="raised"
+        // Capture phase, on the whole island: a press anywhere on it — including
+        // one a child button stops propagating — counts as "keep this up".
+        onPointerDownCapture={onInteract}
+        className={cn(
+          'rounded-control',
+          // With the tray open the island becomes a COLUMN whose LAST ROW is the
+          // control bar. That is the whole point: there is no second element to
+          // lose track of, so a picker outliving its anchor stops being a bug to
+          // fix and becomes a state that cannot be constructed.
+          audioTrayOpen
+            ? 'flex w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden'
+            : 'flex items-center gap-1.5 px-3 py-2 sm:gap-2',
+          // Only interactive while shown — otherwise the off-screen bar still
+          // caught taps/focus.
+          chromeVisible ? 'pointer-events-auto' : 'pointer-events-none',
+        )}
+      >
+        {audioTrayOpen && (
+          <AudioTray
+            noise={noise}
+            onClose={() => setAudioTrayOpen(false)}
+            onAllDevices={() => {
+              setAudioTrayOpen(false)
+              setModal('devices')
+            }}
+          />
+        )}
+        {audioTrayOpen ? (
+          <div className="flex items-center gap-1.5 border-t border-line bg-sunken px-3 py-2">{barRow}</div>
+        ) : (
+          barRow
+        )}
       </Island>
     </div>
   )
@@ -945,7 +998,10 @@ function MenuRow({
   return (
     <button
       onClick={onClick}
-      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken [&_svg]:size-4 data-[active=true]:text-accent"
+      // 44px on a coarse pointer (audit F6). The More sheet is a touch-only surface
+      // and these rows were ~36px — clear of WCAG 2.5.8's 24px, short of both
+      // platform guidelines, and sitting next to 68px GridTiles.
+      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent"
       data-active={active}
     >
       {icon}
@@ -1010,6 +1066,225 @@ function CameraDevicePanel() {
     <div className="flex flex-col gap-3">
       <DeviceRow kind="videoinput" label="Camera" />
     </div>
+  )
+}
+
+/** Minimum height for a row you tap with a thumb. WCAG 2.5.8 asks 24px and the
+ *  old menu rows cleared that at ~36px, but both platform guidelines want more —
+ *  44px on iOS, 48dp on Android — and these rows exist only for thumbs. */
+const TOUCH_ROW = 'min-h-[3.5rem]'
+
+/**
+ * The audio route the app is currently on, as a label.
+ *
+ * Returns null where the platform exposes no output devices at all, which is iOS
+ * Safari: no `audiooutput` in enumerateDevices, no setSinkId. That case is the
+ * reason this is a hook and not a string — a control labelled "Audio output" that
+ * opens a panel with no output control in it was a real finding, and the honest
+ * answer is to stop claiming to route and offer what we do have (mic, noise).
+ */
+function useAudioRoute(): { label: string | null; canRoute: boolean } {
+  const { devices, activeDeviceId } = useMediaDeviceSelect({ kind: 'audiooutput' })
+  if (devices.length === 0) return { label: null, canRoute: false }
+  const active = devices.find((d) => d.deviceId === activeDeviceId) ?? devices[0]
+  return { label: active?.label || 'Speaker', canRoute: true }
+}
+
+/**
+ * Touch trigger for the audio tray: a chip that names the route it's on.
+ *
+ * FIXED WIDTH, deliberately. A chip sized to its content changes width when the
+ * route changes — "Speaker" to "Jabra Evolve2 85" — and shoves the buttons either
+ * side of it along, which is the moving-target problem the whole rework exists to
+ * remove. Truncation is the cheaper price.
+ */
+function AudioRouteButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
+  const { label, canRoute } = useAudioRoute()
+  // Nothing to name: fall back to an icon button, labelled for what it actually
+  // offers there rather than promising routing the platform can't do.
+  if (!canRoute || !label) {
+    return (
+      <IconButton
+        label={open ? 'Close audio settings' : 'Audio settings'}
+        icon={<SoundOnIcon />}
+        tone="neutral"
+        active={open}
+        onClick={onToggle}
+      />
+    )
+  }
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-label={`Audio output: ${label}. Tap to change.`}
+      className={cn(
+        'flex h-11 w-[6.5rem] shrink-0 items-center gap-1.5 rounded-control px-2.5 text-left',
+        'transition-colors duration-[var(--dur-fast)] [&_svg]:size-4 [&_svg]:shrink-0',
+        open ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink',
+      )}
+    >
+      <SoundOnIcon />
+      <span className="min-w-0 flex-1 truncate text-xs font-medium">{label}</span>
+    </button>
+  )
+}
+
+/**
+ * The audio tray — the island's body while it's open.
+ *
+ * One flat level. Every mobile path to a device used to be a picker inside a
+ * picker: a popover holding select-style rows that each opened another popover,
+ * `side="top"` on both, no max-height and no scroll container. Radix flips a panel
+ * that doesn't fit, so on a short phone the inner one resolved DOWNWARD off a
+ * control sitting 40px from the bottom of the screen — the "awkward drop-down".
+ * Nothing here nests, so nothing can flip.
+ *
+ * Rows are routes first, because that's the decision a phone user is making
+ * ("put it on the headset"), with the raw device string as the second line for the
+ * machines that have five of them. The long tail is a door, not a nested menu:
+ * "All devices" opens the full Audio & video dialog.
+ *
+ * No Video segment, despite the prototype showing Audio/Video tabs. Camera
+ * selection on touch is a FLIP, on the self-view tile — that's what every
+ * reference app does, and a camera list here would re-add the picker whose leak
+ * onto phones started this. A specific camera is still reachable via All devices.
+ */
+function AudioTray({
+  noise,
+  onClose,
+  onAllDevices,
+}: {
+  noise: NoiseFilterControls
+  onClose: () => void
+  onAllDevices: () => void
+}) {
+  const { canRoute } = useAudioRoute()
+  return (
+    <div className="flex max-h-[min(60dvh,26rem)] flex-col overflow-y-auto no-scrollbar">
+      <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
+        <h2 className="text-sm font-semibold">Audio</h2>
+        <span className="flex-1" />
+        <IconButton label="Close audio settings" size="sm" icon={<CloseIcon />} onClick={onClose} />
+      </div>
+
+      {/* Output. Absent entirely where the platform can't route (iOS Safari) rather
+          than shown as an empty section. */}
+      {canRoute && <DeviceRouteList kind="audiooutput" heading="Play sound through" />}
+
+      <DeviceRouteList kind="audioinput" heading="Microphone" />
+
+      <div className="border-t border-line">
+        <TrayToggle
+          label="Noise suppression"
+          hint="Filters keyboards and traffic"
+          checked={noise.enabled}
+          onChange={noise.setEnabled}
+        />
+        <BluetoothTrayToggle />
+      </div>
+
+      <button
+        type="button"
+        onClick={onAllDevices}
+        className={cn(
+          'flex w-full items-center gap-3 border-t border-line px-3 text-left text-sm',
+          'hover:bg-sunken [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-ink-muted',
+          TOUCH_ROW,
+        )}
+      >
+        <SlidersIcon />
+        <span className="flex-1">All devices</span>
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Flat, tappable device list — one row per device, the active one checked.
+ *
+ * Replaces the select-plus-dropdown pair for the same job. Renders nothing when
+ * the platform has no devices of the kind, which is what keeps the tray honest on
+ * iOS (see useAudioRoute).
+ */
+function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: string }) {
+  const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind })
+  const remember = useDeviceStore((s) => s.remember)
+  if (devices.length === 0) return null
+  const activeId = devices.find((d) => d.deviceId === activeDeviceId)?.deviceId ?? devices[0]?.deviceId
+  return (
+    <div className="border-t border-line first:border-t-0">
+      <p className="px-3 pb-0.5 pt-2 text-[11px] font-semibold uppercase tracking-wider text-ink-subtle">
+        {heading}
+      </p>
+      <ul className="flex flex-col pb-1">
+        {devices.map((d) => {
+          const active = d.deviceId === activeId
+          return (
+            <li key={d.deviceId}>
+              <button
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  void setActiveMediaDevice(d.deviceId)
+                    .then(() => remember(kind as StoredDeviceKind, d.deviceId, d.label))
+                    .catch(() => toast(`Couldn't switch ${heading.toLowerCase()}`, 'danger'))
+                }}
+                className={cn(
+                  'flex w-full items-center gap-3 px-3 text-left [&_svg]:size-5 [&_svg]:shrink-0',
+                  active ? 'text-accent' : 'text-ink hover:bg-sunken',
+                  TOUCH_ROW,
+                )}
+              >
+                <SoundOnIcon />
+                <span className="min-w-0 flex-1 truncate text-sm">{d.label || 'Unnamed device'}</span>
+                {active && <CheckIcon />}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
+/** Full-width toggle row sized for a thumb. */
+function TrayToggle({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string
+  hint?: string
+  checked: boolean
+  onChange: (v: boolean) => void
+}) {
+  return (
+    <div className={cn('flex items-center gap-3 px-3', TOUCH_ROW)}>
+      <Toggle
+        checked={checked}
+        onCheckedChange={onChange}
+        label={label}
+        hint={hint}
+        className="w-full justify-between"
+      />
+    </div>
+  )
+}
+
+/** "Auto-connect Bluetooth" as a tray row. */
+function BluetoothTrayToggle() {
+  const autoBluetooth = useDeviceStore((s) => s.autoBluetooth)
+  const setAutoBluetooth = useDeviceStore((s) => s.setAutoBluetooth)
+  return (
+    <TrayToggle
+      label="Auto-connect Bluetooth"
+      hint="Take over when a headset connects"
+      checked={autoBluetooth}
+      onChange={setAutoBluetooth}
+    />
   )
 }
 
