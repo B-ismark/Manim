@@ -306,8 +306,12 @@ test.describe('Mobile fit (no page scroll)', () => {
    *
    * The self-view was a 96px card — too small to tell whether you were in frame,
    * which is the one thing a self-view is for — and it was suppressed entirely
-   * during a screen share. It is now a third of the viewport, present on every
-   * view, and a tap opens it to roughly double that.
+   * during a screen share. It is now a third of the viewport, and a tap opens it to
+   * roughly double that.
+   *
+   * This is the SPEAKER view, which is where a call opens and one of the two views
+   * that still floats the card. The gallery gives you a real cell instead — see the
+   * test below, which asserts the two never both happen.
    */
   test('the self-view is legible and opens on tap', async ({ page, browser }) => {
     const vp = page.viewportSize()!
@@ -342,6 +346,97 @@ test.describe('Mobile fit (no page scroll)', () => {
       expect(expanded.y + expanded.height).toBeLessThanOrEqual(barTop + 1)
     } finally {
       await peer.context.close()
+    }
+  })
+
+  /**
+   * Exactly ONE of you is on screen, and which one depends on the view.
+   *
+   * The gallery used to have a person-shaped hole in it: you were excluded from the
+   * tiles and floated over them as a card instead, which cost you the only view
+   * where you appear at the same size and in the same reading order as everyone
+   * else. You are a cell there now, the way every desktop layout carries you.
+   *
+   * The card is NOT gone, because two views have no cell of yours to be in —
+   * speaker is one full-bleed feed, and a share puts people on a collapsible
+   * thumbnail rail. So the property worth pinning down isn't "card" or "cell", it's
+   * that the two never overlap: a card AND a cell would show you to yourself twice,
+   * on the pointer type with the least room to spare.
+   *
+   * Both counts come from one sweep of the accessible names, because that is the
+   * only way to catch the failure where each half is individually correct.
+   */
+  test('you are a gallery cell, and never a cell and a card at once', async ({ page, browser }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+    ])
+    try {
+      /**
+       * How many of each surface is showing you.
+       *
+       * One sweep rather than two locators, because the card is NOT a sibling of
+       * the cells — it wraps a Tile, and that inner Tile carries the very same
+       * "(you)" label a cell does. A plain count of `(you)` groups is therefore 1
+       * in both views and proves nothing; only the ones OUTSIDE the card are cells.
+       * (`tileLabel` renders the local participant as "<name> (you)", so this finds
+       * your tile without depending on the display name the join flow used.)
+       */
+      const surfaces = () =>
+        page.evaluate(() => {
+          const card = document.querySelector('[role="group"][aria-label^="Your video"]')
+          const tiles = Array.from(
+            document.querySelectorAll('[role="group"][aria-label*="(you)"]'),
+          )
+          return {
+            card: card ? 1 : 0,
+            cells: tiles.filter((t) => !card?.contains(t)).length,
+          }
+        })
+
+      // Arrive in speaker view: the card, and no cell of yours in the background.
+      await expect
+        .poll(surfaces, { timeout: 45_000, message: 'speaker view floats the card' })
+        .toEqual({ card: 1, cells: 0 })
+
+      await selectStageView(page, 'Gallery')
+
+      // …and in the gallery the two swap over. Not "the cell appears" — the card
+      // going away is the half a partial implementation would miss, and the half
+      // that costs a phone a tile-sized hole in the middle of the grid.
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: 'the gallery tiles you instead' })
+        .toEqual({ card: 0, cells: 1 })
+
+      // The cell is a real tile, not a sliver: it sits in the grid at the size
+      // everyone else's does. A self-view too small to show whether you are in
+      // frame is the bug the card was made big to fix, and a cell can reintroduce
+      // it — a 96px cell would satisfy every assertion above.
+      await page.waitForTimeout(400) // let the packer settle on the reported aspects
+      const mine = (await page.getByRole('group', { name: /\(you\)/ }).boundingBox())!
+      const theirs = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('[role="group"][aria-label]'))
+          .filter(
+            (e) =>
+              !/\(you\)/.test(e.getAttribute('aria-label')!) &&
+              (e as HTMLElement).offsetHeight > 60,
+          )
+          .map((e) => e.getBoundingClientRect().width),
+      )
+      expect(theirs.length, 'there are other tiles to compare against').toBeGreaterThan(0)
+      expect(mine.width, 'your cell is sized like the others').toBeGreaterThanOrEqual(
+        Math.min(...theirs) * 0.9,
+      )
+
+      // Switching back restores the card — the rule is per-view, not a one-way door.
+      await selectStageView(page, 'Speaker')
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: 'speaker view floats the card again' })
+        .toEqual({ card: 1, cells: 0 })
+    } finally {
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 
