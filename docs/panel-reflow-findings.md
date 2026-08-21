@@ -69,22 +69,43 @@ Hence the `xl` threshold: below it, the geometry is removed rather than sized ar
 It is also the case for the guard. "The offset is smaller than the gap" is only true of
 the bar you measured, and the bar grows every time a control is added.
 
+## The grid, and its own defect
+
+The brief's hypothesis was worth testing: could the grid scale tiles down, holding
+aspect, and wrap as needed, instead of hard-shifting? **It already did.**
+`fitMixedRows` is a justified packer — it tries every row count, scales each row to
+fill the width, keeps each tile's snapped aspect, and picks the arrangement that
+maximises the smallest tile. `useElementSize` re-measures through the 220ms transition
+with a 2px threshold so that doesn't become per-frame jank.
+
+The defect was next door, in `gridCapacity`: it decided *how many* tiles to show from
+the **narrowed** stage width. Docking the panel therefore took the grid from 4 columns
+to 3 at 1024px, capacity from 16 to 12, and four people to page 2 — not scaled down,
+gone.
+
+`gridCapacity` now lives in `src/lib/gridCapacity.ts` and is fed the width the stage
+would have with **no panel docked** (`dockedStageInset`), by both the grid and the
+presentation filmstrip. The packer still lays out in the real, narrowed width, so
+docking is now purely "tiles get smaller". Measured with ten real participants at
+1024×420: **8 tiles → 6 before, 8 → 8 after.**
+
+It also stops the toggle unmounting and remounting video the client had already
+decoded, which was churn nobody asked for.
+
 ## Tests
 
-- `src/lib/panelDock.test.ts` — the offset never lands in the Leave band at any width,
-  scales with the bar, and has ~150px of headroom at `xl` before it could.
+- `src/lib/panelDock.test.ts` — the bar offset never lands in the Leave band at any
+  width, scales with the bar, and has ~150px of headroom at `xl` before it could.
+- `src/lib/gridCapacity.test.ts` — capacity is identical panel-open and panel-closed
+  across every desktop width and crowd size, on touch, and under an explicit gallery
+  size; pins the exact drop it prevents (`{cols:4, perPage:16}` → `{cols:3, perPage:12}`);
+  and checks `dockedStageInset` against RoomView's Tailwind classes written out
+  independently, so the constant can't drift from the CSS unnoticed.
 - `tests/21-panel-reflow.spec.ts` — hit-tests the real app at 768/1024/1280/1440: the
-  resting pointer never ends up on a Leave control, and Leave is never buried under the
-  panel. Also asserts a deliberate press on Leave still leaves first time.
-  Reintroducing the old re-centring fails it at the first width it checks.
+  resting pointer never lands on a Leave control, Leave is never buried under the
+  panel, and the stage gives up exactly the inset the capacity maths adds back. A
+  deliberate press on Leave still leaves first time. Tagged `@heavy`: ten real
+  participants confirming the tile count survives the toggle.
 
-## Still open
-
-The grid already scales tiles and holds aspect (`fitMixedRows`) — that hypothesis was
-sound and is what the code does. But `gridCapacity` re-paginates on toggle. With 16 in
-the call, opening the panel goes 4 col / 16 tiles → 3 col / 12 at 1024, and 3 col / 12 →
-2 col / 8 at 768. Unchanged at 1280+.
-
-Fix is independent of everything above: derive page capacity from the *undocked* stage
-width, or hold it across a panel toggle, so docking can only shrink tiles, never page
-them away.
+Both fixes were mutation-checked — reintroducing the old re-centring fails the reflow
+spec at the first width it checks, and reverting the capacity width reproduces 8 → 6.

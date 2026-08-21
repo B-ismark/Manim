@@ -1,4 +1,4 @@
-import { test, expect, type Page } from '@playwright/test'
+import { test, expect, type BrowserContext, type Page } from '@playwright/test'
 import { uniqueRoom, attachErrorSink, appErrors, join, isTouch } from './helpers'
 
 /**
@@ -75,6 +75,95 @@ test.describe('Side panel reflow', () => {
     }
 
     expect(await appErrors(sink)).toEqual([])
+  })
+
+  /**
+   * Tile capacity is decided from the stage's width with the panel's inset added
+   * back (lib/panelDock's dockedStageInset), so docking can only shrink tiles and
+   * never page people out. That only holds while the constant matches the CSS
+   * RoomView actually applies — which is what this checks, at every width.
+   */
+  test('the stage gives up exactly the inset the capacity maths adds back', async ({ page }) => {
+    test.skip(await isTouch(page), 'the panel only reflows the stage on a pointer device')
+    await join(page, uniqueRoom(), 'Ada')
+
+    // RoomView: `panel && 'lg:pr-[22rem] xl:pr-[25rem]'`, mirrored by
+    // dockedStageInset as 0 / 352 / 400.
+    for (const [width, inset] of [[768, 0], [1024, 352], [1280, 400], [1440, 400]] as const) {
+      await page.setViewportSize({ width, height: 800 })
+      await page.waitForTimeout(400)
+
+      const pad = () =>
+        page.evaluate(() => {
+          const stage = document.querySelector('[aria-label="In call"]') as HTMLElement
+          return {
+            padding: Math.round(parseFloat(getComputedStyle(stage).paddingRight)),
+            content: Math.round(stage.getBoundingClientRect().width) - Math.round(parseFloat(getComputedStyle(stage).paddingRight)),
+          }
+        })
+
+      const closed = await pad()
+      expect(closed.padding, `${width}px, panel closed`).toBe(0)
+
+      await page.getByRole('button', { name: 'Open chat' }).click()
+      await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
+      await page.waitForTimeout(400)
+
+      const open = await pad()
+      expect(open.padding, `${width}px, panel open`).toBe(inset)
+      // ...and the width the grid is measured at really does come back to the
+      // undocked width when the inset is added on.
+      expect(open.content + inset, `${width}px content width`).toBe(closed.content)
+
+      await page.getByRole('button', { name: 'Close panel' }).last().click()
+      await page.waitForTimeout(400)
+    }
+  })
+
+  /**
+   * The user-visible half of the capacity rule: docking the panel shrinks tiles,
+   * it does not page people out.
+   *
+   * @heavy — it needs ten real participants, because the grid only loses a column
+   * once √n pushes it to four (n >= 10). 1024x420 puts the grid at 4x2, so the
+   * drop this guards against is a clear 8 -> 6. Measured on this change: 8 -> 6
+   * before, 8 -> 8 after.
+   */
+  test('docking the panel shrinks tiles instead of paging people out @heavy', async ({
+    page,
+    browser,
+  }) => {
+    test.skip(await isTouch(page), 'the panel only reflows the stage on a pointer device')
+    test.setTimeout(300_000)
+    const room = uniqueRoom('reflow')
+    await join(page, room, 'P00')
+
+    const extras: BrowserContext[] = []
+    for (let i = 1; i < 10; i++) {
+      const context = await browser.newContext({ permissions: ['camera', 'microphone'] })
+      const p: Page = await context.newPage()
+      await join(p, room, `P${String(i).padStart(2, '0')}`)
+      extras.push(context)
+    }
+    try {
+      await expect(page.getByRole('button', { name: /Participants \(10\)/ })).toBeVisible({
+        timeout: 60_000,
+      })
+      await page.setViewportSize({ width: 1024, height: 420 })
+      await page.waitForTimeout(1500)
+
+      const tiles = () => page.locator('[aria-label="In call"] [role="group"]').count()
+      const closed = await tiles()
+      expect(closed).toBeGreaterThan(1)
+
+      await page.getByRole('button', { name: 'Open chat' }).click()
+      await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
+      await page.waitForTimeout(1200)
+
+      expect(await tiles(), 'opening the panel paged someone out').toBe(closed)
+    } finally {
+      for (const c of extras) await c.close().catch(() => {})
+    }
   })
 
   test('a deliberate press on Leave still leaves immediately', async ({ page }) => {

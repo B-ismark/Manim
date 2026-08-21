@@ -592,18 +592,20 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     </p>
   </div>
   <div class="note">
-    <div class="h">Found while measuring</div>
+    <div class="h">Found while measuring — since fixed</div>
     <p>
-      At <strong>1024–1279px</strong>, opening the panel takes
+      At <strong>1024–1279px</strong>, opening the panel took
       <code>gridCapacity</code> from 4 columns to 3 and page capacity from 16 to 12.
-      With 16 in the call, <strong>four people vanish to page 2</strong> the moment
-      you open chat — not scaled down, gone. At 768px it is 12 tiles down to 8. Set
-      the rig to 1024px with 16 in the call and toggle the panel.
+      With 16 in the call, <strong>four people vanished to page 2</strong> the moment
+      you opened chat — not scaled down, gone. Select rule 00 at 1024px with 16 in
+      the call and toggle the panel to see it.
     </p>
     <p>
-      Fix is independent of everything above: derive page capacity from the
-      <em>undocked</em> stage width, or hold capacity across a panel toggle, so a
-      docking panel can only ever shrink tiles — never repaginate them.
+      Capacity is now decided from the <em>undocked</em> stage width, so docking can
+      only shrink tiles — which is what the packer is for. Confirmed against ten real
+      participants at 1024×420: <strong>8 tiles before the toggle and 6 after</strong>,
+      now 8 and 8. It also stops the toggle unmounting and remounting video the client
+      had already decoded. Select rule 05 to see capacity hold.
     </p>
   </div>
 </section>
@@ -651,10 +653,13 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     </p>
   </div>
   <div class="note">
-    <div class="h">Still open</div>
+    <div class="h">Also landed</div>
     <p>
-      The grid re-pagination is untouched and still worth doing: at 1024px with 16 in
-      the call, opening the panel still drops four people to page 2.
+      The grid re-pagination is fixed too — capacity now comes from the undocked
+      stage width, so opening the panel shrinks tiles instead of paging people out.
+      That was the hypothesis the brief opened with, and it turned out the packer
+      was already doing its half correctly; only the capacity maths was reading the
+      wrong width.
     </p>
   </div>
 </section>
@@ -815,7 +820,10 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     const stageRight = state.open ? rule(w, 614).stagePad : 12;
     const gridW = w - 12 - stageRight - 24;   // stage padding, then GridStage p-3
     const gridH = h - 24 - 24;
-    const { cols, perPage } = gridCapacity(gridW, gridH, state.n);
+    // The shipped rule decides capacity from the width the stage would have with
+    // no panel docked, so docking only ever shrinks tiles. Layout still uses the
+    // real (narrowed) width below.
+    const { cols, perPage } = gridCapacity(gridW + capacityBonus(w), gridH, state.n);
     const shown = Math.min(state.n, perPage);
     const rowCount = Math.ceil(shown / cols);
 
@@ -844,10 +852,15 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     return { cols, perPage, shown };
   }
 
+  /** What the shipped rule adds back before deciding how many tiles fit. */
+  function capacityBonus(w) {
+    if (state.opt !== 'shipped' || !state.open) return 0;
+    return rule(w, 614).stagePad - 12;
+  }
   function capacityFor(open) {
     const w = state.w, h = HEIGHTS[w];
     const gridW = w - 12 - (open ? rule(w, 614).stagePad : 12) - 24;
-    const c = gridCapacity(gridW, h - 48, state.n);
+    const c = gridCapacity(gridW + (open ? capacityBonus(w) : 0), h - 48, state.n);
     return { ...c, shown: Math.min(state.n, c.perPage) };
   }
 
