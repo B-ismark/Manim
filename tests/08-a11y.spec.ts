@@ -7,7 +7,7 @@ import {
   setColorScheme,
   newParticipant,
   openEndCallMenu,
-  isTouch,
+  activate,
 } from './helpers'
 
 /**
@@ -77,8 +77,7 @@ for (const scheme of ['light', 'dark'] as const) {
       expect(menuViolations, JSON.stringify(menuViolations, null, 2)).toEqual([])
 
       // Selecting it opens the confirm dialog — axe its content too.
-      if (await isTouch(page)) await item.tap()
-      else await item.click()
+      await activate(page, item)
       await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
       const dialogViolations = await axeViolations(page)
       expect(dialogViolations, JSON.stringify(dialogViolations, null, 2)).toEqual([])
