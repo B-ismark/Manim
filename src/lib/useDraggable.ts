@@ -10,6 +10,18 @@ interface DragState {
 export type Corner = 'tl' | 'tr' | 'bl' | 'br'
 
 /**
+ * How far a pointer must travel before the gesture counts as a DRAG.
+ *
+ * It used to be one pixel — `moved` was set by the first pointermove, whatever its
+ * distance — which is fine while dragging is the only thing the element does. It
+ * stops being fine the moment the same element also responds to a tap (the
+ * self-view's expand): a finger never lands and lifts on exactly the same pixel, so
+ * every tap registered as a drag, snapped the card to a corner, and swallowed the
+ * tap. Exported so the tap side and the drag side test the same number.
+ */
+export const DRAG_SLOP = 6
+
+/**
  * Which corner is a box's centre nearest? Pure so the snap is testable.
  *
  * `bounds` is the area the box may occupy — the viewport inset by `margin`, and on
@@ -97,7 +109,9 @@ export function useDraggable(
         x: Math.min(Math.max(b.left, nx), b.right - b.w),
         y: Math.min(Math.max(b.top, ny), b.bottom - b.h),
       })
-      moved.current = true
+      if (Math.hypot(e.clientX - drag.current.startX, e.clientY - drag.current.startY) > DRAG_SLOP) {
+        moved.current = true
+      }
     },
     [boundsFor],
   )

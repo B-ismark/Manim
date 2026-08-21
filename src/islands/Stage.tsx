@@ -9,7 +9,7 @@ import {
 } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
-import { Avatar, Button, IconButton } from '@/components/primitives'
+import { Avatar, Button, DropdownItem, DropdownMenu, IconButton, StageChip } from '@/components/primitives'
 import {
   CopyIcon,
   CheckIcon,
@@ -25,6 +25,8 @@ import {
   GridIcon,
   PeopleIcon,
   AnnotateIcon,
+  SpeakerLayoutIcon,
+  ChevronDownIcon,
 } from '@/components/icons'
 import { moderate } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
@@ -35,13 +37,13 @@ import { useRoomStore } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
-import { useDraggable } from '@/lib/useDraggable'
+import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
+import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { featuredShare, focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
-import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
+import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
+import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
-import { indicatorStyle, pageOfGalleryItem, stagePage } from '@/lib/stagePager'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
@@ -119,11 +121,9 @@ function useCapacityWidth(measured: number): number {
 
 export function Stage() {
   const layout = useRoomStore((s) => s.layout)
-  const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const demotedShares = useRoomStore((s) => s.demotedShares)
   const stickyShareId = useRoomStore((s) => s.stickyShareId)
-  const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
@@ -196,96 +196,62 @@ export function Stage() {
   // see, wire-addressed to the one you can't.
   const share = primaryShare(visible, stickyShareId)
   const shareSid = share ? shareId(share) : null
-  // For TOUCH, ask the shared definition rather than re-deriving one.
-  //
-  // The obvious local test — "there's a share and it isn't demoted" — misses the
-  // person-spotlight case, and useSharePresence (which decides whether the pen is
-  // armed and where ink is addressed) does not. Diverging here would put a share
-  // full-bleed with an annotation overlay mounted on it while useSharePresence
-  // reported no drawable surface: `canAnnotate` false and `featuredShareId` null,
-  // so remote ink would have had nowhere to land. focusTrack.ts's header records
-  // that three surfaces once answered this separately and disagreed; this is one
-  // definition, consumed here too.
-  const touchShareFeatured =
-    visible.length > 1 &&
-    featuredShare(visible, { demotedShares, spotlightKey, stickyShareId }) !== undefined
+  // Does a share own the stage? ONE condition, both pointer types: someone is
+  // sharing, there's more than a share to look at, and this viewer hasn't demoted
+  // it. Touch used to ask `featuredShare()` here instead, which also returns
+  // undefined when a PERSON is spotlighted — a distinction the phone has no control
+  // for, so the two branches were quietly answering different questions off the same
+  // data. (The annotation layer still asks featuredShare, via useSharePresence:
+  // "is there a surface to draw on" genuinely is the stricter question.)
+  const shareLeads =
+    share !== undefined && shareSid !== null && visible.length > 1 && !demotedShares.includes(shareSid)
 
-  // ── Touch: one horizontal page sequence, no layout modes ────────────────────
+  // ── Touch: the same three views, a different stage ──────────────────────────
   //
-  // Everything below this point is the DESKTOP stage, unchanged. The two genuinely
-  // want different things: a phone has a swipe and an auto-hiding bar and one thumb,
-  // a desktop has hover, a permanent control bar and a layout menu. Trying to serve
-  // both from one branch is what produced a 96px filmstrip with 60px of it underneath
-  // the control island, and a screen share letterboxed by a minimum-fraction floor
-  // that only makes sense in a horizontal split.
+  // Everything below this point is the DESKTOP stage. What the two now SHARE is the
+  // model — speaker, gallery, content — so `layout` is one value and the View
+  // control means the same thing wherever you find it. What they don't share is the
+  // rendering, and they shouldn't: a phone has one thumb, an auto-hiding bar and no
+  // hover; a desktop has a permanent control bar and the width to keep a filmstrip
+  // on screen. Serving both from one branch is what produced a 96px filmstrip with
+  // 60px of it underneath the control island.
   if (coarse) {
     return (
-      <PagedStage
+      <TouchStage
         visible={visible}
-        share={touchShareFeatured ? share! : null}
-        featuredSid={touchShareFeatured ? shareSid : null}
+        share={share ?? null}
+        shareSid={shareSid}
+        shareLeads={shareLeads}
       />
     )
   }
 
-  // Screen-share presentation layout (Meet/Teams model): a REMOTE share (your own is
-  // excluded above) takes the big region and everyone else tiles in a segmented grid
-  // beside/below it. Auto-on unless the viewer demoted THIS share (remembered per share
-  // SID) — demoting falls back to the plain equal-tile grid.
-  if (share && visible.length > 1) {
-    const sid = shareId(share)
-    if (!demotedShares.includes(sid)) {
-      return <PresentationStage visible={visible} coarse={coarse} share={share} featuredSid={sid} />
-    }
-    const gridTracks =
-      selfViewHidden && visible.some((t) => !isLocalCam(t))
-        ? visible.filter((t) => !isLocalCam(t))
-        : visible
-    return <GridStage tracks={gridTracks} coarse={coarse} />
+  // Everything from here is DESKTOP-only — the touch branch returned above — which
+  // is why none of these three take a `coarse` prop any more. They used to, and it
+  // was always false, which is exactly the kind of parameter that quietly grows a
+  // second meaning.
+  //
+  // Content view — the share takes the stage, everyone else rides a filmstrip.
+  if (shareLeads && share && shareSid) {
+    return <ContentStage visible={visible} share={share} featuredSid={shareSid} />
   }
 
-  // No remote share below this point (shares are handled above). Touch returned
-  // earlier, so the phone 1-on-1 special case moved into PagedStage — where it is
-  // simply "page 0 with one other person on it" and needs no special case at all.
-  if (layout === 'grid' || visible.length <= 1) {
+  // Past that early return, "a share exists" means "and it's demoted" — so it has
+  // to become a tile somewhere, whatever the stored layout says. That's what "Show
+  // as grid" asked for.
+  const shareDemoted = share !== undefined && visible.length > 1
+
+  if (layout === 'grid' || shareDemoted || visible.length <= 1) {
     // "Hide self view" drops your own camera tile from the grid too. Keep it if it's
     // the only tile, so the grid never goes empty.
     const gridTracks =
       selfViewHidden && visible.some((t) => !isLocalCam(t))
         ? visible.filter((t) => !isLocalCam(t))
         : visible
-    return <GridStage tracks={gridTracks} coarse={coarse} />
+    return <GridStage tracks={gridTracks} />
   }
 
-  // Speaker (and phone 1-on-1): a focused remote (or screen share) fills the stage
-  // and the local camera floats as a draggable self-view (STYLE.md §2 island model).
-  const localCam = visible.find(isLocalCam)
-  const others = visible.filter((t) => !isLocalCam(t))
-  const focus = focusTrack(others, pinned) ?? localCam
-  const filmstrip = others.filter((t) => t !== focus)
-
-  return (
-    // pb reserves the floating control bar's band. The filmstrip is pinned to the
-    // bottom of this column, so without it 60 of its 112px sat underneath the bar —
-    // the same defect the touch stage had, and invisible to tests/19-overlays
-    // because that helper only compares interactive elements and a tile's root is a
-    // `div role="group"`.
-    <div className="relative flex min-h-0 flex-1 flex-col gap-3 p-2 pb-[5.5rem] sm:p-3 sm:pb-[5.5rem]">
-      <div className="min-h-0 flex-1">{focus && <FocusTile trackRef={focus} />}</div>
-
-      {filmstrip.length > 0 && (
-        <div className="flex h-24 shrink-0 gap-3 overflow-x-auto sm:h-28">
-          {filmstrip.map((ref) => (
-            <div key={`${ref.participant.identity}-${ref.source}`} className="aspect-video h-full shrink-0">
-              <Tile trackRef={ref} fill />
-            </div>
-          ))}
-        </div>
-      )}
-
-      {localCam && focus !== localCam && !selfViewHidden && <SelfViewCard trackRef={localCam} />}
-    </div>
-  )
+  return <SpeakerStage visible={visible} />
 }
 
 /**
@@ -359,42 +325,186 @@ function useTileAspects() {
   return { aspects, report }
 }
 
+/** The three things a phone stage can be showing. Same model as the desktop, and
+ *  deliberately so — `layout` is now one value across both pointer types, so the
+ *  View control means the same thing wherever you find it. */
+type TouchView = 'speaker' | 'gallery' | 'content'
+
 /**
- * The touch stage: ONE horizontal page sequence.
+ * The view switcher — a named chip on the stage, top-left.
  *
- * Page 0 is the focus view — a shared screen if there is one, otherwise whoever is
- * speaking, with your own camera in a corner card. Pages 1..n tile everyone else.
- * Swiping moves along the sequence, and that is also how you get between "speaker"
- * and "grid": they stopped being modes. See lib/stagePager for why that matters —
- * horizontal swipe used to toggle the two, so the gesture a phone user reaches for
- * to turn a page was already spoken for, and the pager it blocked had to fall back
- * to two arrow buttons floating in the middle of the video.
+ * This replaced a row of page dots, and the swap is the point of the whole touch
+ * rework. The dots were 1.5px high and did not read as a control: the only way to
+ * discover the gallery was to swipe by accident, and the only way back was to swipe
+ * again in a direction nothing advertised. A chip that says "Gallery ⌄" is what
+ * Teams, Meet and WhatsApp all put on a phone call, and it answers "what am I
+ * looking at" and "how do I change it" in the same 44px.
  *
- * Touch only. Desktop keeps grid/speaker as a real choice: it has no swipe, hover
- * keeps the controls up, and there's a layout menu to pick from.
+ * Always visible, not part of the auto-hiding chrome. Same argument the page
+ * indicator made and the one thing about it worth keeping: taking away the only
+ * route between views, four seconds after the last tap, buys nothing.
  *
- * The share gets the whole stage at its own aspect rather than half of a split.
- * In portrait a 16:9 share is WIDTH-bound — it paints 359x202 on a 375px phone and
- * can never be taller — so the old vertical split spent 118px on black bars above
- * and below it and handed the surplus to a roster that had room for twelve tiles in
- * a four-person call. Full-bleed costs the share nothing and the leftover height
- * carries a roster strip, which is free for exactly as long as the share doesn't
- * need the pixels (see RosterStrip).
+ * BOTTOM-left, not top-left, and that is not a taste call. On a phone the focused
+ * tile is full-bleed, so every corner of the stage is also a corner of somebody's
+ * tile — and the tile's top-left is where its own controls live (the host's
+ * force-mute button, the raised-hand badge). A chip there sits exactly on top of
+ * them: it swallowed the mute button completely, which the multiparty spec caught
+ * by trying to press it. The top-right is taken twice over (StageTopBar's
+ * participants chip and the tile's own action stack) and the top-centre is
+ * TopStack's. The band above the control island is the one place nothing else
+ * claims — it is also the thumb zone, and it is where the dots this replaced were,
+ * so it is where people are already looking. It shares that band with the
+ * self-view card, which is why both take the same `lift` and sit on opposite sides.
  */
-function PagedStage({
+function StageViewSwitcher({
+  view,
+  hasShare,
+  lift = 0,
+  onSelect,
+}: {
+  view: TouchView
+  /** Someone is sharing — offer the content view even when it's been demoted. */
+  hasShare: boolean
+  /** Clearance for the roster strip, matching SelfViewCard's. */
+  lift?: number
+  onSelect: (v: TouchView) => void
+}) {
+  const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  const meta: Record<TouchView, { label: string; icon: ReactNode }> = {
+    speaker: { label: 'Speaker', icon: <SpeakerLayoutIcon /> },
+    gallery: { label: 'Gallery', icon: <GridIcon /> },
+    content: { label: 'Shared screen', icon: <ScreenShareIcon /> },
+  }
+  const current = meta[view]
+  return (
+    // Inside the stage rather than TopStack: that column is one centred stack of
+    // status banners, and this is a control anchored to a corner (the same category
+    // as StageTopBar's participants chip, at the same layer).
+    <div
+      className="absolute left-2 z-20"
+      style={{
+        bottom: selfCardBottom + lift,
+      }}
+      data-no-stage-gesture
+    >
+      <DropdownMenu
+        // Opens upward: there is a whole stage above it and a control bar below.
+        side="top"
+        align="start"
+        trigger={
+          <StageChip aria-label={`View: ${current.label}. Change view`}>
+            {current.icon}
+            {current.label}
+            <ChevronDownIcon className="opacity-70" />
+          </StageChip>
+        }
+      >
+        {hasShare && (
+          <DropdownItem icon={<ScreenShareIcon />} onSelect={() => onSelect('content')}>
+            Shared screen
+          </DropdownItem>
+        )}
+        <DropdownItem icon={<SpeakerLayoutIcon />} onSelect={() => onSelect('speaker')}>
+          Speaker
+        </DropdownItem>
+        <DropdownItem icon={<GridIcon />} onSelect={() => onSelect('gallery')}>
+          Gallery
+        </DropdownItem>
+      </DropdownMenu>
+    </div>
+  )
+}
+
+/**
+ * The gallery, once everyone stops fitting on one screen: a plain vertical scroll.
+ *
+ * Paging is what the phone gallery used to do, and paging has one cost that never
+ * goes away — the page has to FIT, so tile size is a function of how many people are
+ * in the call. Twelve people on a 375px phone meant 2x2 pages of 176px tiles and
+ * three swipes to see everyone, and the packer had to re-balance rows every time the
+ * roster changed. Scrolling decouples the two: tiles are the same size in a
+ * three-person call and a thirty-person one, and reaching person twenty is a flick
+ * rather than five taps on a dot row.
+ *
+ * Mounting thirty <video> elements is the thing paging was really protecting
+ * against, and `adaptiveStream` (lib/livekit) already covers it: LiveKit watches
+ * each element's visibility and stops the stream for anything scrolled off screen.
+ * Paging was solving that problem a second time, in the layout.
+ */
+function ScrollGallery({
+  tracks,
+  cols,
+  gap,
+}: {
+  tracks: TrackReferenceOrPlaceholder[]
+  cols: number
+  gap: number
+}) {
+  const islandBandPx = useIslandBand()
+  return (
+    <div
+      // Scrolls INTERNALLY — the page itself never scrolls (see CLAUDE.md). The
+      // gesture layer above stays live: a scroll drag fails both the tap test
+      // (moves too far) and the swipe test (wrong axis), so nothing double-fires.
+      className="min-h-0 w-full flex-1 overflow-y-auto overscroll-contain no-scrollbar"
+      // Both bands as PADDING, not margin: the first row can still be scrolled up
+      // under the timer and the last one down past the island, which is how a
+      // scroller should behave — nothing is permanently unreachable, and at rest
+      // nothing is hidden.
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+    >
+      <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap }}>
+        {tracks.map((t) => (
+          // 3:4 cells: touch senders are overwhelmingly portrait phones, and a
+          // uniform cell is what makes the scroll calm — a mixed-aspect packer
+          // re-flows the whole column every time one person rotates.
+          <div key={tileKey(t)} className="aspect-[3/4]">
+            <Tile trackRef={t} fill boxAspect={3 / 4} />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The touch stage: three views, one named switcher.
+ *
+ * This replaced a horizontal PAGE SEQUENCE — page 0 the focus feed, pages 1..n a
+ * paged gallery, a row of dots underneath to say where you were. That model was
+ * internally coherent (the swipe was the pager AND the mode switch, so the two could
+ * never fight) and it still lost, on two counts that only show up on a real phone:
+ *
+ *  - The dots were the only visible route between views, and a row of 1.5px dots is
+ *    not a control. The gallery was reachable only by a swipe nothing advertised.
+ *  - A page has to fit, so tile size was a function of headcount. See ScrollGallery.
+ *
+ * The three views are Teams': SPEAKER (one large feed), GALLERY (everyone, tiled,
+ * scrolling past a screenful), CONTENT (a shared screen, with the roster in the
+ * slack beside it). `layout` picks between the first two; a live, undemoted share
+ * takes precedence and gives you the third — so starting a share still pulls
+ * everyone's attention to it without a mode change anyone has to make.
+ *
+ * Your own camera is a floating card on every view and never a gallery cell. That
+ * is the other half of the self-view fix, and the reasoning is in SelfViewCard.
+ */
+function TouchStage({
   visible,
   share,
-  featuredSid,
+  shareSid,
+  shareLeads,
 }: {
   visible: TrackReferenceOrPlaceholder[]
-  /** The share in the big region, if one is featured and not demoted. */
+  /** The primary share, if anyone is sharing — even one this viewer demoted. */
   share: TrackReferenceOrPlaceholder | null
-  /** Track SID of that share — presentation state (demote) is keyed on it. */
-  featuredSid: string | null
+  shareSid: string | null
+  /** …and it owns the stage right now (it exists and hasn't been demoted). */
+  shareLeads: boolean
 }) {
+  const islandBandPx = useIslandBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
-  const requested = useRoomStore((s) => s.stagePage)
-  const setStagePage = useRoomStore((s) => s.setStagePage)
+  const layout = useRoomStore((s) => s.layout)
+  const setLayout = useRoomStore((s) => s.setLayout)
   const gridSize = useRoomStore((s) => s.gridSize)
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
@@ -404,43 +514,24 @@ function PagedStage({
   const { canAnnotate, featuredShareId } = useSharePresence()
   const bigRef = useRef<HTMLDivElement>(null)
   const [bigAspect, setBigAspect] = useState(16 / 9)
-  // The roster strip's open state lives here, not in the strip, because the page
-  // indicator has to sit ABOVE it — they both want the band over the control island,
-  // and at 375px an expanded strip and a dot row landed on top of each other.
   const [rosterOpen, setRosterOpen] = useState(true)
 
   const localCam = visible.find(isLocalCam)
   const others = visible.filter((t) => !isLocalCam(t))
-  // Page 0's subject: the share if one is featured, else the pinned/loudest remote,
-  // else your own camera (a call where nobody else has video yet).
-  const focus = share ?? focusTrack(others, pinned) ?? localCam
+  const focus = focusTrack(others, pinned) ?? localCam
 
-  // The gallery holds EVERYONE — including whoever is currently big on page 0.
+  // Everyone the gallery tiles: not you (you're the floating card — a cell as well
+  // would show you to yourself twice and cost somebody else their tile), and not
+  // whichever share is currently full-bleed.
   //
-  // This is the invariant the pager rests on, and getting it wrong is subtle. The
-  // obvious version, "everyone the focus page isn't showing", excludes `focus` —
-  // but `focus` follows the active speaker (focusTrack falls through to
-  // `isSpeaking`), so every time someone else started talking the gallery gained
-  // one member and lost another. The pager slices this list by index, so that
-  // renumbers everyone between the two alphabetically: you are on page 2 watching
-  // four people, somebody across the room says "yeah", and the tiles you were
-  // looking at shuffle onto a different page. Tiles jumping mid-sentence is exactly
-  // what tilePriority's stable sort and useSharePresence's sticky share exist to
-  // prevent, and it would have walked straight back in here.
-  //
-  // So the speaker appears twice — big on page 0 and as a cell in the gallery — and
-  // so does your own camera, which the corner card also shows. That duplication is
-  // deliberate and it is what Zoom does: membership now only changes when someone
-  // joins or leaves, a share starts or stops being featured, or self-view is
-  // toggled. All deliberate events; none of them speech.
-  //
-  // The featured share is the one exclusion: it owns page 0 in its entirety, and it
-  // arrives as a sticky prop rather than a re-derived value, so it doesn't move
-  // either. A DEMOTED share isn't excluded — "Show as grid" has to put it somewhere.
+  // Membership changes only when someone joins or leaves, a share starts or stops
+  // leading, or self-view is toggled. Deliberately NOT on speech: the old paged
+  // version had to argue this at length because the pager sliced the list by index,
+  // so a speaker-driven membership change renumbered everyone and tiles jumped
+  // pages mid-sentence. A scroll has no page boundaries to jump across, but a
+  // reordering list still moves tiles under a thumb, so the rule stands.
   const gallery = useMemo(() => {
-    let rest = share ? visible.filter((t) => t !== share) : visible
-    // "Hide self view" drops it — unless that would empty the gallery entirely.
-    if (selfViewHidden && rest.some((t) => !isLocalCam(t))) rest = rest.filter((t) => !isLocalCam(t))
+    const rest = visible.filter((t) => !isLocalCam(t) && !(shareLeads && t === share))
     return [...rest].sort((a, b) => {
       if (videosFirst) {
         const d = Number(hasLiveVideo(b)) - Number(hasLiveVideo(a))
@@ -448,122 +539,123 @@ function PagedStage({
       }
       return tilePriority(a) - tilePriority(b) || tileKey(a).localeCompare(tileKey(b))
     })
-  }, [visible, share, selfViewHidden, videosFirst])
+  }, [visible, share, shareLeads, videosFirst])
+
+  const view: TouchView = shareLeads
+    ? 'content'
+    : layout === 'grid' && gallery.length > 0
+      ? 'gallery'
+      : 'speaker'
+
+  /**
+   * Switching view, including into and out of the share.
+   *
+   * "Shared screen" un-demotes it and "Speaker"/"Gallery" demote it, because
+   * `demotedShares` IS the per-viewer "I don't want this share full-bleed" flag —
+   * the same one the tile's own "Show as grid" button sets. Routing the switcher
+   * through it means the chip and that button can't disagree about what you asked
+   * for, which two independent flags would eventually do.
+   */
+  const pickView = (v: TouchView) => {
+    if (v === 'content') {
+      if (shareSid && !shareLeads) toggleShareDemoted(shareSid)
+      setLayout('speaker')
+      return
+    }
+    if (shareLeads && shareSid) toggleShareDemoted(shareSid)
+    setLayout(v === 'gallery' ? 'grid' : 'speaker')
+  }
 
   const gap = 8
-  // Page capacity is computed against the RESERVED height unconditionally, not per
-  // page kind. Measuring the focus page at full height and gallery pages at reduced
-  // height would let the page COUNT change as you swipe between them — the dots
-  // would gain and lose a dot depending on which page you were looking at.
-  const galleryH = Math.max(1, size.height - ISLAND_BAND)
-  // Same rule as the pointer gallery below: capacity is the greater of the docked
-  // and undocked fits, the column cap follows the real width. A phone never docks
-  // a panel (dockedStageInset is 0 below `lg`), so this is a no-op on a handset —
-  // it is a large touch tablet, where the panel does dock, that would otherwise
-  // lose people off the page on every chat toggle.
+  // Capacity is measured against the height the tiles actually get (the control
+  // island's band is reserved), and against the UNDOCKED width — a phone never
+  // docks a panel, but a large touch tablet does, and deciding capacity from the
+  // narrowed stage is what used to page people out on every chat toggle.
+  const galleryH = Math.max(1, size.height - islandBandPx - TOPSTACK_BAND)
   const realCap = gridCapacity(size.width, galleryH, true, gridSize)
   const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true, gridSize)
   const cols = realCap.cols
   const perPage = Math.max(realCap.perPage, undockedCap.perPage)
-  const page = stagePage({ galleryCount: gallery.length, perPage, index: requested })
-  // Write the clamp back so the swipe handler and the More control step from a real
-  // index rather than an imagined one — otherwise a swipe past the end has to be
-  // undone twice before anything moves.
-  useEffect(() => {
-    if (page.index !== requested) setStagePage(page.index)
-  }, [page.index, requested, setStagePage])
+  // Everyone fits → pack them to FILL the stage (three people get big tiles, not
+  // three small ones with a void underneath). They don't → uniform scrolling cells.
+  const galleryFits = gallery.length <= perPage
 
-  // Jump to the focus page when the thing worth looking at changes — a share
-  // starting, a different presenter taking over, or simply arriving in the call
-  // (effects run on mount, so this covers the initial landing too). Without it,
-  // someone who'd swiped to a gallery page stayed there while a screen share began
-  // somewhere they couldn't see.
-  //
-  // Keyed on the share identity, NOT on every render, so it announces a change
-  // rather than pinning you: swipe away from a live share and you stay away.
-  useEffect(() => {
-    setStagePage(0)
-  }, [featuredSid, setStagePage])
-
-  // Someone talking on a page you aren't looking at. No auto-jump — that yanks the
-  // stage around mid-sentence — but with a 2x2 phone page a big room is many pages,
-  // so this is the main way to reach a speaker rather than a nicety.
-  const speakingPage = useMemo(() => {
-    const i = gallery.findIndex((t) => t.participant.isSpeaking)
-    return pageOfGalleryItem(i, perPage)
-  }, [gallery, perPage])
-  // Only meaningful on a gallery page — page 0 already shows the speaker full size.
-  const speakerOffPage = page.kind === 'gallery' && speakingPage > 0 && speakingPage !== page.index
-
-  const shown = gallery.slice(page.start, page.end)
-  const shareIsFocus = Boolean(share) && page.kind === 'focus'
-  const stripShowing = shareIsFocus && rosterOpen && rosterFits(size, bucketAspect(bigAspect))
+  const stripShowing = view === 'content' && rosterOpen && rosterFits(size, bucketAspect(bigAspect))
+  // Lift the self-view clear of the roster strip — they both want the band above the
+  // control island, and at 375px a card and an expanded strip landed on top of each
+  // other. Same problem the page indicator had, same fix.
+  const selfLift = view === 'content' ? (stripShowing ? 90 : 26) : 0
+  // Don't float a second copy of yourself when you ARE the big tile (a call where
+  // nobody else has published a camera yet).
+  const showSelfCard = Boolean(localCam) && !selfViewHidden && !(view === 'speaker' && focus === localCam)
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col p-2">
       <div ref={ref} className="relative flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2">
-        {page.kind === 'focus' ? (
-          shareIsFocus && share && featuredSid ? (
-            <div ref={bigRef} className="relative size-full">
-              <Tile
-                trackRef={share}
-                fill
-                boxAspect={size.height > 0 ? size.width / size.height : undefined}
-                onAspect={setBigAspect}
-                onActivate={() => toggleShareDemoted(featuredSid)}
-                action={{
-                  icon: <GridIcon />,
-                  label: 'Show as grid',
-                  onClick: () => toggleShareDemoted(featuredSid),
-                }}
-                actions={
-                  <>
-                    <FullscreenControls targetRef={bigRef} />
-                    {annotateEnabled && <AnnotateControl canAnnotate={canAnnotate} />}
-                  </>
-                }
+        {view === 'content' && share && shareSid ? (
+          <div ref={bigRef} className="relative size-full">
+            <Tile
+              trackRef={share}
+              fill
+              boxAspect={size.height > 0 ? size.width / size.height : undefined}
+              onAspect={setBigAspect}
+              onActivate={() => toggleShareDemoted(shareSid)}
+              action={{
+                icon: <GridIcon />,
+                label: 'Show as grid',
+                onClick: () => toggleShareDemoted(shareSid),
+              }}
+              actions={
+                <>
+                  <FullscreenControls targetRef={bigRef} />
+                  {annotateEnabled && <AnnotateControl canAnnotate={canAnnotate} />}
+                </>
+              }
+            />
+            {annotateEnabled && (
+              <AnnotationOverlay
+                aspect={bigAspect}
+                canAnnotate={canAnnotate}
+                featuredShareId={featuredShareId}
               />
-              {annotateEnabled && (
-                <AnnotationOverlay
-                  aspect={bigAspect}
-                  canAnnotate={canAnnotate}
-                  featuredShareId={featuredShareId}
-                />
-              )}
+            )}
+          </div>
+        ) : view === 'gallery' ? (
+          galleryFits ? (
+            // The padded wrapper, rather than padding on the measured element: the
+            // initial synchronous measure in useElementSize reads
+            // getBoundingClientRect (which includes padding) while its
+            // ResizeObserver reads contentRect (which doesn't), so padding the
+            // measured box would paint one size and then jump to another.
+            <div
+              className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2"
+              style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+            >
+              <TileRows
+                tracks={gallery}
+                width={size.width}
+                height={galleryH}
+                gap={gap}
+                cols={cols}
+                aspects={aspects}
+                onAspect={reportAspect}
+              />
             </div>
           ) : (
-            focus && <FocusTile trackRef={focus} />
+            <ScrollGallery tracks={gallery} cols={cols} gap={gap} />
           )
         ) : (
-          // The padded wrapper, rather than padding on the measured element: the
-          // initial synchronous measure in useElementSize reads
-          // getBoundingClientRect (which includes padding) while its ResizeObserver
-          // reads contentRect (which doesn't), so padding the measured box would
-          // paint one size and then jump to another.
-          <div
-            className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2"
-            style={{ paddingBottom: ISLAND_BAND }}
-          >
-            <TileRows
-              tracks={shown}
-              width={size.width}
-              height={galleryH}
-              gap={gap}
-              cols={cols}
-              aspects={aspects}
-              onAspect={reportAspect}
-            />
-          </div>
+          focus && <FocusTile trackRef={focus} />
         )}
       </div>
 
-      {/* The roster strip only exists alongside a share, and only while the share
-          doesn't want the height. */}
-      {shareIsFocus && (
+      {/* The roster strip exists only alongside a share, and only while the share
+          doesn't want the height (in portrait a landscape share is width-bound, so
+          the space under it is slack rather than a budget). Self is deliberately
+          NOT in it — that's the floating card's job now. */}
+      {view === 'content' && (
         <RosterStrip
           tracks={gallery}
-          // `gallery` already drops self when hidden; the prop would put it back.
-          self={selfViewHidden ? undefined : localCam}
           open={rosterOpen}
           onToggle={() => setRosterOpen((o) => !o)}
           stageHeight={size.height}
@@ -572,20 +664,9 @@ function PagedStage({
         />
       )}
 
-      {/* Your own camera, page 0 only, and not while a share is on — during a share
-          you're the first item in the strip, and a floating card on top of it would
-          cover the roster it duplicates. */}
-      {page.kind === 'focus' && !share && localCam && focus !== localCam && !selfViewHidden && (
-        <SelfViewCard trackRef={localCam} />
-      )}
+      {showSelfCard && localCam && <SelfViewCard trackRef={localCam} lift={selfLift} />}
 
-      <PageIndicator
-        count={page.count}
-        index={page.index}
-        onPick={setStagePage}
-        speakingPage={speakerOffPage ? speakingPage : -1}
-        raised={stripShowing}
-      />
+      <StageViewSwitcher view={view} hasShare={Boolean(share)} lift={selfLift} onSelect={pickView} />
     </div>
   )
 }
@@ -690,13 +771,8 @@ function TileRows({
  * room decodes one page's worth, not 40. Screen shares + your self-view are
  * pinned to page 1; a stable order keeps tiles from reshuffling as people speak.
  */
-function GridStage({
-  tracks,
-  coarse,
-}: {
-  tracks: TrackReferenceOrPlaceholder[]
-  coarse: boolean
-}) {
+function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
+  const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
   const gridSize = useRoomStore((s) => s.gridSize)
@@ -749,8 +825,8 @@ function GridStage({
   // actually occupy (tileGrid's fitMixedRows treats it as a ceiling), so it has to
   // follow the real, narrowed width. Panel closed, both widths are equal and none
   // of this does anything.
-  const real = gridCapacity(size.width, size.height, coarse, gridSize)
-  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, coarse, gridSize)
+  const real = gridCapacity(size.width, size.height, false, gridSize)
+  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, false, gridSize)
   const cols = real.cols
   const perPage = Math.max(real.perPage, undocked.perPage)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
@@ -765,7 +841,7 @@ function GridStage({
   const paged = pageCount > 1
 
   const { aspects, report: reportAspect } = useTileAspects()
-  const gap = coarse ? 8 : 12
+  const gap = 12
 
   // If someone is speaking on a page you're not looking at, offer a one-tap jump
   // (no auto-jump — that's jarring). Manual + clearly labelled.
@@ -776,7 +852,13 @@ function GridStage({
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col p-2 sm:p-3">
+    // Both chrome bands reserved — see ISLAND_BAND and TOPSTACK_BAND. This layout
+    // had NEITHER: its top row rendered behind the call timer and its bottom row
+    // ran underneath the floating control island, at every desktop viewport.
+    <div
+      className="relative flex min-h-0 flex-1 flex-col px-2 sm:px-3"
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+    >
       <div
         ref={ref}
         className="flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2 sm:gap-3"
@@ -838,93 +920,44 @@ function GridStage({
   )
 }
 
-/**
- * Where you are in the page sequence, and one tap to anywhere in it.
- *
- * Dots up to five pages, a "3 / 8" counter past that — a dot row stops
- * communicating once it compresses, and a phone gallery at 2x2 reaches eight pages
- * at 28 people. Sits on the shelf above the control island, the same band the
- * effects carousel uses.
- *
- * Deliberately NOT hidden with the auto-hiding chrome. This is status, not control
- * — the same category as the call timer — and taking away your sense of where you
- * are in a sequence buys nothing. The dots stay tappable, so they're also the
- * keyboard/AT route through the pages that the swipe alone never was.
- */
-function PageIndicator({
-  count,
-  index,
-  onPick,
-  speakingPage,
-  raised = false,
-}: {
-  count: number
-  index: number
-  onPick: (page: number) => void
-  /** Page holding an off-screen speaker, or -1. */
-  speakingPage: number
-  /** Lift clear of an expanded roster strip, which owns the same band. */
-  raised?: boolean
-}) {
-  const style = indicatorStyle(count)
-  if (style === 'none' && speakingPage < 0) return null
-  const label = (i: number) => (i === 0 ? 'Speaker view' : `Gallery page ${i} of ${count - 1}`)
-  return (
-    <div
-      className={cn(
-        'pointer-events-none absolute inset-x-0 z-10 flex items-center justify-center gap-2',
-        'transition-[bottom] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        raised
-          ? 'bottom-[max(12rem,calc(env(safe-area-inset-bottom)+11.5rem))]'
-          : 'bottom-[max(5rem,calc(env(safe-area-inset-bottom)+4.5rem))]',
-      )}
-    >
-      {style === 'dots' && (
-        <div className="pointer-events-auto flex items-center gap-1.5 rounded-control bg-overlay px-2.5 py-2 backdrop-blur">
-          {Array.from({ length: count }, (_, i) => (
-            <button
-              key={i}
-              type="button"
-              aria-label={label(i)}
-              aria-current={i === index}
-              onClick={() => onPick(i)}
-              className={cn(
-                'h-1.5 rounded-full transition-[width,background-color] duration-[var(--dur-fast)]',
-                i === index ? 'w-4 bg-white' : 'w-1.5 bg-white/40',
-              )}
-            />
-          ))}
-        </div>
-      )}
-      {style === 'counter' && (
-        <span className="pointer-events-auto rounded-control bg-overlay px-3 py-1 text-sm font-medium tabular-nums text-white backdrop-blur">
-          {index === 0 ? 'Speaker' : `${index} / ${count - 1}`}
-        </span>
-      )}
-      {speakingPage >= 0 && (
-        <button
-          type="button"
-          onClick={() => onPick(speakingPage)}
-          className="pointer-events-auto flex items-center gap-1.5 rounded-control bg-accent px-3 py-1 text-sm font-medium text-accent-ink"
-        >
-          <SpeakingBars /> Speaking
-        </button>
-      )}
-    </div>
-  )
-}
 
-/**
- * Vertical band the floating control island occupies: its 44px controls plus the
- * island's own padding (60px total) plus its 16px inset from the bottom.
+/*
+ * How much of the bottom edge the control island claims is `useIslandBand()` — see
+ * `lib/chromeBands.ts` for why it's computed per device rather than the flat `76`
+ * that used to live here.
  *
- * Tiled pages reserve it; the focus page deliberately does NOT — a single feed or a
+ * TILED pages reserve it; the focus page deliberately does NOT — a single feed or a
  * shared screen is full-bleed with the bar on glass, the way a video player works.
  * The distinction matters because a tile's bottom edge carries its name pill, and
  * `SoloStage` was the only layout that had ever reserved anything (`pb-24`), which
  * is how the speaker filmstrip ended up with 60 of its 96px underneath the bar.
  */
-const ISLAND_BAND = 76
+
+/** Breathing room between a tiled layout's last row and the island. */
+const TILED_GUTTER = 12
+
+/** Gutter under the floating self-view and the view chip, so they sit just above the
+ *  bar rather than flush against it. */
+const SELF_CARD_GUTTER = 16
+
+/**
+ * Vertical band TopStack's first row occupies: its 16px inset plus a 44px pill plus
+ * a gutter.
+ *
+ * The mirror image of ISLAND_BAND, and it exists for the same reason. The call
+ * timer is always up there, centred, and any layout whose content reaches the top
+ * edge puts something underneath it: the speaker filmstrip rendered its middle
+ * thumbnails behind the timer, and the desktop gallery's top row did the same. A
+ * TILED layout reserves this band. A single full-bleed feed or a shared screen
+ * deliberately does not — chrome on glass over one big video is the video-player
+ * convention, and that content is letterboxed anyway, so the pill lands on a black
+ * band rather than on anyone's face.
+ *
+ * Only the FIRST row is reserved. TopStack's banners (reconnecting, waiting room)
+ * are transient and can stack; reserving for every combination would give every
+ * layout a permanent empty third. They overlay, as overlays do.
+ */
+const TOPSTACK_BAND = 68
 
 /** Strip height on touch — a 3:4 thumbnail wide enough to recognise a face. */
 const STRIP_TILE_H = 80
@@ -1171,32 +1204,159 @@ function OverflowTile({ count, onClick }: { count: number; onClick: () => void }
 }
 
 /**
- * Screen-share presentation layout (Meet/Teams model). The featured tile — the share, or
- * a person you spotlighted — fills a big region sized ADAPTIVELY to its content aspect;
- * everyone else tiles in a segmented grid to the side (wide stage) or below (portrait).
- * Video-on tiles come first; when they overflow, a "+N view all" tile opens People and a
- * compact pager cycles the rest. Double-tap / long-press (or the corner button):
- * spotlight a grid tile, restore the share, or demote the big share back to the grid.
+ * A filmstrip of thumbnails — the shared rendering half of speaker and content
+ * view. Geometry (side, box, tile size, how many fit) is decided by lib/shareLayout
+ * and handed in; this only lays the tiles out and puts the "+N" overflow in the
+ * last slot when there are more people than slots.
+ *
+ * One component rather than two so the two views can't drift on tile shape, gap or
+ * overflow behaviour — the same reason TileRows is shared by the galleries.
  */
-function PresentationStage({
+function Filmstrip({
+  layout,
+  tracks,
+  gap,
+  onOverflow,
+  tileProps,
+}: {
+  layout: StripLayout
+  /** Already ordered and already sliced to `layout.capacity` by the caller. */
+  tracks: TrackReferenceOrPlaceholder[]
+  gap: number
+  /** How many people didn't fit; renders the "+N" tile when > 0. */
+  onOverflow: { count: number; onClick: () => void }
+  tileProps?: (t: TrackReferenceOrPlaceholder) => TileOverrides
+}) {
+  if (layout.capacity <= 0) return null
+  const vertical = layout.side === 'right'
+  return (
+    <div
+      // Scrolls along its own axis, and the stage's gesture layer must not read
+      // that as a stage gesture.
+      data-no-stage-gesture
+      className={cn(
+        'absolute flex overflow-hidden',
+        vertical ? 'flex-col' : 'flex-row justify-center',
+      )}
+      style={{ left: layout.strip.x, top: layout.strip.y, width: layout.strip.w, height: layout.strip.h, gap }}
+    >
+      {tracks.map((t) => (
+        <div key={tileKey(t)} className="shrink-0" style={{ width: layout.tile.w, height: layout.tile.h }}>
+          <Tile trackRef={t} fill boxAspect={layout.tile.w / layout.tile.h} {...tileProps?.(t)} />
+        </div>
+      ))}
+      {onOverflow.count > 0 && (
+        <div className="shrink-0" style={{ width: layout.tile.w, height: layout.tile.h }}>
+          <OverflowTile count={onOverflow.count} onClick={onOverflow.onClick} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Speaker view (desktop) — one large feed, everyone else along the TOP.
+ *
+ * The strip is at the top and that is the load-bearing part. It used to be a
+ * `h-24` row at the bottom of a column with `pb-[5.5rem]` reserved under it, and in
+ * a three-person call it still came out with more than half its height underneath
+ * the floating control island: the reserved band and the strip height were picked
+ * independently, by different people, and nothing ever checked they added up. A
+ * strip along the top cannot collide with a bar along the bottom at any viewport,
+ * with no arithmetic to get wrong. It's also where Teams puts it.
+ *
+ * You are IN the strip here, like everyone else — there is no floating self-view on
+ * desktop any more (see SelfViewCard). The old layout excluded you from the strip
+ * and then floated a second copy of you over the stage instead.
+ */
+function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
+  const islandBandPx = useIslandBand(TILED_GUTTER)
+  const { ref, size } = useElementSize<HTMLDivElement>()
+  const pinned = useRoomStore((s) => s.pinned)
+  const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
+  const setPanel = useRoomStore((s) => s.setPanel)
+
+  const localCam = visible.find(isLocalCam)
+  const others = visible.filter((t) => !isLocalCam(t))
+  // Pin wins, then the active speaker. Falling back to your own camera keeps the
+  // big region filled in a call where nobody else has published one yet.
+  const focus = focusTrack(others, pinned) ?? localCam
+
+  let rest = visible.filter((t) => t !== focus)
+  if (selfViewHidden) rest = rest.filter((t) => !isLocalCam(t))
+  const ordered = orderUsers(rest, hasLiveVideo, tileKey)
+
+  const gap = 12
+  const L = speakerLayout(size.width, size.height, ordered.length, gap)
+  const { shown, overflow } = splitVisible(ordered, L.capacity)
+
+  return (
+    // Both bands reserved. The bottom one keeps the big tile off the control
+    // island; the top one keeps the FILMSTRIP off the call timer, which is centred
+    // up there and was landing squarely on the middle thumbnails.
+    <div
+      className="relative flex min-h-0 flex-1 px-2 sm:px-3"
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+    >
+      <div ref={ref} className="relative min-h-0 flex-1">
+        {size.width > 2 && size.height > 2 && (
+          <>
+            <Filmstrip
+              layout={L}
+              tracks={shown}
+              gap={gap}
+              onOverflow={{ count: overflow, onClick: () => setPanel('people') }}
+            />
+            <div
+              className="absolute"
+              style={{ left: L.big.x, top: L.big.y, width: L.big.w, height: L.big.h }}
+            >
+              {focus && <FocusTile trackRef={focus} />}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Content view — a shared screen owns the stage (Teams' content layout).
+ *
+ * The share takes a region of fixed shape and everyone else rides a filmstrip
+ * beside it: a right-hand rail on a landscape stage, a bottom strip on a portrait
+ * one. lib/shareLayout has the argument for a FIXED strip in full; the short version
+ * is that the adaptive split this replaced sized the big region to the content's own
+ * aspect and clamped it to 85% of the stage, so a 16:9 share on a 16:9 monitor got
+ * letterboxed to make room for a 15% band of tiles too short to recognise anyone in.
+ * Both regions lost, and which one lost more depended on what the presenter happened
+ * to have on screen.
+ *
+ * A right rail costs the share almost nothing, which is the other half of the
+ * decision: a landscape share on a landscape stage is HEIGHT-bound, so width is the
+ * slack. (On a portrait stage it's the reverse, and the strip goes to the bottom —
+ * the same observation `rosterFits` makes for the phone.)
+ *
+ * Any tile can take the big slot: clicking a person spotlights them and the share
+ * moves into the strip.
+ */
+function ContentStage({
   visible,
-  coarse,
   share,
   featuredSid,
 }: {
   visible: TrackReferenceOrPlaceholder[]
-  coarse: boolean
   share: TrackReferenceOrPlaceholder
   /** Track SID of the featured share — presentation state (demote) is keyed on it. */
   featuredSid: string
 }) {
+  const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const setSpotlight = useRoomStore((s) => s.setSpotlight)
   const toggleShareDemoted = useRoomStore((s) => s.toggleShareDemoted)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const setPanel = useRoomStore((s) => s.setPanel)
-  const [page, setPage] = useState(0)
   const [bigAspect, setBigAspect] = useState(16 / 9)
   const bigRef = useRef<HTMLDivElement>(null)
   // Resolved once here and passed down. useSharePresence is backed by useTracks,
@@ -1208,52 +1368,43 @@ function PresentationStage({
   const big = visible.find((t) => tileKey(t) === spotlightKey) ?? share
   const bigIsShare = isScreenShare(big)
 
-  // Grid = everyone except the big tile; drop self if hidden (unless it'd empty the grid).
+  // Strip = everyone except the big tile; drop self if hidden (unless it'd empty it).
   let rest = visible.filter((t) => t !== big)
   if (selfViewHidden && rest.some((t) => !isLocalCam(t))) rest = rest.filter((t) => !isLocalCam(t))
   const ordered = orderUsers(rest, hasLiveVideo, tileKey)
 
-  const gap = coarse ? 8 : 12
+  const gap = 12
   const measured = size.width > 2 && size.height > 2
-  const L = presentationLayout(size.width, size.height, ordered.length, bucketAspect(bigAspect), gap)
-  // The same layout measured as if the panel weren't docked — capacity only. The
-  // share and the tiles are still positioned from `L`, i.e. the real width.
-  const capWidth = useCapacityWidth(size.width)
-  const Lcap =
-    capWidth === size.width
-      ? L
-      : presentationLayout(capWidth, size.height, ordered.length, bucketAspect(bigAspect), gap)
-  // Greater of the docked and undocked fits — see the gallery above. The share and
-  // the tiles are still positioned from `L`, i.e. the real width.
+  // No undocked-width correction here, unlike the galleries. A right-hand rail's
+  // capacity is decided by HEIGHT, which docking the chat panel doesn't touch — so
+  // the "opening chat pages people out" failure the galleries have to defend
+  // against cannot arise in the layout that this view actually uses on a desktop.
+  // The rail is inset from the top for the participants chip, which lives in that
+  // same corner and was sitting on the first thumbnail. The SHARE keeps its full
+  // height — that is the entire argument for a right-hand rail, so paying for the
+  // chip out of the share's height instead would give the rail back with one hand
+  // and take the content with the other.
+  const L = contentLayout(size.width, size.height, ordered.length, gap, TOPSTACK_BAND)
+  const { shown, overflow } = splitVisible(ordered, L.capacity)
 
-  // Paging + overflow inside the grid region. When tiles exceed capacity, reserve the
-  // last slot for the "+N view all" tile; a compact pager cycles the pages.
-  const cap = measured
-    ? Math.max(
-        userRegionCapacity(L.grid.w, L.grid.h, coarse),
-        userRegionCapacity(Lcap.grid.w, Lcap.grid.h, coarse),
-      )
-    : ordered.length
-  const overflowing = measured && ordered.length > cap
-  const perPage = overflowing ? Math.max(1, cap - 1) : Math.max(1, ordered.length)
-  const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
-  const current = Math.min(page, pageCount - 1)
-  useEffect(() => {
-    if (page !== current) setPage(current)
-  }, [page, current])
-  const pageItems = ordered.slice(current * perPage, current * perPage + perPage)
-
-  // Pack the page's tiles (+ the overflow slot) into justified rows that fill the region.
-  const cellItems: Array<{ kind: 'tile'; t: TrackReferenceOrPlaceholder } | { kind: 'overflow' }> = [
-    ...pageItems.map((t) => ({ kind: 'tile' as const, t })),
-    ...(overflowing ? [{ kind: 'overflow' as const }] : []),
-  ]
-  const rows = measured ? fitMixedRows(L.grid.w, L.grid.h, cellItems.map(() => 16 / 9), gap) : null
-  let walk = 0
-  const rowCells = rows ? rows.map((row) => row.map((cell) => ({ ...cell, item: cellItems[walk++] }))) : null
+  /** Tapping a person in the strip spotlights them; tapping the share re-features it. */
+  const stripProps = (t: TrackReferenceOrPlaceholder): TileOverrides =>
+    isScreenShare(t)
+      ? {
+          onActivate: () => setSpotlight(null),
+          action: { icon: <ScreenShareIcon />, label: 'Show shared screen', onClick: () => setSpotlight(null) },
+        }
+      : {
+          onActivate: () => setSpotlight(tileKey(t)),
+          action: {
+            icon: <SpotlightIcon />,
+            label: `Spotlight ${tileName(t)}`,
+            onClick: () => setSpotlight(tileKey(t)),
+          },
+        }
 
   return (
-    <div className="relative flex min-h-0 flex-1 p-2 sm:p-3">
+    <div className="relative flex min-h-0 flex-1 p-2 sm:p-3" style={{ paddingBottom: islandBandPx }}>
       <div ref={ref} className="relative min-h-0 flex-1">
         {measured && (
           <>
@@ -1293,69 +1444,13 @@ function PresentationStage({
               </div>
             </div>
 
-            {/* Grid region — everyone else, filling the space; tap a tile to spotlight it. */}
-            <div
-              className="absolute flex flex-col content-center items-center justify-center"
-              style={{ left: L.grid.x, top: L.grid.y, width: L.grid.w, height: L.grid.h, gap }}
-            >
-              {rowCells?.map((row, ri) => (
-                <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
-                  {row.map(({ w, h, item }, ci) =>
-                    item?.kind === 'overflow' ? (
-                      <div key="overflow" className="min-h-0" style={{ width: w, height: h }}>
-                        <OverflowTile count={ordered.length - perPage} onClick={() => setPanel('people')} />
-                      </div>
-                    ) : item ? (
-                      <div key={tileKey(item.t)} className="min-h-0" style={{ width: w, height: h }}>
-                        <Tile
-                          trackRef={item.t}
-                          fill
-                          onActivate={() =>
-                            isScreenShare(item.t) ? setSpotlight(null) : setSpotlight(tileKey(item.t))
-                          }
-                          action={
-                            isScreenShare(item.t)
-                              ? { icon: <ScreenShareIcon />, label: 'Show shared screen', onClick: () => setSpotlight(null) }
-                              : {
-                                  icon: <SpotlightIcon />,
-                                  label: `Spotlight ${tileName(item.t)}`,
-                                  onClick: () => setSpotlight(tileKey(item.t)),
-                                }
-                          }
-                        />
-                      </div>
-                    ) : (
-                      <div key={`empty-${ri}-${ci}`} style={{ width: w, height: h }} />
-                    ),
-                  )}
-                </div>
-              ))}
-
-              {/* Compact pager for the grid region (Both: pager + the People overflow tile). */}
-              {pageCount > 1 && (
-                <div className="mt-1 flex shrink-0 items-center gap-2">
-                  <IconButton
-                    size="sm"
-                    label="Previous page"
-                    icon={<ChevronLeftIcon />}
-                    disabled={current === 0}
-                    className="bg-overlay text-white hover:bg-overlay"
-                    onClick={() => setPage((prev) => Math.max(0, prev - 1))}
-                  />
-                  <span className="rounded-control bg-overlay px-2 py-0.5 text-xs font-medium tabular-nums text-white">
-                    {current + 1} / {pageCount}
-                  </span>
-                  <IconButton
-                    size="sm"
-                    label="Next page"
-                    icon={<ChevronRightIcon />}
-                    disabled={current >= pageCount - 1}
-                    className="bg-overlay text-white hover:bg-overlay"
-                    onClick={() => setPage((prev) => Math.min(pageCount - 1, prev + 1))}
-                  />
-                </div>
-              )}
-            </div>
+            <Filmstrip
+              layout={L}
+              tracks={shown}
+              gap={gap}
+              onOverflow={{ count: overflow, onClick: () => setPanel('people') }}
+              tileProps={stripProps}
+            />
           </>
         )}
       </div>
@@ -1426,42 +1521,84 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
 }
 
 /**
- * Floating local camera, shown on the focus page. Starts bottom-right and snaps to
+ * Your own camera, floating over the stage. Starts bottom-right and snaps to
  * whichever corner you drag it nearest (Meet / Teams / Discord).
+ *
+ * TOUCH-ONLY, and big — those two decisions are the same decision.
+ *
+ * On a phone this is the only place you ever see yourself: the gallery deliberately
+ * has no cell for you (a cell AND a card shows you to yourself twice, and the cell
+ * is the one that costs somebody else their tile). So the card is not a courtesy
+ * thumbnail, it is your entire self-view, and it was 96px wide — too small to tell
+ * whether you were in frame, which is the one question a self-view exists to answer.
+ * It is now a third of the viewport, and a tap opens it to ~62% for a proper look
+ * before it goes back to staying out of the way.
+ *
+ * Desktop doesn't render it at all any more. Every desktop layout already carries
+ * you as a real tile — a gallery cell, or a filmstrip thumbnail in speaker/content
+ * view — so the card was a second, smaller copy of a tile you already had, parked on
+ * top of the stage. That is not what Teams does on a wide screen and it isn't what
+ * the space calls for.
  *
  * `reserveBottom` keeps the control island's band out of the draggable area, so the
  * card can't be parked where it's neither visible nor reachable — 76px is the
  * island's 60px height plus its 16px inset. The CSS anchor below matches, so the
  * un-dragged position and the snapped bottom-right position are the same place.
  */
-function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
-  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: 76 })
-  // Until dragged, the card keeps its CSS anchor — dodge the docked side panel on
-  // desktop so it never hides behind or overlaps the chat/people panel. These are
-  // the PANEL's own widths plus a gutter, not the stage's reflow inset: the card
-  // sits in the bar's band, which the panel now stops above below `xl`, but it is
-  // tall enough to reach back up into the panel at every width. Dragging takes
-  // over via inline style.
-  const panel = useRoomStore((s) => s.panel)
+function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceholder; lift?: number }) {
+  const islandBandPx = useIslandBand()
+  const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  // Extra clearance for whatever else is claiming the band above the island (the
+  // roster strip, during a share). It moves the CSS anchor and the drag floor
+  // together — those two disagreeing is how the card ended up parked underneath
+  // the control island in the first place.
+  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: islandBandPx + lift })
+  const [expanded, setExpanded] = useState(false)
+  // Tap to expand, drag to move — one pointer, two gestures, so the tap has to be
+  // told apart from the drag. useDraggable's own 6px threshold decides whether a
+  // gesture MOVED the card; this only has to not fire when it did, which the same
+  // threshold answers. Measured here rather than exposed from the hook because the
+  // hook's `moved` flag is consumed (and reset) by its own pointerup.
+  const down = useRef<{ x: number; y: number } | null>(null)
+
   return (
     <div
       role="group"
       aria-label="Your video — drag to reposition"
       data-no-stage-gesture
-      style={style}
+      style={{
+        bottom: selfCardBottom + lift,
+        ...style,
+      }}
       {...handlers}
+      onPointerDown={(e) => {
+        down.current = { x: e.clientX, y: e.clientY }
+        handlers.onPointerDown(e)
+      }}
+      onPointerUp={(e) => {
+        const d = down.current
+        down.current = null
+        handlers.onPointerUp(e)
+        if (d && Math.hypot(e.clientX - d.x, e.clientY - d.y) <= DRAG_SLOP) setExpanded((v) => !v)
+      }}
       className={cn(
-        'fixed bottom-[max(5.75rem,calc(env(safe-area-inset-bottom)+5.25rem))] right-4 z-20',
+        'fixed right-4 z-20',
         'cursor-grab touch-none select-none active:cursor-grabbing',
-        'transition-[right] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        panel && 'md:right-[20.5rem] lg:right-[22.5rem] xl:right-[25.5rem]',
-        // Touch: a tall portrait card (Discord/Snapchat self-view). Desktop:
-        // a wider landscape thumbnail.
-        'w-24 aspect-[3/4] pointer-fine:w-52 pointer-fine:aspect-video',
-        'overflow-hidden rounded-tile shadow-raised ring-1 ring-white/10',
+        'transition-[right,width] duration-[var(--dur-base)] ease-[var(--ease-island)]',
+        // A tall portrait card (Discord/Snapchat self-view), sized off the VIEWPORT
+        // so it reads the same on a 320px phone and a 430px one. Expanded is a look
+        // at yourself; collapsed is a glance that leaves the call visible behind it.
+        'aspect-[3/4] overflow-hidden rounded-tile shadow-raised ring-1 ring-white/10',
+        expanded ? 'w-[62vw] max-w-[20rem]' : 'w-[33vw] max-w-[11rem]',
       )}
     >
+      {/* No `boxAspect`: this crops to fill rather than letterboxing. A phone
+          camera is already 3:4 so it makes no difference there, but a tablet held
+          in landscape would otherwise show your face in a small band between two
+          black bars — and in a card this size, bars cost more than a crop does
+          (the rule Tile documents for thumbnails). */}
       <Tile trackRef={trackRef} fill />
+      <span className="sr-only">{expanded ? 'Tap to shrink your video' : 'Tap to enlarge your video'}</span>
     </div>
   )
 }

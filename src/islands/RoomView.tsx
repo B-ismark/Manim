@@ -42,7 +42,8 @@ import { useAudioSession } from '@/features/calls/useAudioSession'
 import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
-import { parseRoomHash } from '@/lib/roomLink'
+import { parseRoomHash, roomTo } from '@/lib/roomLink'
+import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
@@ -73,13 +74,15 @@ function overlayOpen(): boolean {
 /**
  * Mobile gesture + auto-hide-chrome controller for the stage.
  * - Tap empty stage → toggle the control bar (FaceTime/Zoom/Telegram pattern).
- * - Horizontal swipe → move along the stage's page sequence (Zoom model): page 0
- *   is the focus view, 1..n are gallery pages. This used to toggle grid ↔ speaker,
- *   which took the one gesture a phone user reaches for to turn a page — so the
- *   gallery pager had to fall back to two arrow buttons floating in the middle of
- *   the video. Speaker view being page 0 makes the swipe do both jobs at once:
- *   there is no mode to leave, only a page.
  * - Controls auto-hide after 4s on touch devices; any tap brings them back.
+ *
+ * There is deliberately NO swipe gesture here any more. It used to step through the
+ * stage's page sequence, which was also how you changed view — and that was the
+ * problem: the only route between speaker and gallery was a gesture nothing
+ * advertised, discovered by accident and un-done by guessing. The stage now carries
+ * a named view chip (Stage's StageViewSwitcher). Re-adding a swipe on top of it
+ * would also have to answer what it means during a screen share, and fight the
+ * gallery's own scroll — neither is worth it for an accelerator nobody asked for.
  * - The island NEVER auto-hides while a layer it anchors is open (see overlayOpen),
  *   nor within 4s of the user touching it.
  * Desktop keeps controls always visible (hover model) and ignores gestures.
@@ -88,7 +91,6 @@ function useStageChrome() {
   // Touch-UX (auto-hide / gestures) keys off pointer type, matching the compact
   // bar and portrait tiles — so wide foldables behave consistently.
   const mobile = useMemo(() => isTouch(), [])
-  const stepStagePage = useRoomStore((s) => s.stepStagePage)
   const [visible, setVisible] = useState(true)
   const hideTimer = useRef<number | undefined>(undefined)
   const held = useRef(false)
@@ -153,17 +155,14 @@ function useStageChrome() {
       const dx = e.clientX - d.x
       const dy = e.clientY - d.y
       const dt = e.timeStamp - d.t
-      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        // Swipe left (negative dx) advances, matching every paged surface on a
-        // phone. Stage clamps the far end, so an overshoot at either edge is a
-        // no-op rather than something to swipe back out of.
-        stepStagePage(dx < 0 ? 1 : -1)
-      } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
-        setVisible((v) => !v) // tap toggles chrome
+      // A tap, and nothing else. The distance test also keeps a scroll of the
+      // gallery — or a drag of the self-view — from toggling the chrome on release.
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
+        setVisible((v) => !v)
         scheduleHide()
       }
     },
-    [mobile, stepStagePage, scheduleHide],
+    [mobile, scheduleHide],
   )
 
   return { chromeVisible: visible, show, setChromeHold: setHold, stageHandlers: { onPointerDown, onPointerUp } }
@@ -224,7 +223,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // the store: the E2EE key keys the media, the join secret is re-advertised to the
   // user's own other devices for quick-join. A strong random key shared only via
   // the link — no typed passphrase.
-  const linkSecrets = useMemo(() => parseRoomHash(window.location.hash), [])
+  // Resolved the same way RoomRoute resolves it — the link's fragment if it has
+  // one, this browser's memory of that link if it doesn't (lib/roomKeys). Reading
+  // the raw fragment here meant that in a tab whose fragment had been eaten (the
+  // sign-in round trip), the QUICK-JOIN advertisement to your other devices went
+  // out with no secret in it, so the phone you picked it up on couldn't get in
+  // either — the loss propagated device to device.
+  const linkSecrets = useMemo(() => resolveRoomSecrets(room.name, parseRoomHash(window.location.hash)), [room.name])
   const e2eePassphrase = linkSecrets.e2ee
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   // Chat state is owned here (persists across the side panel opening/closing —
@@ -403,10 +408,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       duration: 8000,
       action: {
         label: 'Rejoin',
-        onClick: () => navigate(`/r/${encodeURIComponent(slug)}`, { state: { autojoin: true } }),
+        // WITH the link secrets. Rejoining to a bare `/r/<slug>` dropped the join
+        // secret, so undoing an accidental leave failed the server's link gate and
+        // told you the room needed an invite link you were holding a second ago.
+        onClick: () => navigate(roomTo(slug, linkSecrets), { state: { autojoin: true } }),
       },
     })
-  }, [doLeave, navigate, room.name])
+  }, [doLeave, navigate, room.name, linkSecrets])
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.

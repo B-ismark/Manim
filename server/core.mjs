@@ -437,7 +437,19 @@ export async function handleKnock(env, body) {
   if (flags.secretHash && !isHost && !alreadyIn && !wasApproved) {
     const ok = secret && (await sha256Hex(secret)) === flags.secretHash
     if (!ok) {
-      return { status: 403, body: { error: 'This room needs its invite link — open the full link you were sent.' } }
+      // `code` so the client can tell this apart from every other 403 and clear a
+      // STALE remembered secret (see src/lib/roomKeys) instead of retrying with it
+      // forever. The wording names the failure the user can actually act on: the
+      // link they opened lost its #fragment somewhere, so the one in their messages
+      // is the one to re-open.
+      return {
+        status: 403,
+        body: {
+          error:
+            'This room needs its invite link. Open the original link again (in full) — a shortened or re-typed address drops the part that lets you in.',
+          code: 'need_link',
+        },
+      }
     }
   }
 
