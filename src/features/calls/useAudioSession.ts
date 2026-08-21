@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useConnectionState, useRoomContext } from '@livekit/components-react'
 import { ConnectionState, RoomEvent } from 'livekit-client'
+import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { useRoomStore } from '@/store/useRoomStore'
 import { addBreadcrumb } from '@/lib/report'
 import { isTouch } from '@/lib/device'
@@ -55,9 +56,17 @@ export function useAudioSession() {
   // every resume bails, so the session is never started at all. Clearing
   // companion has to be what starts it.
   const companion = useRoomStore((s) => s.companion)
+  const announce = useAnnounce()
   /** False while the browser is refusing to play call audio. Only a real user
    *  gesture clears it, so this is the one part that has to be asked for. */
   const [canPlayback, setCanPlayback] = useState(true)
+  // Latches on the first connect. The session-holding parts below key off THIS,
+  // not `connected`: a reconnect blip is precisely when you want the OS to still
+  // think we're playing, so tearing the keepalive down for it is backwards.
+  const [inCall, setInCall] = useState(false)
+  useEffect(() => {
+    if (connected) setInCall(true)
+  }, [connected])
 
   /**
    * Bring audio back. Safe to call repeatedly; every step no-ops when the thing
@@ -124,18 +133,28 @@ export function useAudioSession() {
   }, [connected, resume])
 
   // The browser granting or revoking playback. Synced on mount too: the status
-  // can already have flipped before we subscribed.
+  // can already have flipped before we subscribed. Announced on the way DOWN
+  // only — the banner it drives carries no live region of its own, so a screen
+  // reader hears this once rather than once per surface.
+  const wasPlayable = useRef(true)
   useEffect(() => {
-    const sync = () => setCanPlayback(room.canPlaybackAudio)
+    const sync = () => {
+      const can = room.canPlaybackAudio
+      if (wasPlayable.current && !can) {
+        announce('Call audio is paused. Turn sound back on to resume.', 'assertive')
+      }
+      wasPlayable.current = can
+      setCanPlayback(can)
+    }
     sync()
     room.on(RoomEvent.AudioPlaybackStatusChanged, sync)
     return () => {
       room.off(RoomEvent.AudioPlaybackStatusChanged, sync)
     }
-  }, [room])
+  }, [room, announce])
 
-  useMediaSessionActive(connected, room.name)
-  useAudioKeepalive(connected)
+  useMediaSessionActive(inCall, room.name)
+  useAudioKeepalive(inCall)
 
   return { canPlayback, resume }
 }
@@ -153,10 +172,10 @@ export type AudioSession = ReturnType<typeof useAudioSession>
  * `playbackState = 'playing'` is the cheapest thing that makes a backgrounded
  * call look like what it is.
  */
-function useMediaSessionActive(connected: boolean, roomName: string) {
+function useMediaSessionActive(inCall: boolean, roomName: string) {
   useEffect(() => {
     const ms = navigator.mediaSession
-    if (!ms || !connected) return
+    if (!ms || !inCall) return
     const prevState = ms.playbackState
     try {
       ms.metadata = new MediaMetadata({ title: 'Call', artist: roomName || 'Manim' })
@@ -172,7 +191,7 @@ function useMediaSessionActive(connected: boolean, roomName: string) {
         /* ignore */
       }
     }
-  }, [connected, roomName])
+  }, [inCall, roomName])
 }
 
 /**
@@ -194,9 +213,9 @@ function useMediaSessionActive(connected: boolean, roomName: string) {
  * Built from an oscillator at zero gain rather than an empty track, so the
  * context has a real, continuously-producing source to stay `running` for.
  */
-function useAudioKeepalive(connected: boolean) {
+function useAudioKeepalive(inCall: boolean) {
   useEffect(() => {
-    if (!connected || !isTouch()) return
+    if (!inCall || !isTouch()) return
     const Ctor =
       window.AudioContext ??
       (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -243,5 +262,5 @@ function useAudioKeepalive(connected: boolean) {
       el.remove()
       void ctx.close().catch(() => {})
     }
-  }, [connected])
+  }, [inCall])
 }

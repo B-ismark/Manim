@@ -164,7 +164,7 @@ describe('recoverMicrophone', () => {
     expect(track.restartTrack).not.toHaveBeenCalled()
   })
 
-  it('leaves a healthy track alone apart from re-asserting the DSP', async () => {
+  it('leaves a healthy track completely alone', async () => {
     devices(['builtin', 'MacBook Pro Microphone'])
     const track = fakeTrack()
     const room = fakeRoom({ track })
@@ -173,7 +173,10 @@ describe('recoverMicrophone', () => {
 
     expect(track.restartTrack).not.toHaveBeenCalled()
     expect(track.resumeUpstream).not.toHaveBeenCalled()
-    expect(track.mediaStreamTrack.applyConstraints).toHaveBeenCalledWith(AUDIO_CAPTURE_DEFAULTS)
+    // Constraint state has ONE owner (useNoiseFilter, on TrackEvent.Restarted).
+    // Writing them here too would force the browser noise filter back on top of
+    // Krisp, which deliberately wants it off.
+    expect(track.mediaStreamTrack.applyConstraints).not.toHaveBeenCalled()
   })
 
   it('only unmutes when the caller says the mic was live', async () => {

@@ -24,11 +24,13 @@ import { addBreadcrumb } from '@/lib/report'
  * actually present — **non-exact**, so the browser may fall back rather than
  * throw — then make the track live again if the caller says it was.
  *
- * It also re-asserts the capture defaults, which is not cosmetic. `restart()`
+ * It re-acquires with the full capture set, which is not cosmetic. `restart()`
  * REPLACES the constraint set, and LiveKit's own rescue passes only
  * `{ deviceId: 'default' }` — so echo cancellation, noise suppression and
  * auto-gain were silently dropped for the remainder of any call that survived a
- * device loss. That is what turns a recovered call into an echo chamber.
+ * device loss. That is what turns a recovered call into an echo chamber. Keeping
+ * them asserted AFTER any restart is useNoiseFilter's job (it owns the
+ * noiseSuppression half, which depends on whether Krisp is active).
  */
 
 /** The browser-DSP capture set `roomOptions()` asks for at join, re-asserted on
@@ -155,13 +157,11 @@ async function run(room: Room, intent: { restoreLive: boolean }): Promise<MicRec
     return { ok: false, reason: (await micBlocked()) ? 'blocked' : 'acquire-failed' }
   }
 
-  // Whatever route got us here, put the DSP back. Cheap on a live track — no
-  // second getUserMedia — and Safari may simply reject it, which is fine.
-  const live = micTrack(room)?.mediaStreamTrack
-  if (live?.readyState === 'live') {
-    await live.applyConstraints(AUDIO_CAPTURE_DEFAULTS).catch(() => {})
-  }
-
+  // Deliberately does NOT re-assert the DSP here. useNoiseFilter listens for
+  // TrackEvent.Restarted and re-applies the full set — including whether
+  // noiseSuppression should be OFF because Krisp is carrying it — so a second
+  // writer here would fight it and force the browser filter back on top of the
+  // AI one. One owner for constraint state; this function's job is the device.
   return { ok: true, label: target.label || 'your microphone' }
 }
 
