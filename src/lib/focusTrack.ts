@@ -103,6 +103,47 @@ export function focusTrack(
   return speaking ?? tracks[0]
 }
 
+/**
+ * Which track the stage's BIG region shows — the one definition, so the desktop
+ * speaker stage and the touch stage can't answer it differently.
+ *
+ * An explicit pin wins even when it's YOU. Both stages used to call
+ * `focusTrack(others, pinned)` with their own camera filtered out, and that filter
+ * is right for the AUTOMATIC picks — being the loudest voice in the room, or simply
+ * first in the list, is no reason to full-bleed you to yourself. It was never meant
+ * to make you unpinnable, but it did: because you weren't in the list, pinning
+ * yourself fell straight through to the active speaker. `togglePin` then switched
+ * the layout to speaker, so asking to watch yourself put SOMEBODY ELSE on the whole
+ * screen while your own tile carried the "pinned" label.
+ *
+ * That was reachable before by double-clicking your desktop grid tile or
+ * long-pressing the touch self-view card; it became the obvious thing to do when
+ * the touch gallery started giving you a cell, since "double-tap a video to pin" is
+ * exactly what the coachmark teaches.
+ *
+ * `selfViewHidden` outranks a pin on yourself, and has to: the two can only be set
+ * together in one order (pin, then hide — with yourself hidden there is no tile of
+ * yours left to pin from), and a setting called "hide self view" that leaves you
+ * full-bleed is a setting that looks broken. The pin is remembered, not discarded,
+ * so unhiding brings you back.
+ *
+ * The `?? localCam` tail is the other half, and it ignores `selfViewHidden` on
+ * purpose: it keeps the big region filled in a call where nobody else has published
+ * a camera, the same way the desktop grid keeps your tile when it is the only one.
+ * Seeing yourself beats an empty stage.
+ */
+export function stageFocus(
+  visible: TrackReferenceOrPlaceholder[],
+  pinned: string | null,
+  selfViewHidden = false,
+): TrackReferenceOrPlaceholder | undefined {
+  const localCam = visible.find(isLocalCam)
+  if (localCam && pinned && pinned === localCam.participant.identity && !selfViewHidden) {
+    return localCam
+  }
+  return focusTrack(visible.filter((t) => !isLocalCam(t)), pinned) ?? localCam
+}
+
 /** Whether a track ref currently has displayable video (mute + subscription aware). */
 export function hasVideo(t: TrackReferenceOrPlaceholder): boolean {
   const pub = t.publication
