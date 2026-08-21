@@ -8,6 +8,8 @@ import {
   newParticipant,
   openEndCallMenu,
   activate,
+  isTouch,
+  selectStageView,
 } from './helpers'
 
 /**
@@ -52,6 +54,11 @@ for (const scheme of ['light', 'dark'] as const) {
       const room = uniqueRoom()
       await join(page, room, 'Ada')
       const peer = await newParticipant(browser, room, 'Grace')
+      // Say "grid" and mean it on BOTH pointer types. Desktop opens in grid, but a
+      // phone opens in SPEAKER, so on touch this scanned one full-bleed feed and a
+      // floating card — never the tiled gallery, which is a different set of
+      // elements entirely and now carries the local participant's own cell.
+      if (await isTouch(page)) await selectStageView(page, 'Gallery')
       await openChat(page)
       const v = await axeViolations(page)
       await peer.context.close()

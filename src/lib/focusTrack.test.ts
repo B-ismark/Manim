@@ -1,7 +1,15 @@
 import { describe, it, expect } from 'vitest'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
-import { focusTrack, hasVideo, isShareKey, primaryShare, shareIsFeatured, tileKey } from './focusTrack'
+import {
+  focusTrack,
+  hasVideo,
+  isShareKey,
+  primaryShare,
+  shareIsFeatured,
+  stageFocus,
+  tileKey,
+} from './focusTrack'
 
 // Minimal stand-in for a track ref — focusTrack/hasVideo only read identity,
 // source, isSpeaking/isLocal and the publication's mute/subscription flags.
@@ -63,6 +71,65 @@ describe('focusTrack', () => {
 
   it('ignores a stale pin for an absent identity (falls through)', () => {
     expect(focusTrack([a, b], 'ghost')).toBe(a)
+  })
+})
+
+describe('stageFocus', () => {
+  const me = ref({ identity: 'me', isLocal: true })
+  const a = ref({ identity: 'a' })
+  const b = ref({ identity: 'b', speaking: true })
+
+  it('honours a pin on YOURSELF — the bug that shipped for months', () => {
+    // Both stages filtered the local camera out before asking, so a pin on yourself
+    // fell through to the active speaker. Since togglePin also switches the layout
+    // to speaker, asking to watch yourself put somebody else on the whole screen.
+    expect(stageFocus([me, a, b], 'me')).toBe(me)
+  })
+
+  it('still honours a pin on someone else', () => {
+    expect(stageFocus([me, a, b], 'a')).toBe(a)
+  })
+
+  it('never picks you automatically, even when you are the one speaking', () => {
+    // The reason the filter exists: being the loudest voice in the room is no
+    // reason to full-bleed you to yourself. Only an explicit pin may do that.
+    const loudMe = ref({ identity: 'me', isLocal: true, speaking: true })
+    expect(stageFocus([loudMe, a], null)).toBe(a)
+  })
+
+  it('never picks you automatically as the mere first tile either', () => {
+    expect(stageFocus([me, a], null)).toBe(a)
+  })
+
+  it('falls back to your own camera when there is nobody else', () => {
+    expect(stageFocus([me], null)).toBe(me)
+  })
+
+  it('a screen share still outranks the active speaker', () => {
+    const screen = ref({ identity: 'a', source: Track.Source.ScreenShare })
+    expect(stageFocus([me, b, screen], null)).toBe(screen)
+  })
+
+  it('a pin on yourself outranks even a live screen share', () => {
+    // Consistent with focusTrack, where an explicit pin is the top of the order.
+    const screen = ref({ identity: 'a', source: Track.Source.ScreenShare })
+    expect(stageFocus([me, b, screen], 'me')).toBe(me)
+  })
+
+  it('hiding your self-view outranks a pin on yourself', () => {
+    // Only reachable in one order — pin, then hide — because with yourself hidden
+    // there is no tile of yours left to pin from. A setting called "hide self view"
+    // that leaves you full-bleed is a setting that looks broken.
+    expect(stageFocus([me, a, b], 'me', true)).toBe(b)
+  })
+
+  it('…but a hidden self-view still fills an otherwise empty stage', () => {
+    // Same rule the desktop grid keeps: your tile survives when it is the only one.
+    expect(stageFocus([me], 'me', true)).toBe(me)
+  })
+
+  it('is undefined only when there is nothing at all to show', () => {
+    expect(stageFocus([], 'me')).toBeUndefined()
   })
 })
 
