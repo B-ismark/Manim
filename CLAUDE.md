@@ -63,6 +63,23 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 - **Verify deploys against the served artifact**, not a green build.
 - **Mobile = pure touch**: no Esc / hover / keyboard shortcuts. Sheets close via the
   "Close panel" X; the control bar auto-hides (tap to reveal); More is a modal sheet.
+- **The touch stage is ONE horizontal page sequence, not two layout modes.** Page 0 is
+  the focus view (a featured share, else the speaker, self in a corner card); pages
+  1..n tile everyone (`PagedStage` + `lib/stagePager.ts`). Swipe moves along it — that
+  gesture is the pager AND the grid/speaker switch, so don't rebind it. Desktop returns
+  *before* that branch in `Stage()` and keeps real modes; the two are deliberately
+  separate. Tile density comes from viewport WIDTH at a 132px legibility floor
+  (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
+- **The control island must fit its viewport, and every control stays 44px.** Six 44px
+  controls plus gaps and padding is 318px of the 343px available at 375px — there is
+  almost no slack. Adding anything to the bar means measuring it (a labelled route chip
+  and the host's split leave-and-end control both had to come off), and nothing on it
+  may be a status indicator: those go in `TopStack`. `test:mobile-sm` asserts the fit.
+- **A `hidden` class is INERT on any component with a base display class.** `cn()` is a
+  plain joiner, so the className lands after the component's own `inline-flex`,
+  Tailwind emits `.hidden` first, specificity ties and source order wins. Gate with a
+  conditional render or a plain `<span>` wrapper — never `hidden pointer-fine:*` on an
+  `IconButton`/`Button`. This shipped desktop-only device carets to phones for months.
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a
@@ -76,7 +93,10 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 - **Overlay layering is centralised.** Top banners/pills are children of
   `TopStack` (one column, priority order) — never a new `fixed` + hand-picked
   z-index; the layer scale is documented in `TopStack.tsx`. ControlBar holds ONE
-  `modal` value, so two dialogs can't be open at once.
+  `modal` value, so two dialogs can't be open at once. The touch chrome also refuses to
+  auto-hide while ANY Radix layer is open (`overlayOpen()` in `RoomView` — it asks the
+  DOM, so a new control can't forget to opt in), and the audio picker is a tray *inside*
+  the island whose last row is the control bar, so it can't outlive its anchor.
 - **Design decisions → check Mobbin** (Meet/Teams/Zoom/WhatsApp) before guessing.
 - A11y is gated (axe, light + dark); contrast tokens are oklch — compute real WCAG
   ratios when changing them (see QA-PLAYBOOK §3).

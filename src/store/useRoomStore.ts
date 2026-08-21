@@ -40,6 +40,16 @@ function loadVideosFirst(): boolean {
 
 interface RoomState {
   layout: LayoutMode
+  /**
+   * Touch only: index into the stage's horizontal page sequence. 0 is the focus
+   * page (the shared screen, or whoever is speaking); 1..n are gallery pages.
+   *
+   * Deliberately NOT clamped here — the store doesn't know the room size or the
+   * viewport, and both change under it (people leave, the phone rotates, a share
+   * ends). Stage clamps on read via lib/stagePager, so an index that outlived its
+   * page renders the nearest real one instead of an empty stage.
+   */
+  stagePage: number
   /** Max tiles per page in the grid; 'auto' = fit-to-viewport. Persisted per device. */
   gridSize: GridSize
   /** Order camera-on tiles ahead of avatar/camera-off ones. Persisted per device. */
@@ -109,6 +119,9 @@ interface RoomState {
   showOwnShareOverride: boolean | null
 
   setLayout: (layout: LayoutMode) => void
+  setStagePage: (page: number) => void
+  /** Swipe / arrow step. Floors at 0; the upper bound is clamped on read. */
+  stepStagePage: (delta: number) => void
   setGridSize: (size: GridSize) => void
   toggleVideosFirst: () => void
   toggleSelfView: () => void
@@ -145,6 +158,8 @@ export const useRoomStore = create<RoomState>((set) => ({
   // mobile convention. A √n grid on a tall narrow screen makes every tile tiny.
   // Desktop keeps the grid. User can switch either way (layout chip / More).
   layout: isMobile() ? 'speaker' : 'grid',
+  // Land on the focus page: a call opens showing whoever is talking, not a grid.
+  stagePage: 0,
   gridSize: loadGridSize(),
   videosFirst: loadVideosFirst(),
   pinned: null,
@@ -161,6 +176,8 @@ export const useRoomStore = create<RoomState>((set) => ({
   showOwnShareOverride: null,
 
   setLayout: (layout) => set({ layout }),
+  setStagePage: (stagePage) => set({ stagePage: Math.max(0, stagePage) }),
+  stepStagePage: (delta) => set((st) => ({ stagePage: Math.max(0, st.stagePage + delta) })),
   setGridSize: (gridSize) =>
     set(() => {
       try {

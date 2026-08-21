@@ -1,0 +1,744 @@
+<title>Page Zero</title>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+  </symbol>
+  <symbol id="i-micoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v5"/><path d="M9 8v4a3 3 0 0 0 4.6 2.5"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M12 18v3"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5 20 7.5v9L15 13.5z"/>
+  </symbol>
+  <symbol id="i-camoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/><path d="M15 10.5 20 7.5v9l-2-1.2"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M17.5 7a7.5 7.5 0 0 1 0 10"/>
+  </symbol>
+  <symbol id="i-earpiece" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 5.5h4"/>
+  </symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 6.5 16 17l-4 4V3l4 4L8 17.5"/>
+  </symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 0 1-8 8H7l-3 2.5V12a8 8 0 1 1 16 0Z"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18" cy="12" r="1.4" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-leave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 14.5c3-7 12-7 15 0l-3.2 1.2-1-3a11 11 0 0 0-6.6 0l-1 3z"/>
+  </symbol>
+  <symbol id="i-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 14.5 6-6 6 6"/>
+  </symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 9.5 6 6 6-6"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m5 12.5 4.5 4.5L19 7"/>
+  </symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 6l12 12M18 6 6 18"/>
+  </symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9a8 8 0 0 1 13-3l2 2"/><path d="M19 4v4h-4"/><path d="M20 15a8 8 0 0 1-13 3l-2-2"/><path d="M5 20v-4h4"/>
+  </symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M9 20.5h6"/>
+  </symbol>
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.4 3-5 6-5s5.4 1.6 6 5"/><path d="M16 5.4a3.2 3.2 0 0 1 0 5.2"/><path d="M18 14.4c1.9.7 3.1 2.2 3.5 4.6"/>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="7" width="18" height="10" rx="2"/><path d="M8 3.5 10.5 6 8 8.5"/>
+  </symbol>
+</svg>
+
+<style>
+/* ───────── harness tokens ─────────
+   Violet-biased neutrals (hue 270) and the accent are lifted from Manim's own
+   oklch token set, so the page reads as part of the product it is proposing to.
+   Same block as docs/prejoin-feed-prototypes.html — these studies are a series. */
+:root{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.545 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.55 .13 65);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}}
+:root[data-theme="dark"]{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}
+:root[data-theme="light"]{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.545 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.55 .13 65);
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:inherit;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ───────── page furniture ───────── */
+.masthead{padding:72px 0 34px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 18px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.06;letter-spacing:-.028em;font-weight:640}
+.stand{margin:20px 0 0;max-width:60ch;font-size:17px;color:var(--ink-2)}
+
+.brief{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+  padding:22px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:22px}
+.brief dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 6px}
+.brief dd{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.5}
+.brief dd b{color:var(--ink);font-weight:600}
+
+section.block{padding:44px 0 0}
+h2{font-size:22px;letter-spacing:-.015em;font-weight:640}
+.lede{margin:10px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+.lede + .lede{margin-top:12px}
+p code,li code,td code,dd code{font-family:var(--mono);font-size:12.5px;background:var(--sunk);
+  padding:1px 5px;border-radius:4px;color:var(--ink)}
+
+/* ───────── variant heading ───────── */
+.vhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;
+  border-top:1px solid var(--rule-2);padding-top:18px}
+.badge{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;padding:1px 6px;flex:none;translate:0 -2px}
+.vhead h3{font-size:21px;letter-spacing:-.015em;font-weight:640}
+.vhead .ref{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto;
+  letter-spacing:.06em;align-self:center;min-width:0;overflow-wrap:anywhere}
+.vbody{margin:12px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+.vbody + .vbody{margin-top:12px}
+
+.tradeoffs{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:7px;max-width:70ch}
+.tradeoffs li{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:14px;color:var(--ink-2);
+  line-height:1.5}
+.tradeoffs .m{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding-top:3px;white-space:nowrap}
+.tradeoffs .m.plus{color:var(--good)} .tradeoffs .m.minus{color:var(--warn)}
+
+/* ───────── device frames ───────── */
+.frames{--s:.60;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin:24px 0 0}
+.fig{display:flex;flex-direction:column;gap:8px}
+.frame{overflow:hidden;border-radius:calc(14px * var(--s));border:1px solid var(--rule);
+  background:oklch(.17 .012 270);
+  width:calc(var(--w) * 1px * var(--s));height:calc(var(--h) * 1px * var(--s))}
+.frame > .screen{width:calc(var(--w) * 1px);height:calc(var(--h) * 1px);
+  transform:scale(var(--s));transform-origin:0 0}
+.cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);max-width:calc(var(--w) * 1px * var(--s))}
+@media (max-width:900px){.frames{--s:.48}}
+@media (max-width:700px){.frames{--s:.40}}
+@media (max-width:460px){.frames{--s:.30}}
+
+/* ───────── Manim mock: dark token set, locked ─────────
+   The mockups are screenshots of the product, not theme-reactive page content —
+   they stay in Manim dark regardless of the harness theme. */
+.mk{--stage:oklch(.17 .012 270);--surface:oklch(.23 .014 270);--sunken:oklch(.2 .012 270);
+  --line:oklch(.32 .014 270);--mink:oklch(.96 .005 270);--mink-2:oklch(.72 .01 270);
+  --mink-3:oklch(.65 .012 270);--acc:oklch(.55 .18 275);--acc-ink:oklch(.99 0 0);
+  --dngr:oklch(.55 .21 25);--succ:oklch(.66 .16 150);--ovl:oklch(.18 .02 270 / .72);
+  --scrim:oklch(.1 .02 270 / .55);
+  --r-tile:16px;--r-island:24px;--r-field:12px;
+  font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--stage);color:var(--mink);height:100%;width:100%;box-sizing:border-box;
+  position:relative;overflow:hidden;font-size:14px;line-height:1.4}
+.mk *{box-sizing:border-box}
+.mk .i{width:20px;height:20px;flex:none}
+
+/* video feed illustration */
+.feed{position:relative;overflow:hidden;background:
+  radial-gradient(120% 90% at 20% 0%, oklch(.44 .022 255), oklch(.29 .02 262) 70%)}
+.feed.b{background:radial-gradient(120% 90% at 70% 0%, oklch(.42 .03 30), oklch(.27 .022 20) 70%)}
+.feed.c{background:radial-gradient(120% 90% at 30% 10%, oklch(.43 .028 150), oklch(.28 .02 160) 70%)}
+.feed.d{background:radial-gradient(120% 90% at 60% 0%, oklch(.45 .03 300), oklch(.28 .022 295) 70%)}
+.feed .torso{position:absolute;left:50%;bottom:-16%;translate:-50% 0;width:70%;height:52%;
+  border-radius:48% 48% 0 0 / 66% 66% 0 0;background:oklch(.55 .018 262)}
+.feed .head{position:absolute;left:50%;top:22%;translate:-50% 0;width:30%;aspect-ratio:1;
+  border-radius:50%;background:radial-gradient(circle at 34% 28%,oklch(.85 .13 88),oklch(.66 .16 68))}
+.feed .nm{position:absolute;left:6px;bottom:5px;font-size:10px;color:oklch(.98 0 0);
+  background:var(--ovl);border-radius:999px;padding:2px 7px;max-width:80%;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.tile{border-radius:var(--r-tile);overflow:hidden;position:relative;background:var(--sunken)}
+.tile.off{display:grid;place-items:center}
+.tile.off .av{width:34%;aspect-ratio:1;border-radius:50%;background:var(--line);display:grid;
+  place-items:center;font-size:13px;color:var(--mink-2);font-weight:600;max-width:52px}
+.tile.spk{outline:2px solid var(--succ);outline-offset:-2px}
+
+/* the control island */
+.bar{position:absolute;left:50%;translate:-50% 0;bottom:12px;background:var(--surface);
+  border-radius:var(--r-island);padding:8px 12px;display:flex;gap:7px;align-items:center;
+  box-shadow:0 12px 40px -12px oklch(.08 .03 270 / .6);z-index:6}
+.ctl{width:40px;height:40px;border-radius:999px;background:var(--sunken);color:var(--mink);
+  display:grid;place-items:center;flex:none}
+.ctl.acc{background:var(--acc);color:var(--acc-ink)}
+.ctl.danger{background:var(--dngr);color:oklch(.99 0 0)}
+.ctl.sm{width:30px;height:30px}.ctl.sm .i{width:15px;height:15px}
+.ctl .i{width:19px;height:19px}
+.ctl.glass{background:var(--ovl);backdrop-filter:blur(8px);color:oklch(.98 0 0)}
+.badgen{position:absolute;top:-2px;right:-2px;min-width:15px;height:15px;border-radius:999px;
+  background:var(--acc);color:var(--acc-ink);font-size:9px;font-weight:700;display:grid;
+  place-items:center;padding:0 3px}
+
+/* chips + pills */
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--ovl);backdrop-filter:blur(8px);
+  border-radius:999px;padding:5px 11px;font-size:11px;color:oklch(.98 0 0);flex:none}
+.pill .i{width:13px;height:13px}
+.pill.acc{background:var(--acc);color:var(--acc-ink);backdrop-filter:none}
+.topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;align-items:center;gap:6px;z-index:5}
+.topbar .sp{flex:1}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:7}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);
+  border-radius:22px 22px 0 0;z-index:8;padding:8px 0 14px;
+  box-shadow:0 -12px 44px -14px oklch(.08 .03 270 / .7)}
+.grab{width:36px;height:4px;border-radius:999px;background:var(--line);margin:2px auto 8px}
+.shhd{display:flex;align-items:center;gap:8px;padding:0 16px 8px}
+.shhd h4{margin:0;font-size:15px;font-weight:620;letter-spacing:-.01em}
+.shhd .sp{flex:1}
+.grp{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mink-3);padding:10px 16px 4px}
+.row56{min-height:56px;display:flex;align-items:center;gap:13px;padding:8px 16px}
+.row56 .i{width:21px;height:21px;color:var(--mink-2)}
+.row56 .tx{flex:1;min-width:0}
+.row56 .t1{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row56 .t2{font-size:11.5px;color:var(--mink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row56.on{background:color-mix(in oklch,var(--acc) 15%,transparent)}
+.row56.on .i,.row56.on .ck{color:var(--acc)}
+.row56 .ck{width:20px;height:20px;flex:none}
+.sw{width:40px;height:24px;border-radius:999px;background:var(--sunken);border:1px solid var(--line);
+  position:relative;flex:none}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:var(--mink-3)}
+.sw.on{background:var(--acc);border-color:var(--acc)}
+.sw.on::after{left:auto;right:2px;background:oklch(.99 0 0)}
+.hr{height:1px;background:var(--line);margin:8px 0}
+
+/* the "current" broken states */
+.pop{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  padding:10px;z-index:8;box-shadow:0 14px 44px -12px oklch(.08 .03 270 / .7);width:250px}
+.pop .lbl{font-size:10.5px;font-weight:600;color:var(--mink-3);margin:0 0 4px;padding:0 2px}
+.sel{height:38px;border-radius:var(--r-field);background:var(--sunken);display:flex;align-items:center;
+  gap:8px;padding:0 10px;font-size:12.5px;color:var(--mink)}
+.sel .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel .i{width:14px;height:14px;color:var(--mink-3)}
+.dd{position:absolute;background:oklch(.26 .014 270);border:1px solid var(--line);border-radius:14px;
+  padding:6px;z-index:9;width:214px;box-shadow:0 14px 44px -12px oklch(.08 .03 270 / .75)}
+.dd .it{height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:12.5px;
+  border-radius:9px}
+.dd .it .i{width:14px;height:14px}
+.dd .it.on{background:var(--sunken)}
+.ghost{position:absolute;border:1.5px dashed var(--dngr);border-radius:var(--r-island);z-index:4}
+.gtag{position:absolute;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+  background:var(--dngr);color:oklch(.99 0 0);border-radius:4px;padding:1px 5px;z-index:5;
+  white-space:nowrap}
+
+/* an expanding tray built INTO the island */
+.tray{position:absolute;left:8px;right:8px;bottom:12px;background:var(--surface);
+  border-radius:var(--r-island);z-index:8;overflow:hidden;
+  box-shadow:0 12px 44px -12px oklch(.08 .03 270 / .65)}
+.seg{display:flex;gap:4px;padding:10px 12px 4px}
+.seg > div{flex:1;height:32px;border-radius:999px;background:var(--sunken);display:grid;
+  place-items:center;font-size:12.5px;font-weight:520;color:var(--mink-2)}
+.seg > div.on{background:var(--acc);color:var(--acc-ink)}
+.trayfoot{display:flex;gap:7px;align-items:center;padding:9px 12px;background:var(--sunken)}
+
+/* route rail inside the island */
+.rail{display:flex;gap:6px;align-items:center;overflow:hidden}
+.rchip{height:34px;border-radius:999px;background:var(--sunken);display:flex;align-items:center;
+  gap:6px;padding:0 11px;font-size:12px;flex:none;color:var(--mink)}
+.rchip.on{background:var(--acc);color:var(--acc-ink)}
+.rchip .i{width:15px;height:15px}
+
+/* filmstrips + pagers */
+.strip{position:absolute;left:8px;right:8px;display:flex;gap:6px;z-index:5}
+.dots{display:flex;gap:5px;align-items:center;justify-content:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:oklch(.98 0 0 / .35);display:block}
+.dots i.on{background:oklch(.98 0 0);width:16px;border-radius:999px}
+
+/* helpers */
+.col{display:flex;flex-direction:column}
+.row{display:flex}.center{align-items:center}.between{justify-content:space-between}
+.grow{flex:1;min-height:0;min-width:0}
+.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}
+.stagepad{position:absolute;inset:0;padding:8px;display:flex;flex-direction:column;gap:6px}
+
+/* ───────── comparison table ───────── */
+.tblwrap{overflow-x:auto;margin:22px 0 0;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th,td{text-align:left;padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding-top:14px}
+tbody th{font-weight:600;color:var(--ink)}
+td{color:var(--ink-2)}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tr.pick td,tr.pick th{background:var(--accent-soft)}
+
+.rec{margin:34px 0 0;border:1px solid var(--rule-2);border-left:3px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:20px 22px;background:var(--bg-2)}
+.rec h2{font-size:17px;margin:0 0 10px}
+.rec p{margin:0 0 10px;font-size:14.5px;color:var(--ink-2);max-width:64ch}
+.rec p:last-child{margin-bottom:0}
+
+.shared{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px}
+.shared li{display:grid;grid-template-columns:24px 1fr;gap:12px;font-size:14.5px;color:var(--ink-2)}
+.shared .n{font-family:var(--mono);font-size:11px;color:var(--accent);padding-top:4px}
+.shared b{color:var(--ink);font-weight:600}
+
+.note{margin:22px 0 0;padding:14px 16px;border:1px solid var(--rule);border-radius:10px;
+  background:var(--bg-2);font-size:14px;color:var(--ink-2);max-width:70ch}
+.note b{color:var(--ink)}
+
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-3)}
+</style>
+<style>
+/* additions for the resolved spec */
+.verdict{display:grid;gap:14px;margin:20px 0 0}
+.vc{border:1px solid var(--rule);border-radius:10px;padding:16px 18px;background:var(--bg-2);
+  border-left:3px solid var(--rule-2)}
+.vc.keep{border-left-color:var(--good)}
+.vc.push{border-left-color:var(--warn)}
+.vc h4{margin:0 0 6px;font-size:15.5px;font-weight:640;letter-spacing:-.01em;display:flex;
+  align-items:baseline;gap:9px;flex-wrap:wrap}
+.vc .tag{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;
+  border:1px solid currentColor;border-radius:3px;padding:1px 5px;flex:none;translate:0 -1px}
+.vc.keep .tag{color:var(--good)} .vc.push .tag{color:var(--warn)}
+.vc p{margin:0 0 9px;font-size:14.5px;color:var(--ink-2);max-width:66ch}
+.vc p:last-child{margin-bottom:0}
+.vc b{color:var(--ink)}
+
+/* page-sequence diagram */
+.seq{display:flex;gap:0;align-items:stretch;margin:22px 0 0;overflow-x:auto;padding-bottom:4px}
+.seqcell{flex:none;width:104px;border:1px solid var(--rule-2);border-radius:8px;padding:9px 8px;
+  background:var(--bg-2);display:flex;flex-direction:column;gap:6px}
+.seqcell.p0{border-color:var(--accent);background:var(--accent-soft)}
+.seqcell .n{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3)}
+.seqcell .t{font-size:12.5px;font-weight:600;color:var(--ink);line-height:1.25}
+.seqcell .d{font-size:11px;color:var(--ink-2);line-height:1.35}
+.seqarrow{flex:none;width:26px;display:grid;place-items:center;color:var(--ink-3);font-size:15px}
+
+/* threshold table emphasis */
+tr.no td, tr.no th{opacity:.62}
+td.ok{color:var(--good);font-weight:600}
+td.bad{color:var(--warn);font-weight:600}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Manim · mobile in-call · resolved spec</p>
+  <h1>Speaker view is page zero. Everything else follows from that.</h1>
+  <p class="stand">Your four picks combine into something better than the recommendation they replace:
+  they collapse the grid/speaker <em>mode</em> into a position in a horizontal pager, which dissolves the
+  one gesture conflict I'd called unavoidable. Two of them need changing — the 3×3 ceiling has to be
+  driven by screen width rather than headcount, and the corner card must stay draggable.</p>
+</header>
+
+<dl class="brief">
+  <div><dt>Your picks</dt><dd>Full-screen share + collapsible roster strip · one feed · 2×2 up to 3×3, swipe + dots · corner-card self-view.</dd></div>
+  <div><dt>Verdict</dt><dd><b>Two adopted as-is</b>, <b>two amended</b>, one product call left open.</dd></div>
+  <div><dt>Device picker</dt><dd><b>B shell + A content + C collapsed</b> confirmed. One detail to pin — see the last section.</dd></div>
+  <div><dt>Status</dt><dd>Spec only. Nothing built — the two amendments change what gets built.</dd></div>
+</dl>
+
+<section class="block">
+  <h2>The thing your picks unlock</h2>
+  <p class="lede">I'd called the swipe rebinding “the one real trade” — take horizontal swipe for gallery
+  paging and you lose grid ↔ speaker switching. Putting “one feed” and “swipe + dots” together removes
+  the trade entirely, because it's <b>Zoom's actual model</b>: speaker view isn't a mode you toggle into,
+  it's the first page of one horizontal sequence. Swipe left from the speaker and you're on gallery page
+  one. There is nothing to switch, so nothing is lost.</p>
+
+  <div class="seq">
+    <div class="seqcell p0"><span class="n">page 0</span><span class="t">Speaker</span><span class="d">One feed, self in a corner. Mobile already defaults here.</span></div>
+    <div class="seqarrow">›</div>
+    <div class="seqcell"><span class="n">page 1</span><span class="t">Gallery</span><span class="d">2×2, or 3×3 on a wide screen</span></div>
+    <div class="seqarrow">›</div>
+    <div class="seqcell"><span class="n">page 2</span><span class="t">Gallery</span><span class="d">next four</span></div>
+    <div class="seqarrow">›</div>
+    <div class="seqcell"><span class="n">page n</span><span class="t">Gallery</span><span class="d">…</span></div>
+  </div>
+
+  <p class="lede" style="margin-top:20px">Three consequences worth naming, because they're all
+  simplifications:</p>
+  <ul class="shared">
+    <li><span class="n">01</span><span><b>The swipe-up roster peek I proposed is unnecessary.</b> The roster is the next page. One fewer gesture to teach, and the dots advertise it — which the swipe never did.</span></li>
+    <li><span class="n">02</span><span><b>FaceTime-style grow-in-place prominence can be dropped.</b> I'd recommended it to make the speaker mode redundant on small calls; page&nbsp;0 does that for free, without reflowing tiles on speech — the thing the packer's stability rules exist to prevent.</span></li>
+    <li><span class="n">03</span><span><b>It fixes a discoverability hole I hadn't found.</b> <code>LayoutChip.tsx</code> — whose own docstring calls it “the single layout affordance on every device”, and which <code>ControlBar</code>'s comments point at as “the top chip” — <b>is never imported anywhere</b>. It's dead code. So today the only routes to switch layout on a phone are the undiscoverable swipe and More → View. Page&nbsp;0 turns the swipe into the primary, signposted route.</span></li>
+  </ul>
+</section>
+
+<section class="block">
+  <h2>Verdict on each pick</h2>
+  <div class="verdict">
+
+    <div class="vc keep">
+      <h4><span class="tag">adopt</span> Full-screen share with a collapsible roster strip</h4>
+      <p>Better than either of my share prototypes, and for a reason I'd missed: in portrait the share is
+      <b>width-bound, not height-bound</b>. A 16:9 share in a 359-wide column paints 359×202 and can
+      never be taller, so the remaining <b>449&nbsp;px is free</b>. My S1 spent it on nothing (a pill);
+      my S2 spent it keeping a split that forced 118&nbsp;px of black bars. A strip costs the share
+      literally zero pixels.</p>
+      <p><b>The dynamic rule you asked for falls out of that.</b> The strip is free exactly while the
+      share doesn't need the height — so gate it on the share's <em>painted</em> height, not on
+      orientation or headcount. A 16:9 share leaves 449&nbsp;px, an ultrawide 21:9 leaves 497&nbsp;px, a
+      4:3 leaves 382&nbsp;px — all room for a strip. A portrait-shaped share (a phone window, a document)
+      paints 479&nbsp;px tall and leaves 172&nbsp;px: strip auto-collapses to its handle. In landscape the
+      share becomes height-bound (583×328 of a 651×359 stage) and the strip becomes an edge rail or
+      collapses. Same rule, no special cases.</p>
+      <p><b>One thing to get right:</b> “collapsible” needs a handle that never disappears. If the strip
+      collapses to nothing, or collapses along with the auto-hiding chrome, you've rebuilt the orphaned
+      state in a different place — a roster that exists but has no reachable way back.</p>
+    </div>
+
+    <div class="vc keep">
+      <h4><span class="tag">adopt</span> One feed in speaker view</h4>
+      <p>Unchanged from P1, and the measurements back it hard: the filmstrip it removes is 96&nbsp;px tall
+      with <b>60&nbsp;px of it underneath the control island</b> and 8&nbsp;px under the self-view card.
+      It was two-thirds invisible. The focused feed goes from 543&nbsp;px to the full 651&nbsp;px.</p>
+    </div>
+
+    <div class="vc push">
+      <h4><span class="tag">amend</span> 2×2 up to 3×3 — gate it on width, not headcount</h4>
+      <p>“Up to 3×3” reads as <em>denser when there are more people</em>. It has to be <em>denser when
+      there's more screen</em>, because the codebase already declares its own floor:
+      <code>gridCapacity</code> sets <code>minW: 132</code> for coarse pointers. Three columns needs
+      412&nbsp;px of stage. Here is what you actually get:</p>
+      <div class="tblwrap" style="margin-top:14px">
+        <table>
+          <thead><tr><th>Device</th><th>Stage width</th><th>3-up tile</th><th>vs the 132px floor</th><th>Columns</th><th>Per page</th></tr></thead>
+          <tbody>
+            <tr class="no"><th>iPhone SE (1st)</th><td class="n">304</td><td class="n">96px</td><td class="bad">36px under</td><td class="n">2</td><td class="n">4</td></tr>
+            <tr class="no"><th>Android common (360)</th><td class="n">344</td><td class="n">109px</td><td class="bad">23px under</td><td class="n">2</td><td class="n">4</td></tr>
+            <tr class="no"><th><code>mobile-sm</code> (375)</th><td class="n">359</td><td class="n">114px</td><td class="bad">18px under</td><td class="n">2</td><td class="n">4</td></tr>
+            <tr class="no"><th>iPhone 14/15 (390)</th><td class="n">374</td><td class="n">119px</td><td class="bad">13px under</td><td class="n">2</td><td class="n">4</td></tr>
+            <tr class="no"><th>Pixel 7 (412)</th><td class="n">396</td><td class="n">127px</td><td class="bad">5px under</td><td class="n">2</td><td class="n">4</td></tr>
+            <tr class="pick"><th>iPhone 15 Pro Max (430)</th><td class="n">414</td><td class="n">133px</td><td class="ok">clears</td><td class="n">3</td><td class="n">9</td></tr>
+            <tr class="pick"><th>iPad portrait (768)</th><td class="n">752</td><td class="n">245px</td><td class="ok">clears</td><td class="n">3</td><td class="n">9</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:12px">So <b>2×2 on every phone shipping today, 3×3 from 430&nbsp;px up</b> —
+      and that quietly reconciles your pick with my earlier “four per page”: they're the same answer,
+      indexed by device instead of asserted. If you do want 3-up on a 375&nbsp;px phone, that's a decision
+      to lower the declared legibility floor from 132&nbsp;px to 114&nbsp;px, which is legitimate but
+      should be written down rather than arrived at sideways.</p>
+      <p><b>It also fixes tablets, which nobody has been looking at.</b> <code>maxCols</code> is a flat 2
+      for every coarse pointer, so an iPad in portrait renders <b>two columns of 368&nbsp;px tiles</b> and
+      pages through a room four at a time. Your 3×3 ceiling, driven by width, gives it 245&nbsp;px tiles
+      nine at a time. Your pick is worth adopting partly for a device neither of us was thinking
+      about.</p>
+    </div>
+
+    <div class="vc push">
+      <h4><span class="tag">amend</span> Corner card — keep it draggable</h4>
+      <p>Teams', Meet's and Discord's corner cards are all <b>draggable</b>. The standard is “starts in a
+      corner, can be moved”, and the reason is concrete: a fixed card covers whatever it happens to
+      cover — a shared spreadsheet's totals column, someone's face — with no escape.</p>
+      <p>What's actually wrong with today's card isn't that it moves, it's that it moves <em>badly</em>.
+      <code>useDraggable</code> clamps to the viewport but has <b>no corner snapping and no
+      persistence</b>: release mid-edge and it stays mid-edge, rotate the phone and it lands somewhere
+      arbitrary, and every remount resets it. The real “corner card” is snap-to-nearest-corner on
+      release, with the chosen corner remembered — a smaller change than making it static, and it's what
+      the pick was reaching for.</p>
+      <p><b>And it collides with the strip.</b> During a share, a floating self card and a roster strip
+      both want the bottom band, and at 375&nbsp;px one will cover the other. Proposal: while someone is
+      sharing, <b>self joins the strip as its first item</b> — you're a participant like anyone else, the
+      floating card is redundant, and that's one fewer overlay on the smallest screen. It's also what
+      Teams does. Note this means the self-view changes representation as you swipe (corner card on
+      page&nbsp;0, a tile in the gallery, first item in the strip during a share). Zoom does exactly that
+      too, so it's familiar — but it's a decision, not an accident, so it's written here.</p>
+    </div>
+
+  </div>
+</section>
+
+<section class="block">
+  <h2>The resolved screens</h2>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:8px;border-radius:var(--r-tile)"><i class="torso"></i><i class="head"></i><span class="nm">Jae · speaking</span></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>9</span></div>
+          <div style="position:absolute;right:16px;bottom:96px;width:88px;height:117px;border-radius:12px;overflow:hidden;z-index:6;box-shadow:0 8px 24px -8px oklch(.05 .02 270 / .8)">
+            <div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+            <span class="pill" style="position:absolute;left:4px;bottom:4px;padding:3px 7px;font-size:9px">You</span>
+          </div>
+          <div class="dots" style="position:absolute;left:0;right:0;bottom:82px;z-index:5">
+            <i class="on"></i><i></i><i></i><i></i>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Page 0 · speaker · corner card, dots</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="gap:8px;bottom:30px">
+            <div class="row gap8 grow">
+              <div class="tile grow spk"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae</span></div>
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:70px">Ife</span></div>
+              <div class="tile off grow"><i class="av">RO</i><span class="nm" style="bottom:70px">Rose</span></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>9</span></div>
+          <div class="dots" style="position:absolute;left:0;right:0;bottom:82px;z-index:5">
+            <i></i><i class="on"></i><i></i><i></i>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Page 1 · 2×2 at 375px · 176×318</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:430;--h:932">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="gap:8px;bottom:30px">
+            <div class="row gap8 grow">
+              <div class="tile grow spk"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae</span></div>
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Ife</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile off grow"><i class="av">RO</i></div>
+              <div class="tile grow"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Kofi</span></div>
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Sena</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:70px">Dede</span></div>
+              <div class="tile off grow"><i class="av">TN</i></div>
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:70px">Yaw</span></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>9</span></div>
+          <div class="dots" style="position:absolute;left:0;right:0;bottom:82px;z-index:5">
+            <i></i><i class="on"></i>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">3×3 unlocks at 430px · 133×177</p>
+    </div>
+  </div>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div style="position:absolute;inset:0;background:oklch(.1 .01 270)"></div>
+          <div style="position:absolute;left:0;right:0;top:150px;height:202px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255))">
+            <div style="position:absolute;left:14px;top:14px;right:14px;height:11px;background:oklch(.5 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:36px;width:52%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:52px;width:66%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:68px;width:38%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+          </div>
+          <div class="topbar"><span class="pill"><svg class="i"><use href="#i-share"/></svg>Jae is presenting</span></div>
+          <span class="pill" style="position:absolute;left:50%;translate:-50% 0;top:372px;z-index:5"><svg class="i"><use href="#i-rotate"/></svg>Rotate for a bigger view</span>
+          <div style="position:absolute;left:0;right:0;bottom:74px;z-index:5;background:oklch(.2 .014 270 / .82);backdrop-filter:blur(10px);border-radius:16px 16px 0 0;padding:6px 0 8px">
+            <div style="width:36px;height:4px;border-radius:999px;background:var(--line);margin:0 auto 7px"></div>
+            <div class="row gap6" style="padding:0 8px;overflow:hidden">
+              <div class="tile" style="width:60px;height:80px;flex:none;outline:1.5px solid var(--acc);outline-offset:-1.5px"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="font-size:8px;padding:1px 5px">You</span></div>
+              <div class="tile" style="width:60px;height:80px;flex:none"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile" style="width:60px;height:80px;flex:none"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off" style="width:60px;height:80px;flex:none"><i class="av" style="max-width:26px;font-size:10px">RO</i></div>
+              <div class="tile off" style="width:60px;height:80px;flex:none;opacity:.5"><i class="av" style="max-width:26px;font-size:10px">+5</i></div>
+            </div>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Share · strip open · self is the first item</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div style="position:absolute;inset:0;background:oklch(.1 .01 270)"></div>
+          <div style="position:absolute;left:0;right:0;top:224px;height:202px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255))">
+            <div style="position:absolute;left:14px;top:14px;right:14px;height:11px;background:oklch(.5 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:36px;width:52%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:52px;width:66%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:68px;width:38%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            <div style="position:absolute;left:14px;top:92px;width:58%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+          </div>
+          <div class="topbar"><span class="pill"><svg class="i"><use href="#i-share"/></svg>Jae is presenting</span></div>
+          <div style="position:absolute;left:0;right:0;bottom:74px;z-index:5;background:oklch(.2 .014 270 / .82);backdrop-filter:blur(10px);border-radius:16px 16px 0 0;padding:7px 0 9px">
+            <div style="width:36px;height:4px;border-radius:999px;background:var(--line);margin:0 auto"></div>
+            <div class="row center" style="justify-content:center;gap:7px;padding-top:6px">
+              <svg class="i" style="width:14px;height:14px;rotate:180deg;color:var(--mink-3)"><use href="#i-down"/></svg>
+              <span style="font-size:11.5px;color:var(--mink-2)">9 people</span>
+            </div>
+          </div>
+          <div class="gtag" style="left:10px;bottom:120px">handle persists — never auto-hides</div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Share · strip collapsed to its handle</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:667;--h:375">
+        <div class="screen"><div class="mk">
+          <div style="position:absolute;inset:0;background:oklch(.1 .01 270);display:grid;place-items:center">
+            <div style="width:583px;height:328px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255));position:relative;border-radius:6px">
+              <div style="position:absolute;left:20px;top:20px;right:20px;height:14px;background:oklch(.5 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:48px;width:52%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:66px;width:66%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:84px;width:38%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:110px;width:58%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill"><svg class="i"><use href="#i-share"/></svg>Jae is presenting</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>9</span></div>
+          <div style="position:absolute;left:8px;top:50%;translate:0 -50%;display:flex;flex-direction:column;gap:6px;z-index:5">
+            <div class="tile" style="width:54px;height:72px;outline:1.5px solid var(--acc);outline-offset:-1.5px"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            <div class="tile" style="width:54px;height:72px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            <div class="tile off" style="width:54px;height:72px"><i class="av" style="max-width:24px;font-size:9px">+7</i></div>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Share · landscape — height-bound, strip becomes an edge rail</p>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Two things your combination doesn't resolve</h2>
+
+  <div class="verdict">
+    <div class="vc push">
+      <h4><span class="tag">needs a call</span> Dots stop working past about five pages</h4>
+      <p>28 people at four per page is seven pages. iOS page controls compress past roughly eight dots and
+      stop communicating anything; nobody swipes seven times to find a colleague either. Above ~5 pages
+      the indicator should become a <code>Speaker · 3/7</code> pill rather than dots, and the existing
+      off-page-speaker jump stops being a nicety and becomes the primary way to reach someone.</p>
+      <p>Also: the dots should <b>not</b> hide with the auto-hiding chrome. They're status, not control —
+      same category as <code>CallStatusBar</code>. Hiding them takes away your sense of where you are in
+      the sequence for no benefit.</p>
+    </div>
+
+    <div class="vc push">
+      <h4><span class="tag">needs a call</span> When does a gallery stop being worth browsing?</h4>
+      <p>This is a product question about Manim's calls, not a layout one, so I'm flagging rather than
+      deciding. If a 20+ call is a <b>class</b> — seeing everyone is the point — pages are right and the
+      answer is a better indicator. If it's a <b>standup</b> — you watch whoever is talking — then above
+      some threshold page 1 should end in a <code>+N</code> overflow tile opening the People sheet, and
+      the later pages shouldn't exist. The <code>OverflowTile</code> for that is already built and used
+      by the presentation layout.</p>
+      <p>My instinct is a threshold rather than a choice: page through up to ~3 pages, overflow beyond
+      that. But it depends on what your calls actually are, and I'd rather ask than guess.</p>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>Device picker — confirmed, one detail to pin</h2>
+  <p class="lede">B's tray shell, A's flat route-first content, C's rail as the collapsed state. Two notes
+  from composing them, neither a conflict:</p>
+  <ul class="shared">
+    <li><span class="n">01</span><span><b>C's collapsed chip must not resize.</b> A chip that reads the device name — “AirPods”, “Jabra Evolve2 85” — changes width when the route changes, which moves the buttons on either side of it. That's the moving-target problem the audit was complaining about, reintroduced. Fix: fixed-width chip with truncation, or icon-plus-route-glyph. It's shown fixed-width in the frames above.</span></li>
+    <li><span class="n">02</span><span><b>The tray holds routes; the long tail needs a door.</b> Routes are bounded — four at most — so B's tray fits them without scrolling. A laptop with six microphones doesn't fit, so the tray's last row is “All devices”, which opens A as a full sheet. That's the two composing rather than competing.</span></li>
+  </ul>
+</section>
+
+<div class="rec">
+  <h2>What I'd build, in what order</h2>
+  <p><b>One.</b> The pager: speaker as page 0, gallery pages after it, swipe plus an indicator, and
+  width-derived columns (2 below 430&nbsp;px, 3 above, capped at your 3×3). This is the spine — the share
+  layout and the self-view both hang off it — and it retires the dead <code>LayoutChip</code> along with
+  the undiscoverable swipe-to-switch.</p>
+  <p><b>Two.</b> The share: full-bleed at its own aspect, roster strip gated on the share's painted
+  height, self as the strip's first item, persistent handle. Independent of everything else and it deletes
+  the worst number in the audit (a shared screen getting 31% of the display).</p>
+  <p><b>Three.</b> Corner-snapping and persistence for the self-view card, and drop the filmstrip from
+  speaker view. Both small; the filmstrip removal is a deletion.</p>
+  <p><b>Then</b> the device picker tray, which is a new primitive and wants the a11y pass repeated — it
+  holds focusable controls while the stage is still live, which is the exact shape that produced the
+  <code>aria-hidden-focus</code> finding behind <code>DropdownMenu</code>'s non-modal note.</p>
+  <p>Two answers needed before I start: <b>is the 132&nbsp;px legibility floor staying</b> (which decides
+  whether 3-up appears on a 375&nbsp;px phone), and <b>are 20+ calls browsable</b> (pages) or not
+  (overflow tile).</p>
+</div>
+
+<footer>Manim · resolved mobile in-call spec · thresholds computed from Stage.tsx minW:132 and shareLayout.ts at 320–768px</footer>
+
+</div>

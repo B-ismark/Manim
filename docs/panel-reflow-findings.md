@@ -72,40 +72,49 @@ the bar you measured, and the bar grows every time a control is added.
 ## The grid, and its own defect
 
 The brief's hypothesis was worth testing: could the grid scale tiles down, holding
-aspect, and wrap as needed, instead of hard-shifting? **It already did.**
-`fitMixedRows` is a justified packer — it tries every row count, scales each row to
-fill the width, keeps each tile's snapped aspect, and picks the arrangement that
-maximises the smallest tile. `useElementSize` re-measures through the 220ms transition
-with a 2px threshold so that doesn't become per-frame jank.
+aspect, and wrap as needed, instead of hard-shifting? **It already did.** The packer
+tries every row count, scales each row to fill the width, keeps each tile's snapped
+aspect, and picks the arrangement that maximises the smallest tile.
 
 The defect was next door, in `gridCapacity`: it decided *how many* tiles to show from
-the **narrowed** stage width. Docking the panel therefore took the grid from 4 columns
-to 3 at 1024px, capacity from 16 to 12, and four people to page 2 — not scaled down,
-gone.
+the **narrowed** stage width. Docking the panel therefore cut the page from 20 to 18 at
+1024px and from 16 to 12 at 1200px — people gone, not shrunk.
 
-`gridCapacity` now lives in `src/lib/gridCapacity.ts` and is fed the width the stage
-would have with **no panel docked** (`dockedStageInset`), by both the grid and the
-presentation filmstrip. The packer still lays out in the real, narrowed width, so
-docking is now purely "tiles get smaller". Measured with ten real participants at
-1024×420: **8 tiles → 6 before, 8 → 8 after.**
+Capacity is now the **greater** of the docked and undocked fits, not a substitution.
+That distinction matters: narrowing the stage costs a column, which makes tiles
+narrower, which makes them *shorter*, which fits more rows — so from about 1279px up the
+narrowed stage actually holds **more** (12 → 20 at 1440×800). Substituting the undocked
+width would have thrown that away and shown twelve people where twenty fit legibly.
+Taking the max fixes the direction that loses people and leaves the other alone.
 
-It also stops the toggle unmounting and remounting video the client had already
-decoded, which was churn nobody asked for.
+The **column cap** is deliberately *not* maxed. It is a legibility floor for the space
+the tiles actually occupy (`fitMixedRows` treats it as a ceiling), so it follows the
+real, narrowed width. Deriving it from the undocked width would leave rows four wide in
+three columns' worth of stage.
+
+Applied in all three places that page tiles: the pointer gallery, the touch pager (a
+no-op on a handset, since `dockedStageInset` is 0 below `lg` — it is a large tablet that
+would otherwise lose people), and the presentation filmstrip.
+
+Measured with eleven real participants at 1024×500: **10 tiles → 9 before, 10 → 10
+after.** It also stops the toggle unmounting and remounting video the client had already
+decoded.
 
 ## Tests
 
 - `src/lib/panelDock.test.ts` — the bar offset never lands in the Leave band at any
   width, scales with the bar, and has ~150px of headroom at `xl` before it could.
-- `src/lib/gridCapacity.test.ts` — capacity is identical panel-open and panel-closed
-  across every desktop width and crowd size, on touch, and under an explicit gallery
-  size; pins the exact drop it prevents (`{cols:4, perPage:16}` → `{cols:3, perPage:12}`);
-  and checks `dockedStageInset` against RoomView's Tailwind classes written out
+- `src/lib/panelCapacity.test.ts` — page capacity never shrinks when the panel docks,
+  at every desktop width and both pointer densities; pins the exact drops it prevents
+  (20 → 18 at 1024, 16 → 12 at 1200) and the extra capacity it keeps (20 at 1440); and
+  checks `dockedStageInset` against RoomView's Tailwind classes written out
   independently, so the constant can't drift from the CSS unnoticed.
-- `tests/21-panel-reflow.spec.ts` — hit-tests the real app at 768/1024/1280/1440: the
-  resting pointer never lands on a Leave control, Leave is never buried under the
+- `tests/21-panel-reflow.spec.ts` — hit-tests the real app at 768/1024/1279/1280/1440:
+  the resting pointer never lands on a Leave control, Leave is never buried under the
   panel, and the stage gives up exactly the inset the capacity maths adds back. A
-  deliberate press on Leave still leaves first time. Tagged `@heavy`: ten real
-  participants confirming the tile count survives the toggle.
+  deliberate press on Leave still leaves first time. Tagged `@heavy`: eleven real
+  participants confirming nobody is paged out by the toggle.
 
-Both fixes were mutation-checked — reintroducing the old re-centring fails the reflow
-spec at the first width it checks, and reverting the capacity width reproduces 8 → 6.
+All three fixes were mutation-checked — reintroducing the old re-centring fails the
+reflow spec at the first width it checks, and reverting the capacity rule reproduces
+10 → 9.
