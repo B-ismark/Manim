@@ -78,7 +78,14 @@ function save(map: Record<string, Entry>) {
 export function rememberRoomSecrets(slug: string, secrets: RoomSecrets): void {
   if (!slug || (!secrets.secret && !secrets.e2ee)) return
   const map = load()
-  map[slug] = { secret: secrets.secret, e2ee: secrets.e2ee, ts: Date.now() }
+  // Strictly increasing, not plain `Date.now()`. Millisecond resolution means
+  // several rooms recorded in the same tick carry the SAME stamp, and `save` sorts
+  // by it to decide who survives the cap — so a tie handed that decision to the
+  // engine's sort order, and the entry being written could be the one evicted. A
+  // millisecond of drift is nothing against a 30-day TTL, and it makes "the newest
+  // write survives" true instead of usually true.
+  const newest = Object.values(map).reduce((m, e) => Math.max(m, e.ts), 0)
+  map[slug] = { secret: secrets.secret, e2ee: secrets.e2ee, ts: Math.max(Date.now(), newest + 1) }
   save(map)
 }
 
