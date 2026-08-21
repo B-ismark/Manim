@@ -159,6 +159,91 @@ test.describe('Mobile fit (no page scroll)', () => {
   })
 
   /**
+   * The control island must fit the screen it's on.
+   *
+   * Nothing checked this, and it had been failing: at 375px the island has 343px to
+   * work with, and a HOST's bar wanted 372px (414 with the room-locked pill) because
+   * of the split leave-and-end control. Over-wide controls don't compress — `size-11`
+   * fixes both axes — so the island rendered at its natural width and hung off both
+   * screen edges, with the mic on one side and leave on the other partly unreachable.
+   * The responsive audit never caught it because it can't reach an in-call surface.
+   *
+   * Asserts the island's box is inside the viewport and every control still clears
+   * 44px, so a fix can't be "shrink the buttons".
+   */
+  test('the control island fits the viewport, with 44px targets', async ({ page }) => {
+    const vp = page.viewportSize()!
+    await join(page, uniqueRoom(), 'Solo')
+    await revealChrome(page)
+    await page.waitForTimeout(400)
+
+    const box = await page
+      .getByRole('button', { name: 'Leave call' })
+      .evaluate((el) => {
+        const island = el.closest('div')!.parentElement!
+        const r = island.getBoundingClientRect()
+        const controls = Array.from(island.querySelectorAll('button')).map((b) => {
+          const cr = b.getBoundingClientRect()
+          return { w: Math.round(cr.width), h: Math.round(cr.height) }
+        })
+        return { left: Math.round(r.left), right: Math.round(r.right), controls }
+      })
+
+    expect(box.left, 'island not clipped on the left').toBeGreaterThanOrEqual(0)
+    expect(box.right, 'island not clipped on the right').toBeLessThanOrEqual(vp.width)
+    const tooSmall = box.controls.filter((c) => c.h > 0 && c.h < 44)
+    expect(tooSmall, 'every control clears 44px').toEqual([])
+  })
+
+  /**
+   * A speaker change must not move anyone between gallery pages.
+   *
+   * The pager slices one ordered list by index, so that list's MEMBERSHIP has to be
+   * stable. The tempting definition — "everyone the focus page isn't showing" —
+   * excludes the focused track, and the focus follows the active speaker, so every
+   * "yeah" from across the room swapped one member for another and renumbered
+   * everyone between them. Tiles jumping mid-sentence is what tilePriority's stable
+   * sort and the sticky featured share both exist to prevent.
+   *
+   * The fix is that the gallery holds everyone, speaker included — so they appear
+   * big on page 0 AND as a cell, which is what Zoom does. This asserts the tiles on
+   * a gallery page are the same set before and after someone else starts talking.
+   */
+  test('a speaker change does not reshuffle gallery pages', async ({ page, browser }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+      newParticipant(browser, room, 'Guest3'),
+    ])
+    try {
+      await page.waitForTimeout(2000)
+      await revealChrome(page)
+      await page.getByRole('button', { name: 'More options' }).tap()
+      await page.getByRole('button', { name: 'Grid', exact: true }).tap()
+      await closePanel(page)
+      await page.waitForTimeout(600)
+
+      const names = () =>
+        page.evaluate(() =>
+          Array.from(document.querySelectorAll('[role="group"][aria-label]'))
+            .filter((e) => (e as HTMLElement).offsetHeight > 60)
+            .map((e) => e.getAttribute('aria-label')!.split(',')[0])
+            .sort(),
+        )
+
+      const before = await names()
+      expect(before.length, 'a gallery page is showing tiles').toBeGreaterThan(0)
+      // Let the fake-media audio drive `isSpeaking` around for a few cycles.
+      await page.waitForTimeout(4000)
+      expect(await names(), 'the same people are on this page').toEqual(before)
+    } finally {
+      await Promise.all(peers.map((p) => p.close()))
+    }
+  })
+
+  /**
    * The stage is one horizontal page sequence, and speaker view is page 0.
    *
    * Swipe used to toggle grid/speaker, which took the gesture a phone user reaches

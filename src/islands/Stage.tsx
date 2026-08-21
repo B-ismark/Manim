@@ -38,7 +38,7 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { useDraggable } from '@/lib/useDraggable'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
+import { featuredShare, focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
 import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { indicatorStyle, pageOfGalleryItem, stagePage } from '@/lib/stagePager'
@@ -105,6 +105,7 @@ export function Stage() {
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const demotedShares = useRoomStore((s) => s.demotedShares)
   const stickyShareId = useRoomStore((s) => s.stickyShareId)
+  const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
@@ -177,7 +178,19 @@ export function Stage() {
   // see, wire-addressed to the one you can't.
   const share = primaryShare(visible, stickyShareId)
   const shareSid = share ? shareId(share) : null
-  const shareFeatured = Boolean(share) && visible.length > 1 && !demotedShares.includes(shareSid!)
+  // For TOUCH, ask the shared definition rather than re-deriving one.
+  //
+  // The obvious local test — "there's a share and it isn't demoted" — misses the
+  // person-spotlight case, and useSharePresence (which decides whether the pen is
+  // armed and where ink is addressed) does not. Diverging here would put a share
+  // full-bleed with an annotation overlay mounted on it while useSharePresence
+  // reported no drawable surface: `canAnnotate` false and `featuredShareId` null,
+  // so remote ink would have had nowhere to land. focusTrack.ts's header records
+  // that three surfaces once answered this separately and disagreed; this is one
+  // definition, consumed here too.
+  const touchShareFeatured =
+    visible.length > 1 &&
+    featuredShare(visible, { demotedShares, spotlightKey, stickyShareId }) !== undefined
 
   // ── Touch: one horizontal page sequence, no layout modes ────────────────────
   //
@@ -191,8 +204,8 @@ export function Stage() {
     return (
       <PagedStage
         visible={visible}
-        share={shareFeatured ? share! : null}
-        featuredSid={shareFeatured ? shareSid : null}
+        share={touchShareFeatured ? share! : null}
+        featuredSid={touchShareFeatured ? shareSid : null}
       />
     )
   }
@@ -384,19 +397,30 @@ function PagedStage({
   // else your own camera (a call where nobody else has video yet).
   const focus = share ?? focusTrack(others, pinned) ?? localCam
 
-  // Everyone the focus page isn't already showing.
+  // The gallery holds EVERYONE — including whoever is currently big on page 0.
   //
-  // Your own camera stays IN here even though the focus page also floats it as a
-  // corner card. That's deliberate and it's what Zoom does: self is a thumbnail in
-  // speaker view and a cell in the gallery. Excluding it instead — which is what
-  // this did first — made your own camera vanish entirely the moment you swiped off
-  // page 0, since the card only exists there.
+  // This is the invariant the pager rests on, and getting it wrong is subtle. The
+  // obvious version, "everyone the focus page isn't showing", excludes `focus` —
+  // but `focus` follows the active speaker (focusTrack falls through to
+  // `isSpeaking`), so every time someone else started talking the gallery gained
+  // one member and lost another. The pager slices this list by index, so that
+  // renumbers everyone between the two alphabetically: you are on page 2 watching
+  // four people, somebody across the room says "yeah", and the tiles you were
+  // looking at shuffle onto a different page. Tiles jumping mid-sentence is exactly
+  // what tilePriority's stable sort and useSharePresence's sticky share exist to
+  // prevent, and it would have walked straight back in here.
   //
-  // Membership must also not depend on which page you're on: the page slices this
-  // list by index, so a set that changed shape per page would renumber everyone
-  // underneath the pager.
+  // So the speaker appears twice — big on page 0 and as a cell in the gallery — and
+  // so does your own camera, which the corner card also shows. That duplication is
+  // deliberate and it is what Zoom does: membership now only changes when someone
+  // joins or leaves, a share starts or stops being featured, or self-view is
+  // toggled. All deliberate events; none of them speech.
+  //
+  // The featured share is the one exclusion: it owns page 0 in its entirety, and it
+  // arrives as a sticky prop rather than a re-derived value, so it doesn't move
+  // either. A DEMOTED share isn't excluded — "Show as grid" has to put it somewhere.
   const gallery = useMemo(() => {
-    let rest = visible.filter((t) => t !== focus)
+    let rest = share ? visible.filter((t) => t !== share) : visible
     // "Hide self view" drops it — unless that would empty the gallery entirely.
     if (selfViewHidden && rest.some((t) => !isLocalCam(t))) rest = rest.filter((t) => !isLocalCam(t))
     return [...rest].sort((a, b) => {
@@ -406,7 +430,7 @@ function PagedStage({
       }
       return tilePriority(a) - tilePriority(b) || tileKey(a).localeCompare(tileKey(b))
     })
-  }, [visible, focus, selfViewHidden, videosFirst])
+  }, [visible, share, selfViewHidden, videosFirst])
 
   const gap = 8
   // Page capacity is computed against the RESERVED height unconditionally, not per
@@ -442,7 +466,8 @@ function PagedStage({
     const i = gallery.findIndex((t) => t.participant.isSpeaking)
     return pageOfGalleryItem(i, perPage)
   }, [gallery, perPage])
-  const speakerOffPage = speakingPage > 0 && speakingPage !== page.index && !focus?.participant.isSpeaking
+  // Only meaningful on a gallery page — page 0 already shows the speaker full size.
+  const speakerOffPage = page.kind === 'gallery' && speakingPage > 0 && speakingPage !== page.index
 
   const shown = gallery.slice(page.start, page.end)
   const shareIsFocus = Boolean(share) && page.kind === 'focus'
@@ -511,7 +536,8 @@ function PagedStage({
       {shareIsFocus && (
         <RosterStrip
           tracks={gallery}
-          self={localCam}
+          // `gallery` already drops self when hidden; the prop would put it back.
+          self={selfViewHidden ? undefined : localCam}
           open={rosterOpen}
           onToggle={() => setRosterOpen((o) => !o)}
           stageHeight={size.height}
