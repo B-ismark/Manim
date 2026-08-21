@@ -15,7 +15,7 @@ import {
   MicOffIcon,
   ScreenShareIcon,
 } from '@/components/icons'
-import { focusTrack, hasVideo, isLocalCam } from '@/lib/focusTrack'
+import { hasVideo, isLocalCam, stageFocus } from '@/lib/focusTrack'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useScreenShare } from '@/features/calls/useScreenShare'
@@ -34,6 +34,7 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
   const screenShare = useScreenShare()
   const pinned = useRoomStore((s) => s.pinned)
+  const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const coarse = useIsTouch()
   const tracks = useTracks(
     [
@@ -43,10 +44,11 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
     { onlySubscribed: false },
   )
 
-  // Prefer a remote/screen focus; only show self when alone.
-  const localCam = tracks.find(isLocalCam)
-  const others = tracks.filter((t) => !isLocalCam(t))
-  const focus = focusTrack(others, pinned) ?? localCam
+  // Prefer a remote/screen focus; only show self when alone — or when you have
+  // explicitly pinned yourself. Same helper the stage uses, deliberately: this
+  // window is a mirror of the stage's big region, and two surfaces answering
+  // "who is in focus" from their own copy of the rule is how they drift apart.
+  const focus = stageFocus(tracks, pinned, selfViewHidden)
   const p = focus?.participant
   const name = p ? p.name || p.identity.split('#')[0] : ''
   const selfFacing = useRoomStore((s) => s.selfFacing)
