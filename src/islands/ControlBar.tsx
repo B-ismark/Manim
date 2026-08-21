@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
+import { useLocalParticipant, useRoomContext } from '@livekit/components-react'
 import { toast } from '@/store/useToastStore'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import {
@@ -51,6 +51,8 @@ import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlu
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore, type GridSize } from '@/store/useRoomStore'
 import { useDeviceStore } from '@/store/useDeviceStore'
+import { useAudioStore } from '@/store/useAudioStore'
+import { recoverMicrophone } from '@/lib/audioRecovery'
 import { useCameraToggle } from '@/lib/useCameraToggle'
 import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScreenShare'
 import { useSharePresence } from '@/lib/useSharePresence'
@@ -109,6 +111,11 @@ export function ControlBar({
   docPip,
 }: ControlBarProps) {
   const { localParticipant, isMicrophoneEnabled } = useLocalParticipant()
+  const room = useRoomContext()
+  // A microphone that couldn't be recovered. The mic control has to say so and
+  // has to become the way back: the reported bug was "no way to re-trigger it",
+  // and an ordinary unmute here re-runs the acquire that just failed.
+  const micFault = useAudioStore((s) => s.micFault)
   // One entry point for starting/stopping a share — see useScreenShare's header.
   const screenShare = useScreenShare()
   // Annotation needs a share in the BIG region, not merely a share somewhere.
@@ -544,13 +551,64 @@ export function ControlBar({
             hidden in a menu. Touch reaches the same picker via the Output button and
             "Audio & video" in More. */}
         <div className="flex items-center gap-0.5">
-          <Tooltip content={isMicrophoneEnabled ? 'Mute' : 'Unmute'}>
+          <Tooltip
+            content={
+              micFault
+                ? 'Microphone unavailable — tap to retry'
+                : isMicrophoneEnabled
+                  ? 'Mute'
+                  : 'Unmute'
+            }
+          >
             <IconButton
-              label={isMicrophoneEnabled ? 'Mute microphone' : 'Unmute microphone'}
-              icon={isMicrophoneEnabled ? <MicIcon /> : <MicOffIcon />}
-              tone={isMicrophoneEnabled ? 'neutral' : 'danger'}
-              active={!isMicrophoneEnabled}
-              onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+              // Never claim "Unmute microphone" for a control that cannot
+              // unmute. During a fault the label, the tooltip and the press all
+              // describe the same thing: retrying the device.
+              label={
+                micFault
+                  ? 'Microphone unavailable, retry'
+                  : isMicrophoneEnabled
+                    ? 'Mute microphone'
+                    : 'Unmute microphone'
+              }
+              icon={
+                micFault ? (
+                  <span className="relative inline-flex">
+                    <MicOffIcon />
+                    {/* Amber on the danger fill — a red dot on a red button says
+                        nothing. Ringed in the fill colour so it reads as a badge
+                        rather than part of the glyph. */}
+                    <span
+                      aria-hidden
+                      className="absolute -right-1 -top-1 size-2 rounded-full bg-warning ring-2 ring-danger"
+                    />
+                  </span>
+                ) : isMicrophoneEnabled ? (
+                  <MicIcon />
+                ) : (
+                  <MicOffIcon />
+                )
+              }
+              tone={micFault || !isMicrophoneEnabled ? 'danger' : 'neutral'}
+              active={!!micFault || !isMicrophoneEnabled}
+              onClick={() => {
+                if (micFault) {
+                  void recoverMicrophone(room, true).then((r) => {
+                    // A retry that quietly does nothing is the bug being fixed
+                    // here — say so when it fails again.
+                    if (!r.ok) {
+                      toast(
+                        r.reason === 'blocked'
+                          ? 'Microphone access is blocked in your browser settings'
+                          : 'Still no microphone — check that one is connected',
+                        'danger',
+                      )
+                    }
+                  })
+                  return
+                }
+                void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+              }}
             />
           </Tooltip>
           <DeviceCaret label="Audio options" className="hidden pointer-fine:inline-flex">
@@ -944,7 +1002,11 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
   return (
     <div className="flex flex-col gap-3">
       <DeviceRow kind="audioinput" label="Microphone" />
-      <DeviceRow kind="audiooutput" label="Audio output" />
+      {/* "Speaker", not "Audio output": the button that opens this panel is the
+          one called Audio output, and two controls with the same accessible name
+          doing different things is a genuine ambiguity for a screen reader.
+          Matches what DeviceSettings has always called this row. */}
+      <DeviceRow kind="audiooutput" label="Speaker" />
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
       </div>

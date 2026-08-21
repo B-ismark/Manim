@@ -70,6 +70,37 @@ test.describe('In-call controls', () => {
     await expect(dialog.getByRole('switch', { name: 'Noise suppression' })).toBeVisible()
   })
 
+  /**
+   * Regression: the Audio output button was inert on every platform.
+   *
+   * It is the app's only Popover trigger wrapped in a <Tooltip>, and Radix opens
+   * a trigger by cloning its immediate child with an onClick — which landed on
+   * the Tooltip component, which dropped it. The control rendered perfectly,
+   * announced itself correctly, and did nothing when pressed. Nothing caught it
+   * because "the button exists" was all anyone asserted; this asserts it OPENS.
+   */
+  test('Audio output button opens the audio panel', async ({ page }) => {
+    const sink = attachErrorSink(page)
+    await join(page, uniqueRoom(), 'Ada')
+    await revealChrome(page)
+
+    const output = page.getByRole('button', { name: 'Audio output' })
+    await expect(output).toBeVisible()
+    await expect(output).toHaveAttribute('aria-expanded', 'false')
+
+    await output.click()
+    await expect(output).toHaveAttribute('aria-expanded', 'true')
+    // The Bluetooth toggle is the one row that's always present — the device
+    // pickers hide themselves when the platform lists no devices of that kind.
+    await expect(page.getByRole('switch', { name: 'Auto-connect Bluetooth' })).toBeVisible()
+    // And the name stays unique while the panel is open: the speaker row inside
+    // it used to be called "Audio output" too, so a screen-reader user met two
+    // identically-named controls that did different things.
+    await expect(page.getByRole('button', { name: 'Audio output' })).toHaveCount(1)
+
+    expect(appErrors(sink)).toEqual([])
+  })
+
   test('Settings dialog opens from More (theme controls present)', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
     await page.getByRole('button', { name: 'More options' }).click()

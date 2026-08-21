@@ -6,6 +6,7 @@ import { useDeviceStore, type StoredDeviceKind } from '@/store/useDeviceStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { isBluetoothLabel } from '@/lib/bluetooth'
 import { addBreadcrumb } from '@/lib/report'
+import { micUnusable, recoverMicrophone } from '@/lib/audioRecovery'
 
 const KINDS = ['audioinput', 'audiooutput', 'videoinput'] as const satisfies readonly StoredDeviceKind[]
 
@@ -50,7 +51,14 @@ export function useDeviceAutoswitch() {
       reason: 'bluetooth' | 'remembered',
     ) {
       try {
-        const ok = await room.switchActiveDevice(kind, device.deviceId)
+        // exact:false, deliberately. LiveKit's default is exact:true, which
+        // stores the capture constraint as `{ exact: deviceId }` — and a device
+        // WE chose automatically must never be able to strand the mic when it
+        // goes away (see lib/audioRecovery). Non-exact still verifies: LiveKit
+        // compares the resulting track's settings and returns false if the
+        // browser landed somewhere else, so we don't claim a switch we didn't
+        // make. A MANUAL pick keeps exact — that one is a promise to the user.
+        const ok = await room.switchActiveDevice(kind, device.deviceId, false)
         if (cancelled || !ok) return false
         useDeviceStore.getState().remember(kind, device.deviceId, device.label)
         const noun = kindNoun(kind)
@@ -82,6 +90,23 @@ export function useDeviceAutoswitch() {
       }
       if (cancelled) return
       const { autoBluetooth, devices: prefs } = useDeviceStore.getState()
+
+      // A departure nobody was watching: the active INPUT disappeared while
+      // there was no live mic track to raise an `ended` event — the mic was off,
+      // or already dead. Nothing else repoints it (LiveKit skips its own
+      // audioinput fallback on Chrome, and never clears the room's pinned
+      // constraint), so the next time the user turns the mic on it re-requests a
+      // device that isn't there and fails. Repoint now, without touching mute
+      // state. A loss with a live track belongs to useMediaDeviceWatch, which
+      // also knows whether to bring the mic back up — recoverMicrophone
+      // coalesces the two if both fire for one unplug.
+      const activeInput = room.getActiveDevice('audioinput')
+      const inputGone =
+        !!activeInput && !devices.some((d) => d.kind === 'audioinput' && d.deviceId === activeInput)
+      if (inputGone && micUnusable(room)) {
+        await recoverMicrophone(room, false)
+        if (cancelled) return
+      }
 
       for (const kind of KINDS) {
         const list = devices.filter((d) => d.kind === kind && d.deviceId)
