@@ -178,3 +178,11 @@ which is also a toggle and does close.
 | F3 | Device picker is the wrong pattern | ⏳ prototype, awaiting sign-off |
 | F5 | "Audio output" can't route on iOS | ⏳ folded into F3 prototype |
 | F6 | Sub-44px targets in the More sheet | ⏳ folded into F3 prototype |
+
+## Related
+
+- [`mobile-device-picker-prototypes.html`](mobile-device-picker-prototypes.html) — three
+  replacements for the nested-dropdown picker (F3/F5/F6), benchmarked against Meet, Teams,
+  Zoom, WhatsApp, FaceTime and Discord.
+- [`mobile-video-layout-prototypes.html`](mobile-video-layout-prototypes.html) — the stage
+  itself: screen-share, speaker, small group and 20+, with the geometry measured at 375×667.
