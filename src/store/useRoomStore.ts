@@ -56,7 +56,9 @@ interface RoomState {
   /** Facing mode of the local camera. Front ('user') is mirrored like a selfie;
    *  rear ('environment') must NOT be mirrored or the world looks flipped. */
   selfFacing: 'user' | 'environment'
-  /** Hide your own floating self-view (you still send video; you just don't see it). */
+  /** Drop your own camera from your stage — the desktop grid tile, the touch
+   *  gallery cell, and the floating self-view card alike. You still SEND video;
+   *  you just don't see it. */
   selfViewHidden: boolean
   /** Audio-only / low-bandwidth: render avatars instead of decoding remote video. */
   audioOnly: boolean

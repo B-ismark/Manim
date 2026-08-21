@@ -306,8 +306,12 @@ test.describe('Mobile fit (no page scroll)', () => {
    *
    * The self-view was a 96px card — too small to tell whether you were in frame,
    * which is the one thing a self-view is for — and it was suppressed entirely
-   * during a screen share. It is now a third of the viewport, present on every
-   * view, and a tap opens it to roughly double that.
+   * during a screen share. It is now a third of the viewport, and a tap opens it to
+   * roughly double that.
+   *
+   * This is the SPEAKER view, which is where a call opens and one of the two views
+   * that still floats the card. The gallery gives you a real cell instead — see the
+   * test below, which asserts the two never both happen.
    */
   test('the self-view is legible and opens on tap', async ({ page, browser }) => {
     const vp = page.viewportSize()!
@@ -342,6 +346,170 @@ test.describe('Mobile fit (no page scroll)', () => {
       expect(expanded.y + expanded.height).toBeLessThanOrEqual(barTop + 1)
     } finally {
       await peer.context.close()
+    }
+  })
+
+  /**
+   * Exactly ONE of you is on screen, and which one depends on the view.
+   *
+   * The gallery used to have a person-shaped hole in it: you were excluded from the
+   * tiles and floated over them as a card instead, which cost you the only view
+   * where you appear at the same size and in the same reading order as everyone
+   * else. You are a cell there now, the way every desktop layout carries you.
+   *
+   * The card is NOT gone, because two views have no cell of yours to be in —
+   * speaker is one full-bleed feed, and a share puts people on a collapsible
+   * thumbnail rail. So the property worth pinning down isn't "card" or "cell", it's
+   * that the two never overlap: a card AND a cell would show you to yourself twice,
+   * on the pointer type with the least room to spare.
+   *
+   * Both counts come from one sweep of the accessible names, because that is the
+   * only way to catch the failure where each half is individually correct.
+   */
+  test('you are a gallery cell, and never a cell and a card at once', async ({ page, browser }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+    ])
+    try {
+      /**
+       * How many of each surface is showing you.
+       *
+       * One sweep rather than two locators, because the card is NOT a sibling of
+       * the cells — it wraps a Tile, and that inner Tile carries the very same
+       * "(you)" label a cell does. A plain count of `(you)` groups is therefore 1
+       * in both views and proves nothing; only the ones OUTSIDE the card are cells.
+       * (`tileLabel` renders the local participant as "<name> (you)", so this finds
+       * your tile without depending on the display name the join flow used.)
+       */
+      const surfaces = () =>
+        page.evaluate(() => {
+          const card = document.querySelector('[role="group"][aria-label^="Your video"]')
+          const tiles = Array.from(
+            document.querySelectorAll('[role="group"][aria-label*="(you)"]'),
+          )
+          return {
+            card: card ? 1 : 0,
+            cells: tiles.filter((t) => !card?.contains(t)).length,
+          }
+        })
+
+      // Arrive in speaker view: the card, and no cell of yours in the background.
+      await expect
+        .poll(surfaces, { timeout: 45_000, message: 'speaker view floats the card' })
+        .toEqual({ card: 1, cells: 0 })
+
+      await selectStageView(page, 'Gallery')
+
+      // …and in the gallery the two swap over. Not "the cell appears" — the card
+      // going away is the half a partial implementation would miss, and the half
+      // that costs a phone a tile-sized hole in the middle of the grid.
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: 'the gallery tiles you instead' })
+        .toEqual({ card: 0, cells: 1 })
+
+      // The cell is a real tile, not a sliver: it sits in the grid at the size
+      // everyone else's does. A self-view too small to show whether you are in
+      // frame is the bug the card was made big to fix, and a cell can reintroduce
+      // it — a 96px cell would satisfy every assertion above.
+      await page.waitForTimeout(400) // let the packer settle on the reported aspects
+      const mine = (await page.getByRole('group', { name: /\(you\)/ }).boundingBox())!
+      const theirs = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('[role="group"][aria-label]'))
+          .filter(
+            (e) =>
+              !/\(you\)/.test(e.getAttribute('aria-label')!) &&
+              (e as HTMLElement).offsetHeight > 60,
+          )
+          .map((e) => e.getBoundingClientRect().width),
+      )
+      expect(theirs.length, 'there are other tiles to compare against').toBeGreaterThan(0)
+      expect(mine.width, 'your cell is sized like the others').toBeGreaterThanOrEqual(
+        Math.min(...theirs) * 0.9,
+      )
+
+      // Switching back restores the card — the rule is per-view, not a one-way door.
+      await selectStageView(page, 'Speaker')
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: 'speaker view floats the card again' })
+        .toEqual({ card: 1, cells: 0 })
+
+      // "Hide self view" has to reach the cell too. It only ever had a card to hide
+      // before, so a filter that stopped at the card would leave the setting looking
+      // like it worked in speaker view and silently failing in the gallery.
+      await openMore(page)
+      await page.getByRole('button', { name: 'Hide self view' }).tap()
+      await closePanel(page)
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: 'hidden means hidden in speaker view' })
+        .toEqual({ card: 0, cells: 0 })
+      await selectStageView(page, 'Gallery')
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: '…and in the gallery, where the cell is' })
+        .toEqual({ card: 0, cells: 0 })
+    } finally {
+      await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
+  /**
+   * Pinning YOURSELF shows you, not whoever is talking.
+   *
+   * Both stages asked `focusTrack(others, pinned)` with the local camera filtered
+   * out. That filter is right for the automatic picks — being the loudest voice in
+   * the room is no reason to full-bleed you to yourself — but it also meant a pin on
+   * your own identity matched nothing and fell straight through to the active
+   * speaker. `togglePin` switches the layout to speaker on the way, so asking to
+   * watch yourself handed the whole screen to somebody else while your own tile
+   * carried the "pinned" label. Measured, not guessed: Guest1 filled the stage.
+   *
+   * It was reachable before this branch — a desktop double-click, or a long-press on
+   * the touch self-view card — but the gallery cell is what makes it the obvious
+   * thing to try, because "double-tap a video to pin" is what the coachmark teaches
+   * and your video is now one of the videos.
+   */
+  test('pinning your own gallery cell puts YOU on the stage', async ({ page, browser }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+    ])
+    try {
+      await selectStageView(page, 'Gallery')
+      const mine = page.getByRole('group', { name: /\(you\)/ })
+      await expect(mine).toHaveCount(1, { timeout: 30_000 })
+
+      // The taught gesture, on your own tile.
+      await mine.dblclick()
+
+      // The biggest tile on the stage is the one the pin asked for. Reading the
+      // LARGEST tile rather than a specific locator is the point: the failure mode
+      // is that some other tile is the big one, which an assertion aimed at your own
+      // tile would sail straight past.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const groups = Array.from(
+                document.querySelectorAll('[role="group"][aria-label]'),
+              ) as HTMLElement[]
+              const biggest = groups
+                .filter((e) => e.offsetHeight > 60)
+                .sort(
+                  (x, y) =>
+                    y.getBoundingClientRect().height * y.getBoundingClientRect().width -
+                    x.getBoundingClientRect().height * x.getBoundingClientRect().width,
+                )[0]
+              return biggest?.getAttribute('aria-label') ?? null
+            }),
+          { timeout: 20_000, message: 'the pinned self is the big tile' },
+        )
+        .toMatch(/\(you\).*pinned/)
+    } finally {
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 

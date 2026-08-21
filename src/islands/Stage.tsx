@@ -41,7 +41,7 @@ import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
 import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
+import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
 import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
@@ -485,8 +485,13 @@ function ScrollGallery({
  * takes precedence and gives you the third — so starting a share still pulls
  * everyone's attention to it without a mode change anyone has to make.
  *
- * Your own camera is a floating card on every view and never a gallery cell. That
- * is the other half of the self-view fix, and the reasoning is in SelfViewCard.
+ * Your own camera is a GALLERY CELL in gallery view, and the floating card in the
+ * other two. That reverses the earlier rule (a card on every view, a cell in none)
+ * and the reasoning is in SelfViewCard: where the stage already tiles people you
+ * are one of the tiles — the way every desktop layout carries you, and the way
+ * Teams and Meet both tile you on a phone. Where the stage is a single full-bleed
+ * feed (speaker, and a share) there is no cell of yours to be in, which is why the
+ * card can't simply be deleted along with the rule.
  */
 function TouchStage({
   visible,
@@ -516,12 +521,19 @@ function TouchStage({
   const [rosterOpen, setRosterOpen] = useState(true)
 
   const localCam = visible.find(isLocalCam)
-  const others = visible.filter((t) => !isLocalCam(t))
-  const focus = focusTrack(others, pinned) ?? localCam
+  const focus = stageFocus(visible, pinned, selfViewHidden)
 
-  // Everyone the gallery tiles: not you (you're the floating card — a cell as well
-  // would show you to yourself twice and cost somebody else their tile), and not
-  // whichever share is currently full-bleed.
+  // Everyone the gallery tiles — INCLUDING you, and not whichever share is
+  // currently full-bleed.
+  //
+  // You used to be excluded here on the grounds that a cell as well as the floating
+  // card would show you to yourself twice. True, and the resolution is the other
+  // one: the card stands down where a cell exists (see `showSelfCard`), instead of
+  // the gallery having a person-shaped hole in it. `tilePriority` already sorts a
+  // local camera to the front, so this needs no special case — you land in the same
+  // place you do in the desktop grid, first after any demoted share.
+  //
+  // `selfViewHidden` drops your cell, exactly as it drops your desktop grid tile.
   //
   // Membership changes only when someone joins or leaves, a share starts or stops
   // leading, or self-view is toggled. Deliberately NOT on speech: the old paged
@@ -530,7 +542,9 @@ function TouchStage({
   // pages mid-sentence. A scroll has no page boundaries to jump across, but a
   // reordering list still moves tiles under a thumb, so the rule stands.
   const gallery = useMemo(() => {
-    const rest = visible.filter((t) => !isLocalCam(t) && !(shareLeads && t === share))
+    const rest = visible.filter(
+      (t) => !(shareLeads && t === share) && !(isLocalCam(t) && selfViewHidden),
+    )
     return [...rest].sort((a, b) => {
       if (videosFirst) {
         const d = Number(hasLiveVideo(b)) - Number(hasLiveVideo(a))
@@ -538,11 +552,20 @@ function TouchStage({
       }
       return tilePriority(a) - tilePriority(b) || tileKey(a).localeCompare(tileKey(b))
     })
-  }, [visible, share, shareLeads, videosFirst])
+  }, [visible, share, shareLeads, videosFirst, selfViewHidden])
 
+  // The roster strip beside a share stays everyone-but-you: that view keeps the
+  // floating card (the strip is a thumbnail rail, not a gallery, and it collapses),
+  // so a cell there would be the double self-view the old rule was guarding against.
+  const roster = useMemo(() => gallery.filter((t) => !isLocalCam(t)), [gallery])
+
+  // `roster`, not `gallery`, decides whether the gallery is offered at all: a grid
+  // of nobody-but-you is what the speaker view already is, and reading the
+  // self-inclusive list here would have quietly made gallery view reachable in a
+  // call where every other tile has been filtered away.
   const view: TouchView = shareLeads
     ? 'content'
-    : layout === 'grid' && gallery.length > 0
+    : layout === 'grid' && roster.length > 0
       ? 'gallery'
       : 'speaker'
 
@@ -584,9 +607,12 @@ function TouchStage({
   // control island, and at 375px a card and an expanded strip landed on top of each
   // other. Same problem the page indicator had, same fix.
   const selfLift = view === 'content' ? (stripShowing ? 90 : 26) : 0
-  // Don't float a second copy of yourself when you ARE the big tile (a call where
-  // nobody else has published a camera yet).
-  const showSelfCard = Boolean(localCam) && !selfViewHidden && !(view === 'speaker' && focus === localCam)
+  // The card stands down wherever the stage already shows you: the gallery, which
+  // now gives you a cell, and a speaker view whose big tile is you (a call where
+  // nobody else has published a camera yet). Two of you on screen at once is the
+  // thing to avoid — which cell/card wins is a per-view answer, not a global one.
+  const selfIsTiled = view === 'gallery' || (view === 'speaker' && focus === localCam)
+  const showSelfCard = Boolean(localCam) && !selfViewHidden && !selfIsTiled
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col p-2">
@@ -651,10 +677,10 @@ function TouchStage({
       {/* The roster strip exists only alongside a share, and only while the share
           doesn't want the height (in portrait a landscape share is width-bound, so
           the space under it is slack rather than a budget). Self is deliberately
-          NOT in it — that's the floating card's job now. */}
+          NOT in it — during a share the floating card is still your self-view. */}
       {view === 'content' && (
         <RosterStrip
-          tracks={gallery}
+          tracks={roster}
           open={rosterOpen}
           onToggle={() => setRosterOpen((o) => !o)}
           stageHeight={size.height}
@@ -1298,11 +1324,9 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const setPanel = useRoomStore((s) => s.setPanel)
 
-  const localCam = visible.find(isLocalCam)
-  const others = visible.filter((t) => !isLocalCam(t))
-  // Pin wins, then the active speaker. Falling back to your own camera keeps the
-  // big region filled in a call where nobody else has published one yet.
-  const focus = focusTrack(others, pinned) ?? localCam
+  // Pin wins — including a pin on yourself — then the active speaker, then your own
+  // camera so the big region is never empty. See stageFocus.
+  const focus = stageFocus(visible, pinned, selfViewHidden)
 
   let rest = visible.filter((t) => t !== focus)
   if (selfViewHidden) rest = rest.filter((t) => !isLocalCam(t))
@@ -1548,13 +1572,17 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
  *
  * TOUCH-ONLY, and big — those two decisions are the same decision.
  *
- * On a phone this is the only place you ever see yourself: the gallery deliberately
- * has no cell for you (a cell AND a card shows you to yourself twice, and the cell
- * is the one that costs somebody else their tile). So the card is not a courtesy
- * thumbnail, it is your entire self-view, and it was 96px wide — too small to tell
- * whether you were in frame, which is the one question a self-view exists to answer.
- * It is now a third of the viewport, and a tap opens it to ~62% for a proper look
- * before it goes back to staying out of the way.
+ * On a phone this is the only place you see yourself in the two views that have no
+ * cell for you: SPEAKER, which is one full-bleed feed, and a share, whose roster
+ * strip is a collapsible thumbnail rail rather than a gallery. (The gallery does
+ * give you a cell, and the card stands down there — TouchStage's `showSelfCard`.
+ * Two of you on screen at once is what both halves of that rule are avoiding.)
+ *
+ * So where it does render, the card is not a courtesy thumbnail, it is your entire
+ * self-view — and it was 96px wide, too small to tell whether you were in frame,
+ * which is the one question a self-view exists to answer. It is now a third of the
+ * viewport, and a tap opens it to ~62% for a proper look before it goes back to
+ * staying out of the way.
  *
  * Desktop doesn't render it at all any more. Every desktop layout already carries
  * you as a real tile — a gallery cell, or a filmstrip thumbnail in speaker/content
