@@ -617,14 +617,19 @@ export function useChatMessages() {
     if (panelRef.current === 'chat') return
     bumpUnread(fresh.length)
     sounds.message()
+    // Deliberately no content preview: the message text is already about to
+    // render in the chat panel, and echoing it here means the exact same
+    // string is briefly on screen twice (confusing for a reader, and it's
+    // what made 06-multiparty's `getByText('hi from host')` match both the
+    // toast and the real bubble). Naming the sender is enough to say "look
+    // at chat" without duplicating their words.
     const last = fresh[fresh.length - 1]
-    // A file item enters `items` as soon as the transfer starts (progress 0),
-    // not once it's received — this notification fires at that same moment
-    // (there's no follow-up once `notifiedIds` has the id), so it must not
-    // claim the file already arrived.
-    const preview =
-      last.kind === 'text' ? plainText(last.text) : `Sending ${last.fileName}…`
-    toast(`${last.fromName}: ${preview.length > 80 ? `${preview.slice(0, 80)}…` : preview}`, 'info')
+    toast(
+      fresh.length > 1
+        ? `${fresh.length} new messages, including from ${last.fromName}`
+        : `New message from ${last.fromName}`,
+      'info',
+    )
   }, [items, bumpUnread])
 
   /** Send a chat message. Returns false if the transport rejected it (e.g. sent
