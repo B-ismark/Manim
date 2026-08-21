@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test'
 import { uniqueRoom, join, newParticipant, openEndCallConfirm } from './helpers'
 
 // Plain "Leave" is covered by 02-prejoin. The DESTRUCTIVE teardown —
-// end-for-everyone — wasn't (audit T2). The host's split control hides
-// "End call for everyone" behind a caret; on confirm it both broadcasts an
+// end-for-everyone — wasn't (audit T2). The host reaches it behind the caret on
+// their split Leave control with a mouse, and from the More sheet on touch (that
+// caret is too small for a thumb, so it isn't offered there) — openEndCallConfirm
+// takes whichever route this platform has. On confirm it both broadcasts an
 // { type:'end' } control message AND closes the room server-side (so a
 // mid-reconnect peer can't be stranded, finding #13). This test exercises the
 // host->guest disconnect path; the server-side close is what makes the race safe.
