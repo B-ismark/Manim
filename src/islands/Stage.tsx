@@ -31,7 +31,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
-import { useRoomStore, type GridSize } from '@/store/useRoomStore'
+import { useRoomStore } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
@@ -40,6 +40,7 @@ import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
 import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
+import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
@@ -95,143 +96,6 @@ function tilePriority(t: TrackReferenceOrPlaceholder): number {
   if (t.source === Track.Source.ScreenShare) return 0
   if (isLocalCam(t)) return 1
   return 2
-}
-
-/**
- * How many legible tiles fit in the stage without scrolling — drives the paged
- * grid. Columns are bounded by width at a minimum tile width (and √n so a
- * 5-person call doesn't spread to 4 thin columns); rows by height at a minimum
- * tile height. Recomputed on every resize so the layout adapts gracefully
- * (window resize, side-panel dock, orientation) instead of clipping or shrinking
- * tiles to dots. Returns {cols, perPage} — cols also drives the rendered grid.
- */
-function gridCapacity(
-  width: number,
-  height: number,
-  n: number,
-  coarse: boolean,
-  sizePref: GridSize,
-): { cols: number; perPage: number } {
-  const gap = coarse ? 8 : 12
-  const minW = coarse ? 132 : 200
-  const minH = coarse ? 116 : 150
-  const maxCols = coarse ? 2 : 4
-  // Hard cap so pagination ALWAYS engages for big rooms — independent of the
-  // measured height (a flex chain can briefly report an unbounded grid height,
-  // which would otherwise compute a perPage large enough to mount every tile).
-  // Also bounds mounted <video>/DOM per page (perf), the point of paging.
-  const MAX_PER_PAGE = coarse ? 9 : 20
-  // User-chosen density (Teams "gallery size"): the page is exactly the picked count
-  // — tiles shrink to fit, pager engages — clamped to what the device can legibly
-  // hold. This overrides the auto fit-to-viewport below.
-  if (sizePref !== 'auto') {
-    const perPage = Math.max(1, Math.min(sizePref, MAX_PER_PAGE))
-    const cols = Math.max(1, Math.min(maxCols, Math.ceil(Math.sqrt(perPage))))
-    return { cols, perPage }
-  }
-  // Before the first measure, fall back to a sane page so we don't flash a huge
-  // mount of every tile.
-  if (width < 2 || height < 2) {
-    const cols = Math.min(maxCols, Math.max(1, Math.ceil(Math.sqrt(n))))
-    return { cols, perPage: coarse ? 4 : 9 }
-  }
-  const byWidth = Math.floor((width + gap) / (minW + gap))
-  const bySqrt = Math.ceil(Math.sqrt(n))
-  const cols = Math.max(1, Math.min(maxCols, byWidth, bySqrt))
-  const rows = Math.max(1, Math.floor((height + gap) / (minH + gap)))
-  return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) }
-}
-
-/**
- * Snap a raw frame aspect (w/h) to a tidy bucket so one odd stream can't make a
- * grid row absurdly tall or wide. Portrait phones clamp to 3:4 (NOT raw 9:16 —
- * that blows out row height), wide cams to 16:9, near-square to 1:1. Mirrors the
- * AWS IVS portrait/square/landscape model. Unknown/camera-off tiles default to
- * 16:9 upstream so the grid stays calm until a real frame arrives.
- */
-function bucketAspect(ratio: number): number {
-  if (ratio <= 0.85) return 3 / 4
-  if (ratio >= 1.2) return 16 / 9
-  return 1
-}
-
-/**
- * Split an ORDERED aspect list into `rows` contiguous groups, balancing the summed
- * aspect per row so rows come out near-equal width. Contiguous (never reorders) so
- * tile order — and thus paging — stays stable. Each remaining row is guaranteed at
- * least one tile. Greedy cumulative-threshold split; ample for a page's worth.
- */
-function balancedRows(aspects: number[], rows: number): number[][] {
-  const r = Math.min(rows, aspects.length)
-  if (r <= 1) return [aspects.slice()]
-  const total = aspects.reduce((s, a) => s + a, 0)
-  const out: number[][] = []
-  let cur: number[] = []
-  let acc = 0
-  for (let i = 0; i < aspects.length; i++) {
-    cur.push(aspects[i])
-    acc += aspects[i]
-    const rowsDone = out.length
-    const tilesLeft = aspects.length - i - 1
-    const rowsLeft = r - rowsDone - 1
-    // Close the row once it crosses its share of the total, but only while there
-    // are still enough tiles to give every remaining row at least one.
-    if (rowsDone < r - 1 && acc >= (total * (rowsDone + 1)) / r && tilesLeft >= rowsLeft) {
-      out.push(cur)
-      cur = []
-      acc = 0
-    }
-  }
-  if (cur.length) out.push(cur)
-  return out
-}
-
-/**
- * Mixed-orientation grid packer (Google Meet "dynamic layouts" model). Lays `n`
- * tiles of VARYING aspect into justified equal-width rows, picking the row count
- * that maximizes the smallest tile (legibility). Each row is scaled to fill the
- * width; if the stack would overflow the height it's scaled down uniformly and
- * centered — so it always fits without scrolling. Returns per-tile {w,h} grouped
- * by row, in the original (contiguous) order. Replaces the old single-aspect fit:
- * a portrait phone feed now gets a portrait tile beside a laptop's 16:9, instead
- * of being center-cropped into a shared 16:9 cell.
- */
-function fitMixedRows(
-  width: number,
-  height: number,
-  aspects: number[],
-  gap: number,
-): { w: number; h: number }[][] {
-  const n = aspects.length
-  if (n === 0 || width <= 0 || height <= 0) return []
-  let best: { score: number; rows: { w: number; h: number }[][] } = { score: -1, rows: [] }
-  for (let R = 1; R <= n; R++) {
-    const groups = balancedRows(aspects, R)
-    const rr = groups.length
-    // Row height that fills the width at this row's combined aspect.
-    const rowH = groups.map((g) => {
-      const sum = g.reduce((s, a) => s + a, 0)
-      return (width - gap * (g.length - 1)) / sum
-    })
-    if (rowH.some((h) => h <= 0)) continue
-    // Scale rows to the height left AFTER the inter-row gaps — gaps are fixed, so
-    // they must come out of the budget first or the stack overflows by a few px.
-    const sumH = rowH.reduce((s, h) => s + h, 0)
-    const availH = height - gap * (rr - 1)
-    if (availH <= 0) continue
-    const scale = sumH > availH ? availH / sumH : 1
-    const sized = groups.map((g, ri) => {
-      const h = rowH[ri] * scale
-      return g.map((a) => ({ w: h * a, h }))
-    })
-    // Score by the smallest tile (legibility). R ascends, so a later (taller) row
-    // count must beat the current best by a clear margin to win — otherwise we keep
-    // the wider, fewer-row layout, matching the Zoom/Meet desktop norm (a 1-on-1
-    // sits side-by-side, not stacked, on a near-tie).
-    const minH = Math.min(...rowH) * scale
-    if (minH > best.score * 1.05) best = { score: minH, rows: sized }
-  }
-  return best.rows
 }
 
 export function Stage() {
