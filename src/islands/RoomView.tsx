@@ -71,7 +71,12 @@ function overlayOpen(): boolean {
 /**
  * Mobile gesture + auto-hide-chrome controller for the stage.
  * - Tap empty stage → toggle the control bar (FaceTime/Zoom/Telegram pattern).
- * - Horizontal swipe → switch grid ↔ speaker layout.
+ * - Horizontal swipe → move along the stage's page sequence (Zoom model): page 0
+ *   is the focus view, 1..n are gallery pages. This used to toggle grid ↔ speaker,
+ *   which took the one gesture a phone user reaches for to turn a page — so the
+ *   gallery pager had to fall back to two arrow buttons floating in the middle of
+ *   the video. Speaker view being page 0 makes the swipe do both jobs at once:
+ *   there is no mode to leave, only a page.
  * - Controls auto-hide after 4s on touch devices; any tap brings them back.
  * - The island NEVER auto-hides while a layer it anchors is open (see overlayOpen),
  *   nor within 4s of the user touching it.
@@ -81,8 +86,7 @@ function useStageChrome() {
   // Touch-UX (auto-hide / gestures) keys off pointer type, matching the compact
   // bar and portrait tiles — so wide foldables behave consistently.
   const mobile = useMemo(() => isTouch(), [])
-  const layout = useRoomStore((s) => s.layout)
-  const setLayout = useRoomStore((s) => s.setLayout)
+  const stepStagePage = useRoomStore((s) => s.stepStagePage)
   const [visible, setVisible] = useState(true)
   const hideTimer = useRef<number | undefined>(undefined)
   const held = useRef(false)
@@ -148,13 +152,16 @@ function useStageChrome() {
       const dy = e.clientY - d.y
       const dt = e.timeStamp - d.t
       if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        setLayout(layout === 'grid' ? 'speaker' : 'grid') // horizontal swipe
+        // Swipe left (negative dx) advances, matching every paged surface on a
+        // phone. Stage clamps the far end, so an overshoot at either edge is a
+        // no-op rather than something to swipe back out of.
+        stepStagePage(dx < 0 ? 1 : -1)
       } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
         setVisible((v) => !v) // tap toggles chrome
         scheduleHide()
       }
     },
-    [mobile, layout, setLayout, scheduleHide],
+    [mobile, stepStagePage, scheduleHide],
   )
 
   return { chromeVisible: visible, show, setChromeHold: setHold, stageHandlers: { onPointerDown, onPointerUp } }

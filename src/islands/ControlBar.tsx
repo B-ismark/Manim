@@ -98,7 +98,13 @@ export interface ControlBarProps {
  * leave — with everything secondary folded into More (WhatsApp/Snapchat model).
  * Desktop additionally inlines screen-share and a single reaction button (which
  * also carries raise-hand). Camera flip + background effects live on the
- * self-view tile; layout switching lives in More / the top chip. STYLE.md §4/§5.
+ * self-view tile. STYLE.md §4/§5.
+ *
+ * Layout lives in More → View on both pointer types. It used to say "More / the
+ * top chip" — the chip was `LayoutChip.tsx`, which was never imported anywhere, so
+ * for as long as that comment stood the only routes on a phone were this menu and
+ * an unlabelled swipe. On touch the swipe is now the page sequence and the dots
+ * advertise it; the dead component is gone.
  */
 export function ControlBar({
   chromeVisible,
@@ -169,6 +175,8 @@ export function ControlBar({
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
+  const stagePage = useRoomStore((s) => s.stagePage)
+  const setStagePage = useRoomStore((s) => s.setStagePage)
   const gridSize = useRoomStore((s) => s.gridSize)
   const setGridSize = useRoomStore((s) => s.setGridSize)
   const videosFirst = useRoomStore((s) => s.videosFirst)
@@ -386,10 +394,15 @@ export function ControlBar({
         )}
       </div>
 
-      {/* View — layout + density in ONE control (was two separate sections: a
-          Grid/Speaker pair up top and a "Gallery size" row). Speaker = one large feed
-          + filmstrip; Grid = gallery. Only the grid is paged, so the size chips appear
-          only when Grid is active — 'Auto' fits the viewport, a number caps the page. */}
+      {/* View — layout + density in ONE control. Speaker = one large feed; Grid =
+          gallery. 'Auto' fits the viewport, a number caps the page.
+
+          On TOUCH these two aren't modes any more — the stage is one horizontal page
+          sequence where speaker view is page 0 — so they jump to a page instead of
+          setting a mode, and their pressed state reads off the page. Same two
+          buttons, same meaning to the user, and they stay in sync with the swipe and
+          the page dots because all three drive one value. Desktop keeps the real
+          mode: no swipe there, and hover means the layout menu is always to hand. */}
       <div className="mt-2 border-t border-line pt-2">
         <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">View</p>
         <div className="flex gap-1" role="group" aria-label="View layout">
@@ -399,13 +412,17 @@ export function ControlBar({
               { value: 'grid', label: 'Grid', icon: <GridIcon /> },
             ] as const
           ).map((opt) => {
-            const active = layout === opt.value
+            const gallery = opt.value === 'grid'
+            const active = touch ? (gallery ? stagePage > 0 : stagePage === 0) : layout === opt.value
             return (
               <button
                 key={opt.value}
                 type="button"
                 aria-pressed={active}
-                onClick={() => setLayout(opt.value)}
+                onClick={() => {
+                  if (touch) setStagePage(gallery ? Math.max(1, stagePage) : 0)
+                  else setLayout(opt.value)
+                }}
                 className={cn(
                   'flex flex-1 items-center justify-center gap-1.5 rounded-control py-1.5 text-sm font-medium transition-colors [&_svg]:size-4',
                   active ? 'bg-accent text-accent-ink' : 'bg-sunken text-ink hover:bg-line',
@@ -417,7 +434,7 @@ export function ControlBar({
             )
           })}
         </div>
-        {layout === 'grid' && (
+        {(touch ? stagePage > 0 : layout === 'grid') && (
           <div className="mt-1.5 flex gap-1" role="group" aria-label="Gallery size — tiles per page">
             {gallerySizes.map((opt) => {
               const active = gridSize === opt.value
@@ -428,7 +445,11 @@ export function ControlBar({
                   aria-pressed={active}
                   onClick={() => {
                     setGridSize(opt.value)
-                    if (opt.value !== 'auto') setLayout('grid')
+                    // Picking a density implies you want to see the gallery.
+                    if (opt.value !== 'auto') {
+                      if (touch) setStagePage(Math.max(1, stagePage))
+                      else setLayout('grid')
+                    }
                   }}
                   className={cn(
                     'flex-1 rounded-control py-1.5 text-sm font-medium transition-colors',

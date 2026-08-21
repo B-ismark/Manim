@@ -25,52 +25,93 @@ export function bucketAspect(ratio: number): number {
 }
 
 /**
- * How many legible tiles fit in the stage without scrolling — drives the paged
- * grid. Columns are bounded by width at a minimum tile width (and √n so a
- * 5-person call doesn't spread to 4 thin columns); rows by height at a minimum
- * tile height. Recomputed on every resize so the layout adapts gracefully
- * (window resize, side-panel dock, orientation) instead of clipping or shrinking
- * tiles to dots.
+ * Layout constants, by pointer type. `coarse` is touch (useIsTouch / pointer:
+ * coarse), which covers phones AND tablets — not a width breakpoint.
+ */
+const GAP = { coarse: 8, fine: 12 }
+/**
+ * Smallest width we will render a face in. This is the legibility floor, and it
+ * is what decides the column count — see `tileColumns`.
+ */
+const MIN_TILE_W = { coarse: 132, fine: 200 }
+/**
+ * Hard ceiling on columns. Touch caps at 3 (the "2x2 up to 3x3" decision); a
+ * mouse pointer caps at 4.
+ */
+const MAX_COLS = { coarse: 3, fine: 4 }
+/**
+ * Nominal tile shape, used only to decide how many ROWS fit once the column
+ * width is known. Touch senders are overwhelmingly portrait phones (3:4 after
+ * bucketing), desktop senders landscape. The real per-tile aspects still drive
+ * the packer — this only sizes the PAGE.
+ */
+const NOMINAL_ASPECT = { coarse: 3 / 4, fine: 16 / 9 }
+
+/**
+ * How many columns fit at the legibility floor.
  *
- * `cols` bounds the PAGE SIZE, not the rendered column count — `fitMixedRows`
- * chooses rows from the aspects it's given and doesn't take a column budget. The
- * two used to be the same number, back when the grid was a fixed-column CSS grid.
+ * This is the whole density decision, and it is keyed off WIDTH, not headcount.
+ * Three columns needs `3 * 132 + 2 * 8 = 412px` of stage, which a 430px viewport
+ * has (414px) and a 412px Pixel 7 does not (396px). So every phone shipping today
+ * renders 2 columns and 3 unlocks on the largest phones and on tablets — where it
+ * matters most, because a coarse pointer used to mean a flat 2 columns and an iPad
+ * in portrait was paging through 368px-wide tiles four at a time.
+ *
+ * Pushing to 3 columns below that threshold would mean 96-127px faces, i.e.
+ * lowering the floor this function is built around. The floor stays.
+ */
+export function tileColumns(stageWidth: number, coarse: boolean): number {
+  const key = coarse ? 'coarse' : 'fine'
+  const gap = GAP[key]
+  const min = MIN_TILE_W[key]
+  if (stageWidth < 2) return 1
+  const byWidth = Math.floor((stageWidth + gap) / (min + gap))
+  return Math.max(1, Math.min(MAX_COLS[key], byWidth))
+}
+
+/**
+ * How many legible tiles fit on one page, and in how many columns.
+ *
+ * Columns come from `tileColumns` (width at the legibility floor). Rows come from
+ * how many tiles of THAT column width actually stack in the available height at
+ * the nominal aspect — which is the correction over the previous version. That one
+ * derived rows from an independent `minH: 116`, a landscape-ish box, while the
+ * packer laid out 3:4 portrait video: it claimed 5 rows would fit on a 375x667
+ * phone, so a page was 9 tiles of 114x152 rendered 3 across, in defiance of both
+ * the 2-column cap and the 132px floor. Deriving rows from the column width keeps
+ * the two consistent by construction.
+ *
+ * The page is then capped: `cols * cols` on touch, which is exactly "2x2 up to
+ * 3x3", and 20 on desktop. The cap also guarantees pagination engages for big
+ * rooms independently of the measured height (a flex chain can briefly report an
+ * unbounded height) and bounds mounted <video> elements per page, which is the
+ * point of paging.
  */
 export function gridCapacity(
   width: number,
   height: number,
-  n: number,
   coarse: boolean,
   sizePref: GridSizePref,
 ): { cols: number; perPage: number } {
-  const gap = coarse ? 8 : 12
-  const minW = coarse ? 132 : 200
-  const minH = coarse ? 116 : 150
-  const maxCols = coarse ? 2 : 4
-  // Hard cap so pagination ALWAYS engages for big rooms — independent of the
-  // measured height (a flex chain can briefly report an unbounded grid height,
-  // which would otherwise compute a perPage large enough to mount every tile).
-  // Also bounds mounted <video>/DOM per page (perf), the point of paging.
-  const MAX_PER_PAGE = coarse ? 9 : 20
-  // User-chosen density (Teams "gallery size"): the page is exactly the picked count
-  // — tiles shrink to fit, pager engages — clamped to what the device can legibly
-  // hold. This overrides the auto fit-to-viewport below.
+  const key = coarse ? 'coarse' : 'fine'
+  const gap = GAP[key]
+  const cols = tileColumns(width, coarse)
+  const maxPerPage = coarse ? cols * cols : 20
+  // User-chosen density (Teams "gallery size"): the page is exactly the picked
+  // count — tiles shrink to fit, pager engages — clamped to what the device can
+  // legibly hold. This overrides the fit-to-viewport below.
   if (sizePref !== 'auto') {
-    const perPage = Math.max(1, Math.min(sizePref, MAX_PER_PAGE))
-    const cols = Math.max(1, Math.min(maxCols, Math.ceil(Math.sqrt(perPage))))
-    return { cols, perPage }
+    return { cols, perPage: Math.max(1, Math.min(sizePref, maxPerPage)) }
   }
   // Before the first measure, fall back to a sane page so we don't flash a huge
   // mount of every tile.
   if (width < 2 || height < 2) {
-    const cols = Math.min(maxCols, Math.max(1, Math.ceil(Math.sqrt(n))))
     return { cols, perPage: coarse ? 4 : 9 }
   }
-  const byWidth = Math.floor((width + gap) / (minW + gap))
-  const bySqrt = Math.ceil(Math.sqrt(n))
-  const cols = Math.max(1, Math.min(maxCols, byWidth, bySqrt))
-  const rows = Math.max(1, Math.floor((height + gap) / (minH + gap)))
-  return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) }
+  const tileW = (width - gap * (cols - 1)) / cols
+  const tileH = tileW / NOMINAL_ASPECT[key]
+  const rows = Math.max(1, Math.floor((height + gap) / (tileH + gap)))
+  return { cols, perPage: Math.max(1, Math.min(cols * rows, maxPerPage)) }
 }
 
 /**
@@ -147,19 +188,54 @@ export function fitMixedRows(
   height: number,
   aspects: number[],
   gap: number,
+  maxCols?: number,
 ): { w: number; h: number }[][] {
   const n = aspects.length
   if (n === 0 || width <= 0 || height <= 0) return []
+  // Two passes when a column cap is given: honour it if any candidate split can,
+  // otherwise fall back to unconstrained. The fallback matters — a user who picks
+  // "9" from the gallery-size control on a 2-column phone is explicitly asking for
+  // tiles that shrink to fit, and returning nothing would render an empty stage.
+  const constrained = maxCols !== undefined ? pack(width, height, aspects, gap, maxCols) : null
+  return constrained?.length ? constrained : pack(width, height, aspects, gap)
+}
+
+function pack(
+  width: number,
+  height: number,
+  aspects: number[],
+  gap: number,
+  maxCols?: number,
+): { w: number; h: number }[][] {
+  const n = aspects.length
   let best: { score: number; rows: { w: number; h: number }[][] } = { score: -1, rows: [] }
   for (let R = 1; R <= n; R++) {
     const groups = balancedRows(aspects, R)
     const rr = groups.length
+    // The column cap is a legibility floor expressed as a count — a row wider than
+    // it would render faces below MIN_TILE_W. Skip the candidate rather than clamp
+    // it, so the scorer picks the best layout that actually respects the cap.
+    if (maxCols !== undefined && groups.some((g) => g.length > maxCols)) continue
     // Row height that fills the width at this row's combined aspect.
-    const rowH = groups.map((g) => {
+    let rowH = groups.map((g) => {
       const sum = g.reduce((s, a) => s + a, 0)
       return (width - gap * (g.length - 1)) / sum
     })
     if (rowH.some((h) => h <= 0)) continue
+    // Under a column cap, every row takes the SAME height — the tightest row's —
+    // and a short row simply doesn't span the full width.
+    //
+    // Without this, a row holding fewer tiles stretches them to fill the width, so
+    // it comes out much taller than its neighbours and drags the whole stack's
+    // scale down with it. On a paged gallery that is very visible: at 375px a full
+    // page of four rendered 176px tiles while the three-person remainder page
+    // rendered 140px ones, so tiles changed size as you swiped. Uniform rows with
+    // a short last row is also what every phone gallery does — gaps at the end,
+    // not a giant final tile.
+    if (maxCols !== undefined) {
+      const uniform = Math.min(...rowH)
+      rowH = rowH.map(() => uniform)
+    }
     // Scale rows to the height left AFTER the inter-row gaps — gaps are fixed, so
     // they must come out of the budget first or the stack overflows by a few px.
     const sumH = rowH.reduce((s, h) => s + h, 0)

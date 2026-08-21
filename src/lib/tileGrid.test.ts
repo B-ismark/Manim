@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { balancedRows, bucketAspect, fitMixedRows, gridCapacity } from './tileGrid'
+import { balancedRows, bucketAspect, fitMixedRows, gridCapacity, tileColumns } from './tileGrid'
 
 /** Row shape as tile counts — the thing that's easy to read and easy to get wrong. */
 const shape = (rows: number[][]) => rows.map((r) => r.length)
@@ -126,25 +126,123 @@ describe('fitMixedRows', () => {
   })
 })
 
+/** Stage width for a viewport, given the stage's `p-2` (8px a side). */
+const stageW = (viewportW: number) => viewportW - 16
+
+describe('tileColumns', () => {
+  // The floor is 132px on touch. 3 columns needs 3*132 + 2*8 = 412px of stage.
+  it('gives every phone shipping today 2 columns', () => {
+    for (const vw of [320, 360, 375, 390, 412]) {
+      expect(tileColumns(stageW(vw), true), `${vw}px viewport`).toBe(2)
+    }
+  })
+
+  it('unlocks the third column at 430px, where it clears the floor', () => {
+    expect(tileColumns(stageW(430), true)).toBe(3)
+  })
+
+  it('gives a tablet 3 columns, not the flat 2 a coarse pointer used to get', () => {
+    expect(tileColumns(stageW(744), true)).toBe(3)
+    expect(tileColumns(stageW(768), true)).toBe(3)
+    expect(tileColumns(stageW(1024), true)).toBe(3)
+  })
+
+  it('never renders a tile below the 132px floor on touch', () => {
+    for (const vw of [320, 360, 375, 390, 412, 430, 540, 744, 768, 1024]) {
+      const w = stageW(vw)
+      const cols = tileColumns(w, true)
+      const tile = (w - 8 * (cols - 1)) / cols
+      expect(tile, `${vw}px viewport at ${cols} cols`).toBeGreaterThanOrEqual(132)
+    }
+  })
+
+  it('caps at 3 on touch and 4 with a mouse', () => {
+    expect(tileColumns(4000, true)).toBe(3)
+    expect(tileColumns(4000, false)).toBe(4)
+  })
+
+  it('always gives at least one column, even unmeasured', () => {
+    expect(tileColumns(0, true)).toBe(1)
+    expect(tileColumns(40, true)).toBe(1)
+  })
+})
+
 describe('gridCapacity', () => {
-  it('caps a phone page at 9 and a desktop page at 20', () => {
-    expect(gridCapacity(PHONE.w, PHONE.h, 40, true, 'auto').perPage).toBeLessThanOrEqual(9)
-    expect(gridCapacity(DESK.w, DESK.h, 40, false, 'auto').perPage).toBeLessThanOrEqual(20)
+  it('is 2x2 on a phone and 3x3 on a large phone — the density decision', () => {
+    expect(gridCapacity(stageW(375), 667 - 16, true, 'auto')).toEqual({ cols: 2, perPage: 4 })
+    expect(gridCapacity(stageW(412), 915 - 16, true, 'auto')).toEqual({ cols: 2, perPage: 4 })
+    expect(gridCapacity(stageW(430), 932 - 16, true, 'auto')).toEqual({ cols: 3, perPage: 9 })
+  })
+
+  it('never exceeds cols x cols on touch', () => {
+    for (const [vw, vh] of [[320, 568], [375, 667], [390, 844], [430, 932], [768, 1024]] as const) {
+      const { cols, perPage } = gridCapacity(stageW(vw), vh - 16, true, 'auto')
+      expect(perPage, `${vw}x${vh}`).toBeLessThanOrEqual(cols * cols)
+    }
+  })
+
+  it('caps a desktop page at 20', () => {
+    expect(gridCapacity(DESK.w, DESK.h, false, 'auto').perPage).toBeLessThanOrEqual(20)
   })
 
   it('honours an explicit gallery size, clamped to what the device can hold', () => {
-    expect(gridCapacity(PHONE.w, PHONE.h, 40, true, 4).perPage).toBe(4)
-    expect(gridCapacity(PHONE.w, PHONE.h, 40, true, 16).perPage).toBe(9) // phone cap
-    expect(gridCapacity(DESK.w, DESK.h, 40, false, 16).perPage).toBe(16)
+    expect(gridCapacity(PHONE.w, PHONE.h, true, 4).perPage).toBe(4)
+    expect(gridCapacity(PHONE.w, PHONE.h, true, 16).perPage).toBe(4) // 2 cols -> 2x2
+    expect(gridCapacity(stageW(430), 932 - 16, true, 9).perPage).toBe(9)
+    expect(gridCapacity(DESK.w, DESK.h, false, 16).perPage).toBe(16)
   })
 
   it('falls back to a small page before the first measure', () => {
-    expect(gridCapacity(0, 0, 40, true, 'auto').perPage).toBe(4)
-    expect(gridCapacity(0, 0, 40, false, 'auto').perPage).toBe(9)
+    expect(gridCapacity(0, 0, true, 'auto').perPage).toBe(4)
+    expect(gridCapacity(0, 0, false, 'auto').perPage).toBe(9)
   })
 
   it('always allows at least one tile', () => {
-    expect(gridCapacity(10, 10, 1, true, 'auto').perPage).toBeGreaterThanOrEqual(1)
-    expect(gridCapacity(PHONE.w, PHONE.h, 40, true, 0).perPage).toBeGreaterThanOrEqual(1)
+    expect(gridCapacity(10, 10, true, 'auto').perPage).toBeGreaterThanOrEqual(1)
+    expect(gridCapacity(PHONE.w, PHONE.h, true, 0).perPage).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('fitMixedRows column cap', () => {
+  it('respects the cap', () => {
+    const rows = fitMixedRows(PHONE.w, PHONE.h, same(4, PORTRAIT), PHONE.gap, 2)
+    expect(rows.map((r) => r.length)).toEqual([2, 2])
+    rows.forEach((r) => expect(r.length).toBeLessThanOrEqual(2))
+  })
+
+  it('falls back rather than rendering nothing when the cap is unsatisfiable', () => {
+    // 9 tiles at 2 columns needs 5 rows, which balancedRows can produce — but if it
+    // could not, an empty stage would be far worse than an over-wide row.
+    const rows = fitMixedRows(PHONE.w, PHONE.h, same(9, PORTRAIT), PHONE.gap, 2)
+    expect(rows.flat()).toHaveLength(9)
+  })
+
+  it('keeps tile size identical across a full page and a remainder page', () => {
+    // The paging consequence of uniform rows. At 375px a page holds 4; an 11-person
+    // gallery pages as 4 / 4 / 3, and the 3-tile page must not render smaller tiles
+    // than the 4-tile pages just because its last row is short.
+    const full = fitMixedRows(PHONE.w, 575, same(4, PORTRAIT), PHONE.gap, 2)
+    const remainder = fitMixedRows(PHONE.w, 575, same(3, PORTRAIT), PHONE.gap, 2)
+    expect(Math.round(remainder[0][0].w)).toBe(Math.round(full[0][0].w))
+    expect(Math.round(remainder[0][0].h)).toBe(Math.round(full[0][0].h))
+  })
+
+  it('gives every capped row the same height, short last row included', () => {
+    const rows = fitMixedRows(PHONE.w, 575, same(3, PORTRAIT), PHONE.gap, 2)
+    expect(rows.map((r) => r.length)).toEqual([2, 1])
+    const heights = rows.map((r) => r[0].h)
+    expect(Math.max(...heights) - Math.min(...heights)).toBeLessThan(0.5)
+  })
+
+  it('a short capped row does not span the full width', () => {
+    const rows = fitMixedRows(PHONE.w, 575, same(3, PORTRAIT), PHONE.gap, 2)
+    const lastRowWidth = rows[1].reduce((s, t) => s + t.w, 0)
+    expect(lastRowWidth).toBeLessThan(PHONE.w * 0.75)
+  })
+
+  it('is unchanged when no cap is given', () => {
+    const capped = fitMixedRows(PHONE.w, PHONE.h, same(9, PORTRAIT), PHONE.gap, 3)
+    const free = fitMixedRows(PHONE.w, PHONE.h, same(9, PORTRAIT), PHONE.gap)
+    expect(capped.map((r) => r.length)).toEqual(free.map((r) => r.length))
   })
 })
