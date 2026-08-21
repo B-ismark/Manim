@@ -15,11 +15,15 @@ const MOVE_PX = 8
  * does exactly that to the control bar (see lib/panelDock), and the control it
  * can park under the cursor is Leave.
  *
- * Geometry alone can't rule that out for good: at 1024px the bar still shifts
- * 128px and clears the Leave control by 23px, and one more control on the bar
- * closes that gap. So the invariant lives here instead — arm whenever a reflow
- * moves the bar, and for a short window afterwards a destructive control ignores
- * a pointer click unless the pointer has since travelled `MOVE_PX`.
+ * Geometry alone can't rule that out for good. The offset is only ever as safe as
+ * the bar is narrow: at `xl` it comes to 75px against a Leave band starting at
+ * 151px, which is about 150px of bar — three or four controls — of headroom, and
+ * nothing about the geometry announces when that headroom has been spent. The
+ * first pass at this fix was sized against a bar measured at 560px when the real
+ * one is 614px, and the 54px difference was the entire margin. So the invariant
+ * lives here instead — arm whenever a reflow moves the bar, and for a short
+ * window afterwards a destructive control ignores a pointer click unless the
+ * pointer has since travelled `MOVE_PX`.
  *
  * Two things are deliberately never guarded. Keyboard and assistive-tech
  * activation carry no pointer position, so a reflow cannot mis-aim them. And
