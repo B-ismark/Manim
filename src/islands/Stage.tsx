@@ -1369,7 +1369,12 @@ function ContentStage({
   // capacity is decided by HEIGHT, which docking the chat panel doesn't touch — so
   // the "opening chat pages people out" failure the galleries have to defend
   // against cannot arise in the layout that this view actually uses on a desktop.
-  const L = contentLayout(size.width, size.height, ordered.length, gap)
+  // The rail is inset from the top for the participants chip, which lives in that
+  // same corner and was sitting on the first thumbnail. The SHARE keeps its full
+  // height — that is the entire argument for a right-hand rail, so paying for the
+  // chip out of the share's height instead would give the rail back with one hand
+  // and take the content with the other.
+  const L = contentLayout(size.width, size.height, ordered.length, gap, TOPSTACK_BAND)
   const { shown, overflow } = splitVisible(ordered, L.capacity)
 
   /** Tapping a person in the strip spotlights them; tapping the share re-features it. */
