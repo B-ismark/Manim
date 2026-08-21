@@ -159,6 +159,87 @@ test.describe('Mobile fit (no page scroll)', () => {
   })
 
   /**
+   * The stage is one horizontal page sequence, and speaker view is page 0.
+   *
+   * Swipe used to toggle grid/speaker, which took the gesture a phone user reaches
+   * for to turn a page — so the gallery pager fell back to two arrow buttons
+   * floating in the middle of the video. Now the swipe is the pager AND the mode
+   * switch, because there is no mode: page 0 is the focus feed, 1..n are gallery
+   * pages, and the dots advertise that they exist.
+   */
+  test('swiping the stage moves along the page sequence, starting from the speaker', async ({ page, browser }) => {
+    const vp = page.viewportSize()!
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+    ])
+    try {
+      await page.waitForTimeout(1500)
+      await revealChrome(page)
+
+      // Page 0 by default — a call opens on whoever is talking, not on a grid.
+      const dots = page.getByRole('button', { name: /^(Speaker view|Gallery page )/ })
+      await expect(dots.first()).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Speaker view' })).toHaveAttribute('aria-current', 'true')
+
+      // Swipe left → the first gallery page.
+      const mid = { x: Math.round(vp.width / 2), y: Math.round(vp.height / 2) }
+      await page.touchscreen.tap(mid.x, mid.y) // ensure the stage has the gesture
+      await page.mouse.move(mid.x + 90, mid.y)
+      await page.mouse.down()
+      await page.mouse.move(mid.x - 90, mid.y, { steps: 8 })
+      await page.mouse.up()
+      await expect(page.getByRole('button', { name: /^Gallery page 1/ })).toHaveAttribute('aria-current', 'true')
+
+      // …and the page must still fit. This is the whole point of paging.
+      expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
+    } finally {
+      await Promise.all(peers.map((p) => p.close()))
+    }
+  })
+
+  /**
+   * The gallery must clear the floating control island.
+   *
+   * Only SoloStage ever reserved a band for it (`pb-24`), which is how the speaker
+   * filmstrip ended up with 60 of its 96px underneath the bar. Tiled pages now
+   * reserve ISLAND_BAND; the focus page deliberately doesn't, the way a video
+   * player puts its controls on glass.
+   */
+  test('gallery tiles clear the control island', async ({ page, browser }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+      newParticipant(browser, room, 'Guest3'),
+    ])
+    try {
+      await page.waitForTimeout(1500)
+      await revealChrome(page)
+      await page.getByRole('button', { name: 'More options' }).tap()
+      await page.getByRole('button', { name: 'Grid', exact: true }).tap()
+      await closePanel(page)
+      await revealChrome(page)
+      await page.waitForTimeout(500)
+
+      const barTop = await page
+        .getByRole('button', { name: 'Leave call' })
+        .evaluate((el) => el.closest('div')!.getBoundingClientRect().top)
+      const lowestTile = await page.evaluate(() => {
+        const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]'))
+          .filter((e) => (e as HTMLElement).offsetHeight > 40)
+        return Math.max(0, ...tiles.map((e) => e.getBoundingClientRect().bottom))
+      })
+      expect(lowestTile, 'no tile reaches into the control island band').toBeLessThanOrEqual(barTop + 1)
+    } finally {
+      await Promise.all(peers.map((p) => p.close()))
+    }
+  })
+
+  /**
    * Controls that were only ever meant for a mouse must not reach a thumb.
    *
    * The mic/camera device carets gated themselves with `hidden
