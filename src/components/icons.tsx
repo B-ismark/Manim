@@ -319,23 +319,10 @@ export const SoundOnIcon = (p: P) => (
   </svg>
 )
 
-export const SoundOffIcon = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M4 9v6h4l5 4V5L8 9H4z" />
-    <path d="M22 9l-5 6M17 9l5 6" />
-  </svg>
-)
-
 export const CopyIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="9" y="9" width="11" height="11" rx="2" />
     <path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" />
-  </svg>
-)
-
-export const RefreshIcon = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M4 12a8 8 0 0 1 13.7-5.6L20 8M20 4v4h-4M20 12a8 8 0 0 1-13.7 5.6L4 16M4 20v-4h4" />
   </svg>
 )
 

@@ -505,7 +505,6 @@ function TouchStage({
   const { ref, size } = useElementSize<HTMLDivElement>()
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
-  const gridSize = useRoomStore((s) => s.gridSize)
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const videosFirst = useRoomStore((s) => s.videosFirst)
@@ -572,8 +571,8 @@ function TouchStage({
   // docks a panel, but a large touch tablet does, and deciding capacity from the
   // narrowed stage is what used to page people out on every chat toggle.
   const galleryH = Math.max(1, size.height - islandBandPx - TOPSTACK_BAND)
-  const realCap = gridCapacity(size.width, galleryH, true, gridSize)
-  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true, gridSize)
+  const realCap = gridCapacity(size.width, galleryH, true)
+  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true)
   const cols = realCap.cols
   const perPage = Math.max(realCap.perPage, undockedCap.perPage)
   // Everyone fits → pack them to FILL the stage (three people get big tiles, not
@@ -775,7 +774,6 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
-  const gridSize = useRoomStore((s) => s.gridSize)
   const videosFirst = useRoomStore((s) => s.videosFirst)
   const toggleShareDemoted = useRoomStore((s) => s.toggleShareDemoted)
 
@@ -825,8 +823,8 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   // actually occupy (tileGrid's fitMixedRows treats it as a ceiling), so it has to
   // follow the real, narrowed width. Panel closed, both widths are equal and none
   // of this does anything.
-  const real = gridCapacity(size.width, size.height, false, gridSize)
-  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, false, gridSize)
+  const real = gridCapacity(size.width, size.height, false)
+  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, false)
   const cols = real.cols
   const perPage = Math.max(real.perPage, undocked.perPage)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
@@ -1088,15 +1086,35 @@ function tileName(t: TrackReferenceOrPlaceholder): string {
   return t.participant.name || t.participant.identity.split('#')[0]
 }
 
-/** Fullscreen a DOM element (the shared-screen tile). Falls back to the iOS-only
- *  `<video>.webkitEnterFullscreen` when element fullscreen isn't available (iOS Safari
- *  only fullscreens the video element, not arbitrary containers). */
-function useFullscreen(ref: { current: HTMLElement | null }) {
+/**
+ * Fullscreen a DOM ELEMENT (the shared-screen tile). Falls back to the iOS-only
+ * `<video>.webkitEnterFullscreen` when element fullscreen isn't available (iOS
+ * Safari only fullscreens the video element, not arbitrary containers).
+ *
+ * Named apart from `lib/useFullscreen`, which does the DOCUMENT. The two are
+ * genuinely different jobs — one fullscreens a tile, the other the whole app — but
+ * they answered to the same name in the same feature, and the collision is how
+ * this copy came to be missing the prefixed change EVENT that the document one
+ * documents at length: Safari fires only `webkitfullscreenchange`, so on the very
+ * browsers that need the prefixed request, `isFs` never flipped and the floating
+ * Exit button — the only way out on touch — never appeared.
+ */
+function useElementFullscreen(ref: { current: HTMLElement | null }) {
   const [isFs, setIsFs] = useState(false)
   useEffect(() => {
-    const onChange = () => setIsFs(document.fullscreenElement === ref.current)
+    const onChange = () => {
+      const active =
+        document.fullscreenElement ??
+        (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement ??
+        null
+      setIsFs(active === ref.current)
+    }
     document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
+    document.addEventListener('webkitfullscreenchange', onChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('webkitfullscreenchange', onChange)
+    }
   }, [ref])
   const enter = useCallback(() => {
     const el = ref.current
@@ -1109,7 +1127,12 @@ function useFullscreen(ref: { current: HTMLElement | null }) {
     }
   }, [ref])
   const exit = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen?.()
+    const d = document as Document & {
+      webkitFullscreenElement?: Element | null
+      webkitExitFullscreen?: () => Promise<void> | void
+    }
+    if (d.fullscreenElement) void d.exitFullscreen?.()
+    else if (d.webkitFullscreenElement) void d.webkitExitFullscreen?.()
   }, [])
   return { isFs, enter, exit }
 }
@@ -1118,7 +1141,7 @@ function useFullscreen(ref: { current: HTMLElement | null }) {
  *  Esc also exits (native); on touch there's no Esc, so the floating Exit button is the
  *  way out. Enter sits top-left (clear of the top-right action + bottom name pill). */
 function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement | null } }) {
-  const { isFs, enter, exit } = useFullscreen(targetRef)
+  const { isFs, enter, exit } = useElementFullscreen(targetRef)
   // Enter is an ordinary row in the tile's action stack. Exit is NOT: in fullscreen
   // it is deliberately the only control that should exist, so it keeps its own
   // anchor and its own layer (z-30, above the stack) rather than queueing politely

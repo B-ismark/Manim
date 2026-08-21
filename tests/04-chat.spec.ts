@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, openChat, openMessageActions, replyToMessage, isTouch } from './helpers'
+import { uniqueRoom, attachErrorSink, appErrors, join, newParticipant, openChat, openMessageActions, replyToMessage, isTouch } from './helpers'
 
 test.describe('Chat', () => {
   /**
@@ -108,6 +108,65 @@ test.describe('Chat', () => {
     await emoji.click()
     // A reaction chip (aria-pressed because it's mine) appears under the message.
     await expect(row.locator('button[aria-pressed="true"]').first()).toBeVisible()
+  })
+
+  /**
+   * A count is not an answer. "3 people liked this" without saying who is the thing
+   * people ask about, so the chip has to name them — Teams/Slack behaviour.
+   *
+   * The wire carries IDENTITIES (the unforgeable thing, and what the toggle keys
+   * off), so the display name rides along on each reaction broadcast and is
+   * remembered per identity — a `useParticipants()` lookup could not answer it,
+   * because a reactor who has left the call still owns their reaction.
+   *
+   * Asserted through the accessible name, which is the one route that exists on
+   * both pointer types: desktop also gets it as a hover tooltip, touch also gets it
+   * as "Who reacted" in the message's action menu.
+   */
+  test('a reaction chip names who reacted, including a remote reactor', async ({ page, browser }) => {
+    const room = uniqueRoom('who')
+    await join(page, room, 'Ada')
+    const guest = await newParticipant(browser, room, 'Grace')
+    try {
+      const composer = await openChat(page)
+      await composer.fill('who liked this')
+      await composer.press('Enter')
+
+      // Ada reacts to her own message.
+      const row = page.locator('.group', { hasText: 'who liked this' }).first()
+      await openMessageActions(page, row)
+      await page.getByRole('button', { name: 'Add reaction' }).click()
+      const search = page.getByRole('textbox', { name: 'Search emoji' })
+      await search.fill('grinning')
+      await page.getByRole('button', { name: /grinning/i }).first().click()
+
+      // Yours reads "You", not your own name.
+      await expect(row.locator('button[aria-pressed="true"]').first()).toHaveAttribute(
+        'aria-label',
+        /reacted by You$/,
+      )
+
+      // Grace taps the same chip on her side, which toggles hers on.
+      const guestComposer = await openChat(guest.page)
+      await expect(guestComposer).toBeVisible()
+      const guestRow = guest.page.locator('.group', { hasText: 'who liked this' }).first()
+      await guestRow.locator('button[aria-pressed="false"]').first().click()
+
+      // Ada's chip now names both, hers first.
+      await expect(row.locator('button[aria-pressed="true"]').first()).toHaveAttribute(
+        'aria-label',
+        /reacted by You and Grace$/,
+        { timeout: 20_000 },
+      )
+      // …and Grace sees the pair from her side too.
+      await expect(guestRow.locator('button[aria-pressed="true"]').first()).toHaveAttribute(
+        'aria-label',
+        /reacted by You and Ada$/,
+        { timeout: 20_000 },
+      )
+    } finally {
+      await guest.context.close()
+    }
   })
 
   test('reply to a message quotes it (swipe on touch, toolbar on desktop)', async ({ page }) => {

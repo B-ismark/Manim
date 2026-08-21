@@ -45,7 +45,7 @@ Participants is deliberately not here — it lives on the top-right `StageTopBar
 count chip (WhatsApp convention), and that is its only mobile entry point.
 
 Inside **More**: reactions + raise hand · share screen · mini player · full screen
-(⚠️ **F4**) · lock room · waiting room · View (speaker/grid + gallery size) ·
+(⚠️ **F4**) · lock room · waiting room · View (speaker/grid) ·
 backgrounds & effects · audio & video · hide self view · videos first · incoming
 video · settings.
 

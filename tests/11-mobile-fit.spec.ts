@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, openMore, revealChrome, selectStageView, closePanel } from './helpers'
+import { uniqueRoom, join, newParticipant, openChat, openMore, revealChrome, selectStageView, closePanel } from './helpers'
 import { ISLAND_H, ISLAND_INSET } from '../src/lib/chromeBands'
 
 /**
@@ -489,6 +489,88 @@ test.describe('Mobile fit (no page scroll)', () => {
     } finally {
       await Promise.all(peers.map((p) => p.context.close()))
     }
+  })
+
+  /**
+   * The on-screen keyboard must not cover the chat composer.
+   *
+   * `bottom-0` positions against the LAYOUT viewport, and the default
+   * `interactive-widget=resizes-visual` means a software keyboard shrinks only the
+   * VISUAL viewport — so the chat sheet stayed exactly where it was and the
+   * keyboard was drawn over the field the user was typing into. Worst in
+   * fullscreen, where there is no browser chrome to absorb any of it, which is how
+   * it was reported.
+   *
+   * An emulated device cannot raise a keyboard, so the visual viewport is stubbed:
+   * `__kb` is the number of px a keyboard would cover, and a resize on the REAL
+   * visualViewport (which is what the hook listens to) drives the recompute. Same
+   * class of seam as the forced safe-area inset above — without it the one case
+   * this code exists for can never be exercised in a browser.
+   */
+  test('the chat composer stays above the on-screen keyboard', async ({ page }) => {
+    await page.addInitScript(() => {
+      const win = window as unknown as { __kb: number; __vv: VisualViewport }
+      win.__kb = 0
+      const real = window.visualViewport!
+      win.__vv = real
+      const fake = {
+        get height() {
+          return window.innerHeight - win.__kb
+        },
+        get offsetTop() {
+          return 0
+        },
+        get scale() {
+          return 1
+        },
+        addEventListener: real.addEventListener.bind(real),
+        removeEventListener: real.removeEventListener.bind(real),
+      }
+      Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => fake })
+    })
+
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const composer = await openChat(page)
+    await expect(composer).toBeVisible()
+
+    const KB = 300
+    await page.evaluate((kb) => {
+      const win = window as unknown as { __kb: number; __vv: VisualViewport }
+      win.__kb = kb
+      win.__vv.dispatchEvent(new Event('resize'))
+    }, KB)
+    await page.waitForTimeout(400)
+
+    const box = await page.evaluate(() => {
+      const field = document.querySelector('textarea')!
+      const sheet = field.closest('.fixed') as HTMLElement
+      const f = field.getBoundingClientRect()
+      const s = sheet.getBoundingClientRect()
+      return { fieldBottom: f.bottom, sheetTop: s.top, sheetBottom: s.bottom, vh: window.innerHeight }
+    })
+
+    // The keyboard's top edge. Everything you interact with has to be above it.
+    const keyboardTop = box.vh - KB
+    expect(box.sheetBottom, 'the sheet rests on the keyboard, not under it').toBeLessThanOrEqual(
+      keyboardTop + 1,
+    )
+    expect(box.fieldBottom, 'the composer is not under the keyboard').toBeLessThanOrEqual(keyboardTop)
+    // …and the sheet did not simply grow off the top of the screen to get there.
+    expect(box.sheetTop, 'the sheet still starts on screen').toBeGreaterThanOrEqual(0)
+
+    // Keyboard dismissed → the sheet settles back onto the bottom edge.
+    await page.evaluate(() => {
+      const win = window as unknown as { __kb: number; __vv: VisualViewport }
+      win.__kb = 0
+      win.__vv.dispatchEvent(new Event('resize'))
+    })
+    await page.waitForTimeout(400)
+    const after = await page.evaluate(() => {
+      const sheet = document.querySelector('textarea')!.closest('.fixed') as HTMLElement
+      return { bottom: sheet.getBoundingClientRect().bottom, vh: window.innerHeight }
+    })
+    expect(Math.round(after.vh - after.bottom), 'sheet back on the bottom edge').toBeLessThanOrEqual(2)
   })
 
 })
