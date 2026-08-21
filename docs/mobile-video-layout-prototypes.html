@@ -1,0 +1,1003 @@
+<title>Mobile Stage Layouts</title>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+  </symbol>
+  <symbol id="i-micoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v5"/><path d="M9 8v4a3 3 0 0 0 4.6 2.5"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M12 18v3"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5 20 7.5v9L15 13.5z"/>
+  </symbol>
+  <symbol id="i-camoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/><path d="M15 10.5 20 7.5v9l-2-1.2"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M17.5 7a7.5 7.5 0 0 1 0 10"/>
+  </symbol>
+  <symbol id="i-earpiece" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 5.5h4"/>
+  </symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 6.5 16 17l-4 4V3l4 4L8 17.5"/>
+  </symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 0 1-8 8H7l-3 2.5V12a8 8 0 1 1 16 0Z"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18" cy="12" r="1.4" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-leave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 14.5c3-7 12-7 15 0l-3.2 1.2-1-3a11 11 0 0 0-6.6 0l-1 3z"/>
+  </symbol>
+  <symbol id="i-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 14.5 6-6 6 6"/>
+  </symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 9.5 6 6 6-6"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m5 12.5 4.5 4.5L19 7"/>
+  </symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 6l12 12M18 6 6 18"/>
+  </symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9a8 8 0 0 1 13-3l2 2"/><path d="M19 4v4h-4"/><path d="M20 15a8 8 0 0 1-13 3l-2-2"/><path d="M5 20v-4h4"/>
+  </symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M9 20.5h6"/>
+  </symbol>
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.4 3-5 6-5s5.4 1.6 6 5"/><path d="M16 5.4a3.2 3.2 0 0 1 0 5.2"/><path d="M18 14.4c1.9.7 3.1 2.2 3.5 4.6"/>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="7" width="18" height="10" rx="2"/><path d="M8 3.5 10.5 6 8 8.5"/>
+  </symbol>
+</svg>
+
+<style>
+/* ───────── harness tokens ─────────
+   Violet-biased neutrals (hue 270) and the accent are lifted from Manim's own
+   oklch token set, so the page reads as part of the product it is proposing to.
+   Same block as docs/prejoin-feed-prototypes.html — these studies are a series, with
+   two LIGHT-theme values nudged darker: --ink-3 .58 -> .545 and --warn .58 -> .55. The
+   originals measured 4.01:1 and 4.14:1 against the light ground, and both carry 10.5px
+   uppercase mono labels (eyebrows, captions, table headers) — small text, so AA wants
+   4.5:1, not 3:1. Measured, per QA-PLAYBOOK 3: now 4.63:1 and 4.69:1 on --bg, 4.96:1
+   and 5.02:1 on --bg-2. Dark was already 5.59:1+ throughout and is untouched. */
+:root{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.545 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.55 .13 65);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}}
+:root[data-theme="dark"]{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}
+:root[data-theme="light"]{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.545 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.55 .13 65);
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:inherit;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ───────── page furniture ───────── */
+.masthead{padding:72px 0 34px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 18px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.06;letter-spacing:-.028em;font-weight:640}
+.stand{margin:20px 0 0;max-width:60ch;font-size:17px;color:var(--ink-2)}
+
+.brief{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+  padding:22px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:22px}
+.brief dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 6px}
+.brief dd{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.5}
+.brief dd b{color:var(--ink);font-weight:600}
+
+section.block{padding:44px 0 0}
+h2{font-size:22px;letter-spacing:-.015em;font-weight:640}
+.lede{margin:10px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+.lede + .lede{margin-top:12px}
+p code,li code,td code,dd code{font-family:var(--mono);font-size:12.5px;background:var(--sunk);
+  padding:1px 5px;border-radius:4px;color:var(--ink)}
+
+/* ───────── variant heading ───────── */
+.vhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;
+  border-top:1px solid var(--rule-2);padding-top:18px}
+.badge{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;padding:1px 6px;flex:none;translate:0 -2px}
+.vhead h3{font-size:21px;letter-spacing:-.015em;font-weight:640}
+.vhead .ref{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto;
+  letter-spacing:.06em;align-self:center;min-width:0;overflow-wrap:anywhere}
+.vbody{margin:12px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+.vbody + .vbody{margin-top:12px}
+
+.tradeoffs{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:7px;max-width:70ch}
+.tradeoffs li{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:14px;color:var(--ink-2);
+  line-height:1.5}
+.tradeoffs .m{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding-top:3px;white-space:nowrap}
+.tradeoffs .m.plus{color:var(--good)} .tradeoffs .m.minus{color:var(--warn)}
+
+/* ───────── device frames ───────── */
+.frames{--s:.60;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin:24px 0 0}
+.fig{display:flex;flex-direction:column;gap:8px}
+.frame{overflow:hidden;border-radius:calc(14px * var(--s));border:1px solid var(--rule);
+  background:oklch(.17 .012 270);
+  width:calc(var(--w) * 1px * var(--s));height:calc(var(--h) * 1px * var(--s))}
+.frame > .screen{width:calc(var(--w) * 1px);height:calc(var(--h) * 1px);
+  transform:scale(var(--s));transform-origin:0 0}
+.cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);max-width:calc(var(--w) * 1px * var(--s))}
+@media (max-width:900px){.frames{--s:.48}}
+@media (max-width:700px){.frames{--s:.40}}
+@media (max-width:460px){.frames{--s:.30}}
+
+/* ───────── Manim mock: dark token set, locked ─────────
+   The mockups are screenshots of the product, not theme-reactive page content —
+   they stay in Manim dark regardless of the harness theme. */
+.mk{--stage:oklch(.17 .012 270);--surface:oklch(.23 .014 270);--sunken:oklch(.2 .012 270);
+  --line:oklch(.32 .014 270);--mink:oklch(.96 .005 270);--mink-2:oklch(.72 .01 270);
+  --mink-3:oklch(.65 .012 270);--acc:oklch(.55 .18 275);--acc-ink:oklch(.99 0 0);
+  --dngr:oklch(.55 .21 25);--succ:oklch(.66 .16 150);--ovl:oklch(.18 .02 270 / .72);
+  --scrim:oklch(.1 .02 270 / .55);
+  --r-tile:16px;--r-island:24px;--r-field:12px;
+  font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--stage);color:var(--mink);height:100%;width:100%;box-sizing:border-box;
+  position:relative;overflow:hidden;font-size:14px;line-height:1.4}
+.mk *{box-sizing:border-box}
+.mk .i{width:20px;height:20px;flex:none}
+
+/* video feed illustration */
+.feed{position:relative;overflow:hidden;background:
+  radial-gradient(120% 90% at 20% 0%, oklch(.44 .022 255), oklch(.29 .02 262) 70%)}
+.feed.b{background:radial-gradient(120% 90% at 70% 0%, oklch(.42 .03 30), oklch(.27 .022 20) 70%)}
+.feed.c{background:radial-gradient(120% 90% at 30% 10%, oklch(.43 .028 150), oklch(.28 .02 160) 70%)}
+.feed.d{background:radial-gradient(120% 90% at 60% 0%, oklch(.45 .03 300), oklch(.28 .022 295) 70%)}
+.feed .torso{position:absolute;left:50%;bottom:-16%;translate:-50% 0;width:70%;height:52%;
+  border-radius:48% 48% 0 0 / 66% 66% 0 0;background:oklch(.55 .018 262)}
+.feed .head{position:absolute;left:50%;top:22%;translate:-50% 0;width:30%;aspect-ratio:1;
+  border-radius:50%;background:radial-gradient(circle at 34% 28%,oklch(.85 .13 88),oklch(.66 .16 68))}
+.feed .nm{position:absolute;left:6px;bottom:5px;font-size:10px;color:oklch(.98 0 0);
+  background:var(--ovl);border-radius:999px;padding:2px 7px;max-width:80%;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.tile{border-radius:var(--r-tile);overflow:hidden;position:relative;background:var(--sunken)}
+.tile.off{display:grid;place-items:center}
+.tile.off .av{width:34%;aspect-ratio:1;border-radius:50%;background:var(--line);display:grid;
+  place-items:center;font-size:13px;color:var(--mink-2);font-weight:600;max-width:52px}
+.tile.spk{outline:2px solid var(--succ);outline-offset:-2px}
+
+/* the control island */
+.bar{position:absolute;left:50%;translate:-50% 0;bottom:12px;background:var(--surface);
+  border-radius:var(--r-island);padding:8px 12px;display:flex;gap:7px;align-items:center;
+  box-shadow:0 12px 40px -12px oklch(.08 .03 270 / .6);z-index:6}
+.ctl{width:40px;height:40px;border-radius:999px;background:var(--sunken);color:var(--mink);
+  display:grid;place-items:center;flex:none}
+.ctl.acc{background:var(--acc);color:var(--acc-ink)}
+.ctl.danger{background:var(--dngr);color:oklch(.99 0 0)}
+.ctl.sm{width:30px;height:30px}.ctl.sm .i{width:15px;height:15px}
+.ctl .i{width:19px;height:19px}
+.ctl.glass{background:var(--ovl);backdrop-filter:blur(8px);color:oklch(.98 0 0)}
+.badgen{position:absolute;top:-2px;right:-2px;min-width:15px;height:15px;border-radius:999px;
+  background:var(--acc);color:var(--acc-ink);font-size:9px;font-weight:700;display:grid;
+  place-items:center;padding:0 3px}
+
+/* chips + pills */
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--ovl);backdrop-filter:blur(8px);
+  border-radius:999px;padding:5px 11px;font-size:11px;color:oklch(.98 0 0);flex:none}
+.pill .i{width:13px;height:13px}
+.pill.acc{background:var(--acc);color:var(--acc-ink);backdrop-filter:none}
+.topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;align-items:center;gap:6px;z-index:5}
+.topbar .sp{flex:1}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:7}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);
+  border-radius:22px 22px 0 0;z-index:8;padding:8px 0 14px;
+  box-shadow:0 -12px 44px -14px oklch(.08 .03 270 / .7)}
+.grab{width:36px;height:4px;border-radius:999px;background:var(--line);margin:2px auto 8px}
+.shhd{display:flex;align-items:center;gap:8px;padding:0 16px 8px}
+.shhd h4{margin:0;font-size:15px;font-weight:620;letter-spacing:-.01em}
+.shhd .sp{flex:1}
+.grp{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mink-3);padding:10px 16px 4px}
+.row56{min-height:56px;display:flex;align-items:center;gap:13px;padding:8px 16px}
+.row56 .i{width:21px;height:21px;color:var(--mink-2)}
+.row56 .tx{flex:1;min-width:0}
+.row56 .t1{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row56 .t2{font-size:11.5px;color:var(--mink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row56.on{background:color-mix(in oklch,var(--acc) 15%,transparent)}
+.row56.on .i,.row56.on .ck{color:var(--acc)}
+.row56 .ck{width:20px;height:20px;flex:none}
+.sw{width:40px;height:24px;border-radius:999px;background:var(--sunken);border:1px solid var(--line);
+  position:relative;flex:none}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:var(--mink-3)}
+.sw.on{background:var(--acc);border-color:var(--acc)}
+.sw.on::after{left:auto;right:2px;background:oklch(.99 0 0)}
+.hr{height:1px;background:var(--line);margin:8px 0}
+
+/* the "current" broken states */
+.pop{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  padding:10px;z-index:8;box-shadow:0 14px 44px -12px oklch(.08 .03 270 / .7);width:250px}
+.pop .lbl{font-size:10.5px;font-weight:600;color:var(--mink-3);margin:0 0 4px;padding:0 2px}
+.sel{height:38px;border-radius:var(--r-field);background:var(--sunken);display:flex;align-items:center;
+  gap:8px;padding:0 10px;font-size:12.5px;color:var(--mink)}
+.sel .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel .i{width:14px;height:14px;color:var(--mink-3)}
+.dd{position:absolute;background:oklch(.26 .014 270);border:1px solid var(--line);border-radius:14px;
+  padding:6px;z-index:9;width:214px;box-shadow:0 14px 44px -12px oklch(.08 .03 270 / .75)}
+.dd .it{height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:12.5px;
+  border-radius:9px}
+.dd .it .i{width:14px;height:14px}
+.dd .it.on{background:var(--sunken)}
+.ghost{position:absolute;border:1.5px dashed var(--dngr);border-radius:var(--r-island);z-index:4}
+.gtag{position:absolute;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+  background:var(--dngr);color:oklch(.99 0 0);border-radius:4px;padding:1px 5px;z-index:5;
+  white-space:nowrap}
+
+/* an expanding tray built INTO the island */
+.tray{position:absolute;left:8px;right:8px;bottom:12px;background:var(--surface);
+  border-radius:var(--r-island);z-index:8;overflow:hidden;
+  box-shadow:0 12px 44px -12px oklch(.08 .03 270 / .65)}
+.seg{display:flex;gap:4px;padding:10px 12px 4px}
+.seg > div{flex:1;height:32px;border-radius:999px;background:var(--sunken);display:grid;
+  place-items:center;font-size:12.5px;font-weight:520;color:var(--mink-2)}
+.seg > div.on{background:var(--acc);color:var(--acc-ink)}
+.trayfoot{display:flex;gap:7px;align-items:center;padding:9px 12px;background:var(--sunken)}
+
+/* route rail inside the island */
+.rail{display:flex;gap:6px;align-items:center;overflow:hidden}
+.rchip{height:34px;border-radius:999px;background:var(--sunken);display:flex;align-items:center;
+  gap:6px;padding:0 11px;font-size:12px;flex:none;color:var(--mink)}
+.rchip.on{background:var(--acc);color:var(--acc-ink)}
+.rchip .i{width:15px;height:15px}
+
+/* filmstrips + pagers */
+.strip{position:absolute;left:8px;right:8px;display:flex;gap:6px;z-index:5}
+.dots{display:flex;gap:5px;align-items:center;justify-content:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:oklch(.98 0 0 / .35);display:block}
+.dots i.on{background:oklch(.98 0 0);width:16px;border-radius:999px}
+
+/* helpers */
+.col{display:flex;flex-direction:column}
+.row{display:flex}.center{align-items:center}.between{justify-content:space-between}
+.grow{flex:1;min-height:0;min-width:0}
+.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}
+.stagepad{position:absolute;inset:0;padding:8px;display:flex;flex-direction:column;gap:6px}
+
+/* ───────── comparison table ───────── */
+.tblwrap{overflow-x:auto;margin:22px 0 0;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th,td{text-align:left;padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding-top:14px}
+tbody th{font-weight:600;color:var(--ink)}
+td{color:var(--ink-2)}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tr.pick td,tr.pick th{background:var(--accent-soft)}
+
+.rec{margin:34px 0 0;border:1px solid var(--rule-2);border-left:3px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:20px 22px;background:var(--bg-2)}
+.rec h2{font-size:17px;margin:0 0 10px}
+.rec p{margin:0 0 10px;font-size:14.5px;color:var(--ink-2);max-width:64ch}
+.rec p:last-child{margin-bottom:0}
+
+.shared{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px}
+.shared li{display:grid;grid-template-columns:24px 1fr;gap:12px;font-size:14.5px;color:var(--ink-2)}
+.shared .n{font-family:var(--mono);font-size:11px;color:var(--accent);padding-top:4px}
+.shared b{color:var(--ink);font-weight:600}
+
+.note{margin:22px 0 0;padding:14px 16px;border:1px solid var(--rule);border-radius:10px;
+  background:var(--bg-2);font-size:14px;color:var(--ink-2);max-width:70ch}
+.note b{color:var(--ink)}
+
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-3)}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Manim · in-call stage · mobile layout study</p>
+  <h1>A phone is not a narrow desktop, and the stage still treats it like one.</h1>
+  <p class="stand">Measured at <b>375×667</b>, the four scenarios fail in four different ways: a shared
+  screen gets 31% of the display and 118&nbsp;px of black bars, the speaker filmstrip spends most of its
+  height underneath the control island, and the gallery packer was rendering people at two different
+  sizes in the same call. Benchmark, numbers, then prototypes for each.</p>
+</header>
+
+<dl class="brief">
+  <div><dt>Reference viewport</dt><dd><b>375×667</b> — the <code>mobile-sm</code> Playwright project. Stage <code>p-2</code> leaves <b>359×651</b>.</dd></div>
+  <div><dt>Hard constraint</dt><dd><b>No page scroll.</b> Everything fits, or it pages. Only the chat list scrolls.</dd></div>
+  <div><dt>Hard constraint</dt><dd><b>Pure touch.</b> Tap toggles the chrome, horizontal swipe already means something.</dd></div>
+  <div><dt>Already fixed</dt><dd>The <b>packer</b> — see §3. Prototypes below assume the corrected geometry.</dd></div>
+</dl>
+
+<section class="block">
+  <h2>What the reference apps do on a phone</h2>
+  <p class="lede">The interesting agreement isn't the grid — it's what they <em>refuse</em> to do. Nobody
+  splits a portrait screen between a share and a roster. Nobody puts a persistent filmstrip on a phone
+  in speaker view. Everybody pages the gallery by swipe with dots, and everybody keeps the self-view as
+  a floating card rather than a grid cell.</p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>App</th><th>Screen share</th><th>Speaker</th><th>Gallery</th><th>Self-view</th></tr></thead>
+      <tbody>
+        <tr><th>Google Meet</th><td>Share full-bleed, pinch-zoom, roster collapses to a pill; nudges you to rotate</td><td>One feed, no filmstrip</td><td>2 cols, swipe + dots</td><td>Draggable card</td></tr>
+        <tr><th>Zoom</th><td>Share full-bleed, pinch-zoom, self shrinks to a thumb</td><td>“Active speaker” page</td><td>2×2 pages, swipe + dots</td><td>Thumb, or one cell</td></tr>
+        <tr><th>Microsoft Teams</th><td>Dedicated full-screen with a collapsible roster strip</td><td>One feed</td><td>2×2 up to 3×3, paged</td><td>Corner card</td></tr>
+        <tr><th>FaceTime</th><td>Share fills; tiles reflow around it</td><td>Prominence <em>in place</em> — the speaker's tile grows</td><td>Auto-scaling rounded tiles, no pages</td><td>Floating card</td></tr>
+        <tr><th>WhatsApp</th><td>—</td><td>Tap a tile to promote it</td><td>2 cols, speaker ringed</td><td>One cell, or a card</td></tr>
+        <tr><th>Discord</th><td>Share full-bleed + edge filmstrip</td><td>Full-bleed focus</td><td>2 cols, vertical scroll</td><td>One cell</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede">Two patterns worth stealing outright: <b>FaceTime's prominence grid</b> (the speaker's
+  tile grows where it already is, instead of switching to a different layout) and <b>Meet's rotate
+  nudge</b> (portrait is genuinely the wrong shape for a 16:9 share, so say so instead of
+  compromising).</p>
+</section>
+
+<section class="block">
+  <h2>The numbers, at 375×667</h2>
+  <p class="lede">All of these come from running the production formulas — <code>presentationLayout</code>,
+  <code>gridCapacity</code>, <code>fitMixedRows</code> — at the <code>mobile-sm</code> viewport, plus the
+  CSS geometry of the control island and the filmstrip. Computed, not observed: LiveKit testing is
+  frozen and the local-server escape hatch needs a GitHub download this environment blocks, so nothing
+  below was rendered against a live room.</p>
+
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>Finding</th><th>Measured</th><th>Where</th></tr></thead>
+      <tbody>
+        <tr><th>Share is letterboxed by the floor, not the content</th><td class="n">natural 0.310 → clamped 0.500</td><td><code>MIN_FRACTION</code>, shareLayout.ts</td></tr>
+        <tr><th>… wasting</th><td class="n">118px = 37% of the big region</td><td>big 359×320, share paints 359×202</td></tr>
+        <tr><th>… so the shared screen gets</th><td class="n">31% of the stage</td><td>202px of 651px</td></tr>
+        <tr><th>… while the roster gets slots for</th><td class="n">12 tiles</td><td><code>userRegionCapacity(359, 319)</code></td></tr>
+        <tr><th>Speaker filmstrip is under the island</th><td class="n">60px of 96px</td><td>strip y 563–659, island y 591–651</td></tr>
+        <tr><th>… and under the self-view card</th><td class="n">8px</td><td>card y 443–571</td></tr>
+        <tr><th>Phone column cap is inert</th><td class="n">maxCols 2 → 3 rendered</td><td><code>cols</code> discarded at the call site</td></tr>
+        <tr><th>Gallery paging gesture is taken</th><td class="n">swipe = grid ↔ speaker</td><td><code>useStageChrome.onPointerUp</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <p style="margin:0 0 8px"><b>Why the share is letterboxed.</b> <code>bigFraction</code> is adaptive and
+    correct: it sizes the big region to the content's natural need, which for a 16:9 share in a 359-wide
+    portrait column is <b>0.310</b> of the height. Then <code>MIN_FRACTION = 0.5</code> clamps it
+    <em>up</em>. That floor is right on a desktop, where it stops the big region becoming a sliver beside
+    a wide grid — but in a vertical split it forces 118&nbsp;px of black bars above and below the share and
+    hands the surplus to a roster nobody opened the call to look at.</p>
+    <p style="margin:0"><b>Why nothing caught the filmstrip collision.</b> <code>tests/19-overlays</code>
+    uses the <code>overlaps()</code> helper, which selects
+    <code>button, a, input, select, textarea, [role="button"]</code>. A tile's root is a
+    <code>div role="group"</code>, so filmstrip tiles are invisible to it. Worth widening the selector
+    regardless of which prototype wins.</p>
+  </div>
+</section>
+
+<section class="block">
+  <h2>The three-week-old bug underneath all of this — fixed</h2>
+  <p class="lede">Before any redesign: the packer that arranges every gallery on every device was
+  producing ragged rows. <code>balancedRows</code> reset its accumulator after each row while the
+  threshold kept climbing, so only the first row could ever close. Asking for three rows of nine tiles
+  returned two. Uniform grids were never generated, so the scorer never got to choose one.</p>
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="justify-content:center;gap:8px">
+            <div class="row gap8" style="height:234px;justify-content:center">
+              <div class="tile" style="width:176px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+              <div class="tile" style="width:176px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae</span></div>
+            </div>
+            <div class="row gap8" style="height:112px;justify-content:center">
+              <div class="tile" style="width:84px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile" style="width:84px"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off" style="width:84px"><i class="av">RO</i></div>
+              <div class="tile" style="width:84px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            </div>
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile" style="width:114px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off" style="width:114px"><i class="av">TN</i></div>
+              <div class="tile" style="width:114px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            </div>
+          </div>
+          <div class="gtag" style="left:10px;top:250px">176×234 beside 84×112 — same call</div>
+        </div></div>
+      </div>
+      <p class="cap">Before · 9 people · 2 / 4 / 3</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="justify-content:center;gap:8px">
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile" style="width:114px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+              <div class="tile" style="width:114px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae</span></div>
+              <div class="tile" style="width:114px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Ife</span></div>
+            </div>
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile" style="width:114px"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Kofi</span></div>
+              <div class="tile off" style="width:114px"><i class="av">RO</i></div>
+              <div class="tile" style="width:114px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Sena</span></div>
+            </div>
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile" style="width:114px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Dede</span></div>
+              <div class="tile off" style="width:114px"><i class="av">TN</i></div>
+              <div class="tile" style="width:114px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Yaw</span></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">After · uniform 3 / 3 / 3 · shipped</p>
+    </div>
+  </div>
+  <p class="lede">Landed already, with unit tests, because it's a defect rather than a design choice —
+  the docstring said “rows come out near-equal width” and they didn't. It affects desktop too, so the
+  <code>09-visual</code> snapshots will need regenerating. Everything below assumes it.</p>
+</section>
+
+<!-- ═════════════ SCENARIO 1 : SCREEN SHARE ═════════════ -->
+<section class="block">
+  <h2>1 · Screen share</h2>
+  <p class="lede">The worst of the four, and the only one where the constraint is physical: a 16:9 share
+  in a 375-wide portrait window can only ever be 202&nbsp;px tall. The question isn't how to fit it — it's
+  what to do with the other 449&nbsp;px, and whether to keep the split at all.</p>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad">
+            <div style="height:320px;position:relative;background:oklch(.1 .01 270);border-radius:var(--r-tile);display:grid;place-items:center">
+              <div style="width:100%;height:202px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255));position:relative">
+                <div style="position:absolute;left:10px;top:10px;right:10px;height:9px;background:oklch(.5 .02 250);border-radius:3px"></div>
+                <div style="position:absolute;left:10px;top:28px;width:52%;height:5px;background:oklch(.45 .02 250);border-radius:3px"></div>
+                <div style="position:absolute;left:10px;top:40px;width:66%;height:5px;background:oklch(.45 .02 250);border-radius:3px"></div>
+                <div style="position:absolute;left:10px;top:56px;width:38%;height:5px;background:oklch(.45 .02 250);border-radius:3px"></div>
+                <span class="nm" style="left:8px;bottom:6px">Jae's screen</span>
+              </div>
+              <div class="gtag" style="left:8px;top:6px">59px bars</div>
+              <div class="gtag" style="left:8px;bottom:6px">59px bars</div>
+            </div>
+            <div class="row gap6" style="height:110px">
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile grow"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off grow"><i class="av">RO</i></div>
+            </div>
+            <div class="row gap6" style="height:110px">
+              <div class="tile off grow"><i class="av">TN</i></div>
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off grow" style="opacity:.35"></div>
+            </div>
+            <div class="row gap6" style="height:96px;opacity:.35">
+              <div class="tile off grow"></div><div class="tile off grow"></div><div class="tile off grow"></div>
+            </div>
+          </div>
+          <div class="gtag" style="left:10px;top:352px">12 slots for 4 people</div>
+        </div></div>
+      </div>
+      <p class="cap">Current · share = 31% of the display</p>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="vhead"><span class="badge">S1</span><h3>Share fills, roster collapses to a pill</h3><span class="ref">ref: meet · zoom</span></div>
+  <p class="vbody">Drop the vertical split entirely. The share takes the whole stage at its own aspect,
+  centred, and the people become a single glass pill in the top-left — <b>“4 others”</b> — that expands
+  into the existing People sheet. Same pixels for the share (202&nbsp;px is 202&nbsp;px), but the 449&nbsp;px
+  around it stops being black bars plus a roster and becomes headroom the share can actually use: pinch
+  to zoom, and a double-tap fills the width in landscape.</p>
+  <p class="vbody">The bet: during a share, faces are context, not content. Every reference app makes
+  that bet on a phone. The pill keeps it one tap away rather than gone.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Removes the letterbox <em>and</em> the 12-slot roster in one move. No <code>MIN_FRACTION</code> special case.</span></li>
+    <li><span class="m plus">for</span><span>Pinch-zoom becomes possible, which is what people actually want on a phone when the text is small.</span></li>
+    <li><span class="m minus">against</span><span>Loses the “see the presenter's face while they talk” cue. A small speaker chip on the pill covers most of it.</span></li>
+  </ul>
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div style="position:absolute;inset:0;background:oklch(.1 .01 270);display:grid;place-items:center">
+            <div style="width:100%;height:202px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255));position:relative">
+              <div style="position:absolute;left:14px;top:14px;right:14px;height:11px;background:oklch(.5 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:14px;top:36px;width:52%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:14px;top:52px;width:66%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:14px;top:68px;width:38%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            </div>
+          </div>
+          <div class="topbar">
+            <span class="pill"><svg class="i"><use href="#i-share"/></svg>Jae is presenting</span>
+            <span class="sp"></span>
+            <span class="pill"><svg class="i"><use href="#i-people"/></svg>4 others</span>
+          </div>
+          <span class="pill" style="position:absolute;left:50%;translate:-50% 0;top:250px;z-index:5"><svg class="i"><use href="#i-rotate"/></svg>Rotate for a bigger view</span>
+          <div style="position:absolute;right:12px;bottom:84px;width:74px;height:99px;border-radius:12px;overflow:hidden;z-index:5;box-shadow:0 8px 24px -8px oklch(.05 .02 270 / .8)">
+            <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">S1 · portrait — pill + rotate nudge</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:667;--h:375">
+        <div class="screen"><div class="mk">
+          <div style="position:absolute;inset:0;background:oklch(.1 .01 270);display:grid;place-items:center">
+            <div style="width:583px;height:328px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255));position:relative;border-radius:8px">
+              <div style="position:absolute;left:20px;top:20px;right:20px;height:14px;background:oklch(.5 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:48px;width:52%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:66px;width:66%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:84px;width:38%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:20px;top:110px;width:58%;height:7px;background:oklch(.45 .02 250);border-radius:3px"></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill"><svg class="i"><use href="#i-share"/></svg>Jae is presenting</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4 others</span></div>
+          <div class="strip" style="right:auto;left:8px;bottom:12px;flex-direction:column;gap:6px">
+            <div class="tile" style="width:60px;height:80px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            <div class="tile" style="width:60px;height:80px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">S1 · landscape — 583×328, edge rail</p>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="vhead"><span class="badge">S2</span><h3>Let the fraction be honest</h3><span class="ref">ref: teams</span></div>
+  <p class="vbody">The smaller change: keep the split, but make <code>MIN_FRACTION</code>
+  orientation-aware. In a vertical split the floor exists to stop the share becoming a sliver, and
+  <code>natural</code> already guarantees that — the share never needs less than its own aspect
+  demands. Drop the floor to ~0.34 for <code>vertical</code> and the share sits at 0.31 with no bars,
+  the roster gets 400&nbsp;px, and <code>userRegionCapacity</code> stops offering twelve slots to four
+  people by also capping at the participant count.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Two constants and one clamp. Lowest-risk change in this document.</span></li>
+    <li><span class="m plus">for</span><span>Keeps faces and content on screen together, which is the one thing S1 gives up.</span></li>
+    <li><span class="m minus">against</span><span>The share is still 202&nbsp;px tall. It removes the waste but doesn't make the share bigger — the physical limit is untouched.</span></li>
+    <li><span class="m minus">against</span><span>Now the roster is the dominant region, which is the wrong emphasis during a presentation.</span></li>
+  </ul>
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad">
+            <div style="height:202px;background:linear-gradient(155deg,oklch(.36 .04 245),oklch(.24 .03 255));border-radius:var(--r-tile);position:relative;overflow:hidden">
+              <div style="position:absolute;left:12px;top:12px;right:12px;height:10px;background:oklch(.5 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:12px;top:32px;width:52%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <div style="position:absolute;left:12px;top:48px;width:66%;height:6px;background:oklch(.45 .02 250);border-radius:3px"></div>
+              <span class="nm">Jae's screen</span>
+            </div>
+            <div class="row gap6 grow">
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+              <div class="tile grow"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae</span></div>
+            </div>
+            <div class="row gap6 grow" style="margin-bottom:76px">
+              <div class="tile off grow"><i class="av">RO</i></div>
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Ife</span></div>
+            </div>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">S2 · no bars, 4 slots for 4 people</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ SCENARIO 2 : SPEAKER ═════════════ -->
+<section class="block">
+  <h2>2 · Speaker view</h2>
+  <p class="lede">One feed fills the stage, the local camera floats, and a 96&nbsp;px filmstrip sits at the
+  bottom — 60&nbsp;px of it under the control island, 8&nbsp;px of it under the self-view card. Two
+  overlapping overlays and a strip you can only half see, over the one thing you came to look at.</p>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:8px;border-radius:var(--r-tile)"><i class="torso"></i><i class="head"></i><span class="nm">Jae</span></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>5</span></div>
+          <div class="strip" style="top:563px;height:96px;gap:12px">
+            <div class="tile" style="width:171px;height:96px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            <div class="tile" style="width:171px;height:96px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+          </div>
+          <div style="position:absolute;right:16px;top:443px;width:96px;height:128px;border-radius:12px;overflow:hidden;z-index:6;box-shadow:0 8px 24px -8px oklch(.05 .02 270 / .8)">
+            <div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+          <div class="gtag" style="left:10px;top:545px">strip: 60 of 96px under the island</div>
+        </div></div>
+      </div>
+      <p class="cap">Current · three layers, one feed</p>
+    </div>
+  </div>
+
+  <div class="vhead" style="margin-top:34px"><span class="badge">P1</span><h3>One feed. The strip becomes a swipe-up.</h3><span class="ref">ref: meet · zoom · teams</span></div>
+  <p class="vbody">No filmstrip on a phone. The feed takes the whole stage, the self-view card moves up
+  clear of the island, and everyone else lives behind an upward swipe — a peek detent of the People
+  sheet showing faces rather than rows. Every reference app does exactly this, and the strip it removes
+  was two-thirds invisible anyway.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Gives the focused feed back its 108&nbsp;px and removes the collision without any new geometry.</span></li>
+    <li><span class="m plus">for</span><span><code>Sheet</code>'s <code>expandable</code> detents already exist — the peek detent is what it was built for.</span></li>
+    <li><span class="m minus">against</span><span>Adds a gesture. Upward swipe is currently unclaimed on the stage, but so was horizontal until layout-switching took it.</span></li>
+  </ul>
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:8px;border-radius:var(--r-tile)"><i class="torso"></i><i class="head"></i><span class="nm">Jae · speaking</span></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>5</span></div>
+          <div style="position:absolute;right:16px;bottom:88px;width:88px;height:117px;border-radius:12px;overflow:hidden;z-index:6;box-shadow:0 8px 24px -8px oklch(.05 .02 270 / .8)">
+            <div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+            <span class="pill" style="position:absolute;left:4px;bottom:4px;padding:3px 7px;font-size:9px">You</span>
+          </div>
+          <span class="pill" style="position:absolute;left:16px;bottom:88px;z-index:6"><svg class="i" style="rotate:180deg"><use href="#i-down"/></svg>4 others</span>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">P1 · closed</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:8px;border-radius:var(--r-tile)"><i class="torso"></i><i class="head"></i><span class="nm">Jae · speaking</span></div>
+          <div class="sheet" style="padding-bottom:10px">
+            <i class="grab"></i>
+            <div class="shhd"><h4>In this call · 5</h4><span class="sp"></span><span class="ctl sm"><svg class="i"><use href="#i-x"/></svg></span></div>
+            <div class="row gap6" style="padding:4px 12px 10px">
+              <div class="tile grow spk" style="height:104px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+              <div class="tile grow" style="height:104px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Ife</span></div>
+              <div class="tile off grow" style="height:104px"><i class="av">RO</i></div>
+            </div>
+            <div class="row gap6" style="padding:0 12px 6px">
+              <div class="tile grow" style="height:104px"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Kofi</span></div>
+              <div class="tile grow" style="height:104px;visibility:hidden"></div>
+              <div class="tile grow" style="height:104px;visibility:hidden"></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">P1 · peek detent — faces, not rows</p>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════ SCENARIO 3 : SMALL GROUP ═════════════ -->
+<section class="block">
+  <h2>3 · Small group — two to four</h2>
+  <p class="lede">The one Manim mostly gets right. A 1-on-1 already routes to full-bleed-plus-card
+  (<code>phone1on1</code>), and the corrected packer gives three and four people even rows. What's left
+  is the wasted margin: tiles are centred in the stage with the island floating over the bottom, so a
+  2×2 leaves 87&nbsp;px of dead space top and bottom while the tiles themselves stay at 176×234.</p>
+
+  <div class="vhead" style="margin-top:26px"><span class="badge">G1</span><h3>Edge-to-edge tiles, island on glass</h3><span class="ref">ref: facetime · whatsapp</span></div>
+  <p class="vbody">Let the grid fill the stage instead of centring inside it, and let the island float
+  over the bottom row the way it already floats over a full-bleed feed. Four tiles go from 176×234 to
+  176×318 — a 36% taller face — for the cost of the island covering the bottom ~60&nbsp;px of two tiles,
+  which is where a name pill sits anyway and which the auto-hide clears after four seconds.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Biggest legibility win per line changed. The packer already fits-to-height; this only removes the centring and reserves nothing.</span></li>
+    <li><span class="m plus">for</span><span>Matches how the phone 1-on-1 and <code>SoloStage</code> already behave — the grid is the odd one out.</span></li>
+    <li><span class="m minus">against</span><span>Name pills on the bottom row need to move up out of the island's band, or duck with it.</span></li>
+  </ul>
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="gap:8px">
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+              <div class="tile grow spk"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">Ife</span></div>
+              <div class="tile grow"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">You</span></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">G1 · 4 people · 176×318 tiles</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="gap:8px">
+            <div class="row gap8" style="flex:1.35">
+              <div class="tile grow spk"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae · speaking</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">Amara</span></div>
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">Ife</span></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>3</span></div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">G2 · 3 people, prominence in place</p>
+    </div>
+  </div>
+  <div class="vhead" style="margin-top:30px"><span class="badge">G2</span><h3>Prominence, not a layout switch</h3><span class="ref">ref: facetime</span></div>
+  <p class="vbody">FaceTime's move, shown on the right above: the speaker's tile <em>grows where it is</em>
+  rather than the whole stage becoming a different layout. Below about six people this makes the
+  grid/speaker toggle unnecessary — you get the benefit of speaker view without the mode. It's a weight
+  applied to a row in the packer (a speaking tile counts for more summed aspect), not a new branch.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Removes a mode from a phone, and with it the swipe gesture that's blocking gallery paging in §4.</span></li>
+    <li><span class="m minus">against</span><span>Reflows on speech. The packer's whole stability story is that tiles don't move when people talk — this needs a debounce and a hard floor on how often it can change.</span></li>
+  </ul>
+</section>
+
+<!-- ═════════════ SCENARIO 4 : LARGE GROUP ═════════════ -->
+<section class="block">
+  <h2>4 · Large group — twenty and up</h2>
+  <p class="lede">Nine tiles per page on a phone, three pages for twenty-eight people, and no way to
+  turn a page with your thumb: horizontal swipe is bound to grid ↔ speaker, so the pager is two arrow
+  buttons floating at the vertical centre of the left and right edges — in the middle of the video,
+  where a tap is also the chrome toggle. Nine 114×152 tiles is also more than a phone should try.</p>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="justify-content:center;gap:8px">
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile" style="width:114px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile" style="width:114px"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off" style="width:114px"><i class="av">RO</i></div>
+            </div>
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile" style="width:114px"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off" style="width:114px"><i class="av">TN</i></div>
+              <div class="tile" style="width:114px"><div class="feed d" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+            </div>
+            <div class="row gap8" style="height:152px;justify-content:center">
+              <div class="tile off" style="width:114px"><i class="av">SB</i></div>
+              <div class="tile" style="width:114px"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div></div>
+              <div class="tile off" style="width:114px"><i class="av">YK</i></div>
+            </div>
+          </div>
+          <span class="ctl glass" style="position:absolute;left:8px;top:305px;z-index:5"><svg class="i" style="rotate:90deg"><use href="#i-caret"/></svg></span>
+          <span class="ctl glass" style="position:absolute;right:8px;top:305px;z-index:5"><svg class="i" style="rotate:-90deg"><use href="#i-caret"/></svg></span>
+          <div class="gtag" style="left:8px;top:270px">arrows sit on the video</div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Current · 28 people, page 1 of 4</p>
+    </div>
+  </div>
+
+  <div class="vhead" style="margin-top:34px"><span class="badge">L1</span><h3>Four per page, swipe and dots</h3><span class="ref">ref: zoom · meet</span></div>
+  <p class="vbody">Drop the phone page to <b>four</b> — 176×318 tiles, faces you can read — and page by
+  horizontal swipe with a dot indicator on the shelf above the island, where the effects carousel
+  already lives. This requires giving up the grid ↔ speaker swipe, which is the point: G2's prominence
+  grid makes that mode redundant below six people, and above six a phone user wants pages, not modes.
+  Layout switching stays in More and on the top chip, where it already is.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Faces four times the area, the gesture every phone user already expects, and the arrows come off the video.</span></li>
+    <li><span class="m plus">for</span><span>Four mounted <code>&lt;video&gt;</code> per page instead of nine — the paging perf argument, more so.</span></li>
+    <li><span class="m minus">against</span><span>Seven pages for 28 people. Needs the off-page-speaker jump to stay, and it becomes load-bearing rather than a nicety.</span></li>
+    <li><span class="m minus">against</span><span>Rebinds a shipped gesture. Anyone who learned swipe-to-switch loses it.</span></li>
+  </ul>
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="gap:8px;bottom:34px">
+            <div class="row gap8 grow">
+              <div class="tile grow spk"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae · speaking</span></div>
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Amara</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">Ife</span></div>
+              <div class="tile off grow"><i class="av">RO</i><span class="nm" style="bottom:66px">Rose</span></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>28</span></div>
+          <div class="dots" style="position:absolute;left:0;right:0;bottom:84px;z-index:5">
+            <i class="on"></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          </div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">L1 · 4 per page, dots on the shelf</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="stagepad" style="gap:8px;bottom:34px">
+            <div class="row gap8" style="flex:1.6">
+              <div class="tile grow spk"><div class="feed b" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm">Jae · speaking</span></div>
+            </div>
+            <div class="row gap8 grow">
+              <div class="tile grow"><div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">Amara</span></div>
+              <div class="tile grow"><div class="feed c" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div><span class="nm" style="bottom:66px">Ife</span></div>
+              <div class="tile off grow"><i class="av">+25</i></div>
+            </div>
+          </div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>28</span></div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">L2 · speaker + 2 + overflow · no pages</p>
+    </div>
+  </div>
+
+  <div class="vhead" style="margin-top:30px"><span class="badge">L2</span><h3>Speaker plus three, and nobody counts pages</h3><span class="ref">ref: teams large-meeting</span></div>
+  <p class="vbody">The other reading of “20+”: at that size a gallery is a formality — you are watching
+  whoever is talking, and the rest is a headcount. So don't page at all. The speaker takes a large tile,
+  the two most recent speakers sit beneath it, and the fourth slot is <b>+25</b> opening the People
+  sheet. This is the presentation layout's <code>OverflowTile</code> pattern applied to the plain grid,
+  and it's already built.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Three mounted videos regardless of room size. By far the best on a phone's battery and decoder.</span></li>
+    <li><span class="m plus">for</span><span>No pager, no gesture conflict, no “which page is Kofi on”.</span></li>
+    <li><span class="m minus">against</span><span>You can't browse the room visually. For a class or a standup where seeing everyone is the point, this is the wrong answer.</span></li>
+    <li><span class="m minus">against</span><span>Needs a recent-speaker history to fill the two small slots, which doesn't exist yet.</span></li>
+  </ul>
+</section>
+
+<section class="block">
+  <h2>What all of them assume</h2>
+  <ul class="shared">
+    <li><span class="n">01</span><span><b>The island needs a reserved band, or explicit permission to sit on glass.</b> <code>SoloStage</code> reserves <code>pb-24</code>; <code>GridStage</code> and the speaker layout reserve nothing and collide by luck or don't. Pick one rule and apply it in both.</span></li>
+    <li><span class="n">02</span><span><b><code>MIN_FRACTION</code> has to know the split orientation.</b> A floor that protects a horizontal split forces black bars in a vertical one. Same constant, opposite effect.</span></li>
+    <li><span class="n">03</span><span><b><code>userRegionCapacity</code> should cap at the participant count.</b> Twelve slots for four people is what makes the current share layout feel empty as well as cramped.</span></li>
+    <li><span class="n">04</span><span><b>The dead <code>cols</code> return needs resolving.</b> <code>gridCapacity</code> computes a column cap the call site discards, so the phone's <code>maxCols: 2</code> bounds page size but not columns — nine tiles render three across. Either feed it to the packer or delete it and fix the docstring.</span></li>
+    <li><span class="n">05</span><span><b>Widen the overlap test's selector.</b> It only sees <code>button, a, input, select, textarea, [role="button"]</code>, and a tile is a <code>div role="group"</code> — which is why a filmstrip sitting 60&nbsp;px under the control bar has never failed a gate.</span></li>
+    <li><span class="n">06</span><span><b>Re-run the gates, and expect snapshots to move.</b> <code>test:mobile</code>, <code>test:mobile-sm</code>, and <code>09-visual</code> baselines. The packer fix alone changes desktop arrangement above four people.</span></li>
+  </ul>
+</section>
+
+<section class="block">
+  <h2>Side by side</h2>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>&nbsp;</th><th>Scenario</th><th>Key number at 375×667</th><th>New geometry</th><th>Gesture cost</th><th>Effort</th></tr></thead>
+      <tbody>
+        <tr><th>S1</th><td>Share</td><td class="n">share 31% → 31%, waste 118px → 0</td><td>Drops the split</td><td>Adds pinch</td><td>Medium</td></tr>
+        <tr class="pick"><th>S2</th><td>Share</td><td class="n">waste 118px → 0, roster 12 → 4 slots</td><td>Two constants</td><td>None</td><td>Low</td></tr>
+        <tr class="pick"><th>P1</th><td>Speaker</td><td class="n">feed 543px → 651px</td><td>Removes the filmstrip</td><td>Adds swipe-up</td><td>Low</td></tr>
+        <tr class="pick"><th>G1</th><td>Small group</td><td class="n">tiles 176×234 → 176×318</td><td>Removes centring</td><td>None</td><td>Low</td></tr>
+        <tr><th>G2</th><td>Small group</td><td class="n">speaker tile ×1.35</td><td>Row weighting</td><td>Removes a mode</td><td>Medium</td></tr>
+        <tr><th>L1</th><td>Large group</td><td class="n">9 → 4 per page, tiles ×4 area</td><td>Pager → dots</td><td>Rebinds swipe</td><td>Medium</td></tr>
+        <tr><th>L2</th><td>Large group</td><td class="n">3 mounted videos, any room size</td><td>Reuses OverflowTile</td><td>None</td><td>Medium</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="rec">
+  <h2>If you want a recommendation</h2>
+  <p><b>Land S2 + P1 + G1 first — they're three small, independent changes with no design risk between
+  them</b>, and together they're most of the complaint. S2 deletes 118&nbsp;px of black bars by making one
+  constant orientation-aware. P1 deletes a filmstrip that was two-thirds hidden and gives the focused
+  feed 20% more height. G1 makes small-group faces 36% taller by removing a centring rule. None of them
+  adds a layout branch, and none touches desktop.</p>
+  <p>Then <b>L1</b>, as the one real decision in here: four per page with swipe-and-dots is what every
+  phone user already expects, but it costs the grid ↔ speaker swipe. I'd take that trade — the gesture
+  is undiscoverable, it duplicates a control that exists in two other places, and <b>G2</b> is the
+  reason it stops mattering: once a speaker's tile grows in place, a small call doesn't need a speaker
+  <em>mode</em> at all. G2 is the most interesting idea here and also the riskiest, because it reflows
+  on speech, which is exactly the thing the packer's stability rules exist to prevent. It wants a
+  debounce, a floor on change frequency, and its own prototype round.</p>
+  <p><b>S1 over S2</b> is worth revisiting once there's data on how often phone users actually rotate.
+  It's the better answer to a shared screen on a phone and it's what Meet and Zoom both converged on —
+  but it gives up seeing faces during a presentation, and that's a product call rather than a layout
+  one. <b>L2</b> I'd hold: it's the right shape for a 100-person webinar and the wrong one for a
+  12-person standup, and the room doesn't currently know which it is.</p>
+</div>
+
+<footer>Manim · mobile stage layout · 7 prototypes across 4 scenarios · geometry computed from src/lib/shareLayout.ts + src/lib/tileGrid.ts at 375×667</footer>
+
+</div>
