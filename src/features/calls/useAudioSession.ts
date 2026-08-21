@@ -4,7 +4,6 @@ import { ConnectionState, RoomEvent } from 'livekit-client'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { useRoomStore } from '@/store/useRoomStore'
 import { addBreadcrumb } from '@/lib/report'
-import { isTouch } from '@/lib/device'
 import { micTrack, recoverMicrophone, trackNeedsRecovery } from '@/lib/audioRecovery'
 
 /**
@@ -36,9 +35,15 @@ import { micTrack, recoverMicrophone, trackNeedsRecovery } from '@/lib/audioReco
  *
  * This hook does three things, in descending order of how much they can promise:
  *
- *  1. **Hold the session open** while backgrounded — a media session the OS
- *     recognises, and a silent keepalive stream so the page never stops being an
- *     audio client. Best-effort by nature (see `keepAlive`).
+ *  1. **Hold the session open** while backgrounded. Calling `startAudio()` is
+ *     most of this: on iOS it creates LiveKit's own silent keepalive element and
+ *     installs their visibilitychange hook, neither of which existed before
+ *     because nothing ever called it. A media session the OS recognises does the
+ *     rest. Best-effort by nature — and deliberately no keepalive of our own: an
+ *     AudioContext we build is a SECOND one alongside the room's (which is
+ *     private, so it can't be shared), and on iOS a second context can move the
+ *     audio session under a live call. Unverifiable risk on the one platform
+ *     this is for, for a benefit LiveKit's own element already covers.
  *  2. **Repair on return** — resume the context, re-play what stayed paused,
  *     un-pause the upstream, re-acquire a dead mic. This part is reliable, and
  *     it is what turns a permanent outage into a blip.
@@ -60,9 +65,9 @@ export function useAudioSession() {
   /** False while the browser is refusing to play call audio. Only a real user
    *  gesture clears it, so this is the one part that has to be asked for. */
   const [canPlayback, setCanPlayback] = useState(true)
-  // Latches on the first connect. The session-holding parts below key off THIS,
-  // not `connected`: a reconnect blip is precisely when you want the OS to still
-  // think we're playing, so tearing the keepalive down for it is backwards.
+  // Latches on the first connect. The media session below keys off THIS, not
+  // `connected`: a reconnect blip is precisely when you want the OS to still
+  // think we're playing, so dropping the declaration for it is backwards.
   const [inCall, setInCall] = useState(false)
   useEffect(() => {
     if (connected) setInCall(true)
@@ -154,7 +159,6 @@ export function useAudioSession() {
   }, [room, announce])
 
   useMediaSessionActive(inCall, room.name)
-  useAudioKeepalive(inCall)
 
   return { canPlayback, resume }
 }
@@ -192,75 +196,4 @@ function useMediaSessionActive(inCall: boolean, roomName: string) {
       }
     }
   }, [inCall, roomName])
-}
-
-/**
- * A silent stream that keeps playing while the page is hidden, so the platform
- * never stops counting us as an audio client.
- *
- * The honest framing, because this is the part that cannot promise: no web API
- * lets a page keep MICROPHONE CAPTURE running when iOS backgrounds it. What a
- * keepalive does buy is the rest — the AudioContext and the remote-audio
- * elements are far more likely to survive the trip, so on Android the call
- * simply keeps going, and on iOS there is a live session to resume into instead
- * of a torn-down one. It is the same technique LiveKit itself uses on iOS (the
- * `livekit-dummy-audio-el` it creates inside `startAudio`), with the one
- * difference that matters here: LiveKit nulls that element's source on page
- * hide, which retires the keepalive at exactly the moment it was for.
- *
- * Touch devices only — desktop browsers never tear a call down for being
- * backgrounded, and there's no reason to hold an audio session hostage there.
- * Built from an oscillator at zero gain rather than an empty track, so the
- * context has a real, continuously-producing source to stay `running` for.
- */
-function useAudioKeepalive(inCall: boolean) {
-  useEffect(() => {
-    if (!inCall || !isTouch()) return
-    const Ctor =
-      window.AudioContext ??
-      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
-    if (!Ctor) return
-
-    let ctx: AudioContext
-    try {
-      ctx = new Ctor()
-    } catch {
-      return
-    }
-    const gain = ctx.createGain()
-    // Genuinely zero — this must never be audible. The point is a running graph,
-    // not a sound.
-    gain.gain.value = 0
-    const osc = ctx.createOscillator()
-    const dest = ctx.createMediaStreamDestination()
-    osc.connect(gain)
-    gain.connect(dest)
-    osc.start()
-
-    const el = document.createElement('audio')
-    el.srcObject = dest.stream
-    el.loop = true
-    el.autoplay = true
-    el.setAttribute('playsinline', '')
-    // Keeps it out of the accessibility tree and out of the layout entirely.
-    el.setAttribute('aria-hidden', 'true')
-    el.style.display = 'none'
-    document.body.append(el)
-    void el.play().catch(() => {
-      /* blocked despite the join gesture — the session simply isn't held open */
-    })
-    if (ctx.state === 'suspended') void ctx.resume()
-
-    return () => {
-      try {
-        osc.stop()
-      } catch {
-        /* already stopped */
-      }
-      el.pause()
-      el.srcObject = null
-      el.remove()
-      void ctx.close().catch(() => {})
-    }
-  }, [inCall])
 }
