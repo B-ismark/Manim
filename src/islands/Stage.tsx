@@ -41,7 +41,7 @@ import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
 import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
+import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
 import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
@@ -522,8 +522,7 @@ function TouchStage({
   const [rosterOpen, setRosterOpen] = useState(true)
 
   const localCam = visible.find(isLocalCam)
-  const others = visible.filter((t) => !isLocalCam(t))
-  const focus = focusTrack(others, pinned) ?? localCam
+  const focus = stageFocus(visible, pinned, selfViewHidden)
 
   // Everyone the gallery tiles — INCLUDING you, and not whichever share is
   // currently full-bleed.
@@ -1303,11 +1302,9 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const setPanel = useRoomStore((s) => s.setPanel)
 
-  const localCam = visible.find(isLocalCam)
-  const others = visible.filter((t) => !isLocalCam(t))
-  // Pin wins, then the active speaker. Falling back to your own camera keeps the
-  // big region filled in a call where nobody else has published one yet.
-  const focus = focusTrack(others, pinned) ?? localCam
+  // Pin wins — including a pin on yourself — then the active speaker, then your own
+  // camera so the big region is never empty. See stageFocus.
+  const focus = stageFocus(visible, pinned, selfViewHidden)
 
   let rest = visible.filter((t) => t !== focus)
   if (selfViewHidden) rest = rest.filter((t) => !isLocalCam(t))

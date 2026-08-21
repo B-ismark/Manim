@@ -435,6 +435,79 @@ test.describe('Mobile fit (no page scroll)', () => {
       await expect
         .poll(surfaces, { timeout: 20_000, message: 'speaker view floats the card again' })
         .toEqual({ card: 1, cells: 0 })
+
+      // "Hide self view" has to reach the cell too. It only ever had a card to hide
+      // before, so a filter that stopped at the card would leave the setting looking
+      // like it worked in speaker view and silently failing in the gallery.
+      await openMore(page)
+      await page.getByRole('button', { name: 'Hide self view' }).tap()
+      await closePanel(page)
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: 'hidden means hidden in speaker view' })
+        .toEqual({ card: 0, cells: 0 })
+      await selectStageView(page, 'Gallery')
+      await expect
+        .poll(surfaces, { timeout: 20_000, message: '…and in the gallery, where the cell is' })
+        .toEqual({ card: 0, cells: 0 })
+    } finally {
+      await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
+  /**
+   * Pinning YOURSELF shows you, not whoever is talking.
+   *
+   * Both stages asked `focusTrack(others, pinned)` with the local camera filtered
+   * out. That filter is right for the automatic picks — being the loudest voice in
+   * the room is no reason to full-bleed you to yourself — but it also meant a pin on
+   * your own identity matched nothing and fell straight through to the active
+   * speaker. `togglePin` switches the layout to speaker on the way, so asking to
+   * watch yourself handed the whole screen to somebody else while your own tile
+   * carried the "pinned" label. Measured, not guessed: Guest1 filled the stage.
+   *
+   * It was reachable before this branch — a desktop double-click, or a long-press on
+   * the touch self-view card — but the gallery cell is what makes it the obvious
+   * thing to try, because "double-tap a video to pin" is what the coachmark teaches
+   * and your video is now one of the videos.
+   */
+  test('pinning your own gallery cell puts YOU on the stage', async ({ page, browser }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all([
+      newParticipant(browser, room, 'Guest1'),
+      newParticipant(browser, room, 'Guest2'),
+    ])
+    try {
+      await selectStageView(page, 'Gallery')
+      const mine = page.getByRole('group', { name: /\(you\)/ })
+      await expect(mine).toHaveCount(1, { timeout: 30_000 })
+
+      // The taught gesture, on your own tile.
+      await mine.dblclick()
+
+      // The biggest tile on the stage is the one the pin asked for. Reading the
+      // LARGEST tile rather than a specific locator is the point: the failure mode
+      // is that some other tile is the big one, which an assertion aimed at your own
+      // tile would sail straight past.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => {
+              const groups = Array.from(
+                document.querySelectorAll('[role="group"][aria-label]'),
+              ) as HTMLElement[]
+              const biggest = groups
+                .filter((e) => e.offsetHeight > 60)
+                .sort(
+                  (x, y) =>
+                    y.getBoundingClientRect().height * y.getBoundingClientRect().width -
+                    x.getBoundingClientRect().height * x.getBoundingClientRect().width,
+                )[0]
+              return biggest?.getAttribute('aria-label') ?? null
+            }),
+          { timeout: 20_000, message: 'the pinned self is the big tile' },
+        )
+        .toMatch(/\(you\).*pinned/)
     } finally {
       await Promise.all(peers.map((p) => p.context.close()))
     }
