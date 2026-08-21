@@ -186,6 +186,16 @@ export async function closePanel(page: Page) {
 }
 
 /**
+ * Press a control the way this platform's users do — a real tap on touch, a click
+ * on a pointer. Mobile is pure touch (CLAUDE.md), so a spec that clicks its way
+ * through a phone is not exercising the path anyone ships.
+ */
+export async function activate(page: Page, control: Locator): Promise<void> {
+  if (await isTouch(page)) await control.tap()
+  else await control.click()
+}
+
+/**
  * Reveal the surface that offers "End call for everyone", and return the control
  * that triggers it.
  *
@@ -200,11 +210,11 @@ export async function closePanel(page: Page) {
 export async function openEndCallMenu(page: Page): Promise<Locator> {
   await revealChrome(page)
   if (await isTouch(page)) {
-    await page.getByRole('button', { name: 'More options' }).tap()
+    await activate(page, page.getByRole('button', { name: 'More options' }))
     // A row in the sheet, not a menuitem — the sheet is not a menu.
     return page.getByRole('button', { name: 'End call for everyone' })
   }
-  await page.getByRole('button', { name: 'End call for everyone' }).click()
+  await activate(page, page.getByRole('button', { name: 'End call for everyone' }))
   return page.getByRole('menuitem', { name: 'End call for everyone' })
 }
 
@@ -212,8 +222,7 @@ export async function openEndCallMenu(page: Page): Promise<Locator> {
 export async function openEndCallConfirm(page: Page): Promise<void> {
   const item = await openEndCallMenu(page)
   await expect(item).toBeVisible()
-  if (await isTouch(page)) await item.tap()
-  else await item.click()
+  await activate(page, item)
   await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
 }
 
