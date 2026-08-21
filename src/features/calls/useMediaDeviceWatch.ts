@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useLocalParticipant, useRoomContext } from '@livekit/components-react'
-import { RoomEvent, Track, type LocalAudioTrack, type LocalVideoTrack } from 'livekit-client'
+import { RoomEvent, Track, TrackEvent, type LocalAudioTrack, type LocalVideoTrack } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { addBreadcrumb, reportError } from '@/lib/report'
@@ -118,13 +118,32 @@ export function useMediaDeviceWatch() {
     return () => micMst.removeEventListener('ended', onEnded)
   }, [micMst, micPub, room, announce])
 
-  // The mic is producing audio again — by our recovery, by the user's own retry,
-  // or because they plugged the headset back in. Whatever route, the fault is
-  // over, so nothing keeps claiming otherwise. `micMst` changes identity on every
-  // restart, so this re-runs exactly when it should.
+  /**
+   * The mic is producing audio again — by our recovery, by the user's own retry,
+   * by the headset coming back, or by LiveKit's rescue. Whatever the route, the
+   * fault is over and nothing should keep claiming otherwise.
+   *
+   * Event-driven, deliberately, and NOT keyed on a re-render: a track restart
+   * swaps the MediaStreamTrack in place and emits no participant event, so
+   * `useLocalParticipant` may not re-render and a `micMst` captured in a render
+   * closure can stay stale — which would leave the control bar stuck offering a
+   * retry for a microphone that already works.
+   */
   useEffect(() => {
-    if (micMst && micMst.readyState === 'live' && !micMst.muted) setMicFault(null)
-  }, [micMst])
+    const track = micPub?.track as LocalAudioTrack | undefined
+    if (!track) return
+    const check = () => {
+      const mst = track.mediaStreamTrack
+      if (mst.readyState === 'live' && !mst.muted) setMicFault(null)
+    }
+    check()
+    track.on(TrackEvent.Restarted, check)
+    track.on(TrackEvent.Unmuted, check)
+    return () => {
+      track.off(TrackEvent.Restarted, check)
+      track.off(TrackEvent.Unmuted, check)
+    }
+  }, [micPub])
 
   /**
    * A screen share can end WITHOUT the user touching our Stop button: they hit

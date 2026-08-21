@@ -12,6 +12,11 @@ import { useIsTouch } from '@/lib/useIsTouch'
  * own pill and nothing else, and both sit ABOVE ConnectionBanner in that column:
  * audio that isn't working outranks a reconnect that's already in hand.
  *
+ * Neither carries a live region of its own: the shared announcer already speaks
+ * both faults (useMediaDeviceWatch and useAudioSession), and a role="status" here
+ * on top of that made a screen reader say it twice. Same reason every other
+ * banner in TopStack is a plain Island.
+ *
  * Both are mode indicators, not notices, so neither has a dismiss. They go away
  * when the thing they describe is over. That's the whole point — the faults these
  * replace were announced by an eight-second toast, which expired long before the
@@ -59,7 +64,6 @@ export function MicUnavailableBanner() {
       pad="sm"
       bordered
       className="pointer-events-auto flex max-w-[min(30rem,92vw)] items-center gap-3"
-      role="status"
     >
       <span className="size-2 shrink-0 animate-pulse rounded-full bg-danger" aria-hidden />
       <p className="min-w-0 text-sm text-ink">
@@ -122,7 +126,6 @@ export function AudioBlockedBanner({
           ? 'pointer-events-auto flex w-full max-w-[min(30rem,92vw)] flex-col gap-2'
           : 'pointer-events-auto flex max-w-[min(30rem,92vw)] items-center gap-3'
       }
-      role="status"
     >
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="size-2 shrink-0 animate-pulse rounded-full bg-warning" aria-hidden />
