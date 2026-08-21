@@ -46,11 +46,35 @@ import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
+/** Idle delay before the touch chrome slides out of the thumb zone. */
+const CHROME_HIDE_MS = 4000
+
+/**
+ * Is a transient layer (menu / popover / sheet / dialog) currently on screen?
+ *
+ * Radix gives every one of them `role="dialog"` or `role="menu"`, so this one
+ * query answers for all of them — including layers that don't exist yet.
+ *
+ * That generality is the point. The auto-hide used to be held open only by the
+ * controls that remembered to call `setChromeHold` (the More sheet, the host's
+ * end-call caret, the effects carousel). The device pickers on the control bar
+ * never did, so opening one and waiting four seconds slid the island out from
+ * under its own open popover: a menu floating over the stage, anchored to a
+ * control bar that was no longer there, with no visible way back to it. Wiring
+ * one more callback would have fixed those three and left the trap armed for the
+ * next control someone adds. Asking the DOM cannot be forgotten.
+ */
+function overlayOpen(): boolean {
+  return !!document.querySelector('[role="dialog"], [role="menu"]')
+}
+
 /**
  * Mobile gesture + auto-hide-chrome controller for the stage.
  * - Tap empty stage → toggle the control bar (FaceTime/Zoom/Telegram pattern).
  * - Horizontal swipe → switch grid ↔ speaker layout.
  * - Controls auto-hide after 4s on touch devices; any tap brings them back.
+ * - The island NEVER auto-hides while a layer it anchors is open (see overlayOpen),
+ *   nor within 4s of the user touching it.
  * Desktop keeps controls always visible (hover model) and ignores gestures.
  */
 function useStageChrome() {
@@ -68,8 +92,20 @@ function useStageChrome() {
     // Don't auto-hide while a menu is open (held) — the control bar must stay
     // put or the open popover loses its anchor.
     if (!mobile || held.current) return
-    window.clearTimeout(hideTimer.current)
-    hideTimer.current = window.setTimeout(() => setVisible(false), 4000)
+    // Re-check at the moment of hiding, not only when the timer was armed. A menu
+    // opened DURING the countdown is the orphan case, and the countdown is usually
+    // already running by then: the island arms its timer on mount and on every
+    // stage tap, so a picker opened at t=3.9s had 100ms to live. While a layer is
+    // up this re-arms (a 4s no-op poll) rather than hiding; the first tick after
+    // it closes hides normally.
+    const arm = () => {
+      window.clearTimeout(hideTimer.current)
+      hideTimer.current = window.setTimeout(() => {
+        if (overlayOpen()) return arm()
+        setVisible(false)
+      }, CHROME_HIDE_MS)
+    }
+    arm()
   }, [mobile])
 
   const show = useCallback(() => {
@@ -328,7 +364,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     void import('@/islands/SidePanel')
   }, [])
   const carouselOpen = useEffectsUi((s) => s.carouselOpen)
-  const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
+  const { chromeVisible, show: keepChromeUp, setChromeHold, stageHandlers } = useStageChrome()
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
@@ -463,6 +499,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <ControlBar
         chromeVisible={chromeVisible}
         onMenuOpenChange={setChromeHold}
+        onInteract={keepChromeUp}
         onLeave={leaveWithUndo}
         onEndForEveryone={endForEveryone}
         isHost={isHost}

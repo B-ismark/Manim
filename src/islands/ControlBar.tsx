@@ -63,6 +63,15 @@ export interface ControlBarProps {
   chromeVisible: boolean
   /** Pin/unpin the auto-hiding chrome — held open while a menu is showing. */
   onMenuOpenChange?: (open: boolean) => void
+  /**
+   * Restart the auto-hide countdown. Called when the user touches the island.
+   *
+   * Without it the countdown only ever restarted on a STAGE tap, so the island
+   * ran on a clock that ignored the user operating it: it arms on mount, and a
+   * control tapped at t=3.9s got 100ms before the bar slid out from under the
+   * thumb. Touching the bar is the clearest possible signal that it's wanted.
+   */
+  onInteract?: () => void
   /** Leave the call yourself (call continues for others). */
   onLeave: () => void
   /** Host-only: end the call for everyone. */
@@ -94,6 +103,7 @@ export interface ControlBarProps {
 export function ControlBar({
   chromeVisible,
   onMenuOpenChange,
+  onInteract,
   onLeave,
   onEndForEveryone,
   isHost,
@@ -147,7 +157,7 @@ export function ControlBar({
   )
   const [moreOpen, setMoreOpen] = useState(false)
   const touch = useIsTouch()
-  const { isFullscreen, toggleFullscreen } = useFullscreen()
+  const { supported: canFullscreen, isFullscreen, toggleFullscreen } = useFullscreen()
   // Screen share needs getDisplayMedia — absent on iOS Safari (and iOS Chrome,
   // which is WebKit underneath). Hide the control there instead of offering a
   // button that silently fails. The check lives in useScreenShare so the two
@@ -345,15 +355,19 @@ export function ControlBar({
             closeMore()
           }}
         />
-        <GridTile
-          icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
-          label="Full screen"
-          active={isFullscreen}
-          onClick={() => {
-            toggleFullscreen()
-            closeMore()
-          }}
-        />
+        {/* Hidden where the platform has no fullscreen at all (iPhone Safari) —
+            same call screen-share makes on iOS. It used to render there and throw. */}
+        {canFullscreen && (
+          <GridTile
+            icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+            label="Full screen"
+            active={isFullscreen}
+            onClick={() => {
+              toggleFullscreen()
+              closeMore()
+            }}
+          />
+        )}
         {isHost && (
           <GridTile
             icon={<LockIcon />}
@@ -520,6 +534,9 @@ export function ControlBar({
       <Island
         pad="none"
         elevation="raised"
+        // Capture phase, on the whole island: a press anywhere on it — including
+        // one a child button stops propagating — counts as "keep this up".
+        onPointerDownCapture={onInteract}
         className={cn(
           'flex items-center gap-1.5 rounded-control px-3 py-2 sm:gap-2',
           // Only interactive while shown — otherwise the off-screen bar still
@@ -553,9 +570,21 @@ export function ControlBar({
               onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
             />
           </Tooltip>
-          <DeviceCaret label="Audio options" className="hidden pointer-fine:inline-flex">
-            <AudioDevicePanel noise={noise} />
-          </DeviceCaret>
+          {/* Rendered on `!touch`, NOT via `hidden pointer-fine:inline-flex` — that
+              class pair is INERT on an IconButton and this caret was showing up on
+              phones because of it. `cn()` is a plain joiner, so the className is
+              appended after IconButton's own base `inline-flex`; Tailwind emits
+              `.hidden` before `.inline-flex`, the specificity ties, and source order
+              hands it to `inline-flex`. Same trap the screen-share button below
+              documents. A caret is the wrong control for a thumb anyway: it opens a
+              popover full of nested dropdowns, which is what the mobile device
+              picker rework replaces. Touch reaches every one of these devices via
+              the Output button and "Audio & video" in More. */}
+          {!touch && (
+            <DeviceCaret label="Audio options">
+              <AudioDevicePanel noise={noise} />
+            </DeviceCaret>
+          )}
         </div>
 
         <div className="flex items-center gap-0.5">
@@ -568,9 +597,12 @@ export function ControlBar({
               onClick={() => void toggleCamera()}
             />
           </Tooltip>
-          <DeviceCaret label="Camera options" className="hidden pointer-fine:inline-flex">
-            <CameraDevicePanel />
-          </DeviceCaret>
+          {/* Desktop only — same inert-class trap as the audio caret above. */}
+          {!touch && (
+            <DeviceCaret label="Camera options">
+              <CameraDevicePanel />
+            </DeviceCaret>
+          )}
         </div>
 
         {/* Audio output — always visible (Brave/Skype/WhatsApp pattern). One tap to
@@ -903,18 +935,12 @@ function MenuRow({
 
 /**
  * Small caret button that opens a device picker anchored to a bar control (the
- * mic/camera "split button" chevron). Desktop-only via the caller's className —
- * touch uses the Output button + More, where a full-size tap target is friendlier.
+ * mic/camera "split button" chevron). Desktop only — the caller renders it on
+ * `!touch`; touch uses the Output button + More, where a full-size tap target is
+ * friendlier. (It used to gate itself with a `hidden` class the cascade ignored,
+ * which is how it ended up on phones — see the call site.)
  */
-function DeviceCaret({
-  label,
-  className,
-  children,
-}: {
-  label: string
-  className?: string
-  children: ReactNode
-}) {
+function DeviceCaret({ label, children }: { label: string; children: ReactNode }) {
   const [open, setOpen] = useState(false)
   return (
     <Popover
@@ -929,7 +955,6 @@ function DeviceCaret({
           tone="neutral"
           active={open}
           icon={<ChevronUpIcon />}
-          className={className}
         />
       }
     >

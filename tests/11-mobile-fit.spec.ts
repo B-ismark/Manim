@@ -112,4 +112,81 @@ test.describe('Mobile fit (no page scroll)', () => {
     expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
     await closePanel(page)
   })
+
+  /**
+   * The orphaned-island bug: an open picker must never outlive its own anchor.
+   *
+   * The control bar auto-hides after 4s of stage idleness, and that countdown used
+   * to run regardless of what was open on top of it. Open the audio picker, wait,
+   * and the island slid out of the thumb zone while the popover stayed put — a menu
+   * floating over the stage attached to nothing, with the bar it belonged to gone.
+   *
+   * Waits well past the hide delay (4s) and asserts the island is still in the
+   * thumb zone with the picker still on it. Also asserts the countdown resumes:
+   * close the picker, wait again, and the bar hides normally — a fix that simply
+   * pinned the chrome forever would pass the first half and fail here.
+   */
+  test('an open device picker keeps the control island anchored (no orphaned menu)', async ({ page }) => {
+    const vp = page.viewportSize()!
+    await join(page, uniqueRoom(), 'Solo')
+    await revealChrome(page)
+
+    const leave = page.getByRole('button', { name: 'Leave call' })
+    const inThumbZone = async () => {
+      const box = await leave.boundingBox()
+      return !!box && box.y < vp.height - 4
+    }
+
+    await page.getByRole('button', { name: 'Audio output' }).tap()
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // Past the 4s auto-hide with room to spare.
+    await page.waitForTimeout(6000)
+    expect(await inThumbZone(), 'the island stayed put under its open picker').toBe(true)
+    await expect(page.getByRole('dialog')).toBeVisible()
+
+    // Close it the way a phone user does — tap the trigger again. (Not Escape:
+    // mobile is pure touch, and not an outside tap either, which would ALSO hit
+    // the stage's tap-to-toggle and hide the bar for the wrong reason.)
+    await page.getByRole('button', { name: 'Audio output' }).tap()
+    await expect(page.getByRole('dialog')).toBeHidden()
+
+    // Auto-hide must come back — the island is pinned by the open layer, not
+    // permanently. The tap above also restarts the countdown, so this waits from
+    // there.
+    await page.waitForTimeout(6000)
+    expect(await inThumbZone(), 'the auto-hide resumed once the picker closed').toBe(false)
+  })
+
+  /**
+   * Controls that were only ever meant for a mouse must not reach a thumb.
+   *
+   * The mic/camera device carets gated themselves with `hidden
+   * pointer-fine:inline-flex`, which is inert on an IconButton (its own base
+   * `inline-flex` wins the cascade against an equal-specificity `.hidden` emitted
+   * earlier). They rendered on phones, where the caret is a 36px target that opens
+   * a popover of nested dropdowns. Touch reaches the same devices through the
+   * Output button and "Audio & video" in More, which is asserted here too so this
+   * can't pass by the pickers simply being gone.
+   */
+  test('desktop-only device carets stay off the touch control bar', async ({ page }) => {
+    await join(page, uniqueRoom(), 'Solo')
+    await revealChrome(page)
+
+    await expect(page.getByRole('button', { name: 'Audio options' })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Camera options' })).toHaveCount(0)
+
+    // …and the devices behind them are still reachable on touch.
+    await page.getByRole('button', { name: 'Audio output' }).tap()
+    const picker = page.getByRole('dialog')
+    await expect(picker).toBeVisible()
+    await expect(picker.getByText('Microphone', { exact: true })).toBeVisible()
+    await page.getByRole('button', { name: 'Audio output' }).tap()
+    await expect(picker).toBeHidden()
+
+    await revealChrome(page)
+    await page.getByRole('button', { name: 'More options' }).tap()
+    await expect(page.getByRole('button', { name: 'Audio & video' })).toBeVisible()
+    await closePanel(page)
+  })
 })
