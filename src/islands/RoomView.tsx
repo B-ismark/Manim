@@ -445,7 +445,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           'mn-fade flex min-h-0 flex-1 flex-col outline-none transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
           // Fade only (no scale): scaling a container that holds live <video>
           // causes a repaint flash on connect. transition is for the panel reflow.
-          panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
+          // Only from `lg` — below that the panel floats over the stage instead of
+          // docking it (Sheet's `responsive` side), so there is nothing to reflow.
+          panel && 'lg:pr-[22rem] xl:pr-[25rem]',
         )}
       >
         {/* While the call is in the floating PiP window, don't also render the

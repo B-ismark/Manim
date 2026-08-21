@@ -337,7 +337,7 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
 <div class="wrap">
 
 <header class="hero">
-  <div class="kicker">Desktop layout · prototype for sign-off · 2026-08-21</div>
+  <div class="kicker">Desktop layout · signed off and shipped · 2026-08-21</div>
   <h1>The chat button hands you the Leave button.</h1>
   <p class="standfirst">
     Opening the chat or people panel re-centres the floating control bar in the
@@ -364,7 +364,7 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
   <div class="stats">
     <div class="stat"><div class="v">160–200<span style="font-size:17px">px</span></div>
       <div class="k">How far the bar slides left, md → xl</div></div>
-    <div class="stat"><div class="v">151–280<span style="font-size:17px">px</span></div>
+    <div class="stat"><div class="v">151–284<span style="font-size:17px">px</span></div>
       <div class="k">Where the Leave control sits, measured right from the Chat button's centre</div></div>
     <div class="stat bad"><div class="v">3 of 3</div>
       <div class="k">Desktop breakpoints where the slide lands the cursor on a Leave control</div></div>
@@ -470,14 +470,15 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
       <p>
         The bar stops re-centring. It keeps its viewport centre and slides left only
         by the overlap it genuinely has with the panel — which on a 1440px screen is
-        zero, because the bar measures 560px and there is 1044px of room. Travel drops
-        from 200px to 0px at 1440, and to 48px at 1280.
+        zero, because the bar measures 614px and there is 1044px of room. Travel drops
+        from 200px to 0px at 1440, and to 74px at 1280.
       </p>
       <div class="tradeoff">
         <div class="plus"><div class="h">Buys</div>The bar stops moving entirely on the
           screens most people are on. Nothing about the visual design changes.</div>
-        <div class="minus"><div class="h">Doesn't fix</div>768–1023px, where the bar and
-          a 304px panel genuinely don't both fit: overlap is 224px and still lands on Leave.</div>
+        <div class="minus"><div class="h">Doesn't fix</div>Anything below 1280px. At 1024
+          the overlap is 154px, which lands on Leave by 3px; at 768 it is 250px, squarely
+          on it. The offset is only ever as safe as the bar is narrow.</div>
         <div class="cost"><div class="h">Cost</div>One measured value instead of a static
           class — the bar's width has to be observed, so it survives a control being added.</div>
       </div>
@@ -543,6 +544,31 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
       <button class="tryit" data-load="static">Load in the rig</button>
     </div>
 
+    <div class="card" data-rec="true">
+      <div class="card-head"><span class="n">05</span><h3>What shipped: 01, plus the panel keeps out of the bar's band</h3>
+        <span class="rec">Shipped</span></div>
+      <p>
+        Option 01 for the widths where it is genuinely free, and below <code>xl</code>
+        the panel simply stops above the control bar — 5.75rem clears the bar's inset,
+        its island and the usual gutter. There is then nothing for the bar to dodge, so
+        it doesn't move at all below 1280px. Below <code>lg</code> the panel also stops
+        reflowing the stage and floats over it instead. Option 03's guard sits behind
+        all of it.
+      </p>
+      <div class="tradeoff">
+        <div class="plus"><div class="h">Buys</div>Zero travel at 768, 1024 and 1440+;
+          74px at 1280, half what it takes to reach Leave. Immune at every width in the
+          sweep, and Leave is never buried.</div>
+        <div class="minus"><div class="h">Gives up</div>The panel is ~92px shorter below
+          <code>xl</code>, and the bar is centred on the window rather than on the
+          narrowed stage at <code>lg</code>.</div>
+        <div class="cost"><div class="h">Cost</div>The threshold lives in two files —
+          Sheet's classes and <code>panelDock</code>'s width — and they have to move
+          together.</div>
+      </div>
+      <button class="tryit" data-load="shipped">Load in the rig</button>
+    </div>
+
   </div>
 </section>
 
@@ -583,32 +609,52 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
 </section>
 
 <section>
-  <div class="eyebrow">What I'd like signed off</div>
-  <h2>01 and 03 together, plus the capacity hold.</h2>
+  <div class="eyebrow">A correction, and what shipped</div>
+  <h2>The mock was missing a button, and it changed the answer.</h2>
   <div class="col">
     <p>
-      <strong>01</strong> removes the movement wherever removing it is free, which is
-      most real desktops. <strong>03</strong> makes the remaining cases — 768–1023px,
-      and any future control added to the bar — safe by rule rather than by a margin
-      that happens to hold today. At 1024px option 01 lands the pointer 23px clear of
-      the Leave control; one more button on the bar closes that gap. Twenty-three
-      pixels is not a margin worth resting a call-ending action on, and that is the
-      whole argument for pairing the two.
+      This rig originally measured the control bar at 560px, because its mock was
+      missing the <strong>Audio output</strong> button. The running app measures
+      <strong>614px</strong>. Fifty-four pixels of bar is twenty-seven pixels of
+      offset, and that was the whole margin: option 01 was reported as clearing the
+      Leave control by 23px at 1024, and it actually lands 3px <em>onto</em> it. The
+      first end-to-end run of the fix failed at exactly that width. The mock above is
+      fixed, so the matrix now shows option 01 failing at 1024 the way the real app
+      did.
     </p>
-    <p>Three things I'd like a decision on before I write any of it:</p>
+    <p>
+      That miss is also the argument for the guard. A rule that says "the offset is
+      smaller than the gap" is only true for the bar you measured; the bar grows every
+      time a control is added, and nothing about the geometry tells you when it has
+      grown past safe. So the shipped fix stops relying on the margin below
+      <code>xl</code>: the panel keeps out of the control bar's band entirely, and
+      there is no collision left to size around.
+    </p>
+    <p>What landed, by width:</p>
     <ul>
-      <li><strong>01 + 03, or 02?</strong> Option 02 is the only single change that is
-        immune at 768px, and it costs the leave-on-the-right convention. That is a
-        product call, not an engineering one.</li>
-      <li><strong>768–1023px.</strong> A 558px bar and a 304px docked panel do not fit
-        in 768px of screen. Should the panel go overlay below <code>lg</code>, or should
-        the bar compact — fold reactions and share into More?</li>
-      <li><strong>The 350ms guard window.</strong> Worth a number from real use rather
-        than my guess.</li>
+      <li><strong>768–1023px</strong> — the panel floats over the stage and stops above
+        the bar. Stage keeps its full width. Bar travel: 0.</li>
+      <li><strong>1024–1279px</strong> — the panel docks and the stage reflows for it,
+        but it still stops above the bar. Bar travel: 0.</li>
+      <li><strong>1280px and up</strong> — the panel runs full-height beside the bar,
+        and the bar moves by the real overlap: 74px at 1280, nothing at 1440 and above.</li>
+      <li><strong>Everywhere</strong> — a destructive control refuses a pointer click
+        for ~350ms after a reflow that moved it, unless the pointer has since travelled
+        8px. Keyboard and assistive tech are never guarded, and rejecting disarms, so a
+        second press goes straight through.</li>
     </ul>
     <p>
-      Nothing here is implemented — <code>src/</code> is untouched by design, per
-      prototype-first. Say which way and I'll build it behind the usual gates.
+      Backed by a hit-test regression spec that walks all four widths and asserts the
+      resting pointer never lands on a Leave control — and that Leave is never buried
+      under the panel either. Reintroducing the old re-centring makes it fail at the
+      first width it checks.
+    </p>
+  </div>
+  <div class="note">
+    <div class="h">Still open</div>
+    <p>
+      The grid re-pagination is untouched and still worth doing: at 1024px with 16 in
+      the call, opening the panel still drops four people to page 2.
     </p>
   </div>
 </section>
@@ -618,7 +664,8 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
   <code>ControlBar.tsx</code>, <code>Sheet.tsx</code> and <code>Stage.tsx</code> on
   <span class="mono">claude/panel-toggle-exit-risk-dccvgl</span>. The mock is a
   faithful re-build of the desktop control bar, not a screenshot — every number on
-  this page is read off the DOM you can click.
+  this page is read off the DOM you can click, which is exactly how the 560px
+  mistake above became visible.
 </footer>
 
 </div>
@@ -647,6 +694,7 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     { id: 'reorder',   tag: '02', label: 'Leave on the left' },
     { id: 'guard',     tag: '03', label: 'Settle guard' },
     { id: 'static',    tag: '04', label: 'Bar never moves' },
+    { id: 'shipped',   tag: '05', label: 'Shipped: 01 + panel clears the bar' },
   ];
 
   const state = { w: 1440, n: 8, role: 'host', opt: 'current', open: false, tab: 'chat' };
@@ -659,6 +707,7 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     chat:  '<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12Z"/>',
     react: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
     more:  '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
+    spkr:  '<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5M19.5 7a7 7 0 0 1 0 10"/>',
     leave: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.4 1.8.6 2.8.8a2 2 0 0 1 1.7 2Z"/>',
     up:    '<path d="m6 15 6-6 6 6"/>',
   };
@@ -681,19 +730,28 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
   const el = (id) => document.getElementById(id);
   const viewport = el('viewport'), scaleBox = el('scale-box');
 
-  /* ── How far the bar is allowed to move, per rule ───────────────────── */
-  function barPadding(w, barW) {
-    const { panel, pad } = bp(w);
+  /* ── What each rule does to the bar, the panel and the stage ─────────── */
+  // Clears the control bar: its 1rem inset + a 62px island + the 12px gutter.
+  const CLEARS_BAR = 92;
+  function collisionPad(w, barW) {
+    // Keep the viewport centre; give up only the real overlap with the panel.
+    const { panel } = bp(w);
+    const panelLeft = w - panel - 12;
+    const overlap = Math.max(0, w / 2 + barW / 2 + 12 - panelLeft);
+    return overlap * 2; // justify-center: padding P shifts the centre by P/2
+  }
+  function rule(w, barW) {
+    const { pad } = bp(w);
     switch (state.opt) {
-      case 'static': return 0;
-      case 'collision': {
-        // Keep the viewport centre; give up only the real overlap with the panel.
-        const barRightIfCentred = w / 2 + barW / 2;
-        const panelLeft = w - panel - 12;
-        const overlap = Math.max(0, barRightIfCentred + 12 - panelLeft);
-        return overlap * 2; // justify-center: padding P shifts the centre by P/2
-      }
-      default: return pad;
+      case 'static':    return { barPad: 0, panelBottom: 12, stagePad: pad };
+      case 'collision': return { barPad: collisionPad(w, barW), panelBottom: 12, stagePad: pad };
+      case 'shipped':
+        // Below xl the panel stops above the bar, so there is no collision to
+        // offset — and below lg it overlays, so the stage keeps its full width.
+        return w >= 1280
+          ? { barPad: collisionPad(w, barW), panelBottom: 12, stagePad: pad }
+          : { barPad: 0, panelBottom: CLEARS_BAR, stagePad: w >= 1024 ? pad : 12 };
+      default:          return { barPad: pad, panelBottom: 12, stagePad: pad };
     }
   }
 
@@ -709,6 +767,7 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
     const controls = `
       <div class="v-group">${btn(I.mic, 'Mute microphone')}${btn(I.up, 'Audio options', { sm: true })}</div>
       <div class="v-group">${btn(I.cam, 'Stop camera')}${btn(I.up, 'Video options', { sm: true })}</div>
+      ${btn(I.spkr, 'Audio output')}
       ${btn(I.share, 'Share screen')}
       ${btn(I.chat, 'Open chat', { active: open && state.tab === 'chat', act: 'chat' })}
       ${btn(I.react, 'Reactions')}
@@ -725,7 +784,7 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
         <span class="v-chip" data-hit="Participants chip" data-act="people" style="pointer-events:auto;cursor:pointer">${state.n} people</span>
       </div>
       <div class="v-stage" data-hit="Video stage" id="v-stage"><div class="v-grid" id="v-grid"></div></div>
-      <div class="v-panel" id="v-panel" data-open="${open}" data-hit="${state.tab === 'chat' ? 'Chat panel' : 'People panel'}" style="width:${panel}px">
+      <div class="v-panel" id="v-panel" data-open="${open}" data-hit="${state.tab === 'chat' ? 'Chat panel' : 'People panel'}" style="width:${panel}px;bottom:${rule(w, 614).panelBottom}px">
         <div class="v-panel-head">
           <span class="v-tab" data-active="${state.tab === 'chat'}">Chat</span>
           <span class="v-tab" data-active="${state.tab === 'people'}">People</span>
@@ -739,18 +798,21 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
       <div class="v-bar-wrap" id="v-bar-wrap"><div class="v-bar" id="v-bar" data-hit="Control bar, between controls">${bar}</div></div>
       <div class="probe-layer" id="probe"></div>`;
 
-    // Bar width is measured, never assumed — that is the point of option 01.
+    // Bar width is measured, never assumed — that is the point of option 01, and
+    // assuming it is exactly what made this rig report 560px for a 614px bar.
     const barW = el('v-bar').getBoundingClientRect().width / scale();
-    el('v-bar-wrap').style.paddingRight = (16 + (open ? barPadding(w, barW) : 0)) + 'px';
-    el('v-stage').style.paddingRight = (open ? pad : 12) + 'px';
+    const r = rule(w, barW);
+    el('v-panel').style.bottom = r.panelBottom + 'px';
+    el('v-bar-wrap').style.paddingRight = (16 + (open ? r.barPad : 0)) + 'px';
+    el('v-stage').style.paddingRight = (open ? r.stagePad : 12) + 'px';
 
     drawGrid();
     fit();
   }
 
   function drawGrid() {
-    const w = state.w, h = HEIGHTS[w], { pad } = bp(w);
-    const stageRight = state.open ? pad : 12;
+    const w = state.w, h = HEIGHTS[w];
+    const stageRight = state.open ? rule(w, 614).stagePad : 12;
     const gridW = w - 12 - stageRight - 24;   // stage padding, then GridStage p-3
     const gridH = h - 24 - 24;
     const { cols, perPage } = gridCapacity(gridW, gridH, state.n);
@@ -783,8 +845,8 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
   }
 
   function capacityFor(open) {
-    const w = state.w, h = HEIGHTS[w], { pad } = bp(w);
-    const gridW = w - 12 - (open ? pad : 12) - 24;
+    const w = state.w, h = HEIGHTS[w];
+    const gridW = w - 12 - (open ? rule(w, 614).stagePad : 12) - 24;
     const c = gridCapacity(gridW, h - 48, state.n);
     return { ...c, shown: Math.min(state.n, c.perPage) };
   }
@@ -903,8 +965,9 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
         });
         // Option 03 leaves the geometry alone and rejects the click instead.
         const bad = hits && o.id !== 'guard';
-        const occluded = o.id === 'static' &&
-          el('v-bar').getBoundingClientRect().right > el('v-panel').getBoundingClientRect().left;
+        const barBox = el('v-bar').getBoundingClientRect();
+        const panelBox = el('v-panel').getBoundingClientRect();
+        const occluded = barBox.right > panelBox.left && barBox.top < panelBox.bottom;
         return { travel, bad, hits, occluded };
       });
       return { o, cells };
