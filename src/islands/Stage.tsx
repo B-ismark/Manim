@@ -42,6 +42,7 @@ import { featuredShare, focusTrack, isLocalCam, isScreenShare, primaryShare, sha
 import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { indicatorStyle, pageOfGalleryItem, stagePage } from '@/lib/stagePager'
+import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
@@ -97,6 +98,23 @@ function tilePriority(t: TrackReferenceOrPlaceholder): number {
   if (t.source === Track.Source.ScreenShare) return 0
   if (isLocalCam(t)) return 1
   return 2
+}
+
+/**
+ * The stage's width as if no panel were docked — the width tile CAPACITY is
+ * decided from, never the width tiles are laid out in.
+ *
+ * Docking the panel narrows the stage, and deciding capacity from the narrowed
+ * width paged people out: at 1024px with 16 in the call, opening chat took the
+ * grid from 4 columns to 3, capacity from 16 to 12, and four people to page 2 —
+ * not scaled down, gone. Adding the inset back makes the panel a pure "tiles get
+ * smaller" operation, which is what the packer (fitMixedRows) is for. It also
+ * stops the toggle unmounting and remounting videos it had already decoded.
+ */
+function useCapacityWidth(measured: number): number {
+  const panelOpen = useRoomStore((s) => s.panel) !== null
+  const vw = useViewportWidth()
+  return measured + (panelOpen ? dockedStageInset(vw) : 0)
 }
 
 export function Stage() {
@@ -438,7 +456,15 @@ function PagedStage({
   // height would let the page COUNT change as you swipe between them — the dots
   // would gain and lose a dot depending on which page you were looking at.
   const galleryH = Math.max(1, size.height - ISLAND_BAND)
-  const { cols, perPage } = gridCapacity(size.width, galleryH, true, gridSize)
+  // Same rule as the pointer gallery below: capacity is the greater of the docked
+  // and undocked fits, the column cap follows the real width. A phone never docks
+  // a panel (dockedStageInset is 0 below `lg`), so this is a no-op on a handset —
+  // it is a large touch tablet, where the panel does dock, that would otherwise
+  // lose people off the page on every chat toggle.
+  const realCap = gridCapacity(size.width, galleryH, true, gridSize)
+  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true, gridSize)
+  const cols = realCap.cols
+  const perPage = Math.max(realCap.perPage, undockedCap.perPage)
   const page = stagePage({ galleryCount: gallery.length, perPage, index: requested })
   // Write the clamp back so the swipe handler and the More control step from a real
   // index rather than an imagined one — otherwise a swipe past the end has to be
@@ -708,7 +734,25 @@ function GridStage({
     [tracks, videosFirst],
   )
 
-  const { cols, perPage } = gridCapacity(size.width, size.height, coarse, gridSize)
+  // Docking the side panel must not page anybody out. It used to: capacity came
+  // from the narrowed stage, so opening chat at 1024px took the page from 20 to 18
+  // and at 1200px from 16 to 12 — people gone, not shrunk.
+  //
+  // The fix is the GREATER of the two capacities, not the undocked one. Narrowing
+  // the stage cuts a column, which makes tiles narrower, which makes them SHORTER,
+  // which fits more rows — so from ~1279px up the narrowed stage actually holds
+  // MORE (12 -> 20 at 1440). Substituting the undocked width would have thrown
+  // that away and shown twelve people where twenty fit legibly. Taking the max
+  // fixes the direction that loses people and leaves the other alone.
+  //
+  // The COLUMN CAP is not maxed: it is a legibility floor for the space the tiles
+  // actually occupy (tileGrid's fitMixedRows treats it as a ceiling), so it has to
+  // follow the real, narrowed width. Panel closed, both widths are equal and none
+  // of this does anything.
+  const real = gridCapacity(size.width, size.height, coarse, gridSize)
+  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, coarse, gridSize)
+  const cols = real.cols
+  const perPage = Math.max(real.perPage, undocked.perPage)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
   // Clamp the page if the count shrank (resize, people left) — keep it in range.
   const current = Math.min(page, pageCount - 1)
@@ -1172,10 +1216,24 @@ function PresentationStage({
   const gap = coarse ? 8 : 12
   const measured = size.width > 2 && size.height > 2
   const L = presentationLayout(size.width, size.height, ordered.length, bucketAspect(bigAspect), gap)
+  // The same layout measured as if the panel weren't docked — capacity only. The
+  // share and the tiles are still positioned from `L`, i.e. the real width.
+  const capWidth = useCapacityWidth(size.width)
+  const Lcap =
+    capWidth === size.width
+      ? L
+      : presentationLayout(capWidth, size.height, ordered.length, bucketAspect(bigAspect), gap)
+  // Greater of the docked and undocked fits — see the gallery above. The share and
+  // the tiles are still positioned from `L`, i.e. the real width.
 
   // Paging + overflow inside the grid region. When tiles exceed capacity, reserve the
   // last slot for the "+N view all" tile; a compact pager cycles the pages.
-  const cap = measured ? userRegionCapacity(L.grid.w, L.grid.h, coarse) : ordered.length
+  const cap = measured
+    ? Math.max(
+        userRegionCapacity(L.grid.w, L.grid.h, coarse),
+        userRegionCapacity(Lcap.grid.w, Lcap.grid.h, coarse),
+      )
+    : ordered.length
   const overflowing = measured && ordered.length > cap
   const perPage = overflowing ? Math.max(1, cap - 1) : Math.max(1, ordered.length)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
@@ -1379,8 +1437,11 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
 function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
   const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: 76 })
   // Until dragged, the card keeps its CSS anchor — dodge the docked side panel on
-  // desktop (same inset the stage/control bar use) so it never hides behind or
-  // overlaps the chat/people panel. Dragging takes over via inline style.
+  // desktop so it never hides behind or overlaps the chat/people panel. These are
+  // the PANEL's own widths plus a gutter, not the stage's reflow inset: the card
+  // sits in the bar's band, which the panel now stops above below `xl`, but it is
+  // tall enough to reach back up into the panel at every width. Dragging takes
+  // over via inline style.
   const panel = useRoomStore((s) => s.panel)
   return (
     <div

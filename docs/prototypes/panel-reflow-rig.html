@@ -1,0 +1,1055 @@
+<title>Panel Reflow Rig</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;450;500;600&display=swap">
+<style>
+/* ─────────────────────────────────────────────────────────────
+   PAGE TOKENS — the instrument shell.
+   Neutrals are biased to hue 265 so the rig and the simulated
+   app (Veil, hue 270) sit in the same colour world.
+   ───────────────────────────────────────────────────────────── */
+:root {
+  --ground:      oklch(0.968 0.004 265);
+  --panel:       oklch(1 0 0);
+  --well:        oklch(0.945 0.005 265);
+  --rule:        oklch(0.895 0.007 265);
+  --rule-soft:   oklch(0.938 0.005 265);
+  --ink:         oklch(0.24 0.012 265);
+  --ink-dim:     oklch(0.495 0.012 265);
+  --ink-faint:   oklch(0.625 0.010 265);
+  --probe:       oklch(0.47 0.11 218);
+  --probe-soft:  oklch(0.945 0.026 218);
+  --hazard:      oklch(0.46 0.19 25);
+  --hazard-soft: oklch(0.948 0.035 25);
+  --safe:        oklch(0.44 0.12 155);
+  --safe-soft:   oklch(0.944 0.038 155);
+  --warn:        oklch(0.46 0.11 65);
+  --warn-soft:   oklch(0.948 0.045 75);
+  --shadow:      0 1px 2px oklch(0.24 0.02 265 / 0.05), 0 12px 32px -20px oklch(0.24 0.02 265 / 0.28);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      oklch(0.163 0.012 265);
+    --panel:       oklch(0.207 0.014 265);
+    --well:        oklch(0.183 0.013 265);
+    --rule:        oklch(0.303 0.016 265);
+    --rule-soft:   oklch(0.252 0.014 265);
+    --ink:         oklch(0.945 0.006 265);
+    --ink-dim:     oklch(0.712 0.012 265);
+    --ink-faint:   oklch(0.565 0.012 265);
+    --probe:       oklch(0.76 0.12 218);
+    --probe-soft:  oklch(0.275 0.048 218);
+    --hazard:      oklch(0.74 0.17 25);
+    --hazard-soft: oklch(0.295 0.062 25);
+    --safe:        oklch(0.78 0.14 155);
+    --safe-soft:   oklch(0.268 0.048 155);
+    --warn:        oklch(0.82 0.13 80);
+    --warn-soft:   oklch(0.302 0.055 75);
+    --shadow:      0 1px 2px oklch(0 0 0 / 0.3), 0 12px 32px -20px oklch(0 0 0 / 0.6);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      oklch(0.163 0.012 265);
+  --panel:       oklch(0.207 0.014 265);
+  --well:        oklch(0.183 0.013 265);
+  --rule:        oklch(0.303 0.016 265);
+  --rule-soft:   oklch(0.252 0.014 265);
+  --ink:         oklch(0.945 0.006 265);
+  --ink-dim:     oklch(0.712 0.012 265);
+  --ink-faint:   oklch(0.565 0.012 265);
+  --probe:       oklch(0.76 0.12 218);
+  --probe-soft:  oklch(0.275 0.048 218);
+  --hazard:      oklch(0.74 0.17 25);
+  --hazard-soft: oklch(0.295 0.062 25);
+  --safe:        oklch(0.78 0.14 155);
+  --safe-soft:   oklch(0.268 0.048 155);
+  --warn:        oklch(0.82 0.13 80);
+  --warn-soft:   oklch(0.302 0.055 75);
+  --shadow:      0 1px 2px oklch(0 0 0 / 0.3), 0 12px 32px -20px oklch(0 0 0 / 0.6);
+  color-scheme: dark;
+}
+
+/* Veil's own tokens — the simulated app is pinned to the product's dark
+   surface preset (src/styles/themes.ts) so the mock is not an invention. */
+.veil {
+  --v-stage:   oklch(0.17 0.012 270);
+  --v-surface: oklch(0.23 0.014 270);
+  --v-sunken:  oklch(0.20 0.012 270);
+  --v-line:    oklch(0.32 0.014 270);
+  --v-ink:     oklch(0.96 0.005 270);
+  --v-ink-dim: oklch(0.72 0.010 270);
+  --v-accent:  oklch(0.55 0.18 275);
+  --v-accent-ink: oklch(0.99 0 0);
+  --v-danger:  oklch(0.55 0.21 25);
+  --v-danger-ink: oklch(0.99 0 0);
+  --v-overlay: oklch(0.18 0.02 270 / 0.72);
+  /* Probe markers live over video, so they are fixed-bright in both page themes. */
+  --m-bad:  oklch(0.68 0.20 25);
+  --m-ok:   oklch(0.75 0.16 155);
+  --m-hold: oklch(0.80 0.12 218);
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 16px/1.62 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .display {
+  font-family: 'Archivo', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  text-wrap: balance;
+  margin: 0;
+}
+.mono, code, .num {
+  font-family: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Page frame ──────────────────────────────────────────── */
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px 96px; }
+.col  { max-width: 66ch; }
+section { margin-top: 72px; }
+.eyebrow {
+  font-family: 'Archivo', sans-serif; font-weight: 600; font-size: 11.5px;
+  letter-spacing: 0.13em; text-transform: uppercase; color: var(--probe);
+  display: flex; align-items: center; gap: 10px;
+}
+.eyebrow::after { content: ''; flex: 1; height: 1px; background: var(--rule); }
+h2 { font-size: clamp(23px, 2.4vw, 30px); font-weight: 700; letter-spacing: -0.018em; margin: 14px 0 14px; }
+h3 { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; margin: 0; }
+p { margin: 0 0 15px; color: var(--ink-dim); }
+p.lead { color: var(--ink); }
+strong { color: var(--ink); font-weight: 600; }
+a { color: var(--probe); }
+
+header.hero { padding: 74px 0 8px; }
+header.hero .kicker {
+  font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.08em;
+  color: var(--ink-faint); text-transform: uppercase;
+}
+header.hero h1 {
+  font-size: clamp(40px, 6.2vw, 68px); font-weight: 700; letter-spacing: -0.038em;
+  line-height: 1.02; margin: 18px 0 20px; max-width: 15ch;
+}
+header.hero .standfirst { font-size: 18.5px; line-height: 1.58; color: var(--ink-dim); max-width: 62ch; }
+
+/* ── Stat row ────────────────────────────────────────────── */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 1px;
+  background: var(--rule); border: 1px solid var(--rule); border-radius: 14px; overflow: hidden; margin: 34px 0 0; }
+.stat { background: var(--panel); padding: 20px 22px; }
+.stat .v { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 30px; letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums; line-height: 1.1; }
+.stat .k { font-size: 12.5px; color: var(--ink-faint); margin-top: 5px; line-height: 1.45; }
+.stat.bad .v { color: var(--hazard); }
+
+/* ── The rig ─────────────────────────────────────────────── */
+.rig { border: 1px solid var(--rule); border-radius: 18px; background: var(--panel);
+  box-shadow: var(--shadow); overflow: hidden; margin-top: 26px; }
+.rig-controls { display: flex; flex-wrap: wrap; gap: 22px 34px; padding: 18px 22px;
+  border-bottom: 1px solid var(--rule); background: var(--well); }
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field > label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink-faint); }
+.seg { display: flex; background: var(--panel); border: 1px solid var(--rule); border-radius: 9px; padding: 2px; gap: 2px; }
+.seg button {
+  font: 500 12.5px/1 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  padding: 7px 11px; border: 0; border-radius: 7px; background: transparent; color: var(--ink-dim);
+  cursor: pointer; transition: background .14s, color .14s;
+}
+.seg .tag { margin-left: 5px; font-size: 10px; opacity: .55; font-weight: 600; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--probe); color: var(--panel); }
+.seg button:focus-visible { outline: 2px solid var(--probe); outline-offset: 2px; }
+
+.opts { display: flex; flex-wrap: wrap; gap: 2px; background: var(--panel); border: 1px solid var(--rule);
+  border-radius: 9px; padding: 2px; }
+.opts button { font: 500 12.5px/1 'Inter', sans-serif; padding: 7px 12px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink-dim); cursor: pointer; display: flex; align-items: center; gap: 7px; }
+.opts button:hover { color: var(--ink); }
+.opts button[aria-pressed="true"] { background: var(--probe); color: var(--panel); }
+.opts button:focus-visible { outline: 2px solid var(--probe); outline-offset: 2px; }
+.opts .tag { font: 600 10px/1 'IBM Plex Mono', monospace; opacity: .62; }
+
+/* Instruction strip */
+.howto { display: flex; align-items: center; gap: 12px; padding: 13px 22px;
+  border-bottom: 1px solid var(--rule); background: var(--probe-soft); color: var(--probe);
+  font-size: 13.5px; font-weight: 500; }
+.howto .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none;
+  animation: pulse 2.1s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: .35; transform: scale(.8) } 50% { opacity: 1; transform: scale(1.15) } }
+@media (prefers-reduced-motion: reduce) { .howto .dot { animation: none; opacity: .8 } }
+
+/* Mock viewport */
+.viewport-shell { padding: 26px 22px; background:
+  repeating-linear-gradient(45deg, transparent 0 9px, var(--rule-soft) 9px 10px); }
+.viewport-scale { position: relative; margin: 0 auto; }
+.viewport {
+  position: absolute; top: 0; left: 0; transform-origin: top left; overflow: hidden;
+  border-radius: 10px; background: var(--v-stage); color: var(--v-ink);
+  font-family: 'Inter', sans-serif; user-select: none;
+  box-shadow: 0 22px 60px -24px oklch(0.15 0.02 270 / 0.65);
+}
+
+/* ── Simulated app: Veil ─────────────────────────────────── */
+.v-topbar { position: absolute; top: 14px; left: 0; right: 0; display: flex; justify-content: center;
+  gap: 8px; z-index: 4; pointer-events: none; }
+.v-chip { background: var(--v-overlay); color: #fff; border-radius: 999px; padding: 6px 13px;
+  font-size: 12.5px; font-weight: 500; backdrop-filter: blur(6px); }
+.v-stage { position: absolute; inset: 0; padding: 12px; display: flex; flex-direction: column;
+  transition: padding-right var(--dur, 220ms) cubic-bezier(0.22,1,0.36,1); }
+.v-grid { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center;
+  justify-content: center; gap: 12px; }
+.v-row { display: flex; gap: 12px; }
+.v-tile { border-radius: 20px; background: var(--v-surface); border: 1px solid var(--v-line);
+  position: relative; overflow: hidden; display: grid; place-items: center; flex: none; }
+.v-tile .av { border-radius: 999px; background: var(--v-accent); color: var(--v-accent-ink);
+  display: grid; place-items: center; font-weight: 600; }
+.v-tile .nm { position: absolute; left: 8px; bottom: 7px; background: var(--v-overlay); color: #fff;
+  border-radius: 999px; padding: 2px 8px; font-size: 10.5px; font-weight: 500; }
+.v-pager { position: absolute; left: 50%; transform: translateX(-50%); bottom: 84px;
+  background: var(--v-overlay); color: #fff; border-radius: 999px; padding: 4px 11px; font-size: 11px; }
+
+.v-panel { position: absolute; top: 12px; bottom: 12px; right: 12px; border-radius: 24px;
+  background: var(--v-surface); border: 1px solid var(--v-line); display: flex; flex-direction: column;
+  overflow: hidden; z-index: 6;
+  transition: transform var(--dur, 220ms) cubic-bezier(0.22,1,0.36,1), opacity var(--dur, 220ms); }
+.v-panel[data-open="false"] { transform: translateX(calc(100% + 14px)); opacity: 0; pointer-events: none; }
+.v-panel-head { display: flex; align-items: center; gap: 8px; padding: 11px 13px; border-bottom: 1px solid var(--v-line); }
+.v-tab { font-size: 12.5px; font-weight: 500; color: var(--v-ink-dim); padding: 5px 11px; border-radius: 999px; }
+.v-tab[data-active="true"] { background: var(--v-sunken); color: var(--v-ink); }
+.v-panel-body { flex: 1; padding: 13px; display: flex; flex-direction: column; gap: 10px; }
+.v-msg { display: flex; gap: 8px; align-items: flex-start; }
+.v-msg .b { background: var(--v-sunken); border-radius: 14px; padding: 7px 11px; font-size: 11.5px;
+  color: var(--v-ink-dim); max-width: 82%; }
+
+.v-bar-wrap { position: absolute; left: 0; right: 0; bottom: 16px; display: flex; justify-content: center;
+  padding: 0 16px; z-index: 8; pointer-events: none;
+  transition: padding-right var(--dur, 220ms) cubic-bezier(0.22,1,0.36,1); }
+.v-bar { pointer-events: auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 999px;
+  background: var(--v-surface); border: 1px solid var(--v-line);
+  box-shadow: 0 20px 60px -16px oklch(0.1 0.03 270 / 0.55); }
+.v-btn { width: 44px; height: 44px; border-radius: 999px; background: var(--v-sunken); color: var(--v-ink);
+  display: grid; place-items: center; flex: none; border: 0; cursor: pointer; padding: 0; }
+.v-btn:hover { background: var(--v-line); }
+.v-btn[data-active="true"] { background: var(--v-accent); color: var(--v-accent-ink); }
+.v-btn.sm { width: 36px; height: 36px; }
+.v-btn svg { width: 20px; height: 20px; }
+.v-btn.sm svg { width: 16px; height: 16px; }
+.v-group { display: flex; align-items: center; gap: 2px; }
+.v-sep { width: 1px; height: 28px; background: var(--v-line); margin: 0 4px; flex: none; }
+.v-leave { display: flex; height: 44px; border-radius: 999px; overflow: hidden; flex: none; }
+.v-leave .main { display: flex; align-items: center; gap: 8px; background: var(--v-danger);
+  color: var(--v-danger-ink); padding: 0 14px 0 16px; font: 500 14px 'Inter', sans-serif; border: 0; cursor: pointer; }
+.v-leave .main svg { width: 20px; height: 20px; }
+.v-leave .caret { background: var(--v-danger); color: var(--v-danger-ink); border: 0; padding: 0 8px;
+  display: grid; place-items: center; cursor: pointer; border-left: 1px solid oklch(1 0 0 / 0.25); }
+.v-leave .caret svg { width: 16px; height: 16px; }
+.v-leave[data-guarded="true"] { opacity: 0.42; filter: saturate(0.35); }
+.v-leave[data-guarded="true"]::after { content: ''; }
+
+/* Crosshair + ruler overlay */
+.probe-layer { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
+.crosshair { position: absolute; width: 0; height: 0; }
+.crosshair::before, .crosshair::after { content: ''; position: absolute; background: var(--x-col, #fff); }
+.crosshair::before { left: -13px; top: -1px; width: 26px; height: 2px; }
+.crosshair::after  { top: -13px; left: -1px; height: 26px; width: 2px; }
+.crosshair .ring { position: absolute; left: -13px; top: -13px; width: 26px; height: 26px;
+  border: 2px solid var(--x-col, #fff); border-radius: 50%; opacity: .55; }
+.crosshair .lbl { position: absolute; left: -14px; top: -36px; white-space: nowrap;
+  font: 600 11px/1 'IBM Plex Mono', monospace; padding: 5px 8px; border-radius: 6px;
+  background: var(--x-col, #fff); color: var(--v-stage); }
+.ruler { position: absolute; height: 0; border-top: 2px dashed var(--x-col, #fff); opacity: .95; }
+.ruler .cap { position: absolute; top: -6px; width: 2px; height: 12px; background: var(--x-col, #fff); }
+.ruler .cap.a { left: 0 } .ruler .cap.b { right: 0 }
+.ruler .val { position: absolute; left: 50%; top: -26px; transform: translateX(-50%);
+  font: 600 11px/1 'IBM Plex Mono', monospace; padding: 4px 7px; border-radius: 5px;
+  background: var(--x-col, #fff); color: var(--v-stage); white-space: nowrap; }
+.ghost-bar { position: absolute; border: 2px dashed oklch(1 0 0 / 0.34); border-radius: 999px; }
+
+/* Readout */
+.readout { display: grid; grid-template-columns: repeat(auto-fit, minmax(205px, 1fr)); gap: 1px;
+  background: var(--rule); border-top: 1px solid var(--rule); }
+.cell { background: var(--panel); padding: 15px 20px; }
+.cell .k { font: 600 10.5px/1 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint); }
+.cell .v { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums;
+  font-size: 17px; font-weight: 500; margin-top: 7px; }
+.cell .v small { font-size: 12px; color: var(--ink-faint); font-weight: 400; }
+.verdict { display: inline-flex; align-items: center; gap: 7px; border-radius: 999px; padding: 5px 11px;
+  font: 600 12px/1 'Inter', sans-serif; margin-top: 5px; }
+.verdict[data-s="bad"]  { background: var(--hazard-soft); color: var(--hazard); }
+.verdict[data-s="ok"]   { background: var(--safe-soft);   color: var(--safe); }
+.verdict[data-s="idle"] { background: var(--well);        color: var(--ink-faint); }
+
+/* ── Matrix ──────────────────────────────────────────────── */
+.tablewrap { overflow-x: auto; border: 1px solid var(--rule); border-radius: 14px; background: var(--panel); margin-top: 22px; }
+table { border-collapse: collapse; width: 100%; min-width: 640px; font-size: 13.5px; }
+th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--rule-soft); }
+thead th { font: 600 10.5px/1 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-faint); background: var(--well); border-bottom: 1px solid var(--rule); }
+tbody tr:last-child td { border-bottom: 0; }
+td.opt { font-weight: 500; color: var(--ink); white-space: nowrap; }
+td.m { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+.pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 3px 9px;
+  font: 600 11px/1.5 'IBM Plex Mono', monospace; }
+.pill[data-s="bad"] { background: var(--hazard-soft); color: var(--hazard); }
+.pill[data-s="ok"]   { background: var(--safe-soft); color: var(--safe); }
+.pill[data-s="warn"] { background: var(--warn-soft); color: var(--warn); }
+
+/* ── Option cards ────────────────────────────────────────── */
+.cards { display: grid; gap: 16px; margin-top: 24px; }
+.card { border: 1px solid var(--rule); border-radius: 16px; background: var(--panel); padding: 22px 24px;
+  display: grid; gap: 13px; }
+.card[data-rec="true"] { border-color: var(--probe); box-shadow: 0 0 0 1px var(--probe); }
+.card-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.card-head .n { font: 600 11px/1 'IBM Plex Mono', monospace; color: var(--probe);
+  border: 1px solid var(--rule); border-radius: 6px; padding: 5px 7px; }
+.card-head .rec { font: 600 10.5px/1 'Inter', sans-serif; letter-spacing: 0.09em; text-transform: uppercase;
+  background: var(--probe); color: var(--panel); border-radius: 999px; padding: 5px 9px; }
+.card p { margin: 0; font-size: 14.5px; }
+.tradeoff { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+  border-top: 1px solid var(--rule-soft); padding-top: 14px; }
+.tradeoff div { font-size: 13px; color: var(--ink-dim); }
+.tradeoff .h { font: 600 10.5px/1 'Inter', sans-serif; letter-spacing: 0.09em; text-transform: uppercase;
+  margin-bottom: 6px; }
+.tradeoff .plus .h { color: var(--safe); } .tradeoff .minus .h { color: var(--hazard); }
+.tradeoff .cost .h { color: var(--ink-faint); }
+.tryit { justify-self: start; font: 500 13px 'Inter', sans-serif; background: transparent;
+  border: 1px solid var(--rule); border-radius: 8px; padding: 8px 13px; color: var(--ink); cursor: pointer; }
+.tryit:hover { border-color: var(--probe); color: var(--probe); }
+.tryit:focus-visible { outline: 2px solid var(--probe); outline-offset: 2px; }
+
+.note { border-left: 2px solid var(--probe); padding: 4px 0 4px 18px; margin: 22px 0; }
+.note .h { font: 600 10.5px/1 'Inter', sans-serif; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--probe); margin-bottom: 9px; }
+.note p:last-child { margin-bottom: 0; }
+code { font-size: 0.9em; background: var(--well); border: 1px solid var(--rule-soft);
+  border-radius: 5px; padding: 1.5px 5px; color: var(--ink); }
+ul { margin: 0 0 15px; padding-left: 20px; color: var(--ink-dim); }
+li { margin-bottom: 7px; }
+li::marker { color: var(--ink-faint); }
+footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px; font-size: 13px; color: var(--ink-faint); }
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Desktop layout · signed off and shipped · 2026-08-21</div>
+  <h1>The chat button hands you the Leave button.</h1>
+  <p class="standfirst">
+    Opening the chat or people panel re-centres the floating control bar in the
+    remaining space. The bar slides left by half the panel's width — and the Leave
+    control is sitting almost exactly that far to the right of the Chat button that
+    triggered it. Click chat, don't move your mouse, click again to close it: you
+    have left the call. This rig measures the collision and lets you feel four
+    candidate fixes against it.
+  </p>
+</header>
+
+<section>
+  <div class="eyebrow">The measurement</div>
+  <h2>It is not an edge case. It reproduces at every desktop breakpoint.</h2>
+  <div class="col">
+    <p>
+      Both the stage and the control bar carry
+      <code>panel &amp;&amp; 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]'</code> —
+      <code>RoomView.tsx:448</code> and <code>ControlBar.tsx:516</code>. On the bar
+      that padding lands inside a <code>fixed inset-x-0 flex justify-center</code>
+      container, so the bar's centre travels left by exactly half of it.
+    </p>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="v">160–200<span style="font-size:17px">px</span></div>
+      <div class="k">How far the bar slides left, md → xl</div></div>
+    <div class="stat"><div class="v">151–284<span style="font-size:17px">px</span></div>
+      <div class="k">Where the Leave control sits, measured right from the Chat button's centre</div></div>
+    <div class="stat bad"><div class="v">3 of 3</div>
+      <div class="k">Desktop breakpoints where the slide lands the cursor on a Leave control</div></div>
+    <div class="stat"><div class="v">8s</div>
+      <div class="k">The undo window that currently absorbs this — an accident, caught late</div></div>
+  </div>
+</section>
+
+<section id="rig">
+  <div class="eyebrow">The rig</div>
+  <h2>Click <em>Chat</em> in the mock. Then don't move the mouse.</h2>
+  <div class="col">
+    <p>
+      The mock below is Veil's real control bar — same button order, same 44px
+      controls, same 8px gaps, same Veil tokens. The crosshair pins itself where you
+      clicked and stays there. The readout says what ends up underneath it.
+    </p>
+  </div>
+
+  <div class="rig">
+    <div class="rig-controls">
+      <div class="field">
+        <label id="lbl-w">Viewport width</label>
+        <div class="seg" id="seg-w" role="group" aria-labelledby="lbl-w"></div>
+      </div>
+      <div class="field">
+        <label id="lbl-n">In the call</label>
+        <div class="seg" id="seg-n" role="group" aria-labelledby="lbl-n"></div>
+      </div>
+      <div class="field">
+        <label id="lbl-r">Role</label>
+        <div class="seg" id="seg-r" role="group" aria-labelledby="lbl-r"></div>
+      </div>
+      <div class="field" style="flex:1 1 340px">
+        <label id="lbl-o">Reflow rule</label>
+        <div class="opts" id="seg-o" role="group" aria-labelledby="lbl-o"></div>
+      </div>
+    </div>
+
+    <div class="howto"><span class="dot" aria-hidden="true"></span>
+      <span id="howto-text">Click the Chat button in the mock — the crosshair marks where your pointer was.</span>
+    </div>
+
+    <div class="viewport-shell">
+      <div class="viewport-scale" id="scale-box">
+        <div class="viewport veil" id="viewport"></div>
+      </div>
+    </div>
+
+    <div class="readout">
+      <div class="cell"><div class="k">Bar travel</div>
+        <div class="v" id="out-shift">— <small>px</small></div></div>
+      <div class="cell"><div class="k">Under the crosshair</div>
+        <div class="v" id="out-hit" style="font-size:15px">—</div></div>
+      <div class="cell"><div class="k">Grid, closed → open</div>
+        <div class="v" id="out-grid" style="font-size:14px">—</div></div>
+      <div class="cell"><div class="k">Verdict</div>
+        <div><span class="verdict" id="out-verdict" data-s="idle">Not tested yet</span></div></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Swept, not argued</div>
+  <h2>Every rule against every width, measured off the live DOM.</h2>
+  <div class="col">
+    <p>
+      The rig re-runs the whole sweep in the page: for each combination it reads the
+      Chat button's centre with the panel closed, opens the panel with transitions
+      off, and asks whether that point now falls inside a Leave control's box. No
+      arithmetic on paper — the same elements you can click above.
+    </p>
+  </div>
+  <div class="tablewrap"><table id="matrix">
+    <thead><tr>
+      <th>Reflow rule</th><th>768 md</th><th>1024 lg</th><th>1280 xl</th><th>1440</th><th>1728</th>
+    </tr></thead>
+    <tbody></tbody>
+  </table></div>
+  <p style="font-size:13px;margin-top:12px;color:var(--ink-faint)">
+    Measured as host (split Leave / End-for-everyone pill, the widest target).
+    A cell shows the bar's travel in px. Red = the pointer lands on a Leave control.
+    Amber = the bar doesn't move, but the panel covers its right end, Leave included.
+  </p>
+</section>
+
+<section>
+  <div class="eyebrow">Four ways out</div>
+  <h2>Options, with what each one costs.</h2>
+  <div class="col">
+    <p>
+      All four keep the docked-and-reflowing panel that <strong>STYLE.md §4</strong>
+      calls for. They differ in what is allowed to move, and in whether safety comes
+      from geometry or from a rule.
+    </p>
+  </div>
+
+  <div class="cards">
+
+    <div class="card" data-rec="true">
+      <div class="card-head"><span class="n">01</span><h3>Move the bar only when it would actually collide</h3>
+        <span class="rec">Recommended</span></div>
+      <p>
+        The bar stops re-centring. It keeps its viewport centre and slides left only
+        by the overlap it genuinely has with the panel — which on a 1440px screen is
+        zero, because the bar measures 614px and there is 1044px of room. Travel drops
+        from 200px to 0px at 1440, and to 74px at 1280.
+      </p>
+      <div class="tradeoff">
+        <div class="plus"><div class="h">Buys</div>The bar stops moving entirely on the
+          screens most people are on. Nothing about the visual design changes.</div>
+        <div class="minus"><div class="h">Doesn't fix</div>Anything below 1280px. At 1024
+          the overlap is 154px, which lands on Leave by 3px; at 768 it is 250px, squarely
+          on it. The offset is only ever as safe as the bar is narrow.</div>
+        <div class="cost"><div class="h">Cost</div>One measured value instead of a static
+          class — the bar's width has to be observed, so it survives a control being added.</div>
+      </div>
+      <button class="tryit" data-load="collision">Load in the rig</button>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="n">02</span><h3>Put nothing destructive downstream of a trigger</h3></div>
+      <p>
+        Keep the current reflow, and make the collision harmless: move the Leave
+        cluster to the <em>left</em> end of the bar so a leftward slide can only ever
+        bring a benign control under the pointer. The hazard becomes structurally
+        impossible rather than numerically avoided.
+      </p>
+      <div class="tradeoff">
+        <div class="plus"><div class="h">Buys</div>Total immunity at every width, including
+          768px. Pure markup reorder, no new logic.</div>
+        <div class="minus"><div class="h">Breaks</div>Leave-on-the-right is the convention in
+          Meet, Zoom, Teams and WhatsApp — worth a Mobbin check before committing. Existing
+          users' muscle memory moves.</div>
+        <div class="cost"><div class="h">Cost</div>Re-teaches the most consequential button
+          in the product to fix a bug most users never articulate.</div>
+      </div>
+      <button class="tryit" data-load="reorder">Load in the rig</button>
+    </div>
+
+    <div class="card" data-rec="true">
+      <div class="card-head"><span class="n">03</span><h3>Destructive controls ignore a click they didn't earn</h3>
+        <span class="rec">Recommended, with 01</span></div>
+      <p>
+        After any layout change moves a control under a pointer that hasn't moved,
+        Leave and End-for-everyone refuse pointer activation until the pointer moves
+        ~8px or ~350ms passes. The button never becomes visually disabled — the guard
+        only rejects the one click nobody meant to aim. Keyboard and assistive tech
+        are untouched.
+      </p>
+      <div class="tradeoff">
+        <div class="plus"><div class="h">Buys</div>Covers this reflow and every future one —
+          a new control on the bar can't quietly re-open the hazard.</div>
+        <div class="minus"><div class="h">Watch</div>A genuinely fast, deliberate second click
+          gets swallowed. 350ms is a guess and wants a real number.</div>
+        <div class="cost"><div class="h">Cost</div>A small shared hook, and one invariant the
+          team has to keep honouring.</div>
+      </div>
+      <button class="tryit" data-load="guard">Load in the rig</button>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span class="n">04</span><h3>The grid reflows; the bar never does</h3></div>
+      <p>
+        Closest to the literal brief: the stage narrows and the tiles scale, and the
+        control bar stays put on the viewport's centre line. Zero travel, always.
+      </p>
+      <div class="tradeoff">
+        <div class="plus"><div class="h">Buys</div>Nothing moves under the pointer, ever.
+          One deleted class.</div>
+        <div class="minus"><div class="h">Breaks</div>At 1280 and below, the bar's right end
+          runs under the panel — including, at 768px, the Leave button itself. Load it in the
+          rig at 1024 and watch the panel swallow it.</div>
+        <div class="cost"><div class="h">Cost</div>Only viable if the panel goes overlay
+          below <code>lg</code>, or the bar compacts.</div>
+      </div>
+      <button class="tryit" data-load="static">Load in the rig</button>
+    </div>
+
+    <div class="card" data-rec="true">
+      <div class="card-head"><span class="n">05</span><h3>What shipped: 01, plus the panel keeps out of the bar's band</h3>
+        <span class="rec">Shipped</span></div>
+      <p>
+        Option 01 for the widths where it is genuinely free, and below <code>xl</code>
+        the panel simply stops above the control bar — 5.75rem clears the bar's inset,
+        its island and the usual gutter. There is then nothing for the bar to dodge, so
+        it doesn't move at all below 1280px. Below <code>lg</code> the panel also stops
+        reflowing the stage and floats over it instead. Option 03's guard sits behind
+        all of it.
+      </p>
+      <div class="tradeoff">
+        <div class="plus"><div class="h">Buys</div>Zero travel at 768, 1024 and 1440+;
+          74px at 1280, half what it takes to reach Leave. Immune at every width in the
+          sweep, and Leave is never buried.</div>
+        <div class="minus"><div class="h">Gives up</div>The panel is ~92px shorter below
+          <code>xl</code>, and the bar is centred on the window rather than on the
+          narrowed stage at <code>lg</code>.</div>
+        <div class="cost"><div class="h">Cost</div>The threshold lives in two files —
+          Sheet's classes and <code>panelDock</code>'s width — and they have to move
+          together.</div>
+      </div>
+      <button class="tryit" data-load="shipped">Load in the rig</button>
+    </div>
+
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">The grid hypothesis</div>
+  <h2>The grid already does the thing the brief hoped for.</h2>
+  <div class="col">
+    <p>
+      The ask was worth testing whether the grid could <em>scale tiles down, holding
+      aspect, and wrap as needed</em> instead of hard-shifting. It already does.
+      <code>fitMixedRows</code> in <code>Stage.tsx</code> is a justified packer: it
+      tries every row count, scales each row to fill the width, keeps each tile's
+      snapped aspect, and picks the arrangement that maximises the smallest tile.
+      Tile sizes are written as inline pixel width/height, and
+      <code>useElementSize</code> re-measures through the 220ms transition — with a
+      2px threshold specifically to stop that becoming per-frame jank.
+    </p>
+    <p>
+      So the stage is not where the exit risk comes from. But the sweep did turn up
+      one real grid defect next door:
+    </p>
+  </div>
+  <div class="note">
+    <div class="h">Found while measuring — since fixed</div>
+    <p>
+      At <strong>1024–1279px</strong>, opening the panel took
+      <code>gridCapacity</code> from 4 columns to 3 and page capacity from 16 to 12.
+      With 16 in the call, <strong>four people vanished to page 2</strong> the moment
+      you opened chat — not scaled down, gone. Select rule 00 at 1024px with 16 in
+      the call and toggle the panel to see it.
+    </p>
+    <p>
+      Capacity is now the <em>greater</em> of the docked and undocked fits, so docking
+      can only shrink tiles — which is what the packer is for. Not a substitution: a
+      narrower stage fits shorter tiles and therefore more rows, so above ~1279px it
+      actually holds more, and taking the undocked figure would have hidden people who
+      fit. Confirmed against eleven real participants: <strong>10 tiles before the
+      toggle and 9 after</strong>, now 10 and 10. Select rule 05 to see capacity hold.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">A correction, and what shipped</div>
+  <h2>The mock was missing a button, and it changed the answer.</h2>
+  <div class="col">
+    <p>
+      This rig originally measured the control bar at 560px, because its mock was
+      missing the <strong>Audio output</strong> button. The running app measures
+      <strong>614px</strong>. Fifty-four pixels of bar is twenty-seven pixels of
+      offset, and that was the whole margin: option 01 was reported as clearing the
+      Leave control by 23px at 1024, and it actually lands 3px <em>onto</em> it. The
+      first end-to-end run of the fix failed at exactly that width. The mock above is
+      fixed, so the matrix now shows option 01 failing at 1024 the way the real app
+      did.
+    </p>
+    <p>
+      That miss is also the argument for the guard. A rule that says "the offset is
+      smaller than the gap" is only true for the bar you measured; the bar grows every
+      time a control is added, and nothing about the geometry tells you when it has
+      grown past safe. So the shipped fix stops relying on the margin below
+      <code>xl</code>: the panel keeps out of the control bar's band entirely, and
+      there is no collision left to size around.
+    </p>
+    <p>What landed, by width:</p>
+    <ul>
+      <li><strong>768–1023px</strong> — the panel floats over the stage and stops above
+        the bar. Stage keeps its full width. Bar travel: 0.</li>
+      <li><strong>1024–1279px</strong> — the panel docks and the stage reflows for it,
+        but it still stops above the bar. Bar travel: 0.</li>
+      <li><strong>1280px and up</strong> — the panel runs full-height beside the bar,
+        and the bar moves by the real overlap: 74px at 1280, nothing at 1440 and above.</li>
+      <li><strong>Everywhere</strong> — a destructive control refuses a pointer click
+        for ~350ms after a reflow that moved it, unless the pointer has since travelled
+        8px. Keyboard and assistive tech are never guarded, and rejecting disarms, so a
+        second press goes straight through.</li>
+    </ul>
+    <p>
+      Backed by a hit-test regression spec that walks all four widths and asserts the
+      resting pointer never lands on a Leave control — and that Leave is never buried
+      under the panel either. Reintroducing the old re-centring makes it fail at the
+      first width it checks.
+    </p>
+  </div>
+  <div class="note">
+    <div class="h">Also landed</div>
+    <p>
+      The grid re-pagination is fixed too — capacity is now the greater of the docked
+      and undocked fits, so opening the panel shrinks tiles instead of paging people out.
+      That was the hypothesis the brief opened with, and it turned out the packer
+      was already doing its half correctly; only the capacity maths was reading the
+      wrong width.
+    </p>
+  </div>
+</section>
+
+<footer>
+  Panel Reflow Rig · measured against <code>RoomView.tsx</code>,
+  <code>ControlBar.tsx</code>, <code>Sheet.tsx</code> and <code>Stage.tsx</code> on
+  <span class="mono">claude/panel-toggle-exit-risk-dccvgl</span>. The mock is a
+  faithful re-build of the desktop control bar, not a screenshot — every number on
+  this page is read off the DOM you can click, which is exactly how the 560px
+  mistake above became visible.
+</footer>
+
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ── Constants lifted verbatim from the source ──────────────────────────
+     Sheet.tsx      panel width  md 19rem · lg 21rem · xl 24rem, offset right-3
+     RoomView.tsx   stage pad    md 20rem · lg 22rem · xl 25rem
+     ControlBar.tsx same pad on a `fixed inset-x-0 flex justify-center` wrapper
+     IconButton.tsx md = 44px, sm = 36px · Island gap-2 = 8px, px-3 = 12px
+     Stage.tsx      gridCapacity: gap 12, minW 200, minH 150, maxCols 4, cap 20
+     app.css        --dur-base 220ms, --ease-island cubic-bezier(.22,1,.36,1)
+  */
+  const GAP = 12, MIN_W = 200, MIN_H = 150, MAX_COLS = 4, MAX_PER_PAGE = 20;
+  const bp = (w) => w >= 1280 ? { panel: 384, pad: 400, name: 'xl' }
+                 : w >= 1024 ? { panel: 336, pad: 352, name: 'lg' }
+                 :             { panel: 304, pad: 320, name: 'md' };
+  const HEIGHTS = { 768: 720, 1024: 720, 1280: 800, 1440: 900, 1728: 1080 };
+  const WIDTHS = [768, 1024, 1280, 1440, 1728];
+  const OPTIONS = [
+    { id: 'current',   tag: '00', label: 'Current' },
+    { id: 'collision', tag: '01', label: 'Collision-only' },
+    { id: 'reorder',   tag: '02', label: 'Leave on the left' },
+    { id: 'guard',     tag: '03', label: 'Settle guard' },
+    { id: 'static',    tag: '04', label: 'Bar never moves' },
+    { id: 'shipped',   tag: '05', label: 'Shipped: 01 + panel clears the bar' },
+  ];
+
+  const state = { w: 1440, n: 8, role: 'host', opt: 'current', open: false, tab: 'chat' };
+
+  /* ── Icons (24px grid, stroked) ─────────────────────────────────────── */
+  const I = {
+    mic:   '<path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    cam:   '<rect x="2" y="6" width="13" height="12" rx="3"/><path d="m15 11 6-3.5v9L15 13"/>',
+    share: '<rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8"/>',
+    chat:  '<path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-6.4A8 8 0 1 1 21 12Z"/>',
+    react: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01"/>',
+    more:  '<circle cx="5" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="19" cy="12" r="1.4"/>',
+    spkr:  '<path d="M4 9v6h4l5 4V5L8 9H4Z"/><path d="M17 9.5a3.5 3.5 0 0 1 0 5M19.5 7a7 7 0 0 1 0 10"/>',
+    leave: '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.4 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.4 1.8.6 2.8.8a2 2 0 0 1 1.7 2Z"/>',
+    up:    '<path d="m6 15 6-6 6 6"/>',
+  };
+  const svg = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const btn = (icon, hit, opts = {}) =>
+    `<button class="v-btn${opts.sm ? ' sm' : ''}" data-hit="${hit}"${opts.active ? ' data-active="true"' : ''}${opts.act ? ` data-act="${opts.act}"` : ''} type="button" aria-label="${hit}">${svg(icon)}</button>`;
+
+  /* ── gridCapacity — Stage.tsx, fine pointer, auto density ───────────── */
+  function gridCapacity(width, height, n) {
+    if (width < 2 || height < 2) return { cols: Math.min(MAX_COLS, Math.max(1, Math.ceil(Math.sqrt(n)))), perPage: 9 };
+    const byWidth = Math.floor((width + GAP) / (MIN_W + GAP));
+    const bySqrt = Math.ceil(Math.sqrt(n));
+    const cols = Math.max(1, Math.min(MAX_COLS, byWidth, bySqrt));
+    const rows = Math.max(1, Math.floor((height + GAP) / (MIN_H + GAP)));
+    return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) };
+  }
+
+  const NAMES = ['Ama','Kojo','Nia','Yaw', 'Esi','Kofi','Adjoa','Kwesi','Abena','Fiifi','Akua','Kwabena','Afia','Kojo B.','Serwaa','Nana'];
+
+  const el = (id) => document.getElementById(id);
+  const viewport = el('viewport'), scaleBox = el('scale-box');
+
+  /* ── What each rule does to the bar, the panel and the stage ─────────── */
+  // Clears the control bar: its 1rem inset + a 62px island + the 12px gutter.
+  const CLEARS_BAR = 92;
+  function collisionPad(w, barW) {
+    // Keep the viewport centre; give up only the real overlap with the panel.
+    const { panel } = bp(w);
+    const panelLeft = w - panel - 12;
+    const overlap = Math.max(0, w / 2 + barW / 2 + 12 - panelLeft);
+    return overlap * 2; // justify-center: padding P shifts the centre by P/2
+  }
+  function rule(w, barW) {
+    const { pad } = bp(w);
+    switch (state.opt) {
+      case 'static':    return { barPad: 0, panelBottom: 12, stagePad: pad };
+      case 'collision': return { barPad: collisionPad(w, barW), panelBottom: 12, stagePad: pad };
+      case 'shipped':
+        // Below xl the panel stops above the bar, so there is no collision to
+        // offset — and below lg it overlays, so the stage keeps its full width.
+        return w >= 1280
+          ? { barPad: collisionPad(w, barW), panelBottom: 12, stagePad: pad }
+          : { barPad: 0, panelBottom: CLEARS_BAR, stagePad: w >= 1024 ? pad : 12 };
+      default:          return { barPad: pad, panelBottom: 12, stagePad: pad };
+    }
+  }
+
+  /* ── Render ─────────────────────────────────────────────────────────── */
+  function render() {
+    const w = state.w, h = HEIGHTS[w], { panel, pad } = bp(w);
+    const open = state.open;
+
+    const leaveCluster = state.role === 'host'
+      ? `<div class="v-leave" data-leave="true"><button class="main" type="button" data-hit="Leave call" data-leave="true">${svg(I.leave)}Leave</button><button class="caret" type="button" data-hit="End call for everyone" data-leave="true">${svg(I.up)}</button></div>`
+      : `<button class="v-btn" style="background:var(--v-danger);color:var(--v-danger-ink)" type="button" data-hit="Leave call" data-leave="true">${svg(I.leave)}</button>`;
+
+    const controls = `
+      <div class="v-group">${btn(I.mic, 'Mute microphone')}${btn(I.up, 'Audio options', { sm: true })}</div>
+      <div class="v-group">${btn(I.cam, 'Stop camera')}${btn(I.up, 'Video options', { sm: true })}</div>
+      ${btn(I.spkr, 'Audio output')}
+      ${btn(I.share, 'Share screen')}
+      ${btn(I.chat, 'Open chat', { active: open && state.tab === 'chat', act: 'chat' })}
+      ${btn(I.react, 'Reactions')}
+      ${btn(I.more, 'More options')}`;
+
+    const bar = state.opt === 'reorder'
+      ? `${leaveCluster}<div class="v-sep"></div>${controls}`
+      : `${controls}<div class="v-sep"></div>${leaveCluster}`;
+
+    viewport.innerHTML = `
+      <div class="v-topbar">
+        <span class="v-chip">Grid</span>
+        <span class="v-chip">12:04</span>
+        <span class="v-chip" data-hit="Participants chip" data-act="people" style="pointer-events:auto;cursor:pointer">${state.n} people</span>
+      </div>
+      <div class="v-stage" data-hit="Video stage" id="v-stage"><div class="v-grid" id="v-grid"></div></div>
+      <div class="v-panel" id="v-panel" data-open="${open}" data-hit="${state.tab === 'chat' ? 'Chat panel' : 'People panel'}" style="width:${panel}px;bottom:${rule(w, 614).panelBottom}px">
+        <div class="v-panel-head">
+          <span class="v-tab" data-active="${state.tab === 'chat'}">Chat</span>
+          <span class="v-tab" data-active="${state.tab === 'people'}">People</span>
+        </div>
+        <div class="v-panel-body">
+          <div class="v-msg"><span class="b">Can you share the deck?</span></div>
+          <div class="v-msg" style="justify-content:flex-end"><span class="b" style="background:var(--v-accent);color:var(--v-accent-ink)">Putting it up now</span></div>
+          <div class="v-msg"><span class="b">Thanks 👍</span></div>
+        </div>
+      </div>
+      <div class="v-bar-wrap" id="v-bar-wrap"><div class="v-bar" id="v-bar" data-hit="Control bar, between controls">${bar}</div></div>
+      <div class="probe-layer" id="probe"></div>`;
+
+    // Bar width is measured, never assumed — that is the point of option 01, and
+    // assuming it is exactly what made this rig report 560px for a 614px bar.
+    const barW = el('v-bar').getBoundingClientRect().width / scale();
+    const r = rule(w, barW);
+    el('v-panel').style.bottom = r.panelBottom + 'px';
+    el('v-bar-wrap').style.paddingRight = (16 + (open ? r.barPad : 0)) + 'px';
+    el('v-stage').style.paddingRight = (open ? r.stagePad : 12) + 'px';
+
+    drawGrid();
+    fit();
+  }
+
+  function drawGrid() {
+    const w = state.w, h = HEIGHTS[w];
+    const stageRight = state.open ? rule(w, 614).stagePad : 12;
+    const gridW = w - 12 - stageRight - 24;   // stage padding, then GridStage p-3
+    const gridH = h - 24 - 24;
+    // The shipped rule decides capacity from the width the stage would have with
+    // no panel docked, so docking only ever shrinks tiles. Layout still uses the
+    // real (narrowed) width below.
+    const { cols, perPage } = gridCapacity(gridW + capacityBonus(w), gridH, state.n);
+    const shown = Math.min(state.n, perPage);
+    const rowCount = Math.ceil(shown / cols);
+
+    let tileW = (gridW - GAP * (cols - 1)) / cols;
+    let tileH = tileW * 9 / 16;
+    const stackH = tileH * rowCount + GAP * (rowCount - 1);
+    if (stackH > gridH) { const k = gridH / stackH; tileW *= k; tileH *= k; }
+
+    const grid = el('v-grid');
+    let html = '', i = 0;
+    for (let r = 0; r < rowCount; r++) {
+      const count = Math.min(cols, shown - i);
+      html += `<div class="v-row">`;
+      for (let c = 0; c < count; c++, i++) {
+        const av = Math.max(22, Math.min(56, tileH * 0.32));
+        html += `<div class="v-tile" style="width:${tileW}px;height:${tileH}px">
+          <span class="av" style="width:${av}px;height:${av}px;font-size:${av * 0.4}px">${NAMES[i % NAMES.length][0]}</span>
+          ${tileH > 78 ? `<span class="nm">${NAMES[i % NAMES.length]}</span>` : ''}
+        </div>`;
+      }
+      html += `</div>`;
+    }
+    grid.innerHTML = html;
+    grid.insertAdjacentHTML('beforeend', shown < state.n
+      ? `<span class="v-pager">Showing ${shown} of ${state.n} — ${state.n - shown} on page 2</span>` : '');
+    return { cols, perPage, shown };
+  }
+
+  /** What the shipped rule adds back before deciding how many tiles fit. */
+  function capacityBonus(w) {
+    if (state.opt !== 'shipped' || !state.open) return 0;
+    return rule(w, 614).stagePad - 12;
+  }
+  function capacityFor(open) {
+    const w = state.w, h = HEIGHTS[w];
+    const gridW = w - 12 - (open ? rule(w, 614).stagePad : 12) - 24;
+    const c = gridCapacity(gridW + (open ? capacityBonus(w) : 0), h - 48, state.n);
+    return { ...c, shown: Math.min(state.n, c.perPage) };
+  }
+
+  /* ── Scale the mock into the page ───────────────────────────────────── */
+  let _scale = 1;
+  const scale = () => _scale;
+  function fit() {
+    const shell = scaleBox.parentElement;
+    const pad = parseFloat(getComputedStyle(shell).paddingLeft) + parseFloat(getComputedStyle(shell).paddingRight);
+    const avail = shell.clientWidth - pad;
+    const h = HEIGHTS[state.w];
+    _scale = Math.min(1, avail / state.w);
+    viewport.style.width = state.w + 'px';
+    viewport.style.height = h + 'px';
+    viewport.style.transform = `scale(${_scale})`;
+    scaleBox.style.width = (state.w * _scale) + 'px';
+    scaleBox.style.height = (h * _scale) + 'px';
+  }
+
+  /* ── The test ───────────────────────────────────────────────────────── */
+  let probePt = null;
+
+  function togglePanel(tab, ev) {
+    const wasOpen = state.open, sameTab = state.tab === tab;
+    // Record the pointer, in mock space, before anything moves.
+    if (ev) {
+      const r = viewport.getBoundingClientRect();
+      probePt = { x: (ev.clientX - r.left) / _scale, y: (ev.clientY - r.top) / _scale };
+    }
+    const barBefore = el('v-bar').getBoundingClientRect().left / _scale;
+
+    if (wasOpen && sameTab) state.open = false;
+    else { state.open = true; state.tab = tab; }
+    render();
+    settle(barBefore);
+  }
+
+  function settle(barBefore) {
+    if (!probePt) return;
+    // The guard arms the moment a reflow starts, and disarms once the pointer has
+    // had a chance to move — so it is applied here, not after the measurement.
+    const guard = state.opt === 'guard';
+    if (guard) document.querySelectorAll('[data-leave]').forEach((n) => n.setAttribute('data-guarded', 'true'));
+
+    // Wait for the 220ms reflow to LAND before measuring — sampling mid-transition
+    // reads the starting position and reports no travel at all.
+    setTimeout(() => {
+      const travel = Math.round(barBefore - el('v-bar').getBoundingClientRect().left / _scale);
+      const r = viewport.getBoundingClientRect();
+      const px = r.left + probePt.x * _scale, py = r.top + probePt.y * _scale;
+      const node = document.elementFromPoint(px, py);
+      const target = node && node.closest('[data-hit]');
+      const label = target ? target.getAttribute('data-hit') : 'nothing';
+      const onLeave = !!(target && target.closest('[data-leave]'));
+      paintProbe(travel, onLeave, guard && Math.abs(travel) > 0);
+      report(travel, label, onLeave, guard && Math.abs(travel) > 0);
+      if (guard) setTimeout(() => document.querySelectorAll('[data-leave]')
+        .forEach((n) => n.removeAttribute('data-guarded')), 350);
+    }, 260);
+  }
+
+  function paintProbe(travel, onLeave, guard) {
+    const layer = el('probe');
+    if (!layer || !probePt) return;
+    const col = onLeave && !guard ? 'var(--m-bad)' : (onLeave ? 'var(--m-hold)' : 'var(--m-ok)');
+    const lbl = onLeave && !guard ? 'pointer never moved' : (onLeave ? 'click rejected' : 'pointer never moved');
+    let html = `<div class="crosshair" style="--x-col:${col};left:${probePt.x}px;top:${probePt.y}px">
+      <span class="ring"></span><span class="lbl">${lbl}</span></div>`;
+    if (Math.abs(travel) > 3) {
+      const left = probePt.x - travel, width = Math.abs(travel);
+      html += `<div class="ruler" style="--x-col:${col};left:${Math.min(probePt.x, left)}px;width:${width}px;top:${probePt.y - 58}px">
+        <span class="cap a"></span><span class="cap b"></span>
+        <span class="val">bar travelled ${Math.abs(travel)}px</span></div>`;
+    }
+    layer.innerHTML = html;
+  }
+
+  function report(travel, label, onLeave, guard) {
+    el('out-shift').innerHTML = `${travel} <small>px</small>`;
+    const cap = { closed: capacityFor(false), open: capacityFor(true) };
+    el('out-grid').textContent =
+      `${cap.closed.cols}col ${cap.closed.shown} tiles → ${cap.open.cols}col ${cap.open.shown} tiles`;
+    el('out-grid').style.color = cap.open.shown < cap.closed.shown ? 'var(--hazard)' : '';
+    el('out-hit').textContent = guard && onLeave ? label + ' (rejected)' : label;
+    el('out-hit').style.color = onLeave && !guard ? 'var(--hazard)' : '';
+    const v = el('out-verdict');
+    if (onLeave && !guard) { v.dataset.s = 'bad'; v.textContent = 'One more click leaves the call'; }
+    else if (onLeave)      { v.dataset.s = 'ok';  v.textContent = 'Landed on Leave — guard held it'; }
+    else                   { v.dataset.s = 'ok';  v.textContent = 'Safe — nothing destructive underneath'; }
+    el('howto-text').textContent = state.open
+      ? 'Panel open. Click the same spot again — that is the accidental exit.'
+      : 'Click the Chat button in the mock — the crosshair marks where your pointer was.';
+  }
+
+  /* ── Sweep: every rule × every width, measured, not calculated ──────── */
+  function sweep() {
+    const saved = { ...state };
+    const body = document.querySelector('#matrix tbody');
+    viewport.style.setProperty('--dur', '0ms');
+    state.role = 'host'; state.n = 8;
+
+    const rows = OPTIONS.map((o) => {
+      state.opt = o.id;
+      const cells = WIDTHS.map((w) => {
+        state.w = w; state.open = false; state.tab = 'chat'; render();
+        const chat = viewport.querySelector('[data-act="chat"]').getBoundingClientRect();
+        const pt = { x: chat.left + chat.width / 2, y: chat.top + chat.height / 2 };
+        const before = el('v-bar').getBoundingClientRect().left;
+        state.open = true; render();
+        const after = el('v-bar').getBoundingClientRect().left;
+        const travel = Math.round((before - after) / _scale);
+        const hits = [...viewport.querySelectorAll('[data-leave]')].some((n) => {
+          const r = n.getBoundingClientRect();
+          return pt.x >= r.left && pt.x <= r.right && pt.y >= r.top && pt.y <= r.bottom;
+        });
+        // Option 03 leaves the geometry alone and rejects the click instead.
+        const bad = hits && o.id !== 'guard';
+        const barBox = el('v-bar').getBoundingClientRect();
+        const panelBox = el('v-panel').getBoundingClientRect();
+        const occluded = barBox.right > panelBox.left && barBox.top < panelBox.bottom;
+        return { travel, bad, hits, occluded };
+      });
+      return { o, cells };
+    });
+
+    body.innerHTML = rows.map(({ o, cells }) => `<tr>
+      <td class="opt"><span class="mono" style="color:var(--ink-faint)">${o.tag}</span> ${o.label}</td>
+      ${cells.map((c) => `<td class="m"><span class="pill" data-s="${
+        c.bad ? 'bad' : c.occluded ? 'warn' : 'ok'}">${c.travel}px${
+        c.bad ? ' · Leave' : c.hits ? ' · held' : c.occluded ? ' · buried' : ''}</span></td>`).join('')}
+    </tr>`).join('');
+
+    Object.assign(state, saved);
+    viewport.style.removeProperty('--dur');
+    render();
+  }
+
+  /* ── Wiring ─────────────────────────────────────────────────────────── */
+  function segment(host, items, key, after) {
+    host.innerHTML = items.map((it) =>
+      `<button type="button" data-v="${it.v}" aria-pressed="${state[key] === it.v}">${it.l}${
+        it.tag ? ` <span class="tag">${it.tag}</span>` : ''}</button>`).join('');
+    host.addEventListener('click', (e) => {
+      const b = e.target.closest('button'); if (!b) return;
+      const v = isNaN(+b.dataset.v) ? b.dataset.v : +b.dataset.v;
+      state[key] = v;
+      [...host.children].forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+      probePt = null; state.open = false; render();
+      el('out-verdict').dataset.s = 'idle';
+      el('out-verdict').textContent = 'Not tested yet';
+      el('out-hit').textContent = '—'; el('out-hit').style.color = '';
+      el('out-shift').innerHTML = '— <small>px</small>';
+      const cap = { c: capacityFor(false), o: capacityFor(true) };
+      el('out-grid').textContent = `${cap.c.cols}col ${cap.c.shown} tiles → ${cap.o.cols}col ${cap.o.shown} tiles`;
+      el('out-grid').style.color = cap.o.shown < cap.c.shown ? 'var(--hazard)' : '';
+      if (after) after();
+    });
+  }
+
+  segment(el('seg-w'), WIDTHS.map((w) => ({ v: w, l: `${w}<span class="tag">${bp(w).name}</span>` })), 'w');
+  segment(el('seg-n'), [4, 8, 12, 16].map((n) => ({ v: n, l: String(n) })), 'n');
+  segment(el('seg-r'), [{ v: 'host', l: 'Host' }, { v: 'guest', l: 'Guest' }], 'role');
+  el('seg-o').innerHTML = OPTIONS.map((o) =>
+    `<button type="button" data-v="${o.id}" aria-pressed="${state.opt === o.id}"><span class="tag">${o.tag}</span>${o.label}</button>`).join('');
+  el('seg-o').addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    state.opt = b.dataset.v;
+    [...el('seg-o').children].forEach((c) => c.setAttribute('aria-pressed', String(c === b)));
+    probePt = null; state.open = false; render();
+    el('out-verdict').dataset.s = 'idle'; el('out-verdict').textContent = 'Not tested yet';
+    el('out-hit').textContent = '—'; el('out-hit').style.color = '';
+    el('out-shift').innerHTML = '— <small>px</small>';
+  });
+
+  viewport.addEventListener('click', (e) => {
+    const t = e.target.closest('[data-act]');
+    if (t) togglePanel(t.dataset.act, e);
+  });
+
+  document.querySelectorAll('.tryit').forEach((b) => b.addEventListener('click', () => {
+    state.opt = b.dataset.load; state.open = false; probePt = null;
+    [...el('seg-o').children].forEach((c) => c.setAttribute('aria-pressed', String(c.dataset.v === state.opt)));
+    render();
+    document.getElementById('rig').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+
+  addEventListener('resize', () => { fit(); drawGrid(); });
+  render();
+  requestAnimationFrame(sweep);
+})();
+</script>
