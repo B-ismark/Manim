@@ -38,6 +38,7 @@ import { useEffectsUi } from '@/store/useEffectsUi'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
+import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
@@ -368,6 +369,7 @@ function StageViewSwitcher({
   lift?: number
   onSelect: (v: TouchView) => void
 }) {
+  const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
   const meta: Record<TouchView, { label: string; icon: ReactNode }> = {
     speaker: { label: 'Speaker', icon: <SpeakerLayoutIcon /> },
     gallery: { label: 'Gallery', icon: <GridIcon /> },
@@ -381,7 +383,7 @@ function StageViewSwitcher({
     <div
       className="absolute left-2 z-20"
       style={{
-        bottom: `max(${SELF_CARD_BOTTOM + lift}px, calc(env(safe-area-inset-bottom) + ${SELF_CARD_BOTTOM - 8 + lift}px))`,
+        bottom: selfCardBottom + lift,
       }}
       data-no-stage-gesture
     >
@@ -438,6 +440,7 @@ function ScrollGallery({
   cols: number
   gap: number
 }) {
+  const islandBandPx = useIslandBand()
   return (
     <div
       // Scrolls INTERNALLY — the page itself never scrolls (see CLAUDE.md). The
@@ -448,7 +451,7 @@ function ScrollGallery({
       // under the timer and the last one down past the island, which is how a
       // scroller should behave — nothing is permanently unreachable, and at rest
       // nothing is hidden.
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND }}
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
     >
       <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap }}>
         {tracks.map((t) => (
@@ -498,6 +501,7 @@ function TouchStage({
   /** …and it owns the stage right now (it exists and hasn't been demoted). */
   shareLeads: boolean
 }) {
+  const islandBandPx = useIslandBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
@@ -567,7 +571,7 @@ function TouchStage({
   // island's band is reserved), and against the UNDOCKED width — a phone never
   // docks a panel, but a large touch tablet does, and deciding capacity from the
   // narrowed stage is what used to page people out on every chat toggle.
-  const galleryH = Math.max(1, size.height - ISLAND_BAND - TOPSTACK_BAND)
+  const galleryH = Math.max(1, size.height - islandBandPx - TOPSTACK_BAND)
   const realCap = gridCapacity(size.width, galleryH, true, gridSize)
   const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true, gridSize)
   const cols = realCap.cols
@@ -625,7 +629,7 @@ function TouchStage({
             // measured box would paint one size and then jump to another.
             <div
               className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2"
-              style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND }}
+              style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
             >
               <TileRows
                 tracks={gallery}
@@ -768,6 +772,7 @@ function TileRows({
  * pinned to page 1; a stable order keeps tiles from reshuffling as people speak.
  */
 function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
+  const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
   const gridSize = useRoomStore((s) => s.gridSize)
@@ -852,7 +857,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
     // ran underneath the floating control island, at every desktop viewport.
     <div
       className="relative flex min-h-0 flex-1 flex-col px-2 sm:px-3"
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND + 12 }}
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
     >
       <div
         ref={ref}
@@ -916,21 +921,24 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
 }
 
 
-/**
- * Vertical band the floating control island occupies: its 44px controls plus the
- * island's own padding (60px total) plus its 16px inset from the bottom.
+/*
+ * How much of the bottom edge the control island claims is `useIslandBand()` — see
+ * `lib/chromeBands.ts` for why it's computed per device rather than the flat `76`
+ * that used to live here.
  *
- * Tiled pages reserve it; the focus page deliberately does NOT — a single feed or a
+ * TILED pages reserve it; the focus page deliberately does NOT — a single feed or a
  * shared screen is full-bleed with the bar on glass, the way a video player works.
  * The distinction matters because a tile's bottom edge carries its name pill, and
  * `SoloStage` was the only layout that had ever reserved anything (`pb-24`), which
  * is how the speaker filmstrip ended up with 60 of its 96px underneath the bar.
  */
-const ISLAND_BAND = 76
 
-/** The floating self-view's resting distance from the bottom (px) — the island's
- *  band plus a gutter, so the card sits just above the bar rather than on it. */
-const SELF_CARD_BOTTOM = 92
+/** Breathing room between a tiled layout's last row and the island. */
+const TILED_GUTTER = 12
+
+/** Gutter under the floating self-view and the view chip, so they sit just above the
+ *  bar rather than flush against it. */
+const SELF_CARD_GUTTER = 16
 
 /**
  * Vertical band TopStack's first row occupies: its 16px inset plus a 44px pill plus
@@ -1262,6 +1270,7 @@ function Filmstrip({
  * and then floated a second copy of you over the stage instead.
  */
 function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
+  const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
@@ -1287,7 +1296,7 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
     // up there and was landing squarely on the middle thumbnails.
     <div
       className="relative flex min-h-0 flex-1 px-2 sm:px-3"
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: ISLAND_BAND + 12 }}
+      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
     >
       <div ref={ref} className="relative min-h-0 flex-1">
         {size.width > 2 && size.height > 2 && (
@@ -1341,6 +1350,7 @@ function ContentStage({
   /** Track SID of the featured share — presentation state (demote) is keyed on it. */
   featuredSid: string
 }) {
+  const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const setSpotlight = useRoomStore((s) => s.setSpotlight)
@@ -1394,7 +1404,7 @@ function ContentStage({
         }
 
   return (
-    <div className="relative flex min-h-0 flex-1 p-2 pb-[5.5rem] sm:p-3 sm:pb-[5.5rem]">
+    <div className="relative flex min-h-0 flex-1 p-2 sm:p-3" style={{ paddingBottom: islandBandPx }}>
       <div ref={ref} className="relative min-h-0 flex-1">
         {measured && (
           <>
@@ -1536,11 +1546,13 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
  * un-dragged position and the snapped bottom-right position are the same place.
  */
 function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceholder; lift?: number }) {
+  const islandBandPx = useIslandBand()
+  const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
   // Extra clearance for whatever else is claiming the band above the island (the
   // roster strip, during a share). It moves the CSS anchor and the drag floor
   // together — those two disagreeing is how the card ended up parked underneath
   // the control island in the first place.
-  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: ISLAND_BAND + lift })
+  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: islandBandPx + lift })
   const [expanded, setExpanded] = useState(false)
   // Tap to expand, drag to move — one pointer, two gestures, so the tap has to be
   // told apart from the drag. useDraggable's own 6px threshold decides whether a
@@ -1555,7 +1567,7 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
       aria-label="Your video — drag to reposition"
       data-no-stage-gesture
       style={{
-        bottom: `max(${SELF_CARD_BOTTOM + lift}px, calc(env(safe-area-inset-bottom) + ${SELF_CARD_BOTTOM - 8 + lift}px))`,
+        bottom: selfCardBottom + lift,
         ...style,
       }}
       {...handlers}

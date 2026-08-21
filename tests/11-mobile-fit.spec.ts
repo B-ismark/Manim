@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { uniqueRoom, join, newParticipant, revealChrome, closePanel } from './helpers'
+import { ISLAND_H, ISLAND_INSET } from '../src/lib/chromeBands'
 
 /**
  * Mobile real-estate: the core surfaces must FIT the viewport — a phone user
@@ -191,13 +192,25 @@ test.describe('Mobile fit (no page scroll)', () => {
           const cr = b.getBoundingClientRect()
           return { w: Math.round(cr.width), h: Math.round(cr.height) }
         })
-        return { left: Math.round(r.left), right: Math.round(r.right), controls }
+        const fixed = island.closest('.fixed')!.getBoundingClientRect()
+        return {
+          left: Math.round(r.left),
+          right: Math.round(r.right),
+          controls,
+          band: Math.round(window.innerHeight - fixed.top),
+        }
       })
 
     expect(box.left, 'island not clipped on the left').toBeGreaterThanOrEqual(0)
     expect(box.right, 'island not clipped on the right').toBeLessThanOrEqual(vp.width)
     const tooSmall = box.controls.filter((c) => c.h > 0 && c.h < 44)
     expect(tooSmall, 'every control clears 44px').toEqual([])
+    // `chromeBands.ISLAND_H` is the one number in that module not read from the
+    // platform, and the stage reserves its band from it. Pin it to the bar as
+    // actually rendered, so restyling the island can't quietly un-reserve the space
+    // the gallery scrolls its last row into. (This device reports no safe-area
+    // inset, so the band is the 1rem floor plus the island's height.)
+    expect(box.band, 'the reserved band matches islandBand(0)').toBe(ISLAND_INSET + ISLAND_H)
   })
 
   /**
@@ -325,7 +338,11 @@ test.describe('Mobile fit (no page scroll)', () => {
       // …and it still clears the control island, at either size.
       const barTop = await page
         .getByRole('button', { name: 'Leave call' })
-        .evaluate((el) => el.closest('div')!.getBoundingClientRect().top)
+        // offsetTop, not a client rect: the island slides out of the thumb zone with
+        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
+        // hidden bar reports a top below the fold, and every "clears the bar"
+        // assertion measured against it passes for the wrong reason.
+        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
       expect(expanded.y + expanded.height).toBeLessThanOrEqual(barTop + 1)
     } finally {
       await peer.context.close()
@@ -361,7 +378,11 @@ test.describe('Mobile fit (no page scroll)', () => {
 
       const barTop = await page
         .getByRole('button', { name: 'Leave call' })
-        .evaluate((el) => el.closest('div')!.getBoundingClientRect().top)
+        // offsetTop, not a client rect: the island slides out of the thumb zone with
+        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
+        // hidden bar reports a top below the fold, and every "clears the bar"
+        // assertion measured against it passes for the wrong reason.
+        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
       const lowestTile = await page.evaluate(() => {
         const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]'))
           .filter((e) => (e as HTMLElement).offsetHeight > 40)
@@ -405,4 +426,79 @@ test.describe('Mobile fit (no page scroll)', () => {
     await expect(page.getByRole('button', { name: 'Audio & video' })).toBeVisible()
     await closePanel(page)
   })
+
+  /**
+   * The band reserved for the control island has to track the island, not a number
+   * that happens to equal it.
+   *
+   * The island sits at `bottom: max(1rem, env(safe-area-inset-bottom))` and is 60px
+   * tall. Stage reserved a flat 76px — exactly `16 + 60`, and therefore correct only
+   * where the bottom inset is 0. Every emulated device Playwright ships reports 0, so
+   * the suite agreed with the constant on every viewport it drove and on none of the
+   * ones with a home indicator or a gesture bar, where the bar floats HIGHER than its
+   * band and the last gallery row can't be scrolled out from under it.
+   *
+   * So this forces a 34px inset (iOS home indicator) onto both halves — the probe
+   * `useSafeAreaBottom` measures, and the island's own offset — and checks they still
+   * agree. With the constant back in place the scroller under-reserves by 18px and
+   * the last row lands under the bar.
+   */
+  test('the gallery clears the control island on a device with a home indicator', async ({
+    page,
+    browser,
+  }) => {
+    const SAFE_B = 34
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all(
+      ['Abena', 'Ama', 'Kofi', 'Kojo', 'Yaw'].map((n) => newParticipant(browser, room, n)),
+    )
+    try {
+      // Via the view chip, not More → Grid: the chip never auto-hides, so the setup
+      // can't lose a race with the control island sliding out of the thumb zone.
+      const chip = page.getByRole('button', { name: /^View: / })
+      await expect(chip).toBeVisible({ timeout: 45_000 })
+      await chip.tap()
+      await page.getByRole('menuitem', { name: 'Gallery' }).tap()
+      await expect(chip).toHaveAccessibleName(/^View: Gallery/)
+      await page.waitForTimeout(500)
+
+      await page.addStyleTag({ content: `[data-safe-area-probe]{height:${SAFE_B}px !important}` })
+      await page.evaluate((sb) => {
+        const bar = document.querySelector('button[aria-label="Leave call"]')
+        bar?.closest('.fixed')?.setAttribute('style', `bottom:${sb}px`)
+        window.dispatchEvent(new Event('resize'))
+      }, SAFE_B)
+      await page.waitForTimeout(300)
+
+      const scrolled = await page.evaluate(() => {
+        const sc = Array.from(document.querySelectorAll('div')).find(
+          (d) => d.scrollHeight > d.clientHeight + 4 && d.clientHeight > 200,
+        )
+        if (!sc) return false
+        sc.scrollTop = sc.scrollHeight
+        return true
+      })
+      expect(scrolled, 'six people should not fit without scrolling').toBe(true)
+      await page.waitForTimeout(300)
+
+      const { barTop, lowestTile, vh } = await page.evaluate(() => {
+        const bar = document.querySelector('button[aria-label="Leave call"]')!.closest('.fixed') as HTMLElement
+        const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]')).filter(
+          (e) => (e as HTMLElement).offsetHeight > 40 && !e.getAttribute('aria-label')!.includes('drag'),
+        )
+        return {
+          barTop: bar.offsetTop,
+          vh: window.innerHeight,
+          lowestTile: Math.max(...tiles.map((e) => e.getBoundingClientRect().bottom)),
+        }
+      })
+      expect(barTop, 'the island rests on screen').toBeGreaterThan(0)
+      expect(barTop, 'the island rests on screen').toBeLessThan(vh)
+      expect(lowestTile, 'the last row scrolls clear of the bar').toBeLessThanOrEqual(barTop + 1)
+    } finally {
+      await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
 })
