@@ -1,5 +1,14 @@
 import { test, expect, type Page } from '@playwright/test'
-import { uniqueRoom, join, revealChrome, fakeScreenShare, startScreenShare, isTouch } from './helpers'
+import {
+  uniqueRoom,
+  join,
+  openMore,
+  revealChrome,
+  expectChromeVisible,
+  fakeScreenShare,
+  startScreenShare,
+  isTouch,
+} from './helpers'
 
 /**
  * Overlay layering.
@@ -40,14 +49,17 @@ test('top banners queue in one column instead of stacking on each other', async 
   await fakeScreenShare(page, 1280, 720)
   await join(page, room, 'Presenter')
   await startScreenShare(page)
-  await revealChrome(page)
 
   await expect(page.getByText(/You’re sharing your screen|You’re drawing/)).toBeVisible({
     timeout: 30_000,
   })
-  await expect(page.getByLabel('Call duration')).toBeVisible()
   await page.waitForTimeout(400) // let the column settle
 
+  // Reveal LAST, immediately before the measurement. The timer lives in
+  // CallStatusBar, which unmounts with the touch chrome — so a reveal taken before
+  // a 30s wait has long since expired by the time the rows are read, and the column
+  // being measured is missing a row rather than mis-stacked.
+  await expectChromeVisible(page, page.getByLabel('Call duration'))
   const rows = await stackRows(page)
   expect(rows, 'the top overlay column exists').not.toBeNull()
   expect(rows!.length, 'both overlays are in it').toBeGreaterThanOrEqual(2)
@@ -147,7 +159,7 @@ test('only one modal surface is ever mounted', async ({ page }) => {
   await revealChrome(page)
 
   const openFromMore = async (item: RegExp) => {
-    await page.getByRole('button', { name: 'More options' }).click()
+    await openMore(page)
     await page.getByRole('button', { name: item }).click()
   }
 

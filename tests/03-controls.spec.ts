@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, revealChrome, closePanel } from './helpers'
+import { uniqueRoom, attachErrorSink, appErrors, join, openMore, revealChrome, closePanel } from './helpers'
 
 test.describe('In-call controls', () => {
   test('mic + camera toggles flip state; chat panel opens and closes', async ({ page }) => {
@@ -28,7 +28,7 @@ test.describe('In-call controls', () => {
 
   test('More menu exposes layout switch + self-view + audio-only', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
-    await page.getByRole('button', { name: 'More options' }).click()
+    await openMore(page)
     // Quick actions
     await expect(page.getByRole('button', { name: 'Grid' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Speaker' })).toBeVisible()
@@ -63,7 +63,7 @@ test.describe('In-call controls', () => {
 
   test('Audio & video device dialog opens from More', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
-    await page.getByRole('button', { name: 'More options' }).click()
+    await openMore(page)
     await page.getByRole('button', { name: 'Audio & video' }).click()
     const dialog = page.getByRole('dialog', { name: 'Audio & video' })
     await expect(dialog).toBeVisible()
@@ -110,7 +110,7 @@ test.describe('In-call controls', () => {
 
   test('Settings dialog opens from More (theme controls present)', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
-    await page.getByRole('button', { name: 'More options' }).click()
+    await openMore(page)
     await page.getByRole('button', { name: 'Settings' }).click()
     await expect(page.getByRole('dialog')).toBeVisible()
   })

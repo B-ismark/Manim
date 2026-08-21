@@ -71,8 +71,25 @@ helpers + every convention below are in [tests/helpers.ts](tests/helpers.ts).
 **Mobile = pure touch.** Phones have **no Esc key, no hover, no keyboard shortcuts**.
 In tests:
 - Close sheets by tapping the **"Close panel" X** (`closePanel()`), never `Escape`.
-- The control bar **auto-hides after ~4s** on touch — call `revealChrome()` (a real
-  `touchscreen.tap` on the top scrim) before tapping a control.
+- The control bar **auto-hides after ~4s** on touch. Never press one of its controls
+  with a bare `.tap()` — use **`pressChrome(page, control, until)`** (or the wrappers
+  `openMore` / `openChat` / `startScreenShare` / `openEndCallMenu`). `revealChrome()`
+  alone is not enough: it promises the island is up *now*, and Playwright's own
+  actionability loop will then spin for its full 15s without ever re-revealing, so a
+  busy machine turns a working test into "element is outside of the viewport".
+  `pressChrome` re-reveals on every attempt; its `until` argument is the outcome that
+  proves the press landed, which is what keeps a retry from toggling a control like
+  "Share screen" back off.
+- Anything that lives in **`CallStatusBar`** (the call timer, the E2EE padlock)
+  **unmounts** with the chrome rather than sliding away — assert it through
+  **`expectChromeVisible()`**, and reveal *immediately before* the assertion, not
+  before a long wait that outlives the countdown.
+- The stage **view chip** does not auto-hide, but its menu still loses taps on a busy
+  page — switch views with **`selectStageView()`**, which retries against the chip's
+  own label and won't close the menu it needs.
+- `revealChrome()` waits for the island to stop moving before deciding whether to tap,
+  because **the stage tap toggles**: a mid-slide misread hides a bar that was on its
+  way in. Don't "optimise" that settle away.
 - The **More menu is a modal bottom-sheet** on mobile; its scrim blocks everything
   behind it (e.g. the waiting-room Admit banner) — close it before the next action.
 - On desktop these are no-ops (controls always shown; panel is a non-modal dock).
