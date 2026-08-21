@@ -63,6 +63,10 @@ export function DropdownItem({ children, onSelect, icon, tone = 'neutral', disab
       onSelect={onSelect}
       className={cn(
         'flex cursor-pointer items-center gap-2.5 rounded-field px-2.5 py-2 text-sm outline-none select-none',
+        // 44px on a coarse pointer (audit F6) — these rows are ~36px, which clears
+        // WCAG 2.5.8 but not the iOS/Android guidance, and a menu item is a thumb
+        // target on touch. Mouse rows stay compact.
+        'pointer-coarse:min-h-11',
         'data-[highlighted]:bg-sunken data-[disabled]:opacity-40 data-[disabled]:pointer-events-none',
         tone === 'danger' ? 'text-danger-text' : 'text-ink',
         '[&_svg]:size-4 [&_svg]:shrink-0',

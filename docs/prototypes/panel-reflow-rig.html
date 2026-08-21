@@ -601,11 +601,12 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
       the call and toggle the panel to see it.
     </p>
     <p>
-      Capacity is now decided from the <em>undocked</em> stage width, so docking can
-      only shrink tiles — which is what the packer is for. Confirmed against ten real
-      participants at 1024×420: <strong>8 tiles before the toggle and 6 after</strong>,
-      now 8 and 8. It also stops the toggle unmounting and remounting video the client
-      had already decoded. Select rule 05 to see capacity hold.
+      Capacity is now the <em>greater</em> of the docked and undocked fits, so docking
+      can only shrink tiles — which is what the packer is for. Not a substitution: a
+      narrower stage fits shorter tiles and therefore more rows, so above ~1279px it
+      actually holds more, and taking the undocked figure would have hidden people who
+      fit. Confirmed against eleven real participants: <strong>10 tiles before the
+      toggle and 9 after</strong>, now 10 and 10. Select rule 05 to see capacity hold.
     </p>
   </div>
 </section>
@@ -655,8 +656,8 @@ footer { margin-top: 84px; border-top: 1px solid var(--rule); padding-top: 26px;
   <div class="note">
     <div class="h">Also landed</div>
     <p>
-      The grid re-pagination is fixed too — capacity now comes from the undocked
-      stage width, so opening the panel shrinks tiles instead of paging people out.
+      The grid re-pagination is fixed too — capacity is now the greater of the docked
+      and undocked fits, so opening the panel shrinks tiles instead of paging people out.
       That was the hypothesis the brief opened with, and it turned out the packer
       was already doing its half correctly; only the capacity maths was reading the
       wrong width.
