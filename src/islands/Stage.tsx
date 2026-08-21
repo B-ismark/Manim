@@ -337,15 +337,30 @@ type TouchView = 'speaker' | 'gallery' | 'content'
  * Always visible, not part of the auto-hiding chrome. Same argument the page
  * indicator made and the one thing about it worth keeping: taking away the only
  * route between views, four seconds after the last tap, buys nothing.
+ *
+ * BOTTOM-left, not top-left, and that is not a taste call. On a phone the focused
+ * tile is full-bleed, so every corner of the stage is also a corner of somebody's
+ * tile — and the tile's top-left is where its own controls live (the host's
+ * force-mute button, the raised-hand badge). A chip there sits exactly on top of
+ * them: it swallowed the mute button completely, which the multiparty spec caught
+ * by trying to press it. The top-right is taken twice over (StageTopBar's
+ * participants chip and the tile's own action stack) and the top-centre is
+ * TopStack's. The band above the control island is the one place nothing else
+ * claims — it is also the thumb zone, and it is where the dots this replaced were,
+ * so it is where people are already looking. It shares that band with the
+ * self-view card, which is why both take the same `lift` and sit on opposite sides.
  */
 function StageViewSwitcher({
   view,
   hasShare,
+  lift = 0,
   onSelect,
 }: {
   view: TouchView
   /** Someone is sharing — offer the content view even when it's been demoted. */
   hasShare: boolean
+  /** Clearance for the roster strip, matching SelfViewCard's. */
+  lift?: number
   onSelect: (v: TouchView) => void
 }) {
   const meta: Record<TouchView, { label: string; icon: ReactNode }> = {
@@ -358,9 +373,16 @@ function StageViewSwitcher({
     // Inside the stage rather than TopStack: that column is one centred stack of
     // status banners, and this is a control anchored to a corner (the same category
     // as StageTopBar's participants chip, at the same layer).
-    <div className="absolute left-2 top-2 z-20" data-no-stage-gesture>
+    <div
+      className="absolute left-2 z-20"
+      style={{
+        bottom: `max(${SELF_CARD_BOTTOM + lift}px, calc(env(safe-area-inset-bottom) + ${SELF_CARD_BOTTOM - 8 + lift}px))`,
+      }}
+      data-no-stage-gesture
+    >
       <DropdownMenu
-        side="bottom"
+        // Opens upward: there is a whole stage above it and a control bar below.
+        side="top"
         align="start"
         trigger={
           <StageChip aria-label={`View: ${current.label}. Change view`}>
@@ -631,7 +653,7 @@ function TouchStage({
 
       {showSelfCard && localCam && <SelfViewCard trackRef={localCam} lift={selfLift} />}
 
-      <StageViewSwitcher view={view} hasShare={Boolean(share)} onSelect={pickView} />
+      <StageViewSwitcher view={view} hasShare={Boolean(share)} lift={selfLift} onSelect={pickView} />
     </div>
   )
 }

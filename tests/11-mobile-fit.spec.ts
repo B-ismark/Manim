@@ -99,7 +99,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       // Cover would show box/src of the width — about 30% for 9:16-ish in 16:9.
       expect(fit!.shown, 'the whole landscape frame reaches the phone').toBeGreaterThan(0.95)
     } finally {
-      await peer.context.close()
+      await peer.close()
     }
   })
 
@@ -274,7 +274,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       // Deliberately NOT part of the auto-hiding chrome: the only route between
       // views must not disappear four seconds after the last tap.
       const chip = page.getByRole('button', { name: /^View: / })
-      await expect(chip).toBeVisible()
+      await expect(chip).toBeVisible({ timeout: 45_000 })
       await expect(chip).toHaveAccessibleName(/^View: Speaker/)
 
       await chip.tap()
@@ -306,9 +306,11 @@ test.describe('Mobile fit (no page scroll)', () => {
     await join(page, room, 'Host')
     const peer = await newParticipant(browser, room, 'Guest1')
     try {
-      await page.waitForTimeout(1500)
+      // Not a fixed wait: `join()` is satisfied by the PREJOIN screen's own
+      // microphone button, so it can return while the room is still connecting.
+      // The self-view card only exists in-call, so waiting for it is the check.
       const self = page.getByRole('group', { name: /^Your video/ })
-      await expect(self).toBeVisible()
+      await expect(self).toBeVisible({ timeout: 45_000 })
 
       const collapsed = (await self.boundingBox())!
       expect(collapsed.width, 'a glance-able but legible self-view').toBeGreaterThanOrEqual(
