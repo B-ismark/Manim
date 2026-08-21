@@ -78,12 +78,16 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
     bottom; anything parked down there ends up half underneath it (it did, for months).
   - Gallery tile density comes from viewport WIDTH at a 132px legibility floor
     (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
-- **On touch, you are the floating self-view card and NOT a gallery cell.** One of
-  you, at ~33% of the viewport (tap → ~62%), on every view including a share. A cell
-  as well would show you to yourself twice and cost somebody else their tile. Desktop
-  has no floating card at all — every desktop layout already carries you as a real
-  tile. There is deliberately **no swipe gesture** on the stage any more: the view chip
-  is the route, and a gesture would have to fight the gallery's own scroll.
+- **On touch there is exactly ONE of you on screen; WHICH one depends on the view.**
+  GALLERY gives you a real cell, the way every desktop layout does and the way Teams
+  and Meet tile you on a phone. SPEAKER and CONTENT have no cell of yours — one
+  full-bleed feed, and a collapsible thumbnail rail — so those keep the floating
+  self-view card, at ~33% of the viewport (tap → ~62%). The invariant is what to
+  preserve, not the placement: a card AND a cell shows you to yourself twice, so
+  `showSelfCard` in `TouchStage` stands the card down wherever the stage already
+  tiles you. Desktop has no floating card at all. There is deliberately **no swipe
+  gesture** on the stage any more: the view chip is the route, and a gesture would
+  have to fight the gallery's own scroll.
 - **The control island must fit its viewport, and every control stays 44px.** Six 44px
   controls plus gaps and padding is 318px of the 343px available at 375px — there is
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
