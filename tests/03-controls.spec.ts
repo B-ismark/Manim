@@ -84,7 +84,13 @@ test.describe('In-call controls', () => {
     await join(page, uniqueRoom(), 'Ada')
     await revealChrome(page)
 
-    const output = page.getByRole('button', { name: 'Audio output' })
+    // Anchored, because the control's name is not the same string on both
+    // platforms and a bare substring catches things that aren't it. A pointer gets
+    // "Audio output"; touch gets "Audio output: <device>. Tap to change." — the
+    // route is in the name there, since the labelled chip didn't fit the island.
+    // Meanwhile the tray lists the OUTPUT DEVICES, and Chromium's fakes are called
+    // "Fake Default Audio Output", which an unanchored "Audio output" also matches.
+    const output = page.getByRole('button', { name: /^Audio output/ })
     await expect(output).toBeVisible()
     await expect(output).toHaveAttribute('aria-expanded', 'false')
 
@@ -95,8 +101,9 @@ test.describe('In-call controls', () => {
     await expect(page.getByRole('switch', { name: 'Auto-connect Bluetooth' })).toBeVisible()
     // And the name stays unique while the panel is open: the speaker row inside
     // it used to be called "Audio output" too, so a screen-reader user met two
-    // identically-named controls that did different things.
-    await expect(page.getByRole('button', { name: 'Audio output' })).toHaveCount(1)
+    // identically-named controls that did different things. Anchored for the same
+    // reason as above — a device merely CONTAINING the words is not a collision.
+    await expect(page.getByRole('button', { name: /^Audio output/ })).toHaveCount(1)
 
     expect(appErrors(sink)).toEqual([])
   })

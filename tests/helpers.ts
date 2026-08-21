@@ -185,6 +185,38 @@ export async function closePanel(page: Page) {
   if (await x.isVisible().catch(() => false)) await x.click()
 }
 
+/**
+ * Reveal the surface that offers "End call for everyone", and return the control
+ * that triggers it.
+ *
+ * The two platforms reach it differently ON PURPOSE: a pointer gets a caret beside
+ * Leave whose dropdown holds the item, and touch does not, because that caret is
+ * too small to aim at with a thumb — there it is a row in the More sheet instead.
+ * Specs that hard-coded the caret passed on desktop and timed out on mobile, which
+ * nothing noticed while CI ran only the desktop project.
+ *
+ * Leaves the menu/sheet OPEN, so a11y checks can sample it before confirming.
+ */
+export async function openEndCallMenu(page: Page): Promise<Locator> {
+  await revealChrome(page)
+  if (await isTouch(page)) {
+    await page.getByRole('button', { name: 'More options' }).tap()
+    // A row in the sheet, not a menuitem — the sheet is not a menu.
+    return page.getByRole('button', { name: 'End call for everyone' })
+  }
+  await page.getByRole('button', { name: 'End call for everyone' }).click()
+  return page.getByRole('menuitem', { name: 'End call for everyone' })
+}
+
+/** ...and go through it to the confirm dialog, which both platforms share. */
+export async function openEndCallConfirm(page: Page): Promise<void> {
+  const item = await openEndCallMenu(page)
+  await expect(item).toBeVisible()
+  if (await isTouch(page)) await item.tap()
+  else await item.click()
+  await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
+}
+
 /** Open the chat side panel and return the message composer. */
 export async function openChat(page: Page) {
   await revealChrome(page)

@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, openChat, axeViolations, setColorScheme, newParticipant } from './helpers'
+import {
+  uniqueRoom,
+  join,
+  openChat,
+  axeViolations,
+  setColorScheme,
+  newParticipant,
+  openEndCallMenu,
+  isTouch,
+} from './helpers'
 
 /**
  * Automated WCAG 2.1 A/AA sweep (axe-core) across every surface in BOTH colour
@@ -58,16 +67,18 @@ for (const scheme of ['light', 'dark'] as const) {
       await setColorScheme(page, scheme)
       await join(page, uniqueRoom(), 'Ada')
 
-      // Open the end-call dropdown (the caret beside Leave) — renders the danger
-      // menu item whose contrast regressed.
-      await page.getByRole('button', { name: 'End call for everyone' }).click()
-      const item = page.getByRole('menuitem', { name: 'End call for everyone' })
+      // Open whichever surface this platform offers end-for-everyone on — the
+      // caret's dropdown on a pointer, the More sheet on touch — and axe it while
+      // it is actually mounted. Both render the danger item whose contrast
+      // regressed; only one of them is a menu.
+      const item = await openEndCallMenu(page)
       await expect(item).toBeVisible()
       const menuViolations = await axeViolations(page)
       expect(menuViolations, JSON.stringify(menuViolations, null, 2)).toEqual([])
 
       // Selecting it opens the confirm dialog — axe its content too.
-      await item.click()
+      if (await isTouch(page)) await item.tap()
+      else await item.click()
       await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
       const dialogViolations = await axeViolations(page)
       expect(dialogViolations, JSON.stringify(dialogViolations, null, 2)).toEqual([])
