@@ -244,7 +244,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       await page.waitForTimeout(4000)
       expect(await names(), 'the same people are on this page').toEqual(before)
     } finally {
-      await Promise.all(peers.map((p) => p.close()))
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 
@@ -286,7 +286,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       // …and the page must still fit. This is the whole point of paging.
       expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
     } finally {
-      await Promise.all(peers.map((p) => p.close()))
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 
@@ -325,7 +325,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       })
       expect(lowestTile, 'no tile reaches into the control island band').toBeLessThanOrEqual(barTop + 1)
     } finally {
-      await Promise.all(peers.map((p) => p.close()))
+      await Promise.all(peers.map((p) => p.context.close()))
     }
   })
 
