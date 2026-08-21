@@ -63,13 +63,27 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 - **Verify deploys against the served artifact**, not a green build.
 - **Mobile = pure touch**: no Esc / hover / keyboard shortcuts. Sheets close via the
   "Close panel" X; the control bar auto-hides (tap to reveal); More is a modal sheet.
-- **The touch stage is ONE horizontal page sequence, not two layout modes.** Page 0 is
-  the focus view (a featured share, else the speaker, self in a corner card); pages
-  1..n tile everyone (`PagedStage` + `lib/stagePager.ts`). Swipe moves along it — that
-  gesture is the pager AND the grid/speaker switch, so don't rebind it. Desktop returns
-  *before* that branch in `Stage()` and keeps real modes; the two are deliberately
-  separate. Tile density comes from viewport WIDTH at a 132px legibility floor
-  (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
+- **The stage is the Teams three-view model, on both pointer types.** SPEAKER (one
+  large feed + a filmstrip along the TOP on desktop), GALLERY (equal tiles — paged on
+  desktop, vertically SCROLLING on touch past a screenful), CONTENT (a share owns the
+  stage; people on a right-hand rail when the stage is landscape, a bottom strip when
+  it's portrait). `layout` in `useRoomStore` is ONE value across both pointer types —
+  More → View and the touch stage's own view chip set the same thing. A live,
+  undemoted share outranks it and gives you CONTENT; `demotedShares` is the per-viewer
+  "not full-bleed" flag and the ONLY thing that switches away from a share, so route
+  any new control through it rather than adding a second flag.
+  - Strip/big geometry is `lib/shareLayout.ts` and is deliberately FIXED, not sized to
+    the content's aspect — read its header before making it adaptive again.
+  - The speaker filmstrip is at the TOP because the control island floats over the
+    bottom; anything parked down there ends up half underneath it (it did, for months).
+  - Gallery tile density comes from viewport WIDTH at a 132px legibility floor
+    (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
+- **On touch, you are the floating self-view card and NOT a gallery cell.** One of
+  you, at ~33% of the viewport (tap → ~62%), on every view including a share. A cell
+  as well would show you to yourself twice and cost somebody else their tile. Desktop
+  has no floating card at all — every desktop layout already carries you as a real
+  tile. There is deliberately **no swipe gesture** on the stage any more: the view chip
+  is the route, and a gesture would have to fight the gallery's own scroll.
 - **The control island must fit its viewport, and every control stays 44px.** Six 44px
   controls plus gaps and padding is 318px of the 343px available at 375px — there is
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
@@ -97,6 +111,18 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   auto-hide while ANY Radix layer is open (`overlayOpen()` in `RoomView` — it asks the
   DOM, so a new control can't forget to opt in), and the audio picker is a tray *inside*
   the island whose last row is the control bar, so it can't outlive its anchor.
+- **The invite link's #fragment is fragile — `lib/roomKeys.ts` is the safety net.**
+  A URL has exactly one fragment, so a sign-in round trip (`redirectTo` +
+  `#access_token=…`) overwrites the room's `#k=…&e=…`, and everything that shares
+  `location.href` then hands out dead links. The link is the authority, this browser
+  remembers it, and the recovered fragment is written BACK to the address bar — never
+  over an auth fragment. Any new navigation to a room must carry secrets (`roomTo`),
+  never a bare `/r/<slug>`.
+- **`ConnectionQuality` is a bandwidth heuristic, not connection state.** It reports
+  `Lost` for a packet-loss spike and the value sticks until the next update. Only
+  `ConnectionState` (Reconnecting / SignalReconnecting) may be called "lost" in the UI
+  — that's what the reconnect logic, the banner and the announcer all use. Quality may
+  warn, after a hold, and the strongest thing it may say on its own is "weak".
 - **Design decisions → check Mobbin** (Meet/Teams/Zoom/WhatsApp) before guessing.
 - A11y is gated (axe, light + dark); contrast tokens are oklch — compute real WCAG
   ratios when changing them (see QA-PLAYBOOK §3).
