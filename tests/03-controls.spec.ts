@@ -84,10 +84,7 @@ test.describe('In-call controls', () => {
     await join(page, uniqueRoom(), 'Ada')
     await revealChrome(page)
 
-    // Scoped by aria-haspopup on purpose: the panel this opens contains a
-    // "Audio output" device row, so once it's open the plain name matches two
-    // controls. Only one of them is the thing being tested.
-    const output = page.locator('button[aria-haspopup="dialog"][aria-label="Audio output"]')
+    const output = page.getByRole('button', { name: 'Audio output' })
     await expect(output).toBeVisible()
     await expect(output).toHaveAttribute('aria-expanded', 'false')
 
@@ -96,6 +93,10 @@ test.describe('In-call controls', () => {
     // The Bluetooth toggle is the one row that's always present — the device
     // pickers hide themselves when the platform lists no devices of that kind.
     await expect(page.getByRole('switch', { name: 'Auto-connect Bluetooth' })).toBeVisible()
+    // And the name stays unique while the panel is open: the speaker row inside
+    // it used to be called "Audio output" too, so a screen-reader user met two
+    // identically-named controls that did different things.
+    await expect(page.getByRole('button', { name: 'Audio output' })).toHaveCount(1)
 
     expect(appErrors(sink)).toEqual([])
   })

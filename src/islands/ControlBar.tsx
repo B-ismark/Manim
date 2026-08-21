@@ -1002,7 +1002,11 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
   return (
     <div className="flex flex-col gap-3">
       <DeviceRow kind="audioinput" label="Microphone" />
-      <DeviceRow kind="audiooutput" label="Audio output" />
+      {/* "Speaker", not "Audio output": the button that opens this panel is the
+          one called Audio output, and two controls with the same accessible name
+          doing different things is a genuine ambiguity for a screen reader.
+          Matches what DeviceSettings has always called this row. */}
+      <DeviceRow kind="audiooutput" label="Speaker" />
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
       </div>
