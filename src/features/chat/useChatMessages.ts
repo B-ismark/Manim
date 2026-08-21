@@ -618,7 +618,12 @@ export function useChatMessages() {
     bumpUnread(fresh.length)
     sounds.message()
     const last = fresh[fresh.length - 1]
-    const preview = last.kind === 'text' ? plainText(last.text) : `Sent ${last.fileName}`
+    // A file item enters `items` as soon as the transfer starts (progress 0),
+    // not once it's received — this notification fires at that same moment
+    // (there's no follow-up once `notifiedIds` has the id), so it must not
+    // claim the file already arrived.
+    const preview =
+      last.kind === 'text' ? plainText(last.text) : `Sending ${last.fileName}…`
     toast(`${last.fromName}: ${preview.length > 80 ? `${preview.slice(0, 80)}…` : preview}`, 'info')
   }, [items, bumpUnread])
 
