@@ -1,0 +1,711 @@
+<title>Thumb-First Device Picker</title>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+  </symbol>
+  <symbol id="i-micoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v5"/><path d="M9 8v4a3 3 0 0 0 4.6 2.5"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M12 18v3"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5 20 7.5v9L15 13.5z"/>
+  </symbol>
+  <symbol id="i-camoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/><path d="M15 10.5 20 7.5v9l-2-1.2"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M17.5 7a7.5 7.5 0 0 1 0 10"/>
+  </symbol>
+  <symbol id="i-earpiece" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 5.5h4"/>
+  </symbol>
+  <symbol id="i-bt" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 6.5 16 17l-4 4V3l4 4L8 17.5"/>
+  </symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 0 1-8 8H7l-3 2.5V12a8 8 0 1 1 16 0Z"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="6" cy="12" r="1.4" fill="currentColor"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><circle cx="18" cy="12" r="1.4" fill="currentColor"/>
+  </symbol>
+  <symbol id="i-leave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4.5 14.5c3-7 12-7 15 0l-3.2 1.2-1-3a11 11 0 0 0-6.6 0l-1 3z"/>
+  </symbol>
+  <symbol id="i-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 14.5 6-6 6 6"/>
+  </symbol>
+  <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 9.5 6 6 6-6"/>
+  </symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m5 12.5 4.5 4.5L19 7"/>
+  </symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 6l12 12M18 6 6 18"/>
+  </symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 9a8 8 0 0 1 13-3l2 2"/><path d="M19 4v4h-4"/><path d="M20 15a8 8 0 0 1-13 3l-2-2"/><path d="M5 20v-4h4"/>
+  </symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M9 20.5h6"/>
+  </symbol>
+  <symbol id="i-people" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="9" cy="8" r="3.2"/><path d="M3 19c.6-3.4 3-5 6-5s5.4 1.6 6 5"/><path d="M16 5.4a3.2 3.2 0 0 1 0 5.2"/><path d="M18 14.4c1.9.7 3.1 2.2 3.5 4.6"/>
+  </symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>
+  </symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="7" width="18" height="10" rx="2"/><path d="M8 3.5 10.5 6 8 8.5"/>
+  </symbol>
+</svg>
+
+<style>
+/* ───────── harness tokens ─────────
+   Violet-biased neutrals (hue 270) and the accent are lifted from Manim's own
+   oklch token set, so the page reads as part of the product it is proposing to.
+   Same block as docs/prejoin-feed-prototypes.html — these studies are a series. */
+:root{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.58 .13 65);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}}
+:root[data-theme="dark"]{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}
+:root[data-theme="light"]{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.58 .13 65);
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:inherit;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ───────── page furniture ───────── */
+.masthead{padding:72px 0 34px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 18px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.06;letter-spacing:-.028em;font-weight:640}
+.stand{margin:20px 0 0;max-width:60ch;font-size:17px;color:var(--ink-2)}
+
+.brief{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+  padding:22px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:22px}
+.brief dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 6px}
+.brief dd{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.5}
+.brief dd b{color:var(--ink);font-weight:600}
+
+section.block{padding:44px 0 0}
+h2{font-size:22px;letter-spacing:-.015em;font-weight:640}
+.lede{margin:10px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+.lede + .lede{margin-top:12px}
+p code,li code,td code,dd code{font-family:var(--mono);font-size:12.5px;background:var(--sunk);
+  padding:1px 5px;border-radius:4px;color:var(--ink)}
+
+/* ───────── variant heading ───────── */
+.vhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;
+  border-top:1px solid var(--rule-2);padding-top:18px}
+.badge{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;padding:1px 6px;flex:none;translate:0 -2px}
+.vhead h3{font-size:21px;letter-spacing:-.015em;font-weight:640}
+.vhead .ref{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto;
+  letter-spacing:.06em;align-self:center;min-width:0;overflow-wrap:anywhere}
+.vbody{margin:12px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+.vbody + .vbody{margin-top:12px}
+
+.tradeoffs{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:7px;max-width:70ch}
+.tradeoffs li{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:14px;color:var(--ink-2);
+  line-height:1.5}
+.tradeoffs .m{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding-top:3px;white-space:nowrap}
+.tradeoffs .m.plus{color:var(--good)} .tradeoffs .m.minus{color:var(--warn)}
+
+/* ───────── device frames ───────── */
+.frames{--s:.60;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin:24px 0 0}
+.fig{display:flex;flex-direction:column;gap:8px}
+.frame{overflow:hidden;border-radius:calc(14px * var(--s));border:1px solid var(--rule);
+  background:oklch(.17 .012 270);
+  width:calc(var(--w) * 1px * var(--s));height:calc(var(--h) * 1px * var(--s))}
+.frame > .screen{width:calc(var(--w) * 1px);height:calc(var(--h) * 1px);
+  transform:scale(var(--s));transform-origin:0 0}
+.cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3);max-width:calc(var(--w) * 1px * var(--s))}
+@media (max-width:900px){.frames{--s:.48}}
+@media (max-width:700px){.frames{--s:.40}}
+@media (max-width:460px){.frames{--s:.30}}
+
+/* ───────── Manim mock: dark token set, locked ─────────
+   The mockups are screenshots of the product, not theme-reactive page content —
+   they stay in Manim dark regardless of the harness theme. */
+.mk{--stage:oklch(.17 .012 270);--surface:oklch(.23 .014 270);--sunken:oklch(.2 .012 270);
+  --line:oklch(.32 .014 270);--mink:oklch(.96 .005 270);--mink-2:oklch(.72 .01 270);
+  --mink-3:oklch(.65 .012 270);--acc:oklch(.55 .18 275);--acc-ink:oklch(.99 0 0);
+  --dngr:oklch(.55 .21 25);--succ:oklch(.66 .16 150);--ovl:oklch(.18 .02 270 / .72);
+  --scrim:oklch(.1 .02 270 / .55);
+  --r-tile:16px;--r-island:24px;--r-field:12px;
+  font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--stage);color:var(--mink);height:100%;width:100%;box-sizing:border-box;
+  position:relative;overflow:hidden;font-size:14px;line-height:1.4}
+.mk *{box-sizing:border-box}
+.mk .i{width:20px;height:20px;flex:none}
+
+/* video feed illustration */
+.feed{position:relative;overflow:hidden;background:
+  radial-gradient(120% 90% at 20% 0%, oklch(.44 .022 255), oklch(.29 .02 262) 70%)}
+.feed.b{background:radial-gradient(120% 90% at 70% 0%, oklch(.42 .03 30), oklch(.27 .022 20) 70%)}
+.feed.c{background:radial-gradient(120% 90% at 30% 10%, oklch(.43 .028 150), oklch(.28 .02 160) 70%)}
+.feed.d{background:radial-gradient(120% 90% at 60% 0%, oklch(.45 .03 300), oklch(.28 .022 295) 70%)}
+.feed .torso{position:absolute;left:50%;bottom:-16%;translate:-50% 0;width:70%;height:52%;
+  border-radius:48% 48% 0 0 / 66% 66% 0 0;background:oklch(.55 .018 262)}
+.feed .head{position:absolute;left:50%;top:22%;translate:-50% 0;width:30%;aspect-ratio:1;
+  border-radius:50%;background:radial-gradient(circle at 34% 28%,oklch(.85 .13 88),oklch(.66 .16 68))}
+.feed .nm{position:absolute;left:6px;bottom:5px;font-size:10px;color:oklch(.98 0 0);
+  background:var(--ovl);border-radius:999px;padding:2px 7px;max-width:80%;overflow:hidden;
+  white-space:nowrap;text-overflow:ellipsis}
+.tile{border-radius:var(--r-tile);overflow:hidden;position:relative;background:var(--sunken)}
+.tile.off{display:grid;place-items:center}
+.tile.off .av{width:34%;aspect-ratio:1;border-radius:50%;background:var(--line);display:grid;
+  place-items:center;font-size:13px;color:var(--mink-2);font-weight:600;max-width:52px}
+.tile.spk{outline:2px solid var(--succ);outline-offset:-2px}
+
+/* the control island */
+.bar{position:absolute;left:50%;translate:-50% 0;bottom:12px;background:var(--surface);
+  border-radius:var(--r-island);padding:8px 12px;display:flex;gap:7px;align-items:center;
+  box-shadow:0 12px 40px -12px oklch(.08 .03 270 / .6);z-index:6}
+.ctl{width:40px;height:40px;border-radius:999px;background:var(--sunken);color:var(--mink);
+  display:grid;place-items:center;flex:none}
+.ctl.acc{background:var(--acc);color:var(--acc-ink)}
+.ctl.danger{background:var(--dngr);color:oklch(.99 0 0)}
+.ctl.sm{width:30px;height:30px}.ctl.sm .i{width:15px;height:15px}
+.ctl .i{width:19px;height:19px}
+.ctl.glass{background:var(--ovl);backdrop-filter:blur(8px);color:oklch(.98 0 0)}
+.badgen{position:absolute;top:-2px;right:-2px;min-width:15px;height:15px;border-radius:999px;
+  background:var(--acc);color:var(--acc-ink);font-size:9px;font-weight:700;display:grid;
+  place-items:center;padding:0 3px}
+
+/* chips + pills */
+.pill{display:inline-flex;align-items:center;gap:6px;background:var(--ovl);backdrop-filter:blur(8px);
+  border-radius:999px;padding:5px 11px;font-size:11px;color:oklch(.98 0 0);flex:none}
+.pill .i{width:13px;height:13px}
+.pill.acc{background:var(--acc);color:var(--acc-ink);backdrop-filter:none}
+.topbar{position:absolute;top:10px;left:10px;right:10px;display:flex;align-items:center;gap:6px;z-index:5}
+.topbar .sp{flex:1}
+
+/* sheets */
+.scrim{position:absolute;inset:0;background:var(--scrim);z-index:7}
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--surface);
+  border-radius:22px 22px 0 0;z-index:8;padding:8px 0 14px;
+  box-shadow:0 -12px 44px -14px oklch(.08 .03 270 / .7)}
+.grab{width:36px;height:4px;border-radius:999px;background:var(--line);margin:2px auto 8px}
+.shhd{display:flex;align-items:center;gap:8px;padding:0 16px 8px}
+.shhd h4{margin:0;font-size:15px;font-weight:620;letter-spacing:-.01em}
+.shhd .sp{flex:1}
+.grp{font-size:10.5px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mink-3);padding:10px 16px 4px}
+.row56{min-height:56px;display:flex;align-items:center;gap:13px;padding:8px 16px}
+.row56 .i{width:21px;height:21px;color:var(--mink-2)}
+.row56 .tx{flex:1;min-width:0}
+.row56 .t1{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row56 .t2{font-size:11.5px;color:var(--mink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row56.on{background:color-mix(in oklch,var(--acc) 15%,transparent)}
+.row56.on .i,.row56.on .ck{color:var(--acc)}
+.row56 .ck{width:20px;height:20px;flex:none}
+.sw{width:40px;height:24px;border-radius:999px;background:var(--sunken);border:1px solid var(--line);
+  position:relative;flex:none}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:var(--mink-3)}
+.sw.on{background:var(--acc);border-color:var(--acc)}
+.sw.on::after{left:auto;right:2px;background:oklch(.99 0 0)}
+.hr{height:1px;background:var(--line);margin:8px 0}
+
+/* the "current" broken states */
+.pop{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:18px;
+  padding:10px;z-index:8;box-shadow:0 14px 44px -12px oklch(.08 .03 270 / .7);width:250px}
+.pop .lbl{font-size:10.5px;font-weight:600;color:var(--mink-3);margin:0 0 4px;padding:0 2px}
+.sel{height:38px;border-radius:var(--r-field);background:var(--sunken);display:flex;align-items:center;
+  gap:8px;padding:0 10px;font-size:12.5px;color:var(--mink)}
+.sel .tx{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sel .i{width:14px;height:14px;color:var(--mink-3)}
+.dd{position:absolute;background:oklch(.26 .014 270);border:1px solid var(--line);border-radius:14px;
+  padding:6px;z-index:9;width:214px;box-shadow:0 14px 44px -12px oklch(.08 .03 270 / .75)}
+.dd .it{height:34px;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:12.5px;
+  border-radius:9px}
+.dd .it .i{width:14px;height:14px}
+.dd .it.on{background:var(--sunken)}
+.ghost{position:absolute;border:1.5px dashed var(--dngr);border-radius:var(--r-island);z-index:4}
+.gtag{position:absolute;font-family:var(--mono);font-size:10px;letter-spacing:.05em;
+  background:var(--dngr);color:oklch(.99 0 0);border-radius:4px;padding:1px 5px;z-index:5;
+  white-space:nowrap}
+
+/* an expanding tray built INTO the island */
+.tray{position:absolute;left:8px;right:8px;bottom:12px;background:var(--surface);
+  border-radius:var(--r-island);z-index:8;overflow:hidden;
+  box-shadow:0 12px 44px -12px oklch(.08 .03 270 / .65)}
+.seg{display:flex;gap:4px;padding:10px 12px 4px}
+.seg > div{flex:1;height:32px;border-radius:999px;background:var(--sunken);display:grid;
+  place-items:center;font-size:12.5px;font-weight:520;color:var(--mink-2)}
+.seg > div.on{background:var(--acc);color:var(--acc-ink)}
+.trayfoot{display:flex;gap:7px;align-items:center;padding:9px 12px;background:var(--sunken)}
+
+/* route rail inside the island */
+.rail{display:flex;gap:6px;align-items:center;overflow:hidden}
+.rchip{height:34px;border-radius:999px;background:var(--sunken);display:flex;align-items:center;
+  gap:6px;padding:0 11px;font-size:12px;flex:none;color:var(--mink)}
+.rchip.on{background:var(--acc);color:var(--acc-ink)}
+.rchip .i{width:15px;height:15px}
+
+/* filmstrips + pagers */
+.strip{position:absolute;left:8px;right:8px;display:flex;gap:6px;z-index:5}
+.dots{display:flex;gap:5px;align-items:center;justify-content:center}
+.dots i{width:6px;height:6px;border-radius:50%;background:oklch(.98 0 0 / .35);display:block}
+.dots i.on{background:oklch(.98 0 0);width:16px;border-radius:999px}
+
+/* helpers */
+.col{display:flex;flex-direction:column}
+.row{display:flex}.center{align-items:center}.between{justify-content:space-between}
+.grow{flex:1;min-height:0;min-width:0}
+.gap4{gap:4px}.gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}
+.stagepad{position:absolute;inset:0;padding:8px;display:flex;flex-direction:column;gap:6px}
+
+/* ───────── comparison table ───────── */
+.tblwrap{overflow-x:auto;margin:22px 0 0;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th,td{text-align:left;padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding-top:14px}
+tbody th{font-weight:600;color:var(--ink)}
+td{color:var(--ink-2)}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tr.pick td,tr.pick th{background:var(--accent-soft)}
+
+.rec{margin:34px 0 0;border:1px solid var(--rule-2);border-left:3px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:20px 22px;background:var(--bg-2)}
+.rec h2{font-size:17px;margin:0 0 10px}
+.rec p{margin:0 0 10px;font-size:14.5px;color:var(--ink-2);max-width:64ch}
+.rec p:last-child{margin-bottom:0}
+
+.shared{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px}
+.shared li{display:grid;grid-template-columns:24px 1fr;gap:12px;font-size:14.5px;color:var(--ink-2)}
+.shared .n{font-family:var(--mono);font-size:11px;color:var(--accent);padding-top:4px}
+.shared b{color:var(--ink);font-weight:600}
+
+.note{margin:22px 0 0;padding:14px 16px;border:1px solid var(--rule);border-radius:10px;
+  background:var(--bg-2);font-size:14px;color:var(--ink-2);max-width:70ch}
+.note b{color:var(--ink)}
+
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-3)}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Manim · in-call devices · interaction study</p>
+  <h1>The island should own its picker, not hand it to the stage.</h1>
+  <p class="stand">Tapping the mic selector on a phone opens a popover full of nested dropdowns, and
+  four seconds later the bar it was attached to slides away and leaves it there. The orphaning is
+  fixed. This is about the pattern underneath it — and none of Meet, Teams, Zoom, WhatsApp or
+  FaceTime uses a dropdown here.</p>
+</header>
+
+<dl class="brief">
+  <div><dt>The one job</dt><dd>“<b>Play the audio somewhere else.</b>” On a phone, device selection is almost always <em>routing</em> — earpiece, speaker, the headset that just connected.</dd></div>
+  <div><dt>Hard constraint</dt><dd><b>Pure touch.</b> No Esc, no hover. Everything closes by an X, a tap on the trigger, or a drag down.</dd></div>
+  <div><dt>Hard constraint</dt><dd><b>No page scroll.</b> Panels scroll internally. Check <code>mobile-sm</code> (375×667).</dd></div>
+  <div><dt>Already fixed</dt><dd>The orphaned island and the leaked desktop carets — see the <a href="mobile-control-island-audit.md">audit</a>. This study replaces the pattern, not the bug.</dd></div>
+</dl>
+
+<section class="block">
+  <h2>What it does today</h2>
+  <p class="lede">Two states, both real. On the left, the caret that was never meant to be on a phone
+  (<code>hidden pointer-fine:inline-flex</code> is inert on an <code>IconButton</code>) opening a
+  <code>side="top"</code> popover whose rows each open <em>another</em> popover. Radix flips a panel
+  that doesn't fit, so on a short phone the second one can genuinely resolve downward — a dropdown
+  hanging off a control that sits 40&nbsp;px from the bottom of the screen.</p>
+  <p class="lede">On the right, the orphaning: the same popover four seconds later. The countdown was
+  armed on mount and reset only by taps on the <em>stage</em>, so a picker opened at t=3.9s had 100&nbsp;ms
+  to live, and tapping the bar bought it nothing.</p>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+
+          <div class="pop" style="left:12px;bottom:66px">
+            <p class="lbl">Microphone</p>
+            <div class="sel"><span class="tx">Default — iPhone Microphone</span><svg class="i"><use href="#i-down"/></svg></div>
+            <p class="lbl" style="margin-top:9px">Audio output</p>
+            <div class="sel"><span class="tx">No devices found</span><svg class="i"><use href="#i-down"/></svg></div>
+            <div class="hr"></div>
+            <div class="row center between" style="padding:2px 2px 0"><span style="font-size:12px">Auto-connect Bluetooth</span><i class="sw"></i></div>
+            <div class="hr"></div>
+            <div class="row center between" style="padding:2px 2px 0"><span style="font-size:12px">Noise suppression</span><i class="sw on"></i></div>
+          </div>
+          <!-- the nested dropdown, resolved DOWNWARD because the panel above it is tall -->
+          <div class="dd" style="left:26px;top:432px">
+            <div class="it on"><svg class="i"><use href="#i-check"/></svg>Default — iPhone Microphone</div>
+            <div class="it"><svg class="i" style="opacity:0"><use href="#i-check"/></svg>iPhone Microphone (Front)</div>
+            <div class="it"><svg class="i" style="opacity:0"><use href="#i-check"/></svg>AirPods Pro</div>
+          </div>
+          <div class="gtag" style="left:26px;top:412px">flips down · clipped · no scroll</div>
+
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl acc" style="width:26px;border-radius:999px"><svg class="i" style="width:14px;height:14px"><use href="#i-caret"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl" style="width:26px;border-radius:999px"><svg class="i" style="width:14px;height:14px"><use href="#i-caret"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Current · t=0 · popover + nested dropdown</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="topbar" style="opacity:.25"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+
+          <div class="pop" style="left:12px;bottom:66px">
+            <p class="lbl">Microphone</p>
+            <div class="sel"><span class="tx">Default — iPhone Microphone</span><svg class="i"><use href="#i-down"/></svg></div>
+            <p class="lbl" style="margin-top:9px">Audio output</p>
+            <div class="sel"><span class="tx">No devices found</span><svg class="i"><use href="#i-down"/></svg></div>
+            <div class="hr"></div>
+            <div class="row center between" style="padding:2px 2px 0"><span style="font-size:12px">Auto-connect Bluetooth</span><i class="sw"></i></div>
+            <div class="hr"></div>
+            <div class="row center between" style="padding:2px 2px 0"><span style="font-size:12px">Noise suppression</span><i class="sw on"></i></div>
+          </div>
+          <div class="ghost" style="left:14px;right:14px;bottom:12px;height:56px"></div>
+          <div class="gtag" style="left:14px;bottom:74px">the island left · popover stayed</div>
+        </div></div>
+      </div>
+      <p class="cap">Current · t=4s · orphaned</p>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>What the reference apps actually do</h2>
+  <p class="lede">Every one of them is a <b>bottom sheet</b>, and every one of them presents
+  <b>routes</b> rather than device strings. None anchors a panel to the control bar, and none makes
+  camera selection a list.</p>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>App</th><th>Surface</th><th>What it lists</th><th>Camera</th></tr></thead>
+      <tbody>
+        <tr><th>Google Meet</th><td>Material bottom sheet from More</td><td>Speaker / Earpiece / Bluetooth / Wired</td><td>Flip button on the self-view</td></tr>
+        <tr><th>Microsoft Teams</th><td>“Audio and video settings” bottom sheet</td><td>Routes, plus device audio for shares</td><td>Flip button</td></tr>
+        <tr><th>Zoom</th><td>More → Audio, bottom sheet</td><td>Routes</td><td>Flip button</td></tr>
+        <tr><th>WhatsApp</th><td>One speaker <em>toggle</em>; sheet only when a headset exists</td><td>Speaker on/off, then routes</td><td>Flip button</td></tr>
+        <tr><th>FaceTime</th><td>Defers to the OS (Control Centre / AirPlay)</td><td>—</td><td>Flip button</td></tr>
+        <tr><th>Discord</th><td>Bottom sheet, oversized rows</td><td>Routes</td><td>Flip button</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="lede">Manim already gets the camera half right — flip lives on the self-view tile, and the
+  camera caret that duplicated it as a list is gone. What's left is the audio half.</p>
+</section>
+
+<!-- ══════════════════ A ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">A</span>
+    <h3>Audio sheet</h3>
+    <span class="ref">ref: meet · teams · zoom</span>
+  </div>
+  <p class="vbody">The speaker button opens a bottom sheet from the same edge the island lives on. One
+  flat level — no dropdown inside a popover inside a bar — with 56&nbsp;px rows, routing first and the
+  input/processing controls as a second section. The island stays exactly where it was, visible above
+  the sheet's shoulder, so the thing you tapped is still on screen and still says it's open.</p>
+  <p class="vbody">Route names come first because that's the decision (<em>“put it on the headset”</em>),
+  with the device string as the secondary line for the machines that have five of them.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Matches every reference app, and the sheet primitive already exists (<code>Sheet side="bottom"</code>) with drag detents and a Close X.</span></li>
+    <li><span class="m plus">for</span><span>Flat. Nothing nests, so nothing can flip the wrong way or clip without a scroll container.</span></li>
+    <li><span class="m minus">against</span><span>The island is still a separate element that <em>could</em> drift from the sheet; it relies on the hold, not on structure.</span></li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="scrim"></div>
+          <div class="bar" style="bottom:302px">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl acc"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+          <div class="sheet">
+            <i class="grab"></i>
+            <div class="shhd"><h4>Audio</h4><span class="sp"></span><span class="ctl sm"><svg class="i"><use href="#i-x"/></svg></span></div>
+            <p class="grp">Play sound through</p>
+            <div class="row56 on"><svg class="i"><use href="#i-bt"/></svg><div class="tx"><div class="t1">AirPods Pro</div><div class="t2">Bluetooth · connected</div></div><svg class="ck"><use href="#i-check"/></svg></div>
+            <div class="row56"><svg class="i"><use href="#i-speaker"/></svg><div class="tx"><div class="t1">Speaker</div></div></div>
+            <div class="row56"><svg class="i"><use href="#i-earpiece"/></svg><div class="tx"><div class="t1">Earpiece</div></div></div>
+            <div class="hr"></div>
+            <p class="grp">Microphone</p>
+            <div class="row56 on"><svg class="i"><use href="#i-mic"/></svg><div class="tx"><div class="t1">AirPods Pro</div><div class="t2">Follows the output</div></div><svg class="ck"><use href="#i-check"/></svg></div>
+            <div class="row56"><svg class="i"><use href="#i-mic"/></svg><div class="tx"><div class="t1">iPhone Microphone</div></div></div>
+            <div class="hr"></div>
+            <div class="row56"><svg class="i"><use href="#i-mic"/></svg><div class="tx"><div class="t1">Noise suppression</div><div class="t2">Filters keyboards and traffic</div></div><i class="sw on"></i></div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">A · flat sheet, island above the shoulder</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="scrim"></div>
+          <div class="bar" style="bottom:210px">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="ctl acc"><svg class="i"><use href="#i-speaker"/></svg></span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+          <div class="sheet">
+            <i class="grab"></i>
+            <div class="shhd"><h4>Audio</h4><span class="sp"></span><span class="ctl sm"><svg class="i"><use href="#i-x"/></svg></span></div>
+            <p class="grp">Play sound through</p>
+            <div class="row56 on"><svg class="i"><use href="#i-speaker"/></svg><div class="tx"><div class="t1">Speaker</div><div class="t2">This iPhone</div></div><svg class="ck"><use href="#i-check"/></svg></div>
+            <div class="row56"><svg class="i"><use href="#i-earpiece"/></svg><div class="tx"><div class="t1">Earpiece</div></div></div>
+            <div class="hr"></div>
+            <div class="row56"><svg class="i"><use href="#i-mic"/></svg><div class="tx"><div class="t1">Noise suppression</div><div class="t2">Filters keyboards and traffic</div></div><i class="sw on"></i></div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">A · iOS Safari — no routing, so it isn't offered</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ B ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">B</span>
+    <h3>The island grows a tray</h3>
+    <span class="ref">ref: ios control centre · dynamic island</span>
+  </div>
+  <p class="vbody">The persistent anchor taken literally: the island doesn't open a panel, it
+  <em>becomes</em> one. The bar keeps its position and its buttons and gains a body above them, so the
+  control bar is the tray's bottom row. There is no second element to lose track of — orphaning stops
+  being a bug you can fix and becomes a state that cannot be constructed.</p>
+  <p class="vbody">A segmented header carries Audio / Video, which is also where the two device carets
+  we just deleted go: one tap to the same content, at a full-width target instead of a 26&nbsp;px chevron.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>Structurally cannot orphan. The anchor <em>is</em> the surface.</span></li>
+    <li><span class="m plus">for</span><span>Keeps the island's identity — it grows in place instead of being covered by something that arrives from off-screen.</span></li>
+    <li><span class="m plus">for</span><span>Mute / leave stay live and in the same place while you're picking a route, which the scrimmed sheet in A takes away.</span></li>
+    <li><span class="m minus">against</span><span>A new primitive. <code>Island</code> has no expanding variant, and the height animation has to not reflow the stage.</span></li>
+    <li><span class="m minus">against</span><span>Less room than a sheet — a long device list needs its own internal scroll, where the sheet can just grow a detent.</span></li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+          <div class="tray">
+            <div class="seg"><div class="on">Audio</div><div>Video</div></div>
+            <p class="grp">Play sound through</p>
+            <div class="row56 on" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-bt"/></svg><div class="tx"><div class="t1">AirPods Pro</div><div class="t2">Bluetooth</div></div><svg class="ck"><use href="#i-check"/></svg></div>
+            <div class="row56" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-speaker"/></svg><div class="tx"><div class="t1">Speaker</div></div></div>
+            <div class="row56" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-earpiece"/></svg><div class="tx"><div class="t1">Earpiece</div></div></div>
+            <div class="row56" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-mic"/></svg><div class="tx"><div class="t1">Noise suppression</div></div><i class="sw on"></i></div>
+            <div class="trayfoot">
+              <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+              <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+              <span class="ctl acc"><svg class="i"><use href="#i-speaker"/></svg></span>
+              <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+              <span class="grow"></span>
+              <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">B · open — the bar is the tray's last row</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+          <div class="tray">
+            <div class="seg"><div>Audio</div><div class="on">Video</div></div>
+            <p class="grp">Camera</p>
+            <div class="row56 on" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-cam"/></svg><div class="tx"><div class="t1">Front camera</div></div><svg class="ck"><use href="#i-check"/></svg></div>
+            <div class="row56" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-flip"/></svg><div class="tx"><div class="t1">Back camera</div></div></div>
+            <div class="row56" style="padding:6px 14px;min-height:50px"><svg class="i"><use href="#i-camoff"/></svg><div class="tx"><div class="t1">Incoming video</div><div class="t2">Turn off to save data</div></div><i class="sw on"></i></div>
+            <div class="trayfoot">
+              <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+              <span class="ctl acc"><svg class="i"><use href="#i-cam"/></svg></span>
+              <span class="ctl"><svg class="i"><use href="#i-speaker"/></svg></span>
+              <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+              <span class="grow"></span>
+              <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">B · Video segment</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ C ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">C</span>
+    <h3>Route rail, in place</h3>
+    <span class="ref">ref: whatsapp speaker toggle</span>
+  </div>
+  <p class="vbody">The observation behind this one: the common case isn't “choose from my devices”, it's
+  “<em>not this one</em>” — two or three routes, one of which is already correct. So the speaker button
+  expands the island itself into a horizontal rail of route chips. No overlay, no scrim, nothing to
+  dismiss: tap a chip and the rail collapses back to a button showing the route you're on.</p>
+  <p class="vbody">The long tail (a specific mic on a laptop, noise suppression) doesn't disappear — the
+  last chip is <b>More</b>, which opens A's sheet.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">for</span><span>The fastest possible version of the common case, and it never covers the call.</span></li>
+    <li><span class="m plus">for</span><span>No new surface at all — the island already reflows for the docked panel.</span></li>
+    <li><span class="m minus">against</span><span>The bar's buttons move sideways to make room, which is exactly the kind of shifting target the audit was complaining about.</span></li>
+    <li><span class="m minus">against</span><span>Only fits three or four chips at 375&nbsp;px. Beyond that it's a scroller inside a control bar.</span></li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+          <div class="bar" style="left:8px;right:8px;translate:0 0;flex-direction:column;align-items:stretch;gap:8px">
+            <div class="rail">
+              <span class="rchip on"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+              <span class="rchip"><svg class="i"><use href="#i-speaker"/></svg>Speaker</span>
+              <span class="rchip"><svg class="i"><use href="#i-earpiece"/></svg>Earpiece</span>
+              <span class="rchip"><svg class="i"><use href="#i-more"/></svg></span>
+            </div>
+            <div class="row gap6 center">
+              <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+              <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+              <span class="ctl acc"><svg class="i"><use href="#i-speaker"/></svg></span>
+              <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+              <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+              <span class="grow"></span>
+              <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">C · rail open, call uncovered</p>
+    </div>
+
+    <div class="fig">
+      <div class="frame" style="--w:375;--h:667">
+        <div class="screen"><div class="mk">
+          <div class="feed" style="position:absolute;inset:0"><i class="torso"></i><i class="head"></i></div>
+          <div class="topbar"><span class="pill">12:04</span><span class="sp"></span><span class="pill"><svg class="i"><use href="#i-people"/></svg>4</span></div>
+          <div class="bar">
+            <span class="ctl"><svg class="i"><use href="#i-mic"/></svg></span>
+            <span class="ctl"><svg class="i"><use href="#i-cam"/></svg></span>
+            <span class="rchip on" style="height:40px"><svg class="i"><use href="#i-bt"/></svg>AirPods</span>
+            <span class="ctl" style="position:relative"><svg class="i"><use href="#i-chat"/></svg><i class="badgen">2</i></span>
+            <span class="ctl"><svg class="i"><use href="#i-more"/></svg></span>
+            <span class="ctl danger"><svg class="i"><use href="#i-leave"/></svg></span>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">C · collapsed — the button states the route</p>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <h2>What all three assume</h2>
+  <p class="lede">These are the moves that make any of them work, and they're where most of the value is.
+  Two of them close findings the audit left open.</p>
+  <ul class="shared">
+    <li><span class="n">01</span><span><b>Routes, not device strings.</b> “AirPods Pro · Bluetooth” beats “Default — Communications — AirPods Pro (Bluetooth)”. Group by what the user is choosing between; the raw label is the second line, for the machines that need it.</span></li>
+    <li><span class="n">02</span><span><b>Nothing nests.</b> One level, always. Every current mobile path is a picker inside a picker, and that's what produces both the flip and the clipping.</span></li>
+    <li><span class="n">03</span><span><b>Don't offer routing iOS Safari can't do</b> (audit F5). It exposes no <code>audiooutput</code> devices and no <code>setSinkId</code>, so a control labelled “Audio output” opens a panel with no output in it. Either hide it or call it “Audio” and let it carry the mic and noise controls it actually has.</span></li>
+    <li><span class="n">04</span><span><b>44&nbsp;px minimum on every touch row</b> (audit F6). <code>MenuRow</code> and <code>DropdownItem</code> are ~36&nbsp;px and the View chips ~32&nbsp;px, on a surface that only exists for thumbs. All clear WCAG AA, none clear the platform guidance, and <code>GridTile</code> next to them is 68&nbsp;px.</span></li>
+    <li><span class="n">05</span><span><b>Camera stays a flip, not a list.</b> Every reference app agrees, the self-view tile already has the button, and the caret that duplicated it as a list is gone.</span></li>
+    <li><span class="n">06</span><span><b>Re-run the gates.</b> <code>test:mobile</code> and <code>test:mobile-sm</code> for the no-scroll rule, and <code>test:a11y</code> in both themes — B introduces a new surface that holds focusable controls while the stage is still live, which is the exact shape that produced the <code>aria-hidden-focus</code> finding behind <code>DropdownMenu</code>'s non-modal note.</span></li>
+  </ul>
+</section>
+
+<section class="block">
+  <h2>Side by side</h2>
+  <div class="tblwrap">
+    <table>
+      <thead><tr><th>&nbsp;</th><th>Taps to switch route</th><th>Can orphan?</th><th>Covers the call</th><th>New primitive</th><th>Effort</th></tr></thead>
+      <tbody>
+        <tr><th>Current</th><td class="n">3 (+ a flip risk)</td><td>Yes — by construction</td><td>Partly</td><td>—</td><td>—</td></tr>
+        <tr><th>A · Audio sheet</th><td class="n">2</td><td>Only if the hold breaks</td><td>Yes, scrimmed</td><td>No</td><td>Low</td></tr>
+        <tr class="pick"><th>B · Island tray</th><td class="n">2</td><td>No — structurally</td><td>Bar-height only</td><td>Yes</td><td>Medium</td></tr>
+        <tr><th>C · Route rail</th><td class="n">2</td><td>No — nothing to orphan</td><td>No</td><td>No</td><td>Low</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="rec">
+  <h2>If you want a recommendation</h2>
+  <p><b>B for the shell, A's content model inside it, C's rail as the collapsed state.</b> They compose
+  rather than compete. B is the only one that answers the actual complaint structurally — a tray whose
+  bottom row is the control bar cannot be separated from it, so the orphaned state stops being
+  something a future control can reintroduce. A supplies what goes in it: one flat level, routes first,
+  56&nbsp;px rows. C supplies the closed state — a speaker button that reads <em>“AirPods”</em> instead of
+  a generic icon answers “where is my audio going?” without opening anything at all.</p>
+  <p>If only one thing ships, ship <b>A</b>. It's the smallest change, it uses a primitive that already
+  exists with drag detents and a Close X, and it removes the nesting that causes the flip and the
+  clipping. B's tray is the better answer and the one worth building, but it's a new primitive and it
+  wants the a11y pass repeated.</p>
+  <p>C alone is tempting and I'd argue against it as the only change: it shifts the positions of the
+  buttons either side of it, and a control bar whose targets move while you're reaching for them is the
+  same class of problem as one that slides away.</p>
+</div>
+
+<footer>Manim · in-call device picker · 3 prototypes · closes audit F3 / F5 / F6</footer>
+
+</div>
