@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * Geometry of the DOCKED side panel, and the control bar's collision offset.
@@ -43,6 +43,8 @@ export const PANEL_GUTTER = 12
  * never moves. Only from `xl` is the panel full-height and beside the bar.
  */
 const BESIDE_BAR_MIN = 1280
+/** Tailwind `lg`. Below this the panel floats over the stage instead of docking it. */
+const DOCKS_MIN = 1024
 
 /**
  * The width of the panel the control bar can actually collide with — 0 at every
@@ -50,6 +52,33 @@ const BESIDE_BAR_MIN = 1280
  */
 export function collidingPanelWidth(vw: number): number {
   return vw >= BESIDE_BAR_MIN ? 384 : 0 // Sheet: xl:w-[24rem]
+}
+
+/**
+ * How much horizontal room the docked panel takes away from the stage — mirroring
+ * RoomView's `lg:pr-[22rem] xl:pr-[25rem]`. 0 below `lg`, where the panel floats
+ * over the stage and takes nothing.
+ *
+ * Callers ADD this back before deciding how many tiles fit, so that docking the
+ * panel can only ever shrink tiles — never page people out of the call. Deciding
+ * capacity from the narrowed width is what used to drop four people to page 2 at
+ * 1024px the moment you opened chat.
+ */
+export function dockedStageInset(vw: number): number {
+  if (vw < DOCKS_MIN) return 0
+  return vw >= BESIDE_BAR_MIN ? 400 : 352 // RoomView: lg:pr-[22rem] · xl:pr-[25rem]
+}
+
+/** Viewport width, re-read on resize. */
+export function useViewportWidth(): number {
+  const [vw, setVw] = useState(() => (typeof window === 'undefined' ? 0 : window.innerWidth))
+  useEffect(() => {
+    const onResize = () => setVw(window.innerWidth)
+    onResize()
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  return vw
 }
 
 /**

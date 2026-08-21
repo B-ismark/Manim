@@ -31,7 +31,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
-import { useRoomStore, type GridSize } from '@/store/useRoomStore'
+import { useRoomStore } from '@/store/useRoomStore'
 import { useEffectsUi } from '@/store/useEffectsUi'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
@@ -40,6 +40,8 @@ import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { focusTrack, isLocalCam, isScreenShare, primaryShare, shareId, tileKey } from '@/lib/focusTrack'
 import { presentationLayout, userRegionCapacity, orderUsers } from '@/lib/shareLayout'
+import { gridCapacity } from '@/lib/gridCapacity'
+import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
@@ -95,51 +97,6 @@ function tilePriority(t: TrackReferenceOrPlaceholder): number {
   if (t.source === Track.Source.ScreenShare) return 0
   if (isLocalCam(t)) return 1
   return 2
-}
-
-/**
- * How many legible tiles fit in the stage without scrolling — drives the paged
- * grid. Columns are bounded by width at a minimum tile width (and √n so a
- * 5-person call doesn't spread to 4 thin columns); rows by height at a minimum
- * tile height. Recomputed on every resize so the layout adapts gracefully
- * (window resize, side-panel dock, orientation) instead of clipping or shrinking
- * tiles to dots. Returns {cols, perPage} — cols also drives the rendered grid.
- */
-function gridCapacity(
-  width: number,
-  height: number,
-  n: number,
-  coarse: boolean,
-  sizePref: GridSize,
-): { cols: number; perPage: number } {
-  const gap = coarse ? 8 : 12
-  const minW = coarse ? 132 : 200
-  const minH = coarse ? 116 : 150
-  const maxCols = coarse ? 2 : 4
-  // Hard cap so pagination ALWAYS engages for big rooms — independent of the
-  // measured height (a flex chain can briefly report an unbounded grid height,
-  // which would otherwise compute a perPage large enough to mount every tile).
-  // Also bounds mounted <video>/DOM per page (perf), the point of paging.
-  const MAX_PER_PAGE = coarse ? 9 : 20
-  // User-chosen density (Teams "gallery size"): the page is exactly the picked count
-  // — tiles shrink to fit, pager engages — clamped to what the device can legibly
-  // hold. This overrides the auto fit-to-viewport below.
-  if (sizePref !== 'auto') {
-    const perPage = Math.max(1, Math.min(sizePref, MAX_PER_PAGE))
-    const cols = Math.max(1, Math.min(maxCols, Math.ceil(Math.sqrt(perPage))))
-    return { cols, perPage }
-  }
-  // Before the first measure, fall back to a sane page so we don't flash a huge
-  // mount of every tile.
-  if (width < 2 || height < 2) {
-    const cols = Math.min(maxCols, Math.max(1, Math.ceil(Math.sqrt(n))))
-    return { cols, perPage: coarse ? 4 : 9 }
-  }
-  const byWidth = Math.floor((width + gap) / (minW + gap))
-  const bySqrt = Math.ceil(Math.sqrt(n))
-  const cols = Math.max(1, Math.min(maxCols, byWidth, bySqrt))
-  const rows = Math.max(1, Math.floor((height + gap) / (minH + gap)))
-  return { cols, perPage: Math.max(1, Math.min(cols * rows, MAX_PER_PAGE)) }
 }
 
 /**
@@ -232,6 +189,23 @@ function fitMixedRows(
     if (minH > best.score * 1.05) best = { score: minH, rows: sized }
   }
   return best.rows
+}
+
+/**
+ * The stage's width as if no panel were docked — the width tile CAPACITY is
+ * decided from, never the width tiles are laid out in.
+ *
+ * Docking the panel narrows the stage, and deciding capacity from the narrowed
+ * width paged people out: at 1024px with 16 in the call, opening chat took the
+ * grid from 4 columns to 3, capacity from 16 to 12, and four people to page 2 —
+ * not scaled down, gone. Adding the inset back makes the panel a pure "tiles get
+ * smaller" operation, which is what the packer (fitMixedRows) is for. It also
+ * stops the toggle unmounting and remounting videos it had already decoded.
+ */
+function useCapacityWidth(measured: number): number {
+  const panelOpen = useRoomStore((s) => s.panel) !== null
+  const vw = useViewportWidth()
+  return measured + (panelOpen ? dockedStageInset(vw) : 0)
 }
 
 export function Stage() {
@@ -469,7 +443,10 @@ function GridStage({
     [tracks, videosFirst],
   )
 
-  const { perPage } = gridCapacity(size.width, size.height, ordered.length, coarse, gridSize)
+  // Capacity from the UNDOCKED width; fitMixedRows below still packs into the real
+  // one, so the panel shrinks tiles instead of paging people away.
+  const capWidth = useCapacityWidth(size.width)
+  const { perPage } = gridCapacity(capWidth, size.height, ordered.length, coarse, gridSize)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
   // Clamp the page if the count shrank (resize, people left) — keep it in range.
   const current = Math.min(page, pageCount - 1)
@@ -760,10 +737,17 @@ function PresentationStage({
   const gap = coarse ? 8 : 12
   const measured = size.width > 2 && size.height > 2
   const L = presentationLayout(size.width, size.height, ordered.length, bucketAspect(bigAspect), gap)
+  // The same layout measured as if the panel weren't docked — capacity only. The
+  // share and the tiles are still positioned from `L`, i.e. the real width.
+  const capWidth = useCapacityWidth(size.width)
+  const Lcap =
+    capWidth === size.width
+      ? L
+      : presentationLayout(capWidth, size.height, ordered.length, bucketAspect(bigAspect), gap)
 
   // Paging + overflow inside the grid region. When tiles exceed capacity, reserve the
   // last slot for the "+N view all" tile; a compact pager cycles the pages.
-  const cap = measured ? userRegionCapacity(L.grid.w, L.grid.h, coarse) : ordered.length
+  const cap = measured ? userRegionCapacity(Lcap.grid.w, Lcap.grid.h, coarse) : ordered.length
   const overflowing = measured && ordered.length > cap
   const perPage = overflowing ? Math.max(1, cap - 1) : Math.max(1, ordered.length)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
@@ -959,8 +943,11 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
 function SelfViewCard({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
   const { style, handlers } = useDraggable()
   // Until dragged, the card keeps its CSS anchor — dodge the docked side panel on
-  // desktop (same inset the stage/control bar use) so it never hides behind or
-  // overlaps the chat/people panel. Dragging takes over via inline style.
+  // desktop so it never hides behind or overlaps the chat/people panel. These are
+  // the PANEL's own widths plus a gutter, not the stage's reflow inset: the card
+  // sits in the bar's band, which the panel now stops above below `xl`, but it is
+  // tall enough to reach back up into the panel at every width. Dragging takes
+  // over via inline style.
   const panel = useRoomStore((s) => s.panel)
   return (
     <div
