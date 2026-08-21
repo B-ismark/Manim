@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, appErrors } from './helpers'
+import { uniqueRoom, join, newParticipant, appErrors, revealChrome } from './helpers'
 
 // E2EE was never exercised (audit T3 / finding S5). The encryption key rides the
 // URL fragment (#e=…); RoomView calls room.setE2EEEnabled(true) and only flips the
@@ -26,6 +26,13 @@ test.describe('E2EE — encrypted call', () => {
       await expect(guest.page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({
         timeout: 30_000,
       })
+
+      // The badge lives in CallStatusBar, which UNMOUNTS with the touch chrome (~4s
+      // after the last tap) rather than sliding away — so on a phone the two waits
+      // above can outlive it and the lock is legitimately absent from the DOM. Reveal
+      // first; without this the spec is a coin flip on the mobile project under load.
+      await revealChrome(page)
+      await revealChrome(guest.page)
 
       // The badge reflects ACTUAL room E2EE state (set only after setE2EEEnabled resolves).
       await expect(page.getByLabel('End-to-end encrypted')).toBeVisible({ timeout: 20_000 })
@@ -60,6 +67,8 @@ test.describe('E2EE — encrypted call', () => {
       // The decrypt failure (needs real frames to flow) is surfaced, not swallowed.
       await expect(page.getByText(/Encryption mismatch/i)).toBeVisible({ timeout: 45_000 })
       // Local encryption is still on for the mismatched peer — the padlock holds.
+      // Revealed first, for the same reason as the matching-key test above.
+      await revealChrome(page)
       await expect(page.getByLabel('End-to-end encrypted')).toBeVisible()
     } finally {
       await guest.context.close()

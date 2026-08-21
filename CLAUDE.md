@@ -89,6 +89,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
   and the host's split leave-and-end control both had to come off), and nothing on it
   may be a status indicator: those go in `TopStack`. `test:mobile-sm` asserts the fit.
+- **The band the stage reserves for the island is `useIslandBand()`, never a constant.**
+  The island sits at `bottom: max(1rem, env(safe-area-inset-bottom))`, so its band is
+  its height plus whichever offset wins. A hardcoded `76` (= `16 + 60`) is right only
+  where the inset is 0 — true of every emulated device Playwright ships and of no phone
+  with a home indicator, where the bar floats *above* its band and the last gallery row
+  can't be scrolled clear of it. Emulators can't report an inset, so
+  `11-mobile-fit` forces one onto the `[data-safe-area-probe]` element and the island
+  together; that seam is the only way this class of bug is visible in a browser test.
 - **A `hidden` class is INERT on any component with a base display class.** `cn()` is a
   plain joiner, so the className lands after the component's own `inline-flex`,
   Tailwind emits `.hidden` first, specificity ties and source order wins. Gate with a
