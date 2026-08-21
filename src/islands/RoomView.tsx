@@ -35,6 +35,7 @@ import { useEffectsUi } from '@/store/useEffectsUi'
 import { Button } from '@/components/primitives'
 import { HandIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
+import { useCameraInterruption } from '@/features/calls/useCameraInterruption'
 import { useShareSurfaceWatch } from '@/features/calls/useScreenShare'
 import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
 import { isTouch } from '@/lib/device'
@@ -225,6 +226,11 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Detect mid-call device loss (camera unplugged / mic disconnected / OS revoke)
   // and surface it instead of letting the tile silently freeze (E5).
   useMediaDeviceWatch()
+  // Revive a camera the OS suspended while the app was backgrounded — the iOS
+  // "minimise Safari and your video never comes back" case. Sibling of the watch
+  // above: that one reports a camera that died, this one re-acquires one that was
+  // merely interrupted.
+  useCameraInterruption()
   // Track WHAT the local share is capturing (window / tab / whole monitor). Mounted
   // once here rather than inside useScreenShare, which several components call —
   // three copies would attach the same listeners three times.
