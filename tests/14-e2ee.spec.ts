@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, appErrors, revealChrome } from './helpers'
+import { uniqueRoom, join, newParticipant, appErrors, expectChromeVisible } from './helpers'
 
 // E2EE was never exercised (audit T3 / finding S5). The encryption key rides the
 // URL fragment (#e=…); RoomView calls room.setE2EEEnabled(true) and only flips the
@@ -27,16 +27,13 @@ test.describe('E2EE — encrypted call', () => {
         timeout: 30_000,
       })
 
-      // The badge lives in CallStatusBar, which UNMOUNTS with the touch chrome (~4s
-      // after the last tap) rather than sliding away — so on a phone the two waits
-      // above can outlive it and the lock is legitimately absent from the DOM. Reveal
-      // first; without this the spec is a coin flip on the mobile project under load.
-      await revealChrome(page)
-      await revealChrome(guest.page)
-
-      // The badge reflects ACTUAL room E2EE state (set only after setE2EEEnabled resolves).
-      await expect(page.getByLabel('End-to-end encrypted')).toBeVisible({ timeout: 20_000 })
-      await expect(guest.page.getByLabel('End-to-end encrypted')).toBeVisible({ timeout: 20_000 })
+      // The badge reflects ACTUAL room E2EE state (set only after setE2EEEnabled
+      // resolves). Asserted through expectChromeVisible because it lives in
+      // CallStatusBar, which UNMOUNTS with the touch chrome rather than sliding
+      // away: on a phone the 30s wait above routinely outlives the 4s countdown,
+      // and the padlock is then legitimately absent rather than missing.
+      await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
+      await expectChromeVisible(guest.page, guest.page.getByLabel('End-to-end encrypted'))
 
       // Strict sink: a healthy E2EE call must not log the connection / insertable-
       // streams errors that signal a silent encryption failure (S5). The default
@@ -67,9 +64,8 @@ test.describe('E2EE — encrypted call', () => {
       // The decrypt failure (needs real frames to flow) is surfaced, not swallowed.
       await expect(page.getByText(/Encryption mismatch/i)).toBeVisible({ timeout: 45_000 })
       // Local encryption is still on for the mismatched peer — the padlock holds.
-      // Revealed first, for the same reason as the matching-key test above.
-      await revealChrome(page)
-      await expect(page.getByLabel('End-to-end encrypted')).toBeVisible()
+      // Chrome-gated, for the same reason as the matching-key test above.
+      await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
     } finally {
       await guest.context.close()
     }

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, revealChrome, closePanel } from './helpers'
+import { uniqueRoom, join, newParticipant, openMore, revealChrome, selectStageView, closePanel } from './helpers'
 import { ISLAND_H, ISLAND_INSET } from '../src/lib/chromeBands'
 
 /**
@@ -106,8 +106,7 @@ test.describe('Mobile fit (no page scroll)', () => {
 
   test('More sheet open — page stays fixed (sheet scrolls internally, not the page)', async ({ page }) => {
     await join(page, uniqueRoom(), 'Solo')
-    await revealChrome(page)
-    await page.getByRole('button', { name: 'More options' }).click()
+    await openMore(page)
     await expect(page.getByRole('dialog')).toBeVisible()
     await page.waitForTimeout(400)
     expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
@@ -237,8 +236,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     ])
     try {
       await page.waitForTimeout(2000)
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'More options' }).tap()
+      await openMore(page)
       await page.getByRole('button', { name: 'Grid', exact: true }).tap()
       await closePanel(page)
       await page.waitForTimeout(600)
@@ -290,15 +288,13 @@ test.describe('Mobile fit (no page scroll)', () => {
       await expect(chip).toBeVisible({ timeout: 45_000 })
       await expect(chip).toHaveAccessibleName(/^View: Speaker/)
 
-      await chip.tap()
-      await page.getByRole('menuitem', { name: 'Gallery' }).tap()
+      await selectStageView(page, 'Gallery')
       await expect(chip).toHaveAccessibleName(/^View: Gallery/)
 
       // …and the gallery still fits the phone. That is the whole point of it.
       expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
 
-      await chip.tap()
-      await page.getByRole('menuitem', { name: 'Speaker' }).tap()
+      await selectStageView(page, 'Speaker')
       await expect(chip).toHaveAccessibleName(/^View: Speaker/)
     } finally {
       await Promise.all(peers.map((p) => p.context.close()))
@@ -369,8 +365,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     ])
     try {
       await page.waitForTimeout(1500)
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'More options' }).tap()
+      await openMore(page)
       await page.getByRole('button', { name: 'Grid', exact: true }).tap()
       await closePanel(page)
       await revealChrome(page)
@@ -421,8 +416,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     await trigger.tap()
     await expect(tray).toBeHidden()
 
-    await revealChrome(page)
-    await page.getByRole('button', { name: 'More options' }).tap()
+    await openMore(page)
     await expect(page.getByRole('button', { name: 'Audio & video' })).toBeVisible()
     await closePanel(page)
   })
@@ -456,11 +450,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     try {
       // Via the view chip, not More → Grid: the chip never auto-hides, so the setup
       // can't lose a race with the control island sliding out of the thumb zone.
-      const chip = page.getByRole('button', { name: /^View: / })
-      await expect(chip).toBeVisible({ timeout: 45_000 })
-      await chip.tap()
-      await page.getByRole('menuitem', { name: 'Gallery' }).tap()
-      await expect(chip).toHaveAccessibleName(/^View: Gallery/)
+      await selectStageView(page, 'Gallery')
       await page.waitForTimeout(500)
 
       await page.addStyleTag({ content: `[data-safe-area-probe]{height:${SAFE_B}px !important}` })
