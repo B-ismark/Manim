@@ -3,6 +3,8 @@ import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@l
 import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
+import { sounds } from '@/lib/sounds'
+import { toast } from '@/store/useToastStore'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
@@ -595,20 +597,39 @@ export function useChatMessages() {
     [typing],
   )
 
-  // Track remote-message count → bump unread badge while chat is closed.
-  // Exclude peer-replayed history: a late-join sync can inject a batch of old
-  // messages at once, which would otherwise spike the badge for things the user
-  // never missed (they predate the join).
-  const prevRemote = useRef(0)
+  // Notify on new remote messages while chat is closed: bump the control bar's
+  // unread badge, play the message chime, and surface a toast (the same
+  // cross-cutting pattern used for join/leave/hand-raise in useCallSounds) —
+  // the toast matters because the control bar itself auto-hides on mobile, so
+  // the badge alone can be sitting off-screen when a message actually arrives.
+  // Tracked by id (not a running count) so a burst that arrives out of render
+  // order still notifies exactly once per message. Peer-replayed history is
+  // excluded: a late-join sync can inject a batch of old messages at once,
+  // which would otherwise spam notifications for things the user never missed
+  // (they predate the join).
+  const notifiedIds = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const remote = items.reduce(
-      (n, i) => (i.isLocal || (i.kind === 'text' && i.replayed) ? n : n + 1),
-      0,
+    const fresh = items.filter(
+      (i) => !i.isLocal && !(i.kind === 'text' && i.replayed) && !notifiedIds.current.has(i.id),
     )
-    if (remote > prevRemote.current && panelRef.current !== 'chat') {
-      bumpUnread(remote - prevRemote.current)
-    }
-    prevRemote.current = remote
+    if (fresh.length === 0) return
+    for (const i of fresh) notifiedIds.current.add(i.id)
+    if (panelRef.current === 'chat') return
+    bumpUnread(fresh.length)
+    sounds.message()
+    // Deliberately no content preview: the message text is already about to
+    // render in the chat panel, and echoing it here means the exact same
+    // string is briefly on screen twice (confusing for a reader, and it's
+    // what made 06-multiparty's `getByText('hi from host')` match both the
+    // toast and the real bubble). Naming the sender is enough to say "look
+    // at chat" without duplicating their words.
+    const last = fresh[fresh.length - 1]
+    toast(
+      fresh.length > 1
+        ? `${fresh.length} new messages, including from ${last.fromName}`
+        : `New message from ${last.fromName}`,
+      'info',
+    )
   }, [items, bumpUnread])
 
   /** Send a chat message. Returns false if the transport rejected it (e.g. sent
