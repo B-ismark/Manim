@@ -175,9 +175,9 @@ which is also a toggle and does close.
 | F1 | Island abandons its open menu | ✅ fixed + regression test (unrun) |
 | F2 | Desktop carets leak onto touch | ✅ fixed + regression test (unrun) |
 | F4 | Full screen throws on iPhone | ✅ fixed |
-| F3 | Device picker is the wrong pattern | ⏳ prototype, awaiting sign-off |
-| F5 | "Audio output" can't route on iOS | ⏳ folded into F3 prototype |
-| F6 | Sub-44px targets in the More sheet | ⏳ folded into F3 prototype |
+| F3 | Device picker is the wrong pattern | ✅ fixed — the island grows an audio tray |
+| F5 | "Audio output" can't route on iOS | ✅ fixed — no output section, and the control renames itself |
+| F6 | Sub-44px targets in the More sheet | ✅ fixed — `pointer-coarse:min-h-11` on menu rows and View chips |
 
 ## Related
 
