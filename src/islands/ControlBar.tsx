@@ -363,7 +363,7 @@ export function ControlBar({
 
       <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Quick actions</p>
       <div className="grid grid-cols-4 gap-1">
-        {canScreenShare && (
+        {canScreenShare ? (
           <GridTile
             className="pointer-fine:hidden"
             icon={<ScreenShareIcon />}
@@ -374,6 +374,37 @@ export function ControlBar({
               screenShare.toggle()
               closeMore()
             }}
+          />
+        ) : (
+          /* No `getDisplayMedia` here, so sharing is impossible — but SAY SO rather
+             than rendering nothing.
+
+             This is every phone, not an edge case: no mobile browser implements
+             screen capture. iOS Safari and iOS Chrome are both WebKit, which has
+             never shipped it; Chrome and Firefox for Android haven't either. Capture
+             on a phone goes through ReplayKit / MediaProjection, which are native
+             APIs a web app cannot reach. So there is nothing to build here and
+             nothing to wait for.
+
+             What WAS a bug is that the tile simply vanished, which reads as "this
+             app forgot to add screen sharing" rather than "your browser can't".
+             `aria-disabled` and not `disabled` for the reason the desktop bar's
+             at-capacity button documents at length: `disabled` carries
+             `pointer-events-none`, so the one control that most needs to explain
+             itself becomes a dimmed glyph you cannot even press, and there is no
+             hover on a phone to explain it instead. Left pressable, the label
+             carries the short answer and the press carries the whole one. */
+          <GridTile
+            className="pointer-fine:hidden"
+            icon={<ScreenShareIcon />}
+            label="Share screen (desktop only)"
+            unavailable
+            onClick={() =>
+              toast(
+                "Mobile browsers can't share a screen — join from a computer to share yours.",
+                'neutral',
+              )
+            }
           />
         )}
         {/* Grid/Speaker moved into the unified "View" control below (layout + density
@@ -661,14 +692,27 @@ export function ControlBar({
           )}
         </div>
 
-        {/* Audio routing — always visible (Brave/Skype/WhatsApp pattern), the control
-            users hunt for most on mobile.
+        {/* Audio routing — TOUCH ONLY, and the control users hunt for most on mobile.
+            The button STATES the route it's on ("AirPods") rather than showing a
+            generic speaker glyph, so "where is my audio going?" is answered without
+            opening anything, and it opens the island's own tray.
 
-            Touch opens the island's own tray and the button STATES the route it's
-            on ("AirPods") rather than showing a generic speaker glyph, so "where is
-            my audio going?" is answered without opening anything. Desktop keeps the
-            popover: there's no auto-hide to fight and no thumb to reach with. */}
-        {touch ? (
+            There is deliberately no desktop counterpart. A speaker button used to
+            sit here on `!touch` as well, opening a popover — and that popover was
+            `AudioDevicePanel`, the very same component the mic caret two controls to
+            the left already opens. Not a similar panel: the same one, same props,
+            mic row and speaker row and Bluetooth and noise. So the bar carried two
+            controls that did exactly one thing, which is also the ambiguity
+            AudioDevicePanel's own comments were working around. Every desktop app
+            we compare against (Meet, Teams, Zoom) hangs speaker choice off the mic's
+            caret for this reason. Touch is the case that genuinely needs its own
+            control: there are no carets there at all.
+
+            Removing it also gives the desktop bar back ~54px, which is not spare
+            change — lib/panelDock's whole `xl` threshold exists because the bar was
+            wider than the prototype measured, and its docs note the bar grows every
+            time a control is added. This is the first time one has come off. */}
+        {touch && (
           // Folded away below 360px, where six controls cannot fit: 5 x 44px plus
           // gaps and padding is 268 of the 288 available at 320px, and adding a
           // sixth makes 318. More -> "Audio & video" reaches every one of these
@@ -677,8 +721,6 @@ export function ControlBar({
           <span className="hidden min-[360px]:inline-flex">
             <AudioRouteButton open={audioTrayOpen} onToggle={() => setAudioTrayOpen((o) => !o)} />
           </span>
-        ) : (
-          <OutputDeviceButton noise={noise} />
         )}
 
         {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
@@ -1107,10 +1149,13 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
   return (
     <div className="flex flex-col gap-3">
       <DeviceRow kind="audioinput" label="Microphone" />
-      {/* "Speaker", not "Audio output": the button that opens this panel is the
-          one called Audio output, and two controls with the same accessible name
-          doing different things is a genuine ambiguity for a screen reader.
-          Matches what DeviceSettings has always called this row. */}
+      {/* "Speaker", not "Audio output" — matching DeviceSettings, and still the
+          right name now that the bar's own Audio output button is gone. Touch's
+          AudioRouteButton is named `Audio output: <device>`, and the reason to
+          keep these two apart hasn't changed: two controls with the same
+          accessible name doing different things is a real ambiguity for a screen
+          reader, and Chromium's fake devices are called "Fake Default Audio
+          Output", so a row named for the category collides with its own contents. */}
       <DeviceRow kind="audiooutput" label="Speaker" />
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
@@ -1365,29 +1410,6 @@ function BluetoothTrayToggle() {
   )
 }
 
-/** Always-visible audio-output control (Brave/Skype/WhatsApp). Shows the speaker
- *  list plus the Bluetooth-auto toggle — the routing users most want at a tap. */
-function OutputDeviceButton({ noise }: { noise: NoiseFilterControls }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Popover
-      open={open}
-      onOpenChange={setOpen}
-      side="top"
-      align="center"
-      trigger={
-        <Tooltip content="Audio output">
-          <IconButton label="Audio output" tone="neutral" active={open} icon={<SoundOnIcon />} />
-        </Tooltip>
-      }
-    >
-      <div className="w-72 max-w-[85vw]">
-        <AudioDevicePanel noise={noise} />
-      </div>
-    </Popover>
-  )
-}
-
 /** "Auto-connect Bluetooth" preference — when on, a headset that connects takes over
  *  audio automatically (useAudioDeviceAutoswitch). */
 function BluetoothToggle() {
@@ -1411,6 +1433,7 @@ function GridTile({
   label,
   active,
   disabled,
+  unavailable,
   onClick,
   className,
 }: {
@@ -1420,6 +1443,18 @@ function GridTile({
   /** Greys the tile and blocks the press, keeping it in place. A quick action that
    *  vanishes when unavailable moves every tile after it under the user's thumb. */
   disabled?: boolean
+  /**
+   * Greys the tile like `disabled` but keeps the press LIVE, so the handler can
+   * say why it can't be used.
+   *
+   * The difference matters on touch and only on touch: `disabled` implies
+   * `pointer-events-none`, and a phone has no hover and no title tooltip, so a
+   * plain disabled tile is a dimmed glyph with no channel left to explain itself.
+   * The desktop control bar makes the same call for its at-capacity share button,
+   * for the same reason and at more length. Use `disabled` when the label already
+   * carries the reason ("Share screen (in use)") and this when the press has to.
+   */
+  unavailable?: boolean
   onClick: () => void
   className?: string
 }) {
@@ -1429,9 +1464,11 @@ function GridTile({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
+      aria-disabled={unavailable}
       className={cn(
         'flex flex-col items-center gap-1 rounded-field px-1 py-2 hover:bg-sunken',
-        disabled && 'pointer-events-none opacity-40',
+        (disabled || unavailable) && 'opacity-40',
+        disabled && 'pointer-events-none',
         className,
       )}
     >
