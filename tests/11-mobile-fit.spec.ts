@@ -751,21 +751,25 @@ test.describe('Mobile fit (no page scroll)', () => {
    * effects. Two taps became one, and an overlay layer, a mirrored store and a
    * chrome-hold rule went with it.
    *
-   * Two things are asserted, and neither depends on blur actually rendering:
+   * Asserted here: the toggle is wired in BOTH directions, and the tile and the
+   * Effects dialog read the same state. What is deliberately NOT asserted is the
+   * dialog agreeing while blur is actually RUNNING — and the reason is worth
+   * recording, because the obvious version of this test fails in CI:
    *
-   * 1. **The tap is wired.** Recorded with a MutationObserver rather than a
-   *    polled `toHaveAttribute`, because on a browser that CANNOT build the
-   *    processor `mode` returns to 'none' about 300ms later (by design — see
-   *    useBackgroundBlur's degrade path) and a poll can miss the window. The
-   *    observer sees every value the attribute ever held, so this is deterministic
-   *    whether the processor builds or not. @livekit/track-processors fetches the
-   *    MediaPipe WASM from a CDN, so a sandboxed or offline runner is firmly in
-   *    the "cannot build" case; a developer machine is in the other one.
+   * `@livekit/track-processors` pulls the MediaPipe WASM from a CDN. On a sandboxed
+   * or offline runner it can't, so blur degrades to 'none' ~300ms later (the
+   * documented path in useBackgroundBlur) and everything stays cheap. **On CI the
+   * fetch succeeds**, so the segmenter really runs — and MediaPipe on a shared
+   * two-core runner, alongside two other browser contexts, starved the page badly
+   * enough that `openMore` timed out on both the first attempt and the retry. So
+   * the processor is switched back off before this test touches any other UI. The
+   * single-instance property is also structural: one `useBackgroundBlur`, reached
+   * through one `BlurProvider`.
    *
-   * 2. **There is only ONE processor.** After things settle, the tile's toggle and
-   *    the Effects dialog under More must agree — whichever way this platform
-   *    resolved. That is the invariant `BlurProvider` exists for, and the one a
-   *    mirrored store (which is what the carousel used) would break.
+   * The arming check uses a MutationObserver rather than a polled
+   * `toHaveAttribute` because on the degrade path the pressed state lives for only
+   * ~300ms, which a poll can miss; the observer sees every value the attribute
+   * ever held, so it reads the same on both kinds of runner.
    */
   test('the self-view tile toggles background blur, in step with the More menu', async ({
     page,
@@ -774,8 +778,9 @@ test.describe('Mobile fit (no page scroll)', () => {
     const room = uniqueRoom()
     await join(page, room, 'Host')
     // A peer, because solo renders SoloStage — the floating self-view card (which
-    // carries these controls) only exists once someone else is in the call.
+    // carries these controls in speaker view) only exists once someone else is in.
     const peer = await newParticipant(browser, room, 'Guest1')
+    const BLUR_TOGGLE = /^(Blur my background|Turn off background blur)$/
     try {
       const self = page.getByRole('group', { name: /^Your video/ })
       await expect(self).toBeVisible({ timeout: 45_000 })
@@ -786,12 +791,13 @@ test.describe('Mobile fit (no page scroll)', () => {
       await expect(blurOn).toBeVisible({ timeout: 30_000 })
       await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
 
-      // Watch the toggle before touching it (see (1) above). The label states the
-      // action, so it changes with the state — this matches either one.
-      await page.evaluate(() => {
-        const isBlurToggle = (b: Element) =>
-          /^(Blur my background|Turn off background blur)$/.test(b.getAttribute('aria-label') ?? '')
-        const btn = Array.from(document.querySelectorAll('button')).find(isBlurToggle)
+      // Watch the toggle before touching it. The label states the ACTION, so it
+      // changes with the state — this matches either one.
+      await page.evaluate((pattern) => {
+        const re = new RegExp(pattern)
+        const btn = Array.from(document.querySelectorAll('button')).find((b) =>
+          re.test(b.getAttribute('aria-label') ?? ''),
+        )
         if (!btn) throw new Error('blur toggle not found')
         const seen: (string | null)[] = [btn.getAttribute('aria-pressed')]
         ;(window as unknown as { __blurSeen: (string | null)[] }).__blurSeen = seen
@@ -799,32 +805,38 @@ test.describe('Mobile fit (no page scroll)', () => {
           attributes: true,
           attributeFilter: ['aria-pressed'],
         })
-      })
+      }, BLUR_TOGGLE.source)
 
       await blurOn.tap()
-      await page.waitForTimeout(2000) // past the processor build / degrade
+      // One tick, only so React has certainly flushed the state change before the
+      // read. The observer accumulates history, so WHEN we read doesn't matter —
+      // only that the mutation has happened by then.
+      await page.waitForTimeout(500)
       const seen = await page.evaluate(
         () => (window as unknown as { __blurSeen: (string | null)[] }).__blurSeen,
       )
       expect(seen, 'tapping the tile control armed blur').toContain('true')
 
-      // (2) One processor: the tile and the More menu agree on the settled state.
-      const tileOn = await page.evaluate(() =>
-        Array.from(document.querySelectorAll('button')).some(
-          (b) =>
-            /^(Blur my background|Turn off background blur)$/.test(b.getAttribute('aria-label') ?? '') &&
-            b.getAttribute('aria-pressed') === 'true',
-        ),
-      )
+      // Switch it straight back off, and get the processor off this runner before
+      // anything else is driven. Located by the OFF label rather than tapping the
+      // same button again: on a runner that can't build the processor the state has
+      // already degraded by now, and a blind second tap would turn blur back ON.
+      const blurOff = page.getByRole('button', { name: 'Turn off background blur' })
+      if (await blurOff.isVisible().catch(() => false)) await blurOff.tap()
+      await expect(blurOn, 'the toggle returns to its off state').toBeVisible({ timeout: 20_000 })
+      await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
+
+      // The tile and the Effects dialog read the same state — the invariant
+      // `BlurProvider` exists for, and what a store mirroring the hook would break.
       await openMore(page)
       await page.getByRole('button', { name: /Backgrounds & effects/ }).tap()
-      await expect(page.getByRole('button', { name: 'Blur', exact: true })).toHaveAttribute(
-        'aria-pressed',
-        String(tileOn),
-      )
       await expect(page.getByRole('button', { name: 'None', exact: true })).toHaveAttribute(
         'aria-pressed',
-        String(!tileOn),
+        'true',
+      )
+      await expect(page.getByRole('button', { name: 'Blur', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'false',
       )
       // The Effects surface is a Dialog, not a Sheet — its own "Close" button, not
       // closePanel's "Close panel". A modal dialog aria-hides the stage, so the
@@ -832,11 +844,9 @@ test.describe('Mobile fit (no page scroll)', () => {
       await page.getByRole('button', { name: 'Close', exact: true }).tap()
       await expect(page.getByRole('dialog')).toBeHidden()
 
-      // Whichever state it settled in, the tile still offers the other one — the
-      // control never ends up stuck with no way back.
+      // …and the tile still offers blur, so the round trip left nothing stuck.
       await revealChrome(page)
-      const label = tileOn ? 'Turn off background blur' : 'Blur my background'
-      await expect(page.getByRole('button', { name: label })).toBeVisible()
+      await expect(page.getByRole('button', { name: 'Blur my background' })).toBeVisible()
     } finally {
       await peer.context.close()
     }
