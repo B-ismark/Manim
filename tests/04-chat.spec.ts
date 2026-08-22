@@ -1,5 +1,16 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, newParticipant, openChat, openMessageActions, replyToMessage, isTouch } from './helpers'
+import {
+  appErrors,
+  attachErrorSink,
+  closeContext,
+  isTouch,
+  join,
+  newParticipant,
+  openChat,
+  openMessageActions,
+  replyToMessage,
+  uniqueRoom,
+} from './helpers'
 
 test.describe('Chat', () => {
   /**
@@ -165,7 +176,7 @@ test.describe('Chat', () => {
         { timeout: 20_000 },
       )
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 

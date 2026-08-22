@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, openEndCallConfirm } from './helpers'
+import {
+  closeContext,
+  join,
+  newParticipant,
+  openEndCallConfirm,
+  uniqueRoom,
+} from './helpers'
 
 // Plain "Leave" is covered by 02-prejoin. The DESTRUCTIVE teardown —
 // end-for-everyone — wasn't (audit T2). The host reaches it behind the caret on
@@ -33,7 +39,7 @@ test.describe('Session — end for everyone', () => {
       })
       await expect(guest.page.getByPlaceholder('e.g. team-standup')).toBeVisible({ timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 
@@ -67,7 +73,7 @@ test.describe('Session — end for everyone', () => {
       })
       await expect(guest.page.getByPlaceholder('e.g. team-standup')).toBeVisible({ timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 })

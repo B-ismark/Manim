@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, appErrors, expectChromeVisible } from './helpers'
+import {
+  appErrors,
+  closeContext,
+  expectChromeVisible,
+  join,
+  newParticipant,
+  uniqueRoom,
+} from './helpers'
 
 // E2EE was never exercised (audit T3 / finding S5). The encryption key rides the
 // URL fragment (#e=…); RoomView calls room.setE2EEEnabled(true) and only flips the
@@ -41,7 +48,7 @@ test.describe('E2EE — encrypted call', () => {
       const strict = appErrors(guest.sink, { strict: true })
       expect(strict, strict.join('\n')).toEqual([])
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 
@@ -67,7 +74,7 @@ test.describe('E2EE — encrypted call', () => {
       // Chrome-gated, for the same reason as the matching-key test above.
       await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 })

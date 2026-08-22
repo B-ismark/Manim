@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   uniqueRoom, join, newParticipant, openChat, setColorScheme,
-  pageMetrics, overlaps, throttleNetwork, appErrors, attachErrorSink, closeContext,
+  pageMetrics, overlaps, throttleNetwork, appErrors, attachErrorSink, closeContext, isTouch,
 } from './helpers'
 
 /**
@@ -59,6 +59,14 @@ test.describe('Visual scenarios @heavy', () => {
   })
 
   test('chat panel docks without covering controls (desktop)', async ({ page, browser }) => {
+    // The name said "desktop" and nothing enforced it. There IS no docked panel on
+    // touch — the chat is a modal bottom sheet, and the control bar auto-hides, so
+    // the mic assertion below can only ever time out there. It never showed up
+    // because no gate runs `@heavy` on the mobile projects (`test:visual` is
+    // desktop-only), which is exactly how a spec rots: green everywhere it runs,
+    // broken everywhere it doesn't. The touch half of this invariant belongs to
+    // 11-mobile-fit, against a sheet rather than a dock.
+    test.skip(await isTouch(page), 'the docked side panel is a desktop layout')
     const room = uniqueRoom()
     await join(page, room, 'Host')
     await newParticipant(browser, room, 'Guest')

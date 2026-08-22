@@ -1,15 +1,16 @@
 import { test, expect } from '@playwright/test'
 import {
-  uniqueRoom,
-  join,
-  openChat,
-  axeViolations,
-  setColorScheme,
-  newParticipant,
-  openEndCallMenu,
   activate,
+  axeViolations,
+  closeContext,
   isTouch,
+  join,
+  newParticipant,
+  openChat,
+  openEndCallMenu,
   selectStageView,
+  setColorScheme,
+  uniqueRoom,
 } from './helpers'
 
 /**
@@ -61,7 +62,7 @@ for (const scheme of ['light', 'dark'] as const) {
       if (await isTouch(page)) await selectStageView(page, 'Gallery')
       await openChat(page)
       const v = await axeViolations(page)
-      await peer.context.close()
+      await closeContext(peer.context)
       expect(v, JSON.stringify(v, null, 2)).toEqual([])
     })
 
