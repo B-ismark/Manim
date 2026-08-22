@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
 import { isLowPowerDevice, isMobile } from '@/lib/device'
@@ -195,18 +195,28 @@ export function useBackgroundBlur() {
     [allowHighQuality],
   )
 
-  return {
-    supported,
-    busy,
-    allowHighQuality,
-    mode,
-    radius,
-    setRadius,
-    quality,
-    setQuality: setQualityGated,
-    useNone,
-    useBlur,
-  }
+  // Memoized because this object is now a CONTEXT value (see BlurContext): the
+  // self-view tile reads it through a provider, and a fresh object every render
+  // would make every consumer re-render whenever RoomView does. Harmless today —
+  // `<Stage />` isn't memoized, so those renders already happen — but a context
+  // value that changes identity on every render quietly disarms any memo boundary
+  // someone adds later, which is a trap worth not laying. Every callback in here
+  // is already stable (useCallback / setState).
+  return useMemo(
+    () => ({
+      supported,
+      busy,
+      allowHighQuality,
+      mode,
+      radius,
+      setRadius,
+      quality,
+      setQuality: setQualityGated,
+      useNone,
+      useBlur,
+    }),
+    [supported, busy, allowHighQuality, mode, radius, quality, setQualityGated, useNone, useBlur],
+  )
 }
 
 export type BackgroundBlurControls = ReturnType<typeof useBackgroundBlur>

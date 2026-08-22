@@ -1235,10 +1235,13 @@ function ReactorBreakdown({
             <span className="text-lg leading-none">{emoji}</span>
             <span className="tabular-nums text-ink-muted">{by.length}</span>
           </p>
+          {/* Keyed by index, not by name: two guests can carry the same display
+              name, and a duplicate React key would drop one of them from the list
+              that exists to account for everybody. */}
           <ul className="mt-1.5 flex flex-col gap-1.5">
-            {reactorList(by, reactorNames, myIdentity).map((name) => (
-              <li key={name} className="flex items-center gap-2">
-                <Avatar name={name === 'You' ? 'You' : name} size="sm" />
+            {reactorList(by, reactorNames, myIdentity).map((name, i) => (
+              <li key={`${emoji}-${i}`} className="flex items-center gap-2">
+                <Avatar name={name} size="sm" />
                 <span className="truncate text-sm text-ink">{name}</span>
               </li>
             ))}

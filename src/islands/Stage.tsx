@@ -1970,7 +1970,10 @@ function Tile({
               size="sm"
               label={blur.mode === 'blur' ? 'Turn off background blur' : 'Blur my background'}
               icon={<EffectsIcon />}
-              tone={blur.mode === 'blur' ? 'accent' : 'neutral'}
+              // `neutral` + `active`, which is how every other toggle in the app
+              // renders its on-state (accent fill). `tone="accent"` would resolve to
+              // toneActive.accent — the darker PRESSED shade — so this one control
+              // would have looked different from the rest when switched on.
               active={blur.mode === 'blur'}
               className={cn(blur.mode !== 'blur' && 'bg-overlay text-white hover:bg-overlay')}
               onClick={() => (blur.mode === 'blur' ? blur.useNone() : blur.useBlur())}
