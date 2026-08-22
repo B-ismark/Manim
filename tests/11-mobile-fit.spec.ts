@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, openChat, openMore, revealChrome, selectStageView, closePanel } from './helpers'
+import {
+  closeContext,
+  closePanel,
+  join,
+  newParticipant,
+  openChat,
+  openMore,
+  revealChrome,
+  selectStageView,
+  uniqueRoom,
+} from './helpers'
 import { ISLAND_H, ISLAND_INSET } from '../src/lib/chromeBands'
 
 /**
@@ -42,7 +52,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     const peer = await newParticipant(browser, room, 'Guest')
     await page.waitForTimeout(1500)
     const over = await pageOverflow(page)
-    await peer.context.close()
+    await closeContext(peer.context)
     expect(over).toBeLessThanOrEqual(2)
   })
 
@@ -100,7 +110,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       // Cover would show box/src of the width — about 30% for 9:16-ish in 16:9.
       expect(fit!.shown, 'the whole landscape frame reaches the phone').toBeGreaterThan(0.95)
     } finally {
-      await peer.close()
+      await closeContext(peer)
     }
   })
 
@@ -255,7 +265,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       await page.waitForTimeout(4000)
       expect(await names(), 'the same people are on this page').toEqual(before)
     } finally {
-      await Promise.all(peers.map((p) => p.context.close()))
+      await Promise.all(peers.map((p) => closeContext(p.context)))
     }
   })
 
@@ -297,7 +307,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       await selectStageView(page, 'Speaker')
       await expect(chip).toHaveAccessibleName(/^View: Speaker/)
     } finally {
-      await Promise.all(peers.map((p) => p.context.close()))
+      await Promise.all(peers.map((p) => closeContext(p.context)))
     }
   })
 
@@ -345,7 +355,7 @@ test.describe('Mobile fit (no page scroll)', () => {
         .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
       expect(expanded.y + expanded.height).toBeLessThanOrEqual(barTop + 1)
     } finally {
-      await peer.context.close()
+      await closeContext(peer.context)
     }
   })
 
@@ -450,7 +460,7 @@ test.describe('Mobile fit (no page scroll)', () => {
         .poll(surfaces, { timeout: 20_000, message: '…and in the gallery, where the cell is' })
         .toEqual({ card: 0, cells: 0 })
     } finally {
-      await Promise.all(peers.map((p) => p.context.close()))
+      await Promise.all(peers.map((p) => closeContext(p.context)))
     }
   })
 
@@ -509,7 +519,7 @@ test.describe('Mobile fit (no page scroll)', () => {
         )
         .toMatch(/\(you\).*pinned/)
     } finally {
-      await Promise.all(peers.map((p) => p.context.close()))
+      await Promise.all(peers.map((p) => closeContext(p.context)))
     }
   })
 
@@ -553,7 +563,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       })
       expect(lowestTile, 'no tile reaches into the control island band').toBeLessThanOrEqual(barTop + 1)
     } finally {
-      await Promise.all(peers.map((p) => p.context.close()))
+      await Promise.all(peers.map((p) => closeContext(p.context)))
     }
   })
 
@@ -655,7 +665,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       expect(barTop, 'the island rests on screen').toBeLessThan(vh)
       expect(lowestTile, 'the last row scrolls clear of the bar').toBeLessThanOrEqual(barTop + 1)
     } finally {
-      await Promise.all(peers.map((p) => p.context.close()))
+      await Promise.all(peers.map((p) => closeContext(p.context)))
     }
   })
 
@@ -848,7 +858,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       await revealChrome(page)
       await expect(page.getByRole('button', { name: 'Blur my background' })).toBeVisible()
     } finally {
-      await peer.context.close()
+      await closeContext(peer.context)
     }
   })
 

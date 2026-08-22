@@ -1,12 +1,13 @@
 import { test, expect, type Browser } from '@playwright/test'
 import {
-  uniqueRoom,
+  closeContext,
+  fakeScreenShare,
   join,
   revealChrome,
-  fakeScreenShare,
-  startScreenShare,
-  shareDecodeFps,
   scribble,
+  shareDecodeFps,
+  startScreenShare,
+  uniqueRoom,
 } from './helpers'
 
 /**
@@ -142,7 +143,7 @@ test.describe('Annotation performance @heavy @annotate', () => {
       'the share keeps decoding while three people draw simultaneously',
     ).toBeGreaterThan(idleFps * 0.7)
 
-    for (const d of drawers) await d.context.close()
-    await shareCtx.close()
+    for (const d of drawers) await closeContext(d.context)
+    await closeContext(shareCtx)
   })
 })

@@ -1,5 +1,12 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, isTouch, revealChrome, newParticipant } from './helpers'
+import {
+  closeContext,
+  isTouch,
+  join,
+  newParticipant,
+  revealChrome,
+  uniqueRoom,
+} from './helpers'
 
 // 08-a11y runs the static axe sweep (contrast/ARIA/roles). The INTERACTION a11y
 // added in the a11y pass — keyboard pin parity and the live-region announcer —
@@ -61,7 +68,7 @@ test.describe('A11y — interaction behaviours', () => {
       const alert = guest.page.locator('div.sr-only[aria-live="assertive"][role="alert"]')
       await expect(alert).toContainText(/You were muted by the host/i, { timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 })
