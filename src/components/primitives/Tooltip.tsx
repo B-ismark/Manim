@@ -36,6 +36,14 @@ export interface TooltipProps
  * reach the element that needs them. Keeping it in the primitive rather than
  * unwrapping the one call site means the next composition can't silently die the
  * same way.
+ *
+ * That call site is now GONE — the audio-output button it describes was redundant
+ * with the mic caret and came off the bar — so nothing in the app currently nests a
+ * Tooltip inside a Popover trigger, and no test exercises the chain. The forwarding
+ * stays anyway: it is three characters, and it is the difference between the next
+ * such composition working and rendering a control that does nothing at all. Do
+ * not "simplify" it back to {content, children, side} because the props look
+ * unused.
  */
 export function Tooltip({ content, children, side = 'top', ...rest }: TooltipProps) {
   return (

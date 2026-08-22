@@ -101,6 +101,27 @@ still doesn't move). Enforced by [tests/11-mobile-fit.spec.ts](tests/11-mobile-f
 on `mobile` + `mobile-sm`. A tall phone (Pixel 7) hides short-phone overflow — always
 check `mobile-sm` (375×667) too.
 
+**An emulated phone is desktop Chromium, so it LIES about platform capabilities.**
+`devices['Pixel 7']` changes the user-agent, the viewport and the pointer type —
+nothing else. The engine underneath still has every desktop web API, so a feature
+that no real phone can do reports as available and the app takes the desktop path.
+`getDisplayMedia` is the live example: screen capture exists on no mobile browser,
+but every `mobile`/`mobile-sm` run has it. To test what a real phone does, take the
+API away first (`page.addInitScript` + `Object.defineProperty(navigator.mediaDevices,
+'getDisplayMedia', { value: undefined })` — `delete` won't do it, the method is on the
+prototype), which is the same shape as `11-mobile-fit` stubbing `visualViewport` to
+raise a keyboard. Treat "the mobile suite is green" as no evidence at all about a
+capability the emulator can't withhold.
+
+**`aria-disabled` controls need `{ force: true }`.** Playwright's actionability check
+counts `aria-disabled="true"` as not-enabled and will spin until timeout, but the
+browser still delivers the click — that's the whole point of the app choosing
+`aria-disabled` over `disabled` for a control that has to explain why it's
+unavailable (no hover, no `title` on a phone; `disabled` also implies
+`pointer-events: none`). `force` skips only the precondition; the tap itself is real,
+at the element's own coordinates. Applies to the at-capacity share button and the
+"Share screen (desktop only)" tile.
+
 **Overlap detection.** Use `overlaps()` (in helpers): it parks the mouse and uses
 `element.checkVisibility()` so buttons inside an **opacity-0 / hidden ancestor**
 (retracted hover controls, the auto-hidden touch chrome) are correctly ignored.

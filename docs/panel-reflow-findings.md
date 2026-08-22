@@ -69,6 +69,15 @@ Hence the `xl` threshold: below it, the geometry is removed rather than sized ar
 It is also the case for the guard. "The offset is smaller than the gap" is only true of
 the bar you measured, and the bar grows every time a control is added.
 
+**Update (2026-08):** it shrank, for the first time. The Audio output button came off the
+desktop bar — it opened the same `AudioDevicePanel` as the mic caret two controls to its
+left, so the bar carried two controls doing one thing. The host bar now measures **562px**
+and the travel at 1280px is **49px** instead of 75. Everything above still holds; the
+numbers in the table are the 614px bar's. Direction matters more than the values: a
+narrower bar can only ever shift LESS, so a removal can never newly land on Leave — but
+`panelDock.test.ts`'s `BAR` was re-measured rather than adjusted by hand, for exactly the
+reason this section exists.
+
 ## The grid, and its own defect
 
 The brief's hypothesis was worth testing: could the grid scale tiles down, holding

@@ -100,6 +100,26 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
   and the host's split leave-and-end control both had to come off), and nothing on it
   may be a status indicator: those go in `TopStack`. `test:mobile-sm` asserts the fit.
+- **Speaker choice lives behind the mic caret on desktop — there is no audio-output
+  button on the bar.** One used to sit there, and the popover it opened was
+  `AudioDevicePanel`: the same component, same props, that the caret two controls to
+  its left already opens. Not a similar panel — the same one. Meet/Teams/Zoom all hang
+  output off the mic's caret for this reason. Touch is the case that needs its own
+  control (`AudioRouteButton` → the island's tray) because there are no carets there
+  at all. Don't re-add the desktop button: it also cost 52px of a bar whose width is
+  the scarce resource `lib/panelDock` is built around, and `03-controls` now asserts
+  exactly one control opens that panel.
+- **Screen sharing is desktop-only, and that is the PLATFORM, not a gap in the app.**
+  No mobile browser implements `getDisplayMedia` — WebKit never has (so iOS Safari
+  *and* iOS Chrome are out), and neither Chrome nor Firefox for Android does; capture
+  on a phone goes through ReplayKit / MediaProjection, native APIs a web page cannot
+  reach. `useScreenShare().supported` is the one check, and on touch the More sheet
+  renders a dimmed **"Share screen (desktop only)"** tile that explains itself when
+  pressed — a tile that simply vanishes reads as "this app forgot screen sharing".
+  Beware: **Playwright's emulated phones are desktop Chromium**, so they report
+  capture as fully supported and take the normal path — a test for the mobile
+  reality has to `defineProperty` the API away first (`03-controls`), the same way
+  `11-mobile-fit` has to fake a keyboard.
 - **The band the stage reserves for the island is `useIslandBand()`, never a constant.**
   The island sits at `bottom: max(1rem, env(safe-area-inset-bottom))`, so its band is
   its height plus whichever offset wins. A hardcoded `76` (= `16 + 60`) is right only

@@ -3,12 +3,18 @@ import { barDockShift, collidingPanelWidth } from './panelDock'
 
 /**
  * The control bar's width on desktop as host — the widest it gets, with the split
- * Leave / End-for-everyone pill. MEASURED in the running app (tests/zz-probe
- * during development), not estimated: the prototype's mock came out at 560px
- * because it was missing the Audio output button, and the 54px difference was
- * enough to turn a safe offset at 1024px into one that landed on Leave.
+ * Leave / End-for-everyone pill. MEASURED in the running app (a throwaway probe
+ * spec, as before), not estimated: the first pass took 560px from a prototype mock
+ * that was missing the Audio output button, and that 54px was the difference
+ * between a safe offset at 1024px and one that landed on Leave.
+ *
+ * It read 614 for as long as that button existed. The button is gone — it opened
+ * the very same panel as the mic caret beside it — and the bar now measures 562,
+ * which is the FIRST time this number has ever gone down. Re-measure rather than
+ * adjust it by hand: the whole reason this constant is commented is that guessing
+ * it wrong is what caused the original bug.
  */
-const BAR = 614
+const BAR = 562
 /**
  * How far right of the Chat button the Leave control starts, and where it ends
  * (the 100px Leave pill plus its End-for-everyone caret). A shift landing inside
@@ -46,8 +52,8 @@ describe('barDockShift', () => {
   })
 
   it('moves it by the real overlap where there is one', () => {
-    expect(barDockShift(1280, BAR)).toBe(75)
-    expect(barDockShift(1320, BAR)).toBe(55)
+    expect(barDockShift(1280, BAR)).toBe(49)
+    expect(barDockShift(1320, BAR)).toBe(29)
   })
 
   it('never parks a Leave control under a pointer resting on Chat', () => {
@@ -66,9 +72,12 @@ describe('barDockShift', () => {
 
   it('has real headroom before a wider bar could reach Leave again', () => {
     // useSettleGuard is the backstop, but the geometry should not be one control
-    // away from failing. At xl the bar would have to gain ~150px — three or four
-    // more controls — before the offset reached the Leave band at all.
-    expect(barDockShift(1280, BAR + 100)).toBeLessThan(LEAVE_FROM)
+    // away from failing. At xl the bar would have to gain 203px — four or five more
+    // controls — before the offset reached the Leave band at all, and it just got
+    // 52px of that headroom back by losing a redundant one. Both bounds asserted,
+    // so the margin can't quietly shrink OR be overstated later.
+    expect(barDockShift(1280, BAR + 202)).toBeLessThan(LEAVE_FROM)
+    expect(barDockShift(1280, BAR + 203)).toBeGreaterThanOrEqual(LEAVE_FROM)
   })
 
   it('is a no-op before the bar has been measured', () => {
