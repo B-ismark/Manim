@@ -29,6 +29,17 @@ const TYPING_TTL_MS = 4000
 export type MessageReactions = Record<string, string[]>
 /** All reactions in the room: message id → its reactions. */
 export type ReactionMap = Record<string, MessageReactions>
+/**
+ * Identity → display name for everyone who has reacted this session.
+ *
+ * The reaction map stores IDENTITIES, which is what the toggle has to key off (it
+ * is the unforgeable thing on the wire), but "who reacted" has to show names. A
+ * live `useParticipants()` lookup can't answer it: a reactor who has since left
+ * the call is no longer a participant, and their reaction stays on the message.
+ * So each `react` broadcast carries the sender's display name and we remember it
+ * here — the same shape the pin and history replays already use.
+ */
+export type ReactorNames = Record<string, string>
 
 /** A quoted message a reply points at (denormalized so it renders without history). */
 export interface ReplyRef {
@@ -201,6 +212,12 @@ export function useChatMessages() {
   }, [])
 
   const myIdentity = localParticipant.identity
+  // Own display name, hoisted above the reaction/typing broadcasts that both send
+  // it. `myNameRef` is what the data-channel handlers read — they're registered
+  // once, so a closure over the value would replay a stale name after a rename.
+  const myName = displayName(localParticipant.identity, localParticipant.name)
+  const myNameRef = useRef(myName)
+  myNameRef.current = myName
 
   // Author edits: an overlay keyed by message id (the LiveKit chat history is
   // immutable, so we layer the new body on top at render). Broadcast like pins,
@@ -447,6 +464,14 @@ export function useChatMessages() {
   const [reactions, setReactions] = useState<ReactionMap>({})
   const reactionsRef = useRef<ReactionMap>({})
   reactionsRef.current = reactions
+  // Names of everyone who has reacted, kept alongside the identity buckets — see
+  // ReactorNames. Additive only: a reactor who leaves keeps their name on the pill.
+  const [reactorNames, setReactorNames] = useState<ReactorNames>({})
+  const rememberReactor = useCallback((identity: string, name?: string) => {
+    if (!identity) return
+    const resolved = displayName(identity, name)
+    setReactorNames((prev) => (prev[identity] === resolved ? prev : { ...prev, [identity]: resolved }))
+  }, [])
 
   // Pure add/remove of one identity from one (message, emoji) bucket.
   function applyReaction(map: ReactionMap, messageId: string, emoji: string, identity: string, added: boolean): ReactionMap {
@@ -466,13 +491,13 @@ export function useChatMessages() {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
-        | { kind?: 'react'; messageId: string; emoji: string; identity: string; added: boolean }
+        | { kind?: 'react'; messageId: string; emoji: string; identity: string; name?: string; added: boolean }
       // Late joiner catching up — replay only the reactions I own.
       if ('kind' in d && d.kind === 'sync-request') {
         for (const [messageId, byEmoji] of Object.entries(reactionsRef.current)) {
           for (const [emoji, ids] of Object.entries(byEmoji)) {
             if (ids.includes(myIdentity)) {
-              sendReactionRef.current?.({ kind: 'react', messageId, emoji, identity: myIdentity, added: true })
+              sendReactionRef.current?.({ kind: 'react', messageId, emoji, identity: myIdentity, name: myNameRef.current, added: true })
             }
           }
         }
@@ -485,7 +510,14 @@ export function useChatMessages() {
         // (you rejoin under a new name, have no history, yet keep getting
         // reactions for your old messages). Drop those.
         if (!(d.messageId in authorRef.current)) return
-        setReactions((prev) => applyReaction(prev, d.messageId, d.emoji, d.identity, d.added))
+        // Attribute by the SENDER's identity, not the payload's claimed one — the
+        // same rule the typing indicator learned, so a peer can't post a reaction
+        // as somebody else. The payload identity is only a fallback for a client
+        // whose sender identity didn't come through.
+        const from = msg.from?.identity || d.identity
+        if (!from) return
+        rememberReactor(from, from === d.identity ? d.name : undefined)
+        setReactions((prev) => applyReaction(prev, d.messageId, d.emoji, from, d.added))
       }
     } catch {
       /* malformed — ignore */
@@ -508,15 +540,15 @@ export function useChatMessages() {
     (messageId: string, emoji: string) => {
       const had = reactionsRef.current[messageId]?.[emoji]?.includes(myIdentity) ?? false
       setReactions((prev) => applyReaction(prev, messageId, emoji, myIdentity, !had))
-      broadcastReaction({ kind: 'react', messageId, emoji, identity: myIdentity, added: !had })
+      rememberReactor(myIdentity, myNameRef.current)
+      broadcastReaction({ kind: 'react', messageId, emoji, identity: myIdentity, name: myNameRef.current, added: !had })
     },
-    [broadcastReaction, myIdentity],
+    [broadcastReaction, myIdentity, rememberReactor],
   )
 
   // Typing indicator: ephemeral pings broadcast while composing, others render
   // "… is typing". Each ping carries a fresh timestamp; entries self-expire after
   // TYPING_TTL_MS so a typer who closes their tab doesn't get stuck "typing".
-  const myName = displayName(localParticipant.identity, localParticipant.name)
   const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({})
 
   const { send: sendTypingMsg } = useDataChannel(TYPING_TOPIC, (msg) => {
@@ -689,6 +721,7 @@ export function useChatMessages() {
     pinned,
     togglePin,
     reactions,
+    reactorNames,
     toggleReaction,
     myIdentity,
     typingNames,

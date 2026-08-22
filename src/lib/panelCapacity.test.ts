@@ -46,9 +46,9 @@ describe('dockedStageInset', () => {
 })
 
 /** The rule Stage applies: the greater of the docked and undocked fits. */
-const pageCapacity = (vw: number, open: boolean, coarse = false, pref: 'auto' | number = 'auto') => {
-  const real = gridCapacity(measured(vw, open), HEIGHT, coarse, pref).perPage
-  const undocked = gridCapacity(open ? capacityWidth(vw) : measured(vw, false), HEIGHT, coarse, pref).perPage
+const pageCapacity = (vw: number, open: boolean, coarse = false) => {
+  const real = gridCapacity(measured(vw, open), HEIGHT, coarse).perPage
+  const undocked = gridCapacity(open ? capacityWidth(vw) : measured(vw, false), HEIGHT, coarse).perPage
   return Math.max(real, undocked)
 }
 
@@ -64,17 +64,10 @@ describe('page capacity across a panel toggle', () => {
     }
   })
 
-  it('still honours an explicit gallery size, panel or no panel', () => {
-    for (const pref of [4, 9, 16] as const) {
-      expect(pageCapacity(1024, true, false, pref)).toBe(pageCapacity(1024, false, false, pref))
-      expect(pageCapacity(1024, false, false, pref)).toBe(pref)
-    }
-  })
-
   it('pins the drops it exists to prevent', () => {
     // Capacity from the NARROWED width alone — what Stage used to do. These are
     // the widths where the lost column is not paid back in extra rows.
-    const naive = (vw: number) => gridCapacity(measured(vw, true), HEIGHT, false, 'auto').perPage
+    const naive = (vw: number) => gridCapacity(measured(vw, true), HEIGHT, false).perPage
     expect(naive(1024)).toBe(18)
     expect(naive(1200)).toBe(12)
     expect(pageCapacity(1024, false)).toBe(20)
@@ -88,7 +81,7 @@ describe('page capacity across a panel toggle', () => {
     // From ~1279px up, narrowing cuts a column but the shorter tiles fit more
     // rows, so the docked stage holds MORE. Substituting the undocked width would
     // have shown twelve people where twenty fit.
-    expect(gridCapacity(measured(1440, true), HEIGHT, false, 'auto').perPage).toBe(20)
+    expect(gridCapacity(measured(1440, true), HEIGHT, false).perPage).toBe(20)
     expect(pageCapacity(1440, true)).toBe(20)
   })
 })

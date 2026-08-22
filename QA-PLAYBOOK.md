@@ -103,7 +103,7 @@ check `mobile-sm` (375×667) too.
 
 **Overlap detection.** Use `overlaps()` (in helpers): it parks the mouse and uses
 `element.checkVisibility()` so buttons inside an **opacity-0 / hidden ancestor**
-(closed effects carousel, retracted hover controls) are correctly ignored.
+(retracted hover controls, the auto-hidden touch chrome) are correctly ignored.
 Element-only opacity checks produce false positives in-call.
 
 **Large-room tile grid (paged).** Fit-to-viewport pages; navigation is **left/right

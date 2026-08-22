@@ -15,6 +15,12 @@ dist-ssr
 # Playwright
 playwright-report
 test-results
+# Scratch configs/scripts for a local or sandboxed run — e.g. a copy of
+# playwright.config.ts that points at a preinstalled browser. One of these has
+# been committed by accident before; the pattern is here so it can't happen again.
+*.tmp.ts
+*.tmp.mjs
+*.tmp.js
 
 # Local audit artifacts (scripts are tracked; output is not)
 audit/shots

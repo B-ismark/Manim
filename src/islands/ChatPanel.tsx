@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useParticipants } from '@livekit/components-react'
-import { Avatar, Button, IconButton, Popover, Sheet } from '@/components/primitives'
-import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
+import { Avatar, Button, IconButton, Popover, Sheet, Tooltip } from '@/components/primitives'
+import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PeopleIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
 import { EmojiPicker } from '@/islands/EmojiPicker'
 import { encodeMentions, mentionsIdentity, plainText, type MentionTarget } from '@/features/chat/mentions'
-import type { ReactionMap } from '@/features/chat/useChatMessages'
+import { joinNames, reactorList } from '@/features/chat/reactors'
+import type { ReactionMap, ReactorNames } from '@/features/chat/useChatMessages'
 import {
   type useChatMessages,
   type ChatItem,
@@ -81,7 +82,7 @@ function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
 
 /** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
 export function ChatPanel({ chat }: { chat: ChatApi }) {
-  const { items, sendText, sendFile, pinned, togglePin, reactions, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
+  const { items, sendText, sendFile, pinned, togglePin, reactions, reactorNames, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
@@ -368,6 +369,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           <MessageList
             items={items}
             reactions={reactions}
+            reactorNames={reactorNames}
             pinned={pinned}
             myIdentity={myIdentity}
             onReact={toggleReaction}
@@ -624,6 +626,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
 const MessageList = memo(function MessageList({
   items,
   reactions,
+  reactorNames,
   pinned,
   myIdentity,
   onReact,
@@ -634,6 +637,7 @@ const MessageList = memo(function MessageList({
 }: {
   items: ChatItem[]
   reactions: ReactionMap
+  reactorNames: ReactorNames
   pinned: PinnedMessage[]
   myIdentity: string
   onReact: (id: string, emoji: string) => void
@@ -665,6 +669,7 @@ const MessageList = memo(function MessageList({
           }
           pinned={isPinned(item.id)}
           reactions={reactions[item.id]}
+          reactorNames={reactorNames}
           myIdentity={myIdentity}
           onReact={(emoji) => onReact(item.id, emoji)}
           onReply={() => onReply(item)}
@@ -683,6 +688,7 @@ function MessageRow({
   sameMinuteAsPrev,
   pinned,
   reactions,
+  reactorNames,
   myIdentity,
   onReact,
   onReply,
@@ -698,6 +704,8 @@ function MessageRow({
   pinned: boolean
   /** This message's reactions: emoji → identities who reacted. */
   reactions?: ReactionMap[string]
+  /** Identity → display name for reactors, so a pill can say WHO. */
+  reactorNames: ReactorNames
   myIdentity: string
   onReact: (emoji: string) => void
   onReply: () => void
@@ -717,6 +725,9 @@ function MessageRow({
   // Touch reaction picker rides a bottom Sheet (full width + scrollable + scrim)
   // rather than the cramped long-press popover — the emoji grid needs the room.
   const [reactOpen, setReactOpen] = useState(false)
+  // "Who reacted" — the touch counterpart to the desktop chip tooltip.
+  const [whoOpen, setWhoOpen] = useState(false)
+  const hasReactions = Object.values(reactions ?? {}).some((by) => by.length > 0)
   const [swipeX, setSwipeX] = useState(0)
   const press = useRef<{ x: number; y: number; moved: boolean; swiping: boolean }>({
     x: 0,
@@ -942,7 +953,12 @@ function MessageRow({
           <FileMessage file={item} />
         )}
 
-        <ReactionChips reactions={reactions} myIdentity={myIdentity} onReact={onReact} />
+        <ReactionChips
+          reactions={reactions}
+          reactorNames={reactorNames}
+          myIdentity={myIdentity}
+          onReact={onReact}
+        />
       </div>
 
       {/* DESKTOP: hover/focus-revealed toolbar. Hidden on touch (which uses
@@ -1050,6 +1066,22 @@ function MessageRow({
                 <ReactionIcon />
                 Add reaction
               </button>
+              {/* Only once there is something to show. A touch tap on a pill spends
+                  itself toggling your own reaction (and there is no hover to carry a
+                  tooltip), so this menu is the phone's only route to WHO reacted. */}
+              {hasReactions && (
+                <button
+                  type="button"
+                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  onClick={() => {
+                    setActionsOpen(false)
+                    setWhoOpen(true)
+                  }}
+                >
+                  <PeopleIcon />
+                  Who reacted
+                </button>
+              )}
               {onEdit && (
                 <button
                   type="button"
@@ -1081,6 +1113,13 @@ function MessageRow({
           </Popover>
           <Sheet open={reactOpen} onOpenChange={setReactOpen} side="bottom" title="Add reaction">
             <EmojiPicker onSelect={react} />
+          </Sheet>
+          <Sheet open={whoOpen} onOpenChange={setWhoOpen} side="bottom" title="Reactions">
+            <ReactorBreakdown
+              reactions={reactions}
+              reactorNames={reactorNames}
+              myIdentity={myIdentity}
+            />
           </Sheet>
         </>
       )}
@@ -1115,29 +1154,39 @@ function TypingIndicator({ names }: { names: string[] }) {
 }
 
 /** Reaction pills under a message. Each shows the emoji + count; your own
- *  reactions are highlighted, and tapping a pill toggles yours (Slack/Discord). */
+ *  reactions are highlighted, and tapping a pill toggles yours (Slack/Discord).
+ *
+ *  WHO reacted is carried three ways, because no single one covers every user:
+ *  the `aria-label` names them (screen readers, both pointer types), a hover/focus
+ *  tooltip names them on a mouse, and touch — which has no hover and whose tap is
+ *  already spent on toggling — gets "Who reacted" in the message's action menu.
+ *  A tooltip alone was the version that left every phone unable to find out. */
 function ReactionChips({
   reactions,
+  reactorNames,
   myIdentity,
   onReact,
 }: {
   reactions?: ReactionMap[string]
+  reactorNames: ReactorNames
   myIdentity: string
   onReact: (emoji: string) => void
 }) {
+  const narrow = useIsTouch()
   const entries = reactions ? Object.entries(reactions).filter(([, by]) => by.length > 0) : []
   if (entries.length === 0) return null
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {entries.map(([emoji, by]) => {
         const mine = by.includes(myIdentity)
-        return (
+        const who = joinNames(reactorList(by, reactorNames, myIdentity))
+        const chip = (
           <button
             key={emoji}
             type="button"
             onClick={() => onReact(emoji)}
             aria-pressed={mine}
-            aria-label={`${emoji} ${by.length}${mine ? ', you reacted' : ''}`}
+            aria-label={`${emoji} ${by.length} — reacted by ${who}`}
             className={cn(
               'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs leading-none transition-colors',
               mine
@@ -1149,8 +1198,57 @@ function ReactionChips({
             <span className="tabular-nums">{by.length}</span>
           </button>
         )
+        // No tooltip on touch: it opens on the same tap that toggles the reaction,
+        // so it would flash on every press and say nothing you asked for.
+        return narrow ? (
+          chip
+        ) : (
+          <Tooltip key={emoji} content={`${who} reacted with ${emoji}`}>
+            {chip}
+          </Tooltip>
+        )
       })}
     </div>
+  )
+}
+
+/** The full "who reacted" breakdown, grouped by emoji — the touch route to the
+ *  same information the desktop tooltip gives. Rendered inside a bottom Sheet. */
+function ReactorBreakdown({
+  reactions,
+  reactorNames,
+  myIdentity,
+}: {
+  reactions?: ReactionMap[string]
+  reactorNames: ReactorNames
+  myIdentity: string
+}) {
+  const entries = reactions ? Object.entries(reactions).filter(([, by]) => by.length > 0) : []
+  if (entries.length === 0) {
+    return <p className="px-1 py-2 text-sm text-ink-muted">No reactions yet.</p>
+  }
+  return (
+    <ul className="flex flex-col gap-3">
+      {entries.map(([emoji, by]) => (
+        <li key={emoji}>
+          <p className="flex items-center gap-2 text-sm font-medium text-ink">
+            <span className="text-lg leading-none">{emoji}</span>
+            <span className="tabular-nums text-ink-muted">{by.length}</span>
+          </p>
+          {/* Keyed by index, not by name: two guests can carry the same display
+              name, and a duplicate React key would drop one of them from the list
+              that exists to account for everybody. */}
+          <ul className="mt-1.5 flex flex-col gap-1.5">
+            {reactorList(by, reactorNames, myIdentity).map((name, i) => (
+              <li key={`${emoji}-${i}`} className="flex items-center gap-2">
+                <Avatar name={name} size="sm" />
+                <span className="truncate text-sm text-ink">{name}</span>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
   )
 }
 
