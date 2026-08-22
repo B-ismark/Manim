@@ -53,10 +53,12 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
             <li key={p.id} className="flex items-center gap-2.5">
               <Avatar name={p.name} size="sm" />
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
-              <Button size="sm" variant="accent" onClick={() => decide(p.id, true)}>
+              {/* Default (40px) size: admitting/denying a person is consequential
+                  enough to deserve a full touch target, not the compact sm. */}
+              <Button variant="accent" onClick={() => decide(p.id, true)}>
                 Admit
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => decide(p.id, false)}>
+              <Button variant="ghost" onClick={() => decide(p.id, false)}>
                 Deny
               </Button>
             </li>

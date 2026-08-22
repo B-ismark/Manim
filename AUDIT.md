@@ -24,6 +24,7 @@ Headline: the **server-side trust model is strong** (signed-token authority on e
 
 ## Findings by Dimension
 - **Security & Privacy** → [audit/findings-security.md](audit/findings-security.md) — 1 High, 3 Medium, 3 Low
+- **UI/UX & Flow (2026-08-22)** → [audit/findings-uiux-flow.md](audit/findings-uiux-flow.md) — 1 High, 5 Medium, 9 Low; prior UI fixes verified present
 - **Data & State Correctness** → [audit/findings-data.md](audit/findings-data.md) — 2 High, 3 Medium, + ruled-out
 - **Performance** → [audit/findings-performance.md](audit/findings-performance.md) — 3 Medium, 1 Low (+ much ruled out)
 - **UI / UX / Accessibility / Code** → [audit/findings-ui-code.md](audit/findings-ui-code.md) — 1 High, 2 Medium, 4 Low

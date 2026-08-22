@@ -91,16 +91,25 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   }
 
   const showPriming = permission === 'prompt'
+  // Hold the preview while we're showing the rationale card ('prompt'): acquiring
+  // here would fire the raw OS prompt on top of the card — the exact double-prompt
+  // this screen exists to prevent. requestAccess() primes both devices from the
+  // intentional tap; flipping holdPreview false starts the preview prompt-free.
+  const holdPreview = permission === 'prompt'
 
   // Preview only needs video — the mic isn't monitored here, so toggling it is a
   // pure intent flag (applied at connect) and must not restart the stream, which
-  // would flicker the video. Re-acquire only when the camera intent changes.
+  // would flicker the video. Re-acquire only when the camera intent or the HOLD
+  // changes — NOT on every permission write: the success path below calls
+  // setPermission('granted'), and keying the effect on raw `permission` would
+  // make that self-trigger a stop + re-acquire (a visible camera flicker on
+  // browsers without the Permissions API, where the probe leaves us 'unknown').
   useEffect(() => {
     let cancelled = false
 
     async function start() {
       stop()
-      if (!cameraOn) return
+      if (!cameraOn || holdPreview) return
       try {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false })
         if (cancelled) {
@@ -128,7 +137,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       cancelled = true
       stop()
     }
-  }, [cameraOn])
+  }, [cameraOn, holdPreview])
 
   const canJoin = displayName.trim().length > 0
 

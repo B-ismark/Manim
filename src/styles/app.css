@@ -58,6 +58,12 @@
   /* Derived from accent + surface, so it stays correct in light AND dark and
      when a preset changes only --color-accent. */
   --color-accent-soft: color-mix(in oklch, var(--color-accent) 16%, var(--color-surface));
+  /* Accent used as TEXT/ICON on an accent-soft background. The store derives
+     this per-mode (see useThemeStore): light keeps the fill accent (reads on the
+     near-white soft mix); dark lightens toward white, because the raw accent
+     (L≈0.55) against the dark soft mix (L≈0.28) is only ~2:1. Same pattern as
+     --color-danger-text. */
+  --color-accent-text: oklch(0.55 0.18 275);
 
   /* ── Status ───────────────────────────────────────────────── */
   /* L=0.55 so white danger-ink clears AA on danger fills (Leave / mute-off

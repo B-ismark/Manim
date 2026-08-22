@@ -234,7 +234,7 @@ export function ParticipantsPanel() {
   async function muteAll(source: Track.Source, kind: 'mic' | 'camera') {
     if (!roomToken) return
     const targets = participants.filter((p) => p.identity !== localParticipant.identity)
-    await Promise.all(
+    const results = await Promise.all(
       targets.map((p) => {
         const pub = p.getTrackPublication(source)
         if (!pub || pub.isMuted || !pub.trackSid) return undefined
@@ -248,7 +248,20 @@ export function ParticipantsPanel() {
         }).catch(() => {})
       }),
     )
-    toast(kind === 'mic' ? 'Muted everyone' : 'Stopped everyone’s video', 'neutral')
+    // Count what actually changed — "Muted everyone" when nobody had an open mic
+    // is a false claim that sends the host re-checking every tile. Failures
+    // (caught above) don't count as changed.
+    const n = results.filter(Boolean).length
+    if (n === 0) {
+      toast(kind === 'mic' ? 'Everyone was already muted' : 'No one’s camera was on', 'neutral')
+      return
+    }
+    toast(
+      kind === 'mic'
+        ? `Muted ${n} ${n === 1 ? 'microphone' : 'microphones'}`
+        : `Stopped ${n} ${n === 1 ? 'camera' : 'cameras'}`,
+      'neutral',
+    )
   }
 
   return (

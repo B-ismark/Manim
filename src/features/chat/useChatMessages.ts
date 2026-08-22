@@ -439,6 +439,19 @@ export function useChatMessages() {
     [broadcastPin],
   )
 
+  // Unpin by id. The pinned bar stores a flattened PinnedMessage (no ChatItem),
+  // so unpinning from there used to fabricate a fake text ChatItem just to feed
+  // togglePin — an id-based remove keeps that data model honest.
+  const unpin = useCallback(
+    (id: string) => {
+      const existing = pinnedRef.current.find((p) => p.id === id)
+      if (!existing) return
+      setPinned((prev) => prev.filter((p) => p.id !== id))
+      broadcastPin({ kind: 'pin', ...existing, pinned: false })
+    },
+    [broadcastPin],
+  )
+
   // Shared emoji reactions (Slack/Discord model): toggle events broadcast over the
   // data channel; each client owns *its own* reactions and replays them when a
   // late joiner asks (sync-request), so everyone converges. Ephemeral like chat.
@@ -667,6 +680,7 @@ export function useChatMessages() {
     isSending,
     pinned,
     togglePin,
+    unpin,
     reactions,
     toggleReaction,
     myIdentity,

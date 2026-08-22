@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useToastStore, type Toast, type ToastTone } from '@/store/useToastStore'
 import { cn } from '@/lib/cn'
 
@@ -10,14 +10,24 @@ const dotTone: Record<ToastTone, string> = {
 }
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+  // Pause the auto-dismiss while the user is reading or reaching for the action
+  // button (hover or keyboard focus) — the timer otherwise expires mid-reach.
+  // Resuming restarts the window, which is the Gmail-style tradeoff: slightly
+  // longer total life in exchange for never losing an actionable toast.
+  const [paused, setPaused] = useState(false)
   useEffect(() => {
+    if (paused) return
     const id = window.setTimeout(onDismiss, toast.duration ?? 4000)
     return () => window.clearTimeout(id)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [paused])
   return (
     <div
       role="status"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
       className="mn-pop pointer-events-auto flex items-center gap-2.5 rounded-control bg-raised px-3.5 py-2 text-sm text-ink shadow-pop border border-line"
     >
       <span className={cn('size-2 shrink-0 rounded-full', dotTone[toast.tone])} aria-hidden />

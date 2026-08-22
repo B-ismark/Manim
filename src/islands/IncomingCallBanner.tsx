@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { LeaveIcon, CameraIcon } from '@/components/icons'
@@ -20,8 +21,20 @@ export function IncomingCallBanner() {
   const inCall = useAppStore((s) => s.roomToken !== null)
   const touch = useIsTouch()
   const navigate = useNavigate()
+  // Elapsed ring time — pairs with the 45s auto-miss so the countdown is
+  // visible instead of the ring silently ending. Ticks ONLY while a call is
+  // actually ringing (and restarts per call) — an unconditional interval would
+  // re-render this island every second for the whole app session.
+  const [elapsed, setElapsed] = useState(0)
+  useEffect(() => {
+    if (!incoming) return
+    setElapsed(0)
+    const t = window.setInterval(() => setElapsed((s) => s + 1), 1000)
+    return () => window.clearInterval(t)
+  }, [incoming])
   // In a call → defer to the in-call banner (which adds Merge / Switch).
   if (inCall || !incoming) return null
+  const mmss = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
 
   const accept = () => {
     const { room, secret, e2ee } = incoming
@@ -39,7 +52,9 @@ export function IncomingCallBanner() {
           <Avatar name={incoming.fromName} size="xl" />
           <div>
             <p className="text-xl font-semibold">{incoming.fromName}</p>
-            <p className="mt-1 text-sm text-ink-muted">is calling · Room {incoming.room}</p>
+            <p className="mt-1 text-sm text-ink-muted">
+              is calling · Room {incoming.room} · {mmss}
+            </p>
           </div>
         </div>
         <div className="flex w-full max-w-sm items-center justify-around">
@@ -76,7 +91,9 @@ export function IncomingCallBanner() {
         <Avatar name={incoming.fromName} size="sm" />
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{incoming.fromName} is calling</p>
-          <p className="text-xs text-ink-muted">Room {incoming.room}</p>
+          <p className="text-xs text-ink-muted">
+            Room {incoming.room} · {mmss}
+          </p>
         </div>
         <Button size="sm" variant="accent" onClick={accept}>
           Join
