@@ -13,18 +13,6 @@
           }
         ]
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "timeout": 10,
-            "statusMessage": "Checking for unmerged work…",
-            "command": "git rev-parse --git-dir >/dev/null 2>&1 || exit 0; n=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo 0); [ \"$n\" -gt 0 ] 2>/dev/null || exit 0; br=$(git rev-parse --abbrev-ref HEAD 2>/dev/null); list=$(git log --oneline -20 origin/main..HEAD 2>/dev/null); msg=$(printf \"\\xe2\\x9a\\xa0 Unmerged work: branch %s has %s commit(s) NOT on origin/main:\\n%s\\n-> merge or open a PR to main before ending, or it stays stranded.\" \"$br\" \"$n\" \"$list\"); node -e \"process.stdout.write(JSON.stringify({systemMessage:process.argv[1]}))\" \"$msg\""
-          }
-        ]
-      }
     ]
   }
 }
