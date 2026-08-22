@@ -1,6 +1,13 @@
 import { test, expect } from '@playwright/test'
 import { writeFileSync, mkdirSync } from 'node:fs'
-import { uniqueRoom, join, attachErrorSink, appErrors, type ErrorSink } from './helpers'
+import {
+  appErrors,
+  attachErrorSink,
+  closeContext,
+  join,
+  type ErrorSink,
+  uniqueRoom,
+} from './helpers'
 import type { Page, BrowserContext } from '@playwright/test'
 
 /**
@@ -37,7 +44,7 @@ test.describe('Capacity', () => {
         extras.push({ context, page: p, sink })
       } catch (e) {
         firstFailureAt = i + 1
-        await context.close().catch(() => {})
+        await closeContext(context)
         // eslint-disable-next-line no-console
         console.log(`[capacity] join failed at participant ${i + 1}: ${(e as Error).message}`)
         break
@@ -86,7 +93,7 @@ test.describe('Capacity', () => {
     console.log('[capacity] RESULT', JSON.stringify(result, null, 2))
 
     // Tear down.
-    for (const e of extras) await e.context.close().catch(() => {})
+    for (const e of extras) await closeContext(e.context)
 
     // Sanity: at least the host + a few others actually connected.
     expect(joined).toBeGreaterThanOrEqual(Math.min(4, TARGET))

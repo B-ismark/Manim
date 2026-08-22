@@ -22,6 +22,16 @@ import type { ReactNode } from 'react'
  *   40  modal scrim (Dialog / Sheet overlay)
  *   50  modal surface, and the full-screen incoming-call takeover
  *   60  toasts — always the last word
+ *
+ * KNOWN, and deliberately not fixed here: toasts anchor at `top-4` too, so a toast
+ * and a banner in this column DO print over each other (a "Guest joined" toast lands
+ * squarely on PinCoachmark, which is why that hint is often half-unreadable). Toasts
+ * cannot simply join this column — they sit at z-60 because they must clear modal
+ * scrims, and this column is z-30, under them. Fixing it properly means the column
+ * yielding to whatever toasts are live, which is a measurement, not an offset. Both
+ * are transient and neither steals a tap, so it is cosmetic; the collision that was
+ * NOT cosmetic — a child of this column covering a tile's 44px corner control on
+ * touch — is handled in PinCoachmark, which explains the width cap.
  */
 export function TopStack({ children }: { children: ReactNode }) {
   return (

@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, newParticipant, appErrors, join, openChat, openMore, closePanel } from './helpers'
+import {
+  appErrors,
+  closeContext,
+  closePanel,
+  join,
+  newParticipant,
+  openChat,
+  openMore,
+  uniqueRoom,
+} from './helpers'
 
 // Multi-participant flows need real LiveKit (creds in .env). Each participant is
 // its own browser context so they have independent camera/mic + identity.
@@ -30,7 +39,7 @@ test.describe('Multi-party', () => {
 
       expect(appErrors(guest.sink), appErrors(guest.sink).join('\n')).toEqual([])
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 
@@ -51,8 +60,8 @@ test.describe('Multi-party', () => {
       expect(appErrors(g1.sink), appErrors(g1.sink).join('\n')).toEqual([])
       expect(appErrors(g2.sink), appErrors(g2.sink).join('\n')).toEqual([])
     } finally {
-      await g1.context.close()
-      await g2.context.close()
+      await closeContext(g1.context)
+      await closeContext(g2.context)
     }
   })
 
@@ -115,8 +124,8 @@ test.describe('Multi-party', () => {
         await page.setViewportSize({ width: 1280, height: 800 })
       }
     } finally {
-      await g1.context.close()
-      await g2.context.close()
+      await closeContext(g1.context)
+      await closeContext(g2.context)
     }
   })
 
@@ -147,7 +156,7 @@ test.describe('Multi-party', () => {
       // Guest now connects (mic control appears).
       await expect(guest.getByRole('button', { name: /microphone/i }).first()).toBeVisible({ timeout: 45_000 })
     } finally {
-      await ctx.close()
+      await closeContext(ctx)
     }
   })
 
@@ -166,7 +175,7 @@ test.describe('Multi-party', () => {
       // After muting, the affordance drops (can't re-mute) — guest mic shows off.
       await expect(muteBtn).toBeHidden({ timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 })
