@@ -81,7 +81,7 @@ function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
 
 /** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
 export function ChatPanel({ chat }: { chat: ChatApi }) {
-  const { items, sendText, sendFile, pinned, togglePin, reactions, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
+  const { items, sendText, sendFile, pinned, togglePin, unpin, reactions, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
@@ -353,12 +353,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       {pinned.length > 0 && (
         <div className="shrink-0 space-y-1.5 border-b border-line px-3 py-2">
           {pinned.map((p) => (
-            <PinnedRow
-              key={p.id}
-              pin={p}
-              onJump={() => jumpToMessage(p.id)}
-              onUnpin={() => togglePin({ kind: 'text', id: p.id, fromName: p.name, text: p.text, timestamp: p.timestamp, fromIdentity: '', isLocal: false })}
-            />
+            <PinnedRow key={p.id} pin={p} onJump={() => jumpToMessage(p.id)} onUnpin={() => unpin(p.id)} />
           ))}
         </div>
       )}
@@ -462,7 +457,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                   onMouseEnter={() => setMentionIdx(i)}
                   className={cn(
                     'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm',
-                    i === mentionIdx ? 'bg-accent-soft text-accent' : 'text-ink hover:bg-sunken',
+                    i === mentionIdx ? 'bg-accent-soft text-accent-text' : 'text-ink hover:bg-sunken',
                   )}
                 >
                   <Avatar name={t.name} size="sm" />
@@ -1109,7 +1104,7 @@ function ReactionChips({
             className={cn(
               'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs leading-none transition-colors',
               mine
-                ? 'border-accent bg-accent-soft text-accent'
+                ? 'border-accent bg-accent-soft text-accent-text'
                 : 'border-line bg-sunken text-ink-muted hover:border-line-strong',
             )}
           >
@@ -1212,7 +1207,7 @@ function FileMessage({ file }: { file: FileItem }) {
 
   return (
     <div className="mt-1 flex items-center gap-3 rounded-field border border-line bg-raised p-2.5">
-      <div className="grid size-9 shrink-0 place-items-center rounded-field bg-accent-soft text-accent">
+      <div className="grid size-9 shrink-0 place-items-center rounded-field bg-accent-soft text-accent-text">
         <DownloadIcon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">

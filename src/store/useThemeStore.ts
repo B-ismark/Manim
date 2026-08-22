@@ -48,6 +48,18 @@ export function applyTheme(
 
   const tokens: TokenMap = { ...base, ...preset.tokens }
 
+  // Accent as TEXT/ICON on an accent-soft background, derived per-mode from the
+  // chosen preset (same pattern as --color-danger-text). Light keeps the fill
+  // accent — it reads on the near-white soft mix. Dark lightens toward white:
+  // the raw accent (L≈0.55) against the dark soft mix (L≈0.28) is only ~2:1,
+  // which fails even the 3:1 UI-component bar.
+  const accentForText = preset.tokens['--color-accent']
+  if (accentForText) {
+    tokens['--color-accent-text'] = dark
+      ? `color-mix(in oklch, ${accentForText} 55%, white)`
+      : accentForText
+  }
+
   // Tint the neutral surfaces toward the accent so picking a theme visibly
   // recolours the WHOLE app (Slack model), not just buttons. Skipped for
   // vision-assistive presets and high contrast, which must stay neutral.

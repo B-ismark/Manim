@@ -339,6 +339,13 @@ function WaitingRoom({ room, onCancel }: { room: string; onCancel: () => void })
   const [perm, setPerm] = useState<NotificationPermission>(() =>
     supported ? Notification.permission : 'denied',
   )
+  // Elapsed wait, so a long wait reads as time passing instead of a silently
+  // stalled page (the 2s poll is invisible by design).
+  const [waited, setWaited] = useState(0)
+  useEffect(() => {
+    const id = window.setInterval(() => setWaited((s) => s + 1), 1000)
+    return () => window.clearInterval(id)
+  }, [])
   async function arm() {
     try {
       setPerm(await Notification.requestPermission())
@@ -352,6 +359,9 @@ function WaitingRoom({ room, onCancel }: { room: string; onCancel: () => void })
         <h1 className="text-lg font-semibold">Waiting to be let in</h1>
         <p className="mt-1 text-sm text-ink-muted">
           The host has been notified. You'll join {prettyRoom(room)} as soon as they admit you.
+        </p>
+        <p className="mt-1 text-xs text-ink-subtle tabular-nums">
+          Waiting {Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}
         </p>
         {supported && perm === 'default' && (
           <Button variant="neutral" className="mt-4" onClick={() => void arm()}>

@@ -266,15 +266,13 @@ export function ControlBar({
             />
           ))}
           {/* Raise hand = a sticky reaction, so it sits with the others. */}
+          {/* Sticky-state toggle: stays open so you can lower it again. */}
           <IconButton
             label={handRaised ? 'Lower hand' : 'Raise hand'}
             icon={<HandIcon />}
             tone={handRaised ? 'accent' : 'neutral'}
             active={handRaised}
-            onClick={() => {
-              toggleHand()
-              closeMore()
-            }}
+            onClick={toggleHand}
           />
         </div>
       </div>
@@ -287,10 +285,7 @@ export function ControlBar({
             icon={<ScreenShareIcon />}
             label={isScreenShareEnabled ? 'Stop share' : 'Share'}
             active={isScreenShareEnabled}
-            onClick={() => {
-              localParticipant.setScreenShareEnabled(!isScreenShareEnabled)
-              closeMore()
-            }}
+            onClick={() => void localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
           />
         )}
         {/* Grid/Speaker moved into the unified "View" control below (layout + density
@@ -411,32 +406,25 @@ export function ControlBar({
             closeMore()
           }}
         />
+        {/* State toggles stay open so you see the state flip (same rule as the
+            host Lock / Lobby tiles above); window & dialog actions close. */}
         <MenuRow
           icon={<EyeOffIcon />}
           label={selfViewHidden ? 'Show self view' : 'Hide self view'}
           active={selfViewHidden}
-          onClick={() => {
-            toggleSelfView()
-            closeMore()
-          }}
+          onClick={toggleSelfView}
         />
         <MenuRow
           icon={<CameraIcon />}
           label={videosFirst ? 'Showing videos first' : 'Show videos first'}
           active={videosFirst}
-          onClick={() => {
-            toggleVideosFirst()
-            closeMore()
-          }}
+          onClick={toggleVideosFirst}
         />
         <MenuRow
           icon={<SoundOnIcon />}
           label={audioOnly ? 'Audio-only on — switch to video' : 'Audio-only mode'}
           active={audioOnly}
-          onClick={() => {
-            toggleAudioOnly()
-            closeMore()
-          }}
+          onClick={toggleAudioOnly}
         />
         <div className="my-1 border-t border-line" />
         <MenuRow
@@ -489,7 +477,7 @@ export function ControlBar({
         {locked && (
           <Tooltip content="Room is locked">
             <span
-              className="grid size-9 place-items-center rounded-control bg-accent-soft text-accent [&_svg]:size-4"
+              className="grid size-9 place-items-center rounded-control bg-accent-soft text-accent-text [&_svg]:size-4"
               role="img"
               aria-label="Room is locked"
             >

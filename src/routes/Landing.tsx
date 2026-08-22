@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, Dialog, Island, Popover, Avatar } from '@/components/primitives'
 import { GoogleIcon, CameraIcon, CloseIcon } from '@/components/icons'
@@ -40,6 +40,18 @@ function randomRoom(): string {
   return `${pick(a, 0)}-${pick(b, 1)}-${suffix}`
 }
 
+/** URL-safe room slug: lowercase, whitespace→dash, strip anything that would
+ *  corrupt the path segment or the #fragment where invite secrets ride. */
+function toSlug(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
 export function Landing() {
   const navigate = useNavigate()
   const [room, setRoom] = useState('')
@@ -56,9 +68,15 @@ export function Landing() {
   // before the probe resolves.
   const [betaGate, setBetaGate] = useState(false)
   const [canHost, setCanHost] = useState(true)
+  // Ref mirrors of the two flags above: readable AFTER an await (closure-captured
+  // state would be stale once newMeeting resumes past its probe await).
+  const gateRef = useRef({ betaGate: false, canHost: true })
+  // The in-flight probe, so a fast "New meeting" tap can await it instead of
+  // racing past the gate on the optimistic can-host default.
+  const betaProbe = useRef<Promise<void> | null>(null)
   useEffect(() => {
     let alive = true
-    void (async () => {
+    const probe = (async () => {
       const token = signedIn
         ? (await supabase?.auth.getSession())?.data.session?.access_token
         : undefined
@@ -66,7 +84,9 @@ export function Landing() {
       if (!alive) return
       setBetaGate(me.betaGate)
       setCanHost(me.allowed)
+      gateRef.current = { betaGate: me.betaGate, canHost: me.allowed }
     })()
+    betaProbe.current = probe
     return () => {
       alive = false
     }
@@ -78,12 +98,22 @@ export function Landing() {
   }
 
   // A typed value is usually a bare meeting name, but may be a pasted invite link
-  // (which carries its own secrets in the #fragment) — handle both.
+  // (which carries its own secrets in the #fragment) — handle both. Both branches
+  // pass through toSlug: `/ ? # %` in a typed name used to flow into the URL and
+  // corrupt the fragment encoding of the generated invite link.
   function parseTyped(value: string): { slug: string; secrets: RoomSecrets } {
     const v = value.trim()
     const m = v.match(/\/r\/([^/?#]+)(#.*)?$/)
-    if (m) return { slug: decodeURIComponent(m[1]).toLowerCase(), secrets: parseRoomHash(m[2] || '') }
-    return { slug: v.toLowerCase().replace(/\s+/g, '-'), secrets: {} }
+    if (m) {
+      let raw = m[1]
+      try {
+        raw = decodeURIComponent(raw)
+      } catch {
+        /* malformed escape — use the raw segment */
+      }
+      return { slug: toSlug(raw), secrets: parseRoomHash(m[2] || '') }
+    }
+    return { slug: toSlug(v), secrets: {} }
   }
 
   // Join an EXISTING room by name/link: a typed name joins an open room as-is; a
@@ -92,20 +122,35 @@ export function Landing() {
   function onJoin(e: FormEvent) {
     e.preventDefault()
     const { slug, secrets } = parseTyped(room)
+    if (!slug) {
+      // Everything stripped (e.g. "???") — say why instead of a silent no-op.
+      if (room.trim()) toast('Meeting names need letters or numbers', 'warning')
+      return
+    }
     goTo(slug, secrets)
   }
 
   // New meeting: mint a fresh join secret + E2EE key so the shareable link is an
   // unguessable, end-to-end-encrypted room. A pasted link keeps its own secrets; a
   // blank field gets a random room name.
-  function newMeeting() {
+  async function newMeeting() {
     const typed = room.trim()
+    // A fast tap can beat the beta probe: wait for it (once) so the gate reads
+    // the real answer instead of the optimistic default — otherwise a
+    // non-approved user slips through here and dead-ends on the in-room
+    // "invite-only" error card.
+    try {
+      await betaProbe.current
+    } catch {
+      /* probe failed — fall through with whatever state we have */
+    }
     const parsed = typed ? parseTyped(typed) : { slug: '', secrets: {} as RoomSecrets }
     // Starting a NEW room makes you its host — which the beta gate restricts to
     // approved accounts. Stop a user who can't host before they dead-end on the
     // in-room "invite-only" error. A pasted invite link (carries a secret) is a guest
     // JOIN, not a host claim, so it's always allowed through.
-    if (betaGate && !canHost && !parsed.secrets.secret) {
+    const { betaGate: gated, canHost: allowed } = gateRef.current
+    if (gated && !allowed && !parsed.secrets.secret) {
       toast(
         signedIn
           ? 'Your account isn’t approved to start meetings yet.'
@@ -115,7 +160,9 @@ export function Landing() {
       return
     }
     if (!typed) return goTo(randomRoom(), newRoomSecrets())
-    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
+    // Typed only symbols → slug came back empty: mint a random room rather than
+    // silently doing nothing.
+    goTo(parsed.slug || randomRoom(), parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
   }
 
   // Call a contact: mint a fresh secured room, ring them into it (the ring carries
@@ -137,7 +184,9 @@ export function Landing() {
     // Top-align + scroll on phones so the keyboard can't bury the inputs
     // (centering strands them behind the keyboard); centered on desktop.
     <main className="min-h-dvh overflow-y-auto p-4 pt-20 sm:pt-4 short:pt-4 flex flex-col items-center justify-start sm:justify-center">
-      <header className="absolute inset-x-4 top-4 z-20 flex items-center justify-between">
+      {/* Fixed (not absolute): the page scrolls on phones, and account/settings
+          must stay reachable while scrolled. */}
+      <header className="fixed inset-x-4 top-4 z-20 flex items-center justify-between">
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
           {signedIn && <ContactsLauncher onCall={callContact} />}
@@ -247,7 +296,7 @@ function OtherDeviceMeetings({
       <ul className="flex flex-col gap-1.5">
         {meetings.map((m) => (
           <li key={m.room} className="flex items-center gap-2">
-            <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent [&_svg]:size-4">
+            <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent-text [&_svg]:size-4">
               <CameraIcon />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{prettyRoom(m.room)}</span>
@@ -297,7 +346,7 @@ function RecentMeetings({
               type="button"
               aria-label={`Remove ${r.name} from recents`}
               onClick={() => remove(r.slug)}
-              className="grid size-7 shrink-0 place-items-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink [&_svg]:size-3.5"
+              className="grid size-9 shrink-0 place-items-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink [&_svg]:size-3.5"
             >
               <CloseIcon />
             </button>
@@ -452,7 +501,7 @@ function SignIn() {
       >
         <div className="flex flex-col items-center gap-5 pb-1 pt-2 text-center">
           {/* Header glyph: brand mark for the entry step, an envelope once sent. */}
-          <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent [&_svg]:size-6">
+          <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent-text [&_svg]:size-6">
             {sent ? (
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="5" width="18" height="14" rx="2.5" />

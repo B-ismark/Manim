@@ -3,9 +3,13 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCallStore, type IncomingCall } from '@/store/useCallStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
+import { toast } from '@/store/useToastStore'
 import type { RoomSecrets } from '@/lib/roomLink'
 
 export type { IncomingCall }
+
+/** A ring is a live event, not a sticky state: auto-miss after this long. */
+const RING_TTL_MS = 45_000
 
 /**
  * Ring a Manim user by email — resolves their id via the `profiles` table and
@@ -117,6 +121,20 @@ export function useIncomingCalls() {
       void sb.removeChannel(channel)
     }
   }, [userId, signedIn, setIncoming])
+
+  // Auto-miss: the caller has no cancel event (they join the room immediately
+  // after ringing), so expiry is the callee-side safety net. Without it, a
+  // callee who steps away returns to a stale ring — on touch a full-screen
+  // takeover — hours later. 45s matches phone convention; the banner shows the
+  // elapsed time so the countdown is visible before it fires.
+  useEffect(() => {
+    if (!incoming) return
+    const t = window.setTimeout(() => {
+      dismiss()
+      toast(`Missed call from ${incoming.fromName}`, 'neutral')
+    }, RING_TTL_MS)
+    return () => window.clearTimeout(t)
+  }, [incoming, dismiss])
 
   return { incoming, dismiss }
 }
