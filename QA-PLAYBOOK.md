@@ -138,6 +138,14 @@ desktop bar's at-capacity share button is the live example.
 (retracted hover controls, the auto-hidden touch chrome) are correctly ignored.
 Element-only opacity checks produce false positives in-call.
 
+Know its **20% threshold**: it reports a pair only when the intersection exceeds a
+fifth of the smaller element's area. That is right for a sweep (a 2px kiss between
+neighbours is not a finding), and wrong as a proof of clearance — it caught a
+coachmark covering a mute button at 100% and said nothing whatever about the 4px
+overlap two almost-right width caps left behind. When a specific clearance is the
+point, assert the geometry directly at zero tolerance (`19-overlays`), and don't read
+a green `overlaps()` as "nothing is on top of anything".
+
 **Large-room tile grid (paged).** Fit-to-viewport pages; navigation is **left/right
 EDGE arrows** (Zoom model) — NOT a bottom-centre pager (that collides with the
 floating control bar). `perPage` is **capped** (20 desktop / 9 mobile) so pagination

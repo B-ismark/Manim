@@ -53,17 +53,27 @@ export function PinCoachmark() {
   // dismiss) it ATE the tap. Six seconds, once per device, on the first call
   // someone ever makes — i.e. precisely while they are poking at the UI.
   //
-  // 4.5rem is derived, not picked: TopStack pads `px-4` (16px), so a centred pill
-  // capped at `100% - 4.5rem` keeps 52px clear of each viewport edge, which is the
-  // corner control's own extent (`left-2` = 8px, plus a 44px target). Expressed in
-  // those units so it stays true at any width — it wraps to another line on a
-  // narrow phone instead of growing into the corner. Widen this and you re-open the
-  // collision; the `overlaps()` gate in 09-visual is what catches it.
+  // 6rem is derived from a MEASUREMENT, and the measurement is the part worth
+  // keeping: a tile's top-left control occupies x 16..60 on touch — the stage
+  // insets the tile 8px, the control sits `left-2` (8px) inside that, and it is a
+  // 44px target. (Two earlier attempts at this number came from reasoning about
+  // `left-2` alone and both left a few pixels of overlap.)
+  //
+  // TopStack pads `px-4` (16px), so a centred pill capped at `100% - Crem` sits
+  // exactly `16 + C/2` from each viewport edge AT EVERY WIDTH — the cap and the
+  // centring cancel the viewport out. 6rem puts it at 64px, clearing the 60px band
+  // by 4px, so no device-pixel-ratio rounding can reintroduce an overlap. It wraps
+  // to another line on a narrow phone rather than growing into the corner.
+  //
+  // Narrow this at your peril and widen it at the app's: 19-overlays asserts both
+  // edges against that band at ZERO tolerance, because 09-visual's `overlaps()`
+  // only reports an intersection above 20% of the smaller element's area and so
+  // says nothing about a small one.
   return (
     <button
       type="button"
       onClick={dismiss}
-      className="mn-pop pointer-events-auto max-w-[calc(100%-4.5rem)] rounded-control bg-overlay px-3 py-2 text-center text-xs text-white shadow-raised backdrop-blur"
+      className="mn-pop pointer-events-auto max-w-[calc(100%-6rem)] rounded-control bg-overlay px-3 py-2 text-center text-xs text-white shadow-raised backdrop-blur"
     >
       Double-tap a video to pin · tap your own to enlarge, drag to move
     </button>

@@ -199,7 +199,8 @@ test.describe('Side panel reflow', () => {
         await join(p, room, `P${String(i).padStart(2, '0')}`)
         extras.push(context)
       } catch {
-        await closeContext(context)
+        // Not closeContext — see 07-capacity: on a give-up path, swallow everything.
+        await context.close().catch(() => {})
         break
       }
     }
@@ -222,7 +223,10 @@ test.describe('Side panel reflow', () => {
 
       expect(await tiles(), 'opening the panel paged someone out').toBeGreaterThanOrEqual(closed)
     } finally {
-      for (const c of extras) await closeContext(c)
+      // Not closeContext: this `finally` runs after a possibly-failed assertion, so
+      // anything thrown here would mask it. These already swallowed everything, and
+      // that was right.
+      for (const c of extras) await c.close().catch(() => {})
     }
   })
 

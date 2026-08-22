@@ -175,19 +175,24 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   store — read the header of `AnnotationEngine.ts` before touching it.
 - **Overlay layering is centralised.** Top banners/pills are children of
   `TopStack` (one column, priority order) — never a new `fixed` + hand-picked
-  z-index; the layer scale is documented in `TopStack.tsx`.
-  - **A full-width TopStack child covers a tile's corner controls on touch.** The
-    column anchors at `top: max(1rem, safe-area)` and stretches `inset-x-0`; a
-    tile's own controls sit at `left-2`/`right-2 top-2` and are pinned VISIBLE at
-    44px on touch (no hover to reveal them). `PinCoachmark` was wide enough to
-    reach both corners and, being tap-to-dismiss, swallowed the tap on a host's
-    "Mute <name>" button for its whole 6s life. Cap a wide child's width in the
-    same units the corner controls use (`max-w-[calc(100%-4.5rem)]` keeps 52px
-    clear) and let it wrap. `09-visual`'s `overlaps()` is what catches this. ControlBar holds ONE
+  z-index; the layer scale is documented in `TopStack.tsx`. ControlBar holds ONE
   `modal` value, so two dialogs can't be open at once. The touch chrome also refuses to
   auto-hide while ANY Radix layer is open (`overlayOpen()` in `RoomView` — it asks the
   DOM, so a new control can't forget to opt in), and the audio picker is a tray *inside*
   the island whose last row is the control bar, so it can't outlive its anchor.
+  - **A full-width TopStack child covers a tile's corner controls on touch.** The
+    column anchors at `top: max(1rem, safe-area)` and stretches `inset-x-0`; a
+    tile's own controls are pinned VISIBLE at 44px on touch (no hover to reveal
+    them) and occupy **x 16..60** — the stage insets the tile 8px, the control sits
+    `left-2` inside that. `PinCoachmark` was wide enough to reach both corners and,
+    being tap-to-dismiss, swallowed the tap on a host's "Mute <name>" button for
+    its whole 6s life. Cap a wide child so a centred pill clears that band:
+    `max-w-[calc(100%-6rem)]` lands at 64px, and `16 + C/2` is the general form
+    (the cap and the centring cancel the viewport out). Do NOT lean on 09-visual's
+    `overlaps()` for this — it only reports an intersection above 20% of the
+    smaller element's area, so it caught the original 100% collision and said
+    nothing about the 4px one two almost-right caps left behind. `19-overlays`
+    asserts both edges against the band at zero tolerance.
 - **The invite link's #fragment is fragile — `lib/roomKeys.ts` is the safety net.**
   A URL has exactly one fragment, so a sign-in round trip (`redirectTo` +
   `#access_token=…`) overwrites the room's `#k=…&e=…`, and everything that shares

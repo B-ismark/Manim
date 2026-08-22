@@ -44,7 +44,11 @@ test.describe('Capacity', () => {
         extras.push({ context, page: p, sink })
       } catch (e) {
         firstFailureAt = i + 1
-        await closeContext(context)
+        // Deliberately NOT closeContext: this is the unhappy path, and the loop is
+        // about to break and report. A cleanup that swallows only the known
+        // trace-zip flake would let any other close error replace the diagnosis we
+        // came here for. Swallow everything on a path whose job is to give up.
+        await context.close().catch(() => {})
         // eslint-disable-next-line no-console
         console.log(`[capacity] join failed at participant ${i + 1}: ${(e as Error).message}`)
         break
@@ -92,8 +96,10 @@ test.describe('Capacity', () => {
     // eslint-disable-next-line no-console
     console.log('[capacity] RESULT', JSON.stringify(result, null, 2))
 
-    // Tear down.
-    for (const e of extras) await closeContext(e.context)
+    // Tear down. Same reasoning as above, and sharper: the sanity assertion is
+    // BELOW this loop, so a throw here would report a teardown error instead of the
+    // capacity result the whole test exists to produce.
+    for (const e of extras) await e.context.close().catch(() => {})
 
     // Sanity: at least the host + a few others actually connected.
     expect(joined).toBeGreaterThanOrEqual(Math.min(4, TARGET))
