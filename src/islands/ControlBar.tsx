@@ -363,7 +363,18 @@ export function ControlBar({
 
       <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Quick actions</p>
       <div className="grid grid-cols-4 gap-1">
-        {canScreenShare ? (
+        {/* Screen share — touch only here; the desktop bar inlines it.
+
+            Absent, not dimmed, where `getDisplayMedia` is missing. That is every
+            real phone: no mobile browser implements screen capture (WebKit never
+            has, so iOS Safari and iOS Chrome are both out, and neither Chrome nor
+            Firefox for Android has either — capture there goes through ReplayKit /
+            MediaProjection, native APIs a web page cannot reach). A control that
+            cannot ever work is not worth a slot in a four-column grid a thumb has
+            to aim at, so it isn't offered at all rather than offered greyed out.
+            `useScreenShare().supported` is the one check, shared with the mini
+            player's Share again so the two can never disagree. */}
+        {canScreenShare && (
           <GridTile
             className="pointer-fine:hidden"
             icon={<ScreenShareIcon />}
@@ -374,37 +385,6 @@ export function ControlBar({
               screenShare.toggle()
               closeMore()
             }}
-          />
-        ) : (
-          /* No `getDisplayMedia` here, so sharing is impossible — but SAY SO rather
-             than rendering nothing.
-
-             This is every phone, not an edge case: no mobile browser implements
-             screen capture. iOS Safari and iOS Chrome are both WebKit, which has
-             never shipped it; Chrome and Firefox for Android haven't either. Capture
-             on a phone goes through ReplayKit / MediaProjection, which are native
-             APIs a web app cannot reach. So there is nothing to build here and
-             nothing to wait for.
-
-             What WAS a bug is that the tile simply vanished, which reads as "this
-             app forgot to add screen sharing" rather than "your browser can't".
-             `aria-disabled` and not `disabled` for the reason the desktop bar's
-             at-capacity button documents at length: `disabled` carries
-             `pointer-events-none`, so the one control that most needs to explain
-             itself becomes a dimmed glyph you cannot even press, and there is no
-             hover on a phone to explain it instead. Left pressable, the label
-             carries the short answer and the press carries the whole one. */
-          <GridTile
-            className="pointer-fine:hidden"
-            icon={<ScreenShareIcon />}
-            label="Share screen (desktop only)"
-            unavailable
-            onClick={() =>
-              toast(
-                "Mobile browsers can't share a screen — join from a computer to share yours.",
-                'neutral',
-              )
-            }
           />
         )}
         {/* Grid/Speaker moved into the unified "View" control below (layout + density
@@ -1433,7 +1413,6 @@ function GridTile({
   label,
   active,
   disabled,
-  unavailable,
   onClick,
   className,
 }: {
@@ -1443,18 +1422,6 @@ function GridTile({
   /** Greys the tile and blocks the press, keeping it in place. A quick action that
    *  vanishes when unavailable moves every tile after it under the user's thumb. */
   disabled?: boolean
-  /**
-   * Greys the tile like `disabled` but keeps the press LIVE, so the handler can
-   * say why it can't be used.
-   *
-   * The difference matters on touch and only on touch: `disabled` implies
-   * `pointer-events-none`, and a phone has no hover and no title tooltip, so a
-   * plain disabled tile is a dimmed glyph with no channel left to explain itself.
-   * The desktop control bar makes the same call for its at-capacity share button,
-   * for the same reason and at more length. Use `disabled` when the label already
-   * carries the reason ("Share screen (in use)") and this when the press has to.
-   */
-  unavailable?: boolean
   onClick: () => void
   className?: string
 }) {
@@ -1464,11 +1431,9 @@ function GridTile({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={active}
-      aria-disabled={unavailable}
       className={cn(
         'flex flex-col items-center gap-1 rounded-field px-1 py-2 hover:bg-sunken',
-        (disabled || unavailable) && 'opacity-40',
-        disabled && 'pointer-events-none',
+        disabled && 'pointer-events-none opacity-40',
         className,
       )}
     >

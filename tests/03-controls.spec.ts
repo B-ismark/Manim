@@ -139,7 +139,7 @@ test.describe('In-call controls', () => {
   })
 
   /**
-   * A phone that cannot share its screen says so, instead of showing nothing.
+   * A phone offers no screen-share control at all, because it cannot ever work.
    *
    * This is the case EVERY REAL PHONE is in and no emulated one is: screen capture
    * is a desktop-only web feature (WebKit has never shipped `getDisplayMedia`, and
@@ -147,24 +147,22 @@ test.describe('In-call controls', () => {
    * ReplayKit / MediaProjection, native APIs a web page cannot reach). Playwright's
    * "Pixel 7" is desktop Chromium wearing a mobile user-agent and a touch viewport,
    * so it reports screen capture as fully supported and renders the ordinary Share
-   * screen tile — which is exactly why the missing-affordance bug could sit in the
-   * mobile suite unseen. Removing the API is the only way this is visible in a
-   * browser test, the same trick 11-mobile-fit uses to raise a keyboard.
+   * screen tile. Removing the API is the only way the real mobile path is visible in
+   * a browser test at all, the same trick 11-mobile-fit uses to raise a keyboard.
    *
-   * Both branches are asserted, in order, so this cannot pass by the tile being
-   * absent, or by the label being a constant.
+   * Both branches are asserted, in order, so this cannot pass by the tile always
+   * being absent — which is the failure mode that matters, since `supported` is one
+   * boolean away from hiding the control on desktop too.
    */
-  test('a phone with no screen capture explains itself instead of hiding the tile', async ({
-    page,
-  }) => {
+  test('a phone with no screen capture is offered no share control', async ({ page }) => {
     test.skip(!(await isTouch(page)), 'the share tile only lives in More on touch')
     const sink = attachErrorSink(page)
 
-    // First: this browser DOES have the API, so the tile is the normal one.
+    // First: this browser DOES have the API, so the tile is there.
     await join(page, uniqueRoom(), 'Ada')
     await openMore(page)
-    // `exact`, because the accessible name is matched as a SUBSTRING by default —
-    // and the whole point below is a tile whose name STARTS with "Share screen".
+    // `exact`, because the at-capacity label is "Share screen (in use)" and the
+    // accessible name is matched as a substring by default.
     await expect(page.getByRole('button', { name: 'Share screen', exact: true })).toBeVisible()
 
     // Now take the API away and rejoin. `defineProperty`, not `delete` — the method
@@ -179,23 +177,12 @@ test.describe('In-call controls', () => {
     await join(page, uniqueRoom(), 'Ada')
     await openMore(page)
 
-    await expect(page.getByRole('button', { name: 'Share screen', exact: true })).toHaveCount(0)
-    const tile = page.getByRole('button', { name: 'Share screen (desktop only)' })
-    await expect(tile).toBeVisible()
-    // aria-disabled, NOT disabled: a phone has no hover and no title tooltip, so a
-    // tile that can't be pressed has no channel left to explain itself.
-    await expect(tile).toHaveAttribute('aria-disabled', 'true')
-
-    // `force`, and it is the aria-disabled choice showing through rather than a
-    // test smell: Playwright's actionability check counts `aria-disabled="true"` as
-    // not-enabled and refuses to tap, while a browser still delivers the touch to a
-    // button that has no `disabled` attribute and no `pointer-events: none`. Force
-    // skips only that precondition — the tap itself is real, at the element's own
-    // coordinates. (The desktop bar's at-capacity share button is in the same boat.)
-    await tile.tap({ force: true })
-    await expect(page.getByText(/join from a computer/i)).toBeVisible()
-    // The sheet stays put — the press explained something, it didn't navigate.
-    await expect(tile).toBeVisible()
+    // Nothing named for sharing a screen, anywhere — not the tile, not a dimmed
+    // stand-in, and not the desktop bar control leaking through a `hidden` class
+    // the cascade ignores (which is how that control once reached phones).
+    await expect(page.getByRole('button', { name: /share screen/i })).toHaveCount(0)
+    // …and the sheet still works, rather than having thrown on the way up.
+    await expect(page.getByRole('button', { name: 'Mini player' })).toBeVisible()
 
     expect(appErrors(sink)).toEqual([])
   })
