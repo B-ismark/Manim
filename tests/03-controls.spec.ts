@@ -37,11 +37,11 @@ test.describe('In-call controls', () => {
     // This row was renamed off "Audio-only mode" (it read as the device picker it
     // sat beside); the test had kept asserting the old name and failing for it.
     await expect(page.getByRole('button', { name: /incoming video/ })).toBeVisible()
-    // Switch to speaker layout. The menu deliberately STAYS open: layout and
-    // gallery size are one control now, and the size chips only appear alongside
-    // Grid — closing on the first pick would put density out of reach. (This
-    // assertion used to expect a close, and had been failing unnoticed behind an
-    // earlier stale expectation in the same test.)
+    // Switch to speaker layout. The menu deliberately STAYS open — a view is a
+    // thing you flip between to see which you want, and closing on the first pick
+    // makes comparing them a four-tap round trip. (This assertion used to expect a
+    // close, and had been failing unnoticed behind an earlier stale expectation in
+    // the same test.)
     await page.getByRole('button', { name: 'Speaker' }).click()
     await expect(page.getByRole('button', { name: 'Speaker' })).toHaveAttribute(
       'aria-pressed',

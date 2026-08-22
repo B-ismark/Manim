@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, openMore, revealChrome, selectStageView, closePanel } from './helpers'
+import { uniqueRoom, join, newParticipant, openChat, openMore, revealChrome, selectStageView, closePanel } from './helpers'
 import { ISLAND_H, ISLAND_INSET } from '../src/lib/chromeBands'
 
 /**
@@ -656,6 +656,199 @@ test.describe('Mobile fit (no page scroll)', () => {
       expect(lowestTile, 'the last row scrolls clear of the bar').toBeLessThanOrEqual(barTop + 1)
     } finally {
       await Promise.all(peers.map((p) => p.context.close()))
+    }
+  })
+
+  /**
+   * The on-screen keyboard must not cover the chat composer.
+   *
+   * `bottom-0` positions against the LAYOUT viewport, and the default
+   * `interactive-widget=resizes-visual` means a software keyboard shrinks only the
+   * VISUAL viewport — so the chat sheet stayed exactly where it was and the
+   * keyboard was drawn over the field the user was typing into. Worst in
+   * fullscreen, where there is no browser chrome to absorb any of it, which is how
+   * it was reported.
+   *
+   * An emulated device cannot raise a keyboard, so the visual viewport is stubbed:
+   * `__kb` is the number of px a keyboard would cover, and a resize on the REAL
+   * visualViewport (which is what the hook listens to) drives the recompute. Same
+   * class of seam as the forced safe-area inset above — without it the one case
+   * this code exists for can never be exercised in a browser.
+   */
+  test('the chat composer stays above the on-screen keyboard', async ({ page }) => {
+    await page.addInitScript(() => {
+      const win = window as unknown as { __kb: number; __vv: VisualViewport }
+      win.__kb = 0
+      const real = window.visualViewport!
+      win.__vv = real
+      const fake = {
+        get height() {
+          return window.innerHeight - win.__kb
+        },
+        get offsetTop() {
+          return 0
+        },
+        get scale() {
+          return 1
+        },
+        addEventListener: real.addEventListener.bind(real),
+        removeEventListener: real.removeEventListener.bind(real),
+      }
+      Object.defineProperty(window, 'visualViewport', { configurable: true, get: () => fake })
+    })
+
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const composer = await openChat(page)
+    await expect(composer).toBeVisible()
+
+    const KB = 300
+    await page.evaluate((kb) => {
+      const win = window as unknown as { __kb: number; __vv: VisualViewport }
+      win.__kb = kb
+      win.__vv.dispatchEvent(new Event('resize'))
+    }, KB)
+    await page.waitForTimeout(400)
+
+    const box = await page.evaluate(() => {
+      const field = document.querySelector('textarea')!
+      const sheet = field.closest('.fixed') as HTMLElement
+      const f = field.getBoundingClientRect()
+      const s = sheet.getBoundingClientRect()
+      return { fieldBottom: f.bottom, sheetTop: s.top, sheetBottom: s.bottom, vh: window.innerHeight }
+    })
+
+    // The keyboard's top edge. Everything you interact with has to be above it.
+    const keyboardTop = box.vh - KB
+    expect(box.sheetBottom, 'the sheet rests on the keyboard, not under it').toBeLessThanOrEqual(
+      keyboardTop + 1,
+    )
+    expect(box.fieldBottom, 'the composer is not under the keyboard').toBeLessThanOrEqual(keyboardTop)
+    // …and the sheet did not simply grow off the top of the screen to get there.
+    expect(box.sheetTop, 'the sheet still starts on screen').toBeGreaterThanOrEqual(0)
+
+    // Keyboard dismissed → the sheet settles back onto the bottom edge.
+    await page.evaluate(() => {
+      const win = window as unknown as { __kb: number; __vv: VisualViewport }
+      win.__kb = 0
+      win.__vv.dispatchEvent(new Event('resize'))
+    })
+    await page.waitForTimeout(400)
+    const after = await page.evaluate(() => {
+      const sheet = document.querySelector('textarea')!.closest('.fixed') as HTMLElement
+      return { bottom: sheet.getBoundingClientRect().bottom, vh: window.innerHeight }
+    })
+    expect(Math.round(after.vh - after.bottom), 'sheet back on the bottom edge').toBeLessThanOrEqual(2)
+  })
+
+  /**
+   * Background blur is a one-tap toggle on your own tile.
+   *
+   * It used to open a "lens carousel" above the control bar — a horizontal
+   * scroller built for a gallery of effects that no longer exists (image
+   * backgrounds were removed for repeatedly breaking the feed), so it had shrunk
+   * to a two-item strip whose whole content is a subset of More → Backgrounds &
+   * effects. Two taps became one, and an overlay layer, a mirrored store and a
+   * chrome-hold rule went with it.
+   *
+   * Asserted here: the toggle is wired in BOTH directions, and the tile and the
+   * Effects dialog read the same state. What is deliberately NOT asserted is the
+   * dialog agreeing while blur is actually RUNNING — and the reason is worth
+   * recording, because the obvious version of this test fails in CI:
+   *
+   * `@livekit/track-processors` pulls the MediaPipe WASM from a CDN. On a sandboxed
+   * or offline runner it can't, so blur degrades to 'none' ~300ms later (the
+   * documented path in useBackgroundBlur) and everything stays cheap. **On CI the
+   * fetch succeeds**, so the segmenter really runs — and MediaPipe on a shared
+   * two-core runner, alongside two other browser contexts, starved the page badly
+   * enough that `openMore` timed out on both the first attempt and the retry. So
+   * the processor is switched back off before this test touches any other UI. The
+   * single-instance property is also structural: one `useBackgroundBlur`, reached
+   * through one `BlurProvider`.
+   *
+   * The arming check uses a MutationObserver rather than a polled
+   * `toHaveAttribute` because on the degrade path the pressed state lives for only
+   * ~300ms, which a poll can miss; the observer sees every value the attribute
+   * ever held, so it reads the same on both kinds of runner.
+   */
+  test('the self-view tile toggles background blur, in step with the More menu', async ({
+    page,
+    browser,
+  }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    // A peer, because solo renders SoloStage — the floating self-view card (which
+    // carries these controls in speaker view) only exists once someone else is in.
+    const peer = await newParticipant(browser, room, 'Guest1')
+    const BLUR_TOGGLE = /^(Blur my background|Turn off background blur)$/
+    try {
+      const self = page.getByRole('group', { name: /^Your video/ })
+      await expect(self).toBeVisible({ timeout: 45_000 })
+
+      // The tile's tools need a PUBLISHED camera (`hasVideo`), which lands a beat
+      // after the card itself — so wait for the control rather than the card.
+      const blurOn = page.getByRole('button', { name: 'Blur my background' })
+      await expect(blurOn).toBeVisible({ timeout: 30_000 })
+      await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
+
+      // Watch the toggle before touching it. The label states the ACTION, so it
+      // changes with the state — this matches either one.
+      await page.evaluate((pattern) => {
+        const re = new RegExp(pattern)
+        const btn = Array.from(document.querySelectorAll('button')).find((b) =>
+          re.test(b.getAttribute('aria-label') ?? ''),
+        )
+        if (!btn) throw new Error('blur toggle not found')
+        const seen: (string | null)[] = [btn.getAttribute('aria-pressed')]
+        ;(window as unknown as { __blurSeen: (string | null)[] }).__blurSeen = seen
+        new MutationObserver(() => seen.push(btn.getAttribute('aria-pressed'))).observe(btn, {
+          attributes: true,
+          attributeFilter: ['aria-pressed'],
+        })
+      }, BLUR_TOGGLE.source)
+
+      await blurOn.tap()
+      // One tick, only so React has certainly flushed the state change before the
+      // read. The observer accumulates history, so WHEN we read doesn't matter —
+      // only that the mutation has happened by then.
+      await page.waitForTimeout(500)
+      const seen = await page.evaluate(
+        () => (window as unknown as { __blurSeen: (string | null)[] }).__blurSeen,
+      )
+      expect(seen, 'tapping the tile control armed blur').toContain('true')
+
+      // Switch it straight back off, and get the processor off this runner before
+      // anything else is driven. Located by the OFF label rather than tapping the
+      // same button again: on a runner that can't build the processor the state has
+      // already degraded by now, and a blind second tap would turn blur back ON.
+      const blurOff = page.getByRole('button', { name: 'Turn off background blur' })
+      if (await blurOff.isVisible().catch(() => false)) await blurOff.tap()
+      await expect(blurOn, 'the toggle returns to its off state').toBeVisible({ timeout: 20_000 })
+      await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
+
+      // The tile and the Effects dialog read the same state — the invariant
+      // `BlurProvider` exists for, and what a store mirroring the hook would break.
+      await openMore(page)
+      await page.getByRole('button', { name: /Backgrounds & effects/ }).tap()
+      await expect(page.getByRole('button', { name: 'None', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      )
+      await expect(page.getByRole('button', { name: 'Blur', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      )
+      // The Effects surface is a Dialog, not a Sheet — its own "Close" button, not
+      // closePanel's "Close panel". A modal dialog aria-hides the stage, so the
+      // tile control below is unreachable until this is actually shut.
+      await page.getByRole('button', { name: 'Close', exact: true }).tap()
+      await expect(page.getByRole('dialog')).toBeHidden()
+
+      // …and the tile still offers blur, so the round trip left nothing stuck.
+      await revealChrome(page)
+      await expect(page.getByRole('button', { name: 'Blur my background' })).toBeVisible()
+    } finally {
+      await peer.context.close()
     }
   })
 

@@ -8,9 +8,6 @@
  * want of any way to assert on it (see `balancedRows`).
  */
 
-/** Gallery-size preference: 'auto' fits the viewport, a number caps the page. */
-export type GridSizePref = 'auto' | number
-
 /**
  * Snap a raw frame aspect (w/h) to a tidy bucket so one odd stream can't make a
  * grid row absurdly tall or wide. Portrait phones clamp to 3:4 (NOT raw 9:16 —
@@ -86,23 +83,25 @@ export function tileColumns(stageWidth: number, coarse: boolean): number {
  * rooms independently of the measured height (a flex chain can briefly report an
  * unbounded height) and bounds mounted <video> elements per page, which is the
  * point of paging.
+ *
+ * There is deliberately no user-facing density override any more. A "gallery size"
+ * picker (Auto / 4 / 9 / 16) used to feed a `sizePref` in here, and every value it
+ * could produce was then clamped to this same fit-to-viewport answer — so on the
+ * viewports people actually use, the numbers either did nothing or forced a pager
+ * onto a page that had room to spare. It also forced the packer to carry a second,
+ * unconstrained pass for the one case a picked count couldn't respect the column
+ * cap (see fitMixedRows). Density follows the viewport now, which is the only
+ * input that ever decided it.
  */
 export function gridCapacity(
   width: number,
   height: number,
   coarse: boolean,
-  sizePref: GridSizePref,
 ): { cols: number; perPage: number } {
   const key = coarse ? 'coarse' : 'fine'
   const gap = GAP[key]
   const cols = tileColumns(width, coarse)
   const maxPerPage = coarse ? cols * cols : 20
-  // User-chosen density (Teams "gallery size"): the page is exactly the picked
-  // count — tiles shrink to fit, pager engages — clamped to what the device can
-  // legibly hold. This overrides the fit-to-viewport below.
-  if (sizePref !== 'auto') {
-    return { cols, perPage: Math.max(1, Math.min(sizePref, maxPerPage)) }
-  }
   // Before the first measure, fall back to a sane page so we don't flash a huge
   // mount of every tile.
   if (width < 2 || height < 2) {
@@ -192,12 +191,15 @@ export function fitMixedRows(
 ): { w: number; h: number }[][] {
   const n = aspects.length
   if (n === 0 || width <= 0 || height <= 0) return []
-  // Two passes when a column cap is given: honour it if any candidate split can,
-  // otherwise fall back to unconstrained. The fallback matters — a user who picks
-  // "9" from the gallery-size control on a 2-column phone is explicitly asking for
-  // tiles that shrink to fit, and returning nothing would render an empty stage.
-  const constrained = maxCols !== undefined ? pack(width, height, aspects, gap, maxCols) : null
-  return constrained?.length ? constrained : pack(width, height, aspects, gap)
+  // One pass. A column cap can never starve the scorer: `R = n` puts one tile per
+  // row, which satisfies any cap >= 1, so some candidate always survives the skip
+  // in `pack`. This used to run a second, UNCAPPED pass as a fallback, because the
+  // gallery-size picker could ask for more tiles per page than the cap allowed
+  // (9 on a 2-column phone) and an empty return would have rendered an empty
+  // stage. The picker is gone and the page can no longer exceed `cols * rows`, so
+  // that fallback was unreachable — and dangerous to keep, since it silently
+  // ignored the legibility floor the cap exists to enforce.
+  return pack(width, height, aspects, gap, maxCols)
 }
 
 function pack(

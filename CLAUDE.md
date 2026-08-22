@@ -78,6 +78,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
     bottom; anything parked down there ends up half underneath it (it did, for months).
   - Gallery tile density comes from viewport WIDTH at a 132px legibility floor
     (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
+  - There is deliberately **no user-facing density control.** More → View carried
+    gallery-size chips (Auto / 4 / 9 / 16); every value they produced was clamped to
+    the same fit-to-viewport answer `gridCapacity` computes, so they either did
+    nothing or paginated a page with room to spare. They also forced `fitMixedRows`
+    to keep a second, UNCAPPED pass (a picked count could exceed the column cap),
+    which silently dropped the legibility floor. Don't re-add the chips; `R = n`
+    always satisfies the cap, so the capped pack can never come back empty.
 - **On touch there is exactly ONE of you on screen; WHICH one depends on the view.**
   GALLERY gives you a real cell, the way every desktop layout does and the way Teams
   and Meet tile you on a phone. SPEAKER and CONTENT have no cell of yours — one
@@ -106,6 +113,36 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   Tailwind emits `.hidden` first, specificity ties and source order wins. Gate with a
   conditional render or a plain `<span>` wrapper — never `hidden pointer-fine:*` on an
   `IconButton`/`Button`. This shipped desktop-only device carets to phones for months.
+- **A `fixed bottom-0` sheet must lift by `useKeyboardInset()`.** The software
+  keyboard shrinks the VISUAL viewport, not the layout one (`interactive-widget`
+  defaults to `resizes-visual`), so `bottom-0`, `dvh` and
+  `env(safe-area-inset-bottom)` are all blind to it and the keyboard is simply drawn
+  over whatever is anchored down there — which is how the chat composer ended up
+  underneath it, worst in fullscreen where no browser chrome absorbs any of it. CSS
+  cannot see this; only `window.visualViewport` can (`lib/keyboardInset.ts`, which
+  credits a scrolled visual viewport and ignores pinch zoom + address-bar noise).
+  `Sheet` applies it, and the max-height clamp travels WITH the offset or the sheet
+  just grows off the top instead. Do NOT "fix" this with
+  `interactive-widget=resizes-content` — that shrinks `100dvh` app-wide, so the
+  stage, the tile packer's height budget and the island's band all reflow on every
+  keyboard. `11-mobile-fit` stubs `visualViewport` to exercise it, since an emulated
+  device can't raise a keyboard.
+- **Background blur is a one-tap toggle on your own tile, and the processor is
+  shared by context.** There is no effects carousel any more — it was a horizontal
+  lens strip built for a gallery of effects that no longer exists (image backgrounds
+  were removed for breaking the feed), so it had shrunk to None + Blur, both of
+  which the Effects dialog already has. Blur STRENGTH and quality stay in More →
+  Backgrounds & effects. There can only ever be ONE `useBackgroundBlur` (it owns a
+  live camera processor); it lives in RoomView and reaches the tile through
+  `BlurProvider` — a context, not a store, because a store has to MIRROR the hook's
+  state and then the tile's toggle and the menu can disagree about what blur is
+  doing. Note `@livekit/track-processors` fetches its MediaPipe WASM from a CDN, and
+  that makes blur behave DIFFERENTLY depending on the runner: offline/sandboxed it
+  can't build at all and degrades to `none` with a reported error (by design), while
+  **CI can fetch it, so CI really runs the segmenter.** A test that switches blur on
+  and then keeps driving the UI passes locally and times out on CI — MediaPipe on a
+  shared two-core runner beside other browser contexts starves the page. Switch it
+  back off before touching anything else (`11-mobile-fit`).
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a

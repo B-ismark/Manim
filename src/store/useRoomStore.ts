@@ -4,32 +4,12 @@ import { isMobile } from '@/lib/device'
 /** Stage layout modes (STYLE.md §5 layout switch). */
 export type LayoutMode = 'grid' | 'speaker'
 
-/**
- * Max tiles per page in the grid (Teams-style "gallery size"). `'auto'` keeps the
- * fit-to-viewport behaviour; a number caps the page so the user can choose density
- * (small tiles + pager, or fewer + bigger). The legible steps differ by device — the
- * picker offers 2/4/9 on phones, 4/9/16 on desktop — but any value is clamped to
- * what the viewport can actually hold (see gridCapacity).
- */
-export type GridSize = 'auto' | 2 | 4 | 9 | 16
-
 /** Which side panel tab is open, or null when the panel is closed. */
 export type PanelTab = 'chat' | 'people' | null
 
 // View prefs persist per device (a deliberate, low-churn choice — not call state).
-const GRID_SIZE_KEY = 'mn.gridSize'
 const VIDEOS_FIRST_KEY = 'mn.videosFirst'
 
-function loadGridSize(): GridSize {
-  try {
-    const raw = localStorage.getItem(GRID_SIZE_KEY)
-    if (raw === 'auto') return 'auto'
-    const n = Number(raw)
-    return n === 2 || n === 4 || n === 9 || n === 16 ? (n as GridSize) : 'auto'
-  } catch {
-    return 'auto'
-  }
-}
 function loadVideosFirst(): boolean {
   try {
     return localStorage.getItem(VIDEOS_FIRST_KEY) === '1'
@@ -40,8 +20,6 @@ function loadVideosFirst(): boolean {
 
 interface RoomState {
   layout: LayoutMode
-  /** Max tiles per page in the grid; 'auto' = fit-to-viewport. Persisted per device. */
-  gridSize: GridSize
   /** Order camera-on tiles ahead of avatar/camera-off ones. Persisted per device. */
   videosFirst: boolean
   /** Identity of a pinned participant, or null. Drives the speaker-layout focus. */
@@ -111,8 +89,6 @@ interface RoomState {
   showOwnShareOverride: boolean | null
 
   setLayout: (layout: LayoutMode) => void
-  /** Swipe / arrow step. Floors at 0; the upper bound is clamped on read. */
-  setGridSize: (size: GridSize) => void
   toggleVideosFirst: () => void
   toggleSelfView: () => void
   toggleAudioOnly: () => void
@@ -150,7 +126,6 @@ export const useRoomStore = create<RoomState>((set) => ({
   // One value, both pointer types: the stage view switcher (touch) and More → View
   // (both) set this, so the app has a single answer to "what am I looking at".
   layout: isMobile() ? 'speaker' : 'grid',
-  gridSize: loadGridSize(),
   videosFirst: loadVideosFirst(),
   pinned: null,
   spotlightKey: null,
@@ -166,15 +141,6 @@ export const useRoomStore = create<RoomState>((set) => ({
   showOwnShareOverride: null,
 
   setLayout: (layout) => set({ layout }),
-  setGridSize: (gridSize) =>
-    set(() => {
-      try {
-        localStorage.setItem(GRID_SIZE_KEY, String(gridSize))
-      } catch {
-        /* storage blocked — keep in memory only */
-      }
-      return { gridSize }
-    }),
   toggleVideosFirst: () =>
     set((s) => {
       const videosFirst = !s.videosFirst

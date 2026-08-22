@@ -34,7 +34,7 @@ import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
-import { useEffectsUi } from '@/store/useEffectsUi'
+import { useBlurControls } from '@/features/effects/BlurContext'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
@@ -510,7 +510,6 @@ function TouchStage({
   const { ref, size } = useElementSize<HTMLDivElement>()
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
-  const gridSize = useRoomStore((s) => s.gridSize)
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const videosFirst = useRoomStore((s) => s.videosFirst)
@@ -595,8 +594,8 @@ function TouchStage({
   // docks a panel, but a large touch tablet does, and deciding capacity from the
   // narrowed stage is what used to page people out on every chat toggle.
   const galleryH = Math.max(1, size.height - islandBandPx - TOPSTACK_BAND)
-  const realCap = gridCapacity(size.width, galleryH, true, gridSize)
-  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true, gridSize)
+  const realCap = gridCapacity(size.width, galleryH, true)
+  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true)
   const cols = realCap.cols
   const perPage = Math.max(realCap.perPage, undockedCap.perPage)
   // Everyone fits → pack them to FILL the stage (three people get big tiles, not
@@ -801,7 +800,6 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
-  const gridSize = useRoomStore((s) => s.gridSize)
   const videosFirst = useRoomStore((s) => s.videosFirst)
   const toggleShareDemoted = useRoomStore((s) => s.toggleShareDemoted)
 
@@ -851,8 +849,8 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   // actually occupy (tileGrid's fitMixedRows treats it as a ceiling), so it has to
   // follow the real, narrowed width. Panel closed, both widths are equal and none
   // of this does anything.
-  const real = gridCapacity(size.width, size.height, false, gridSize)
-  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, false, gridSize)
+  const real = gridCapacity(size.width, size.height, false)
+  const undocked = gridCapacity(useCapacityWidth(size.width), size.height, false)
   const cols = real.cols
   const perPage = Math.max(real.perPage, undocked.perPage)
   const pageCount = Math.max(1, Math.ceil(ordered.length / perPage))
@@ -904,8 +902,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
       {/* Paged-grid navigation. Arrows live on the left/right EDGES, vertically
           centred (Zoom model) — clear of the top chrome and the floating control
           bar, which a bottom-centre pager collided with. A small page pill +
-          off-page-speaker jump sit on the same shelf as the effects carousel
-          (above the control bar). */}
+          off-page-speaker jump sit on the shelf just above the control bar. */}
       {paged && (
         <>
           <button
@@ -1114,15 +1111,35 @@ function tileName(t: TrackReferenceOrPlaceholder): string {
   return t.participant.name || t.participant.identity.split('#')[0]
 }
 
-/** Fullscreen a DOM element (the shared-screen tile). Falls back to the iOS-only
- *  `<video>.webkitEnterFullscreen` when element fullscreen isn't available (iOS Safari
- *  only fullscreens the video element, not arbitrary containers). */
-function useFullscreen(ref: { current: HTMLElement | null }) {
+/**
+ * Fullscreen a DOM ELEMENT (the shared-screen tile). Falls back to the iOS-only
+ * `<video>.webkitEnterFullscreen` when element fullscreen isn't available (iOS
+ * Safari only fullscreens the video element, not arbitrary containers).
+ *
+ * Named apart from `lib/useFullscreen`, which does the DOCUMENT. The two are
+ * genuinely different jobs — one fullscreens a tile, the other the whole app — but
+ * they answered to the same name in the same feature, and the collision is how
+ * this copy came to be missing the prefixed change EVENT that the document one
+ * documents at length: Safari fires only `webkitfullscreenchange`, so on the very
+ * browsers that need the prefixed request, `isFs` never flipped and the floating
+ * Exit button — the only way out on touch — never appeared.
+ */
+function useElementFullscreen(ref: { current: HTMLElement | null }) {
   const [isFs, setIsFs] = useState(false)
   useEffect(() => {
-    const onChange = () => setIsFs(document.fullscreenElement === ref.current)
+    const onChange = () => {
+      const active =
+        document.fullscreenElement ??
+        (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement ??
+        null
+      setIsFs(active === ref.current)
+    }
     document.addEventListener('fullscreenchange', onChange)
-    return () => document.removeEventListener('fullscreenchange', onChange)
+    document.addEventListener('webkitfullscreenchange', onChange)
+    return () => {
+      document.removeEventListener('fullscreenchange', onChange)
+      document.removeEventListener('webkitfullscreenchange', onChange)
+    }
   }, [ref])
   const enter = useCallback(() => {
     const el = ref.current
@@ -1135,7 +1152,12 @@ function useFullscreen(ref: { current: HTMLElement | null }) {
     }
   }, [ref])
   const exit = useCallback(() => {
-    if (document.fullscreenElement) void document.exitFullscreen?.()
+    const d = document as Document & {
+      webkitFullscreenElement?: Element | null
+      webkitExitFullscreen?: () => Promise<void> | void
+    }
+    if (d.fullscreenElement) void d.exitFullscreen?.()
+    else if (d.webkitFullscreenElement) void d.webkitExitFullscreen?.()
   }, [])
   return { isFs, enter, exit }
 }
@@ -1144,7 +1166,7 @@ function useFullscreen(ref: { current: HTMLElement | null }) {
  *  Esc also exits (native); on touch there's no Esc, so the floating Exit button is the
  *  way out. Enter sits top-left (clear of the top-right action + bottom name pill). */
 function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement | null } }) {
-  const { isFs, enter, exit } = useFullscreen(targetRef)
+  const { isFs, enter, exit } = useElementFullscreen(targetRef)
   // Enter is an ordinary row in the tile's action stack. Exit is NOT: in fullscreen
   // it is deliberately the only control that should exist, so it keeps its own
   // anchor and its own layer (z-30, above the stack) rather than queueing politely
@@ -1745,12 +1767,21 @@ function Tile({
   const selfFacing = useRoomStore((s) => s.selfFacing)
   const mirror = p.isLocal && !isScreen && selfFacing === 'user'
 
-  // Self-view tile controls (flip camera / effects) live ON the tile now, like
+  // Self-view tile controls (flip camera / blur) live ON the tile now, like
   // WhatsApp/Snapchat — keeps them off the control bar. Touch only (desktop uses
   // the device picker + the More menu).
+  //
+  // Blur is a DIRECT toggle. It used to open a "lens carousel" above the control
+  // bar, which was a horizontal scroller built for a gallery of effects that no
+  // longer exists: image backgrounds were removed for repeatedly breaking the
+  // feed, leaving a two-item strip (None / Blur) that cost a tap to open, a tap to
+  // pick, its own overlay layer, a mirrored store, and a chrome-hold rule to stop
+  // the auto-hiding bar taking it off screen. One tap does the same job, and blur
+  // STRENGTH and quality — the only settings the strip never carried — stay in
+  // More → Backgrounds & effects.
   const coarse = useIsTouch()
   const flipCamera = useFlipCamera()
-  const toggleEffects = useEffectsUi((s) => s.toggleCarousel)
+  const blur = useBlurControls()
   const showSelfTools = p.isLocal && !isScreen && hasVideo && coarse
 
   // Double-tap / long-press / Enter action. Default = toggle pin; presentation overrides
@@ -1929,13 +1960,25 @@ function Tile({
             className="bg-overlay text-white hover:bg-overlay"
             onClick={() => void flipCamera()}
           />
-          <IconButton
-            size="sm"
-            label="Effects"
-            icon={<EffectsIcon />}
-            className="bg-overlay text-white hover:bg-overlay"
-            onClick={toggleEffects}
-          />
+          {/* Hidden where the platform can't build the processor at all, the same
+              call screen share makes on iOS — a button that silently does nothing
+              is worse than no button. `mode` flips synchronously, so `active`
+              lands on the first tap even though the ~160KB MediaPipe import means
+              the blur itself arrives a beat later. */}
+          {blur?.supported && (
+            <IconButton
+              size="sm"
+              label={blur.mode === 'blur' ? 'Turn off background blur' : 'Blur my background'}
+              icon={<EffectsIcon />}
+              // `neutral` + `active`, which is how every other toggle in the app
+              // renders its on-state (accent fill). `tone="accent"` would resolve to
+              // toneActive.accent — the darker PRESSED shade — so this one control
+              // would have looked different from the rest when switched on.
+              active={blur.mode === 'blur'}
+              className={cn(blur.mode !== 'blur' && 'bg-overlay text-white hover:bg-overlay')}
+              onClick={() => (blur.mode === 'blur' ? blur.useNone() : blur.useBlur())}
+            />
+          )}
         </div>
       )}
 
