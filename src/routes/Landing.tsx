@@ -286,8 +286,23 @@ function RecentMeetings({
               <CameraIcon />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.name}</span>
+            {/* Secondary, deliberately — `neutral`, not `accent`.
+                The recents list is the one place on this page that repeats a button
+                per ROW, so an accent fill here doesn't read as "the important
+                action", it reads as a column of them: three or four saturated pills
+                stacked directly above "New meeting", each louder than the page's
+                actual primary CTA and none of them more urgent than the last call
+                you happened to leave. Emphasis has to be scarce to mean anything.
+
+                The rule this settles, for the whole page: `accent` is for STARTING
+                something (New meeting) and for a call that is LIVE right now (the
+                other-devices list above — one row, time-sensitive, and usually
+                absent). Re-entering something from history is `neutral`, which is
+                already what the form's own Join button uses, so every "go to a room
+                that already exists" control now looks the same. The row's remove ✕
+                stays a bare icon below both. */}
             <Button
-              variant="accent"
+              variant="neutral"
               size="sm"
               onClick={() => onJoin(r.slug, { secret: r.secret, e2ee: r.e2ee })}
             >
