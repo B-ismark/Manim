@@ -136,9 +136,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   live camera processor); it lives in RoomView and reaches the tile through
   `BlurProvider` — a context, not a store, because a store has to MIRROR the hook's
   state and then the tile's toggle and the menu can disagree about what blur is
-  doing. Note `@livekit/track-processors` fetches its MediaPipe WASM from a CDN, so
-  blur cannot build at all on an offline/sandboxed runner: it degrades to `none`
-  with a reported error, by design.
+  doing. Note `@livekit/track-processors` fetches its MediaPipe WASM from a CDN, and
+  that makes blur behave DIFFERENTLY depending on the runner: offline/sandboxed it
+  can't build at all and degrades to `none` with a reported error (by design), while
+  **CI can fetch it, so CI really runs the segmenter.** A test that switches blur on
+  and then keeps driving the UI passes locally and times out on CI — MediaPipe on a
+  shared two-core runner beside other browser contexts starves the page. Switch it
+  back off before touching anything else (`11-mobile-fit`).
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a
