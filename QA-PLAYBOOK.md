@@ -101,6 +101,18 @@ still doesn't move). Enforced by [tests/11-mobile-fit.spec.ts](tests/11-mobile-f
 on `mobile` + `mobile-sm`. A tall phone (Pixel 7) hides short-phone overflow — always
 check `mobile-sm` (375×667) too.
 
+**A spec no gate runs will rot, silently.** The gates are narrower than the config:
+`test` and `test:mobile` both `--grep-invert @heavy`, `test:visual` is desktop-only,
+and `test:mobile-sm` is 11-mobile-fit alone. So `@heavy` on a touch project is run by
+nothing — which is how `09-visual`'s "chat panel docks without covering controls
+(desktop)" kept a name promising desktop, no project gate, and an assertion that can
+only time out on touch. Worse, the two `overlaps()` tests in that file were sitting on
+a REAL mobile bug the whole time (a coachmark covering a tile's mute button). Every
+project should pass in full — `playwright test --project=mobile` with no grep, and the
+same for `mobile-sm` — so run that before you trust a spec you just touched, and gate
+a genuinely single-platform test with `test.skip(await isTouch(page), …)` rather than
+leaving the platform in its title.
+
 **An emulated phone is desktop Chromium, so it LIES about platform capabilities.**
 `devices['Pixel 7']` changes the user-agent, the viewport and the pointer type —
 nothing else. The engine underneath still has every desktop web API, so a feature
@@ -115,12 +127,11 @@ capability the emulator can't withhold.
 
 **`aria-disabled` controls need `{ force: true }`.** Playwright's actionability check
 counts `aria-disabled="true"` as not-enabled and will spin until timeout, but the
-browser still delivers the click — that's the whole point of the app choosing
-`aria-disabled` over `disabled` for a control that has to explain why it's
-unavailable (no hover, no `title` on a phone; `disabled` also implies
-`pointer-events: none`). `force` skips only the precondition; the tap itself is real,
-at the element's own coordinates. Applies to the at-capacity share button and the
-"Share screen (desktop only)" tile.
+browser still delivers the click — which is the whole point of choosing
+`aria-disabled` over `disabled` for a control that must stay pressable to explain
+itself (`disabled` also implies `pointer-events: none`). `force` skips only the
+precondition; the click itself is real, at the element's own coordinates. The
+desktop bar's at-capacity share button is the live example.
 
 **Overlap detection.** Use `overlaps()` (in helpers): it parks the mouse and uses
 `element.checkVisibility()` so buttons inside an **opacity-0 / hidden ancestor**

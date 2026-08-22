@@ -113,13 +113,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   No mobile browser implements `getDisplayMedia` — WebKit never has (so iOS Safari
   *and* iOS Chrome are out), and neither Chrome nor Firefox for Android does; capture
   on a phone goes through ReplayKit / MediaProjection, native APIs a web page cannot
-  reach. `useScreenShare().supported` is the one check, and on touch the More sheet
-  renders a dimmed **"Share screen (desktop only)"** tile that explains itself when
-  pressed — a tile that simply vanishes reads as "this app forgot screen sharing".
-  Beware: **Playwright's emulated phones are desktop Chromium**, so they report
-  capture as fully supported and take the normal path — a test for the mobile
-  reality has to `defineProperty` the API away first (`03-controls`), the same way
-  `11-mobile-fit` has to fake a keyboard.
+  reach. `useScreenShare().supported` is the ONE check (shared with the mini player,
+  so the two share controls can't disagree), and where it's false the control is
+  **absent, not dimmed**: a tile that can never work isn't worth a slot in a
+  four-column grid a thumb has to aim at. Beware: **Playwright's emulated phones are
+  desktop Chromium**, so they report capture as fully supported and render the
+  ordinary tile — a test for the real mobile path has to `defineProperty` the API
+  away first (`03-controls`), the same way `11-mobile-fit` has to fake a keyboard.
 - **The band the stage reserves for the island is `useIslandBand()`, never a constant.**
   The island sits at `bottom: max(1rem, env(safe-area-inset-bottom))`, so its band is
   its height plus whichever offset wins. A hardcoded `76` (= `16 + 60`) is right only
@@ -175,7 +175,15 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   store — read the header of `AnnotationEngine.ts` before touching it.
 - **Overlay layering is centralised.** Top banners/pills are children of
   `TopStack` (one column, priority order) — never a new `fixed` + hand-picked
-  z-index; the layer scale is documented in `TopStack.tsx`. ControlBar holds ONE
+  z-index; the layer scale is documented in `TopStack.tsx`.
+  - **A full-width TopStack child covers a tile's corner controls on touch.** The
+    column anchors at `top: max(1rem, safe-area)` and stretches `inset-x-0`; a
+    tile's own controls sit at `left-2`/`right-2 top-2` and are pinned VISIBLE at
+    44px on touch (no hover to reveal them). `PinCoachmark` was wide enough to
+    reach both corners and, being tap-to-dismiss, swallowed the tap on a host's
+    "Mute <name>" button for its whole 6s life. Cap a wide child's width in the
+    same units the corner controls use (`max-w-[calc(100%-4.5rem)]` keeps 52px
+    clear) and let it wrap. `09-visual`'s `overlaps()` is what catches this. ControlBar holds ONE
   `modal` value, so two dialogs can't be open at once. The touch chrome also refuses to
   auto-hide while ANY Radix layer is open (`overlayOpen()` in `RoomView` — it asks the
   DOM, so a new control can't forget to opt in), and the audio picker is a tray *inside*
