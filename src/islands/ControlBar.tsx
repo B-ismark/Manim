@@ -688,7 +688,8 @@ export function ControlBar({
             caret for this reason. Touch is the case that genuinely needs its own
             control: there are no carets there at all.
 
-            Removing it also gives the desktop bar back ~54px, which is not spare
+            Removing it also gives the desktop bar back 52px (measured: 614 -> 562),
+            which is not spare
             change — lib/panelDock's whole `xl` threshold exists because the bar was
             wider than the prototype measured, and its docs note the bar grows every
             time a control is added. This is the first time one has come off. */}
