@@ -6,6 +6,13 @@ export interface ToggleProps {
   checked: boolean
   onCheckedChange: (checked: boolean) => void
   label: string
+  /**
+   * Second line under the label — what the setting does, when the name alone
+   * doesn't say. Kept inside the <label> so it's part of the tap target rather
+   * than text beside it: on a touch row the switch alone is only 24px tall, and the
+   * label is what makes the row clear the 44px guidance.
+   */
+  hint?: string
   /** Hide the visible label (still read by screen readers). */
   hideLabel?: boolean
   disabled?: boolean
@@ -17,6 +24,7 @@ export function Toggle({
   checked,
   onCheckedChange,
   label,
+  hint,
   hideLabel = false,
   disabled = false,
   className,
@@ -25,8 +33,9 @@ export function Toggle({
   return (
     <div className={cn('flex items-center gap-3', className)}>
       {!hideLabel && (
-        <label htmlFor={id} className="text-sm text-ink select-none">
-          {label}
+        <label htmlFor={id} className="min-w-0 select-none">
+          <span className="block text-sm text-ink">{label}</span>
+          {hint && <span className="block text-xs text-ink-muted">{hint}</span>}
         </label>
       )}
       <RS.Root

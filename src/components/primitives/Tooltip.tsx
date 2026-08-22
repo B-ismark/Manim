@@ -1,5 +1,5 @@
 import * as RT from '@radix-ui/react-tooltip'
-import type { ReactNode } from 'react'
+import type { ComponentPropsWithoutRef, ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
 /** Wrap the app once so tooltips share timing. */
@@ -7,16 +7,50 @@ export function TooltipProvider({ children }: { children: ReactNode }) {
   return <RT.Provider delayDuration={400}>{children}</RT.Provider>
 }
 
-export interface TooltipProps {
+export interface TooltipProps
+  // `content` is also a (legacy microdata) HTML attribute, so it has to be
+  // dropped from the inherited set before we can mean our own thing by it.
+  extends Omit<ComponentPropsWithoutRef<typeof RT.Trigger>, 'asChild' | 'children' | 'content'> {
   content: ReactNode
   children: ReactNode
   side?: 'top' | 'right' | 'bottom' | 'left'
 }
 
-export function Tooltip({ content, children, side = 'top' }: TooltipProps) {
+/**
+ * Hover/focus hint attached to its child.
+ *
+ * `...rest` is forwarded onto the Radix trigger, and that is load-bearing, not
+ * tidiness: a Tooltip is very often ALSO the trigger of a Popover or menu
+ *
+ *   <Popover trigger={<Tooltip content="Audio output"><IconButton …/></Tooltip>} />
+ *
+ * and Radix opens those by cloning their immediate child with an onClick and an
+ * anchor ref (`Trigger asChild` → Slot). That child is this component. When it
+ * accepted only {content, children, side}, the injected handler and ref landed on
+ * a component that dropped them, so the control rendered perfectly and did
+ * nothing at all — which is exactly how the audio-output button came to be dead
+ * while every other caret (which passes a button straight through) worked.
+ *
+ * Spreading rest onto `RT.Trigger asChild` chains the two Slots — outer trigger →
+ * tooltip trigger → the real button — so the press, the ref and the aria state all
+ * reach the element that needs them. Keeping it in the primitive rather than
+ * unwrapping the one call site means the next composition can't silently die the
+ * same way.
+ *
+ * That call site is now GONE — the audio-output button it describes was redundant
+ * with the mic caret and came off the bar — so nothing in the app currently nests a
+ * Tooltip inside a Popover trigger, and no test exercises the chain. The forwarding
+ * stays anyway: it is three characters, and it is the difference between the next
+ * such composition working and rendering a control that does nothing at all. Do
+ * not "simplify" it back to {content, children, side} because the props look
+ * unused.
+ */
+export function Tooltip({ content, children, side = 'top', ...rest }: TooltipProps) {
   return (
     <RT.Root>
-      <RT.Trigger asChild>{children}</RT.Trigger>
+      <RT.Trigger asChild {...rest}>
+        {children}
+      </RT.Trigger>
       <RT.Portal>
         <RT.Content
           side={side}

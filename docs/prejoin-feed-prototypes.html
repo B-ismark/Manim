@@ -1,0 +1,763 @@
+<title>Prejoin feed layout — 5 prototypes</title>
+
+<svg style="display:none" aria-hidden="true">
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/>
+  </symbol>
+  <symbol id="i-micoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3a3 3 0 0 1 3 3v5"/><path d="M9 8v4a3 3 0 0 0 4.6 2.5"/><path d="M5 11a7 7 0 0 0 10.5 6"/><path d="M12 18v3"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-cam" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="3" y="6" width="12" height="12" rx="2"/><path d="M15 10.5 20 7.5v9L15 13.5z"/>
+  </symbol>
+  <symbol id="i-camoff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M15 12v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4"/><path d="M15 10.5 20 7.5v9l-2-1.2"/><path d="M4 4l16 16"/>
+  </symbol>
+  <symbol id="i-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="18" cy="5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="19" r="2.5"/><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4"/>
+  </symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="4.5" y="10" width="15" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>
+  </symbol>
+  <symbol id="i-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 5.5 7.5 12l6.5 6.5"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 9.5 6 6 6-6"/>
+  </symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M11 5 6.5 9H3v6h3.5L11 19z"/><path d="M15 9.5a4 4 0 0 1 0 5"/>
+  </symbol>
+</svg>
+
+<style>
+/* ───────── harness tokens ─────────
+   Violet-biased neutrals (hue 270) and the accent are lifted from Manim's own
+   oklch token set, so the page reads as part of the product it is proposing to. */
+:root{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.58 .13 65);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}}
+:root[data-theme="dark"]{
+  --bg:oklch(.155 .012 270); --bg-2:oklch(.205 .014 270); --sunk:oklch(.185 .012 270);
+  --ink:oklch(.95 .005 270); --ink-2:oklch(.73 .01 270); --ink-3:oklch(.63 .012 270);
+  --rule:oklch(.3 .014 270); --rule-2:oklch(.4 .016 270);
+  --accent:oklch(.72 .15 278); --accent-soft:color-mix(in oklch,var(--accent) 16%,var(--bg-2));
+  --good:oklch(.75 .15 150); --warn:oklch(.8 .13 75);
+}
+:root[data-theme="light"]{
+  --bg:oklch(.975 .004 270); --bg-2:oklch(1 0 0); --sunk:oklch(.945 .006 270);
+  --ink:oklch(.21 .012 270); --ink-2:oklch(.47 .014 270); --ink-3:oklch(.58 .012 270);
+  --rule:oklch(.9 .007 270); --rule-2:oklch(.82 .01 270);
+  --accent:oklch(.5 .19 275); --accent-soft:color-mix(in oklch,var(--accent) 12%,var(--bg-2));
+  --good:oklch(.5 .14 150); --warn:oklch(.58 .13 65);
+}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);
+  font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:900px;margin:0 auto;padding:0 24px 96px}
+h1,h2,h3{text-wrap:balance;margin:0}
+a{color:inherit;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
+
+/* ───────── page furniture ───────── */
+.masthead{padding:72px 0 34px}
+.kicker{font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 18px}
+h1{font-size:clamp(30px,5vw,46px);line-height:1.06;letter-spacing:-.028em;font-weight:640}
+.stand{margin:20px 0 0;max-width:60ch;font-size:17px;color:var(--ink-2)}
+
+.brief{border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);
+  padding:22px 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:22px}
+.brief dt{font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 6px}
+.brief dd{margin:0;font-size:14.5px;color:var(--ink-2);line-height:1.5}
+.brief dd b{color:var(--ink);font-weight:600}
+
+section.block{padding:44px 0 0}
+h2{font-size:22px;letter-spacing:-.015em;font-weight:640}
+.lede{margin:10px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+
+/* ───────── variant heading ───────── */
+.vhead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;
+  border-top:1px solid var(--rule-2);padding-top:18px}
+.badge{font-family:var(--mono);font-size:13px;font-weight:600;color:var(--accent);
+  border:1px solid var(--accent);border-radius:3px;padding:1px 6px;flex:none;translate:0 -2px}
+.vhead h3{font-size:21px;letter-spacing:-.015em;font-weight:640}
+.vhead .ref{font-family:var(--mono);font-size:11px;color:var(--ink-3);margin-left:auto;
+  letter-spacing:.06em;align-self:center;min-width:0;overflow-wrap:anywhere}
+.vbody{margin:12px 0 0;max-width:66ch;color:var(--ink-2);font-size:15px}
+
+.tradeoffs{list-style:none;padding:0;margin:16px 0 0;display:grid;gap:7px;max-width:70ch}
+.tradeoffs li{display:grid;grid-template-columns:auto 1fr;gap:10px;font-size:14px;color:var(--ink-2);
+  line-height:1.5}
+.tradeoffs .m{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  padding-top:3px}
+.tradeoffs .m.plus{color:var(--good)} .tradeoffs .m.minus{color:var(--warn)}
+
+/* ───────── device frames ───────── */
+.frames{--s:.60;display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start;margin:24px 0 0}
+.fig{display:flex;flex-direction:column;gap:8px}
+.frame{overflow:hidden;border-radius:calc(14px * var(--s));border:1px solid var(--rule);
+  background:oklch(.17 .012 270);
+  width:calc(var(--w) * 1px * var(--s));height:calc(var(--h) * 1px * var(--s))}
+.frame > .screen{width:calc(var(--w) * 1px);height:calc(var(--h) * 1px);
+  transform:scale(var(--s));transform-origin:0 0}
+.cap{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--ink-3)}
+@media (max-width:900px){.frames{--s:.48}}
+@media (max-width:700px){.frames{--s:.36}}
+@media (max-width:460px){.frames{--s:.28}}
+
+/* ───────── Manim mock: dark token set, locked ─────────
+   The mockups are screenshots of the product, not theme-reactive page content —
+   they stay in Manim dark regardless of the harness theme. */
+.mk{--stage:oklch(.17 .012 270);--surface:oklch(.23 .014 270);--sunken:oklch(.2 .012 270);
+  --line:oklch(.32 .014 270);--mink:oklch(.96 .005 270);--mink-2:oklch(.72 .01 270);
+  --mink-3:oklch(.65 .012 270);--acc:oklch(.55 .18 275);--acc-ink:oklch(.99 0 0);
+  --dngr:oklch(.55 .21 25);--succ:oklch(.66 .16 150);--ovl:oklch(.18 .02 270 / .72);
+  --r-tile:20px;--r-island:24px;--r-field:12px;
+  font-family:'Inter',system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--stage);color:var(--mink);height:100%;box-sizing:border-box;
+  display:flex;font-size:14px;line-height:1.4}
+.mk *{box-sizing:border-box}
+.mk .i{width:20px;height:20px;flex:none}
+
+.island{background:var(--surface);border-radius:var(--r-island);padding:20px;
+  box-shadow:0 12px 40px -12px oklch(.08 .03 270 / .5)}
+
+.eyebrow{font-size:11px;font-weight:500;color:var(--mink-3);margin:0}
+.roomname{font-size:19px;font-weight:600;margin:1px 0 0;letter-spacing:-.01em;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.backlink{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--mink-2)}
+.backlink .i{width:15px;height:15px}
+.iconbtn{width:38px;height:38px;border-radius:999px;background:var(--sunken);color:var(--mink);
+  display:grid;place-items:center;flex:none}
+
+/* camera feed illustration */
+.feed{position:relative;overflow:hidden;background:
+  radial-gradient(120% 90% at 20% 0%, oklch(.44 .022 255), oklch(.29 .02 262) 70%);
+  flex:none}
+.feed .win{position:absolute;right:5%;top:7%;width:33%;height:66%;border-radius:3px;
+  background:linear-gradient(170deg,oklch(.9 .04 232),oklch(.63 .06 238));opacity:.9}
+.feed .torso{position:absolute;left:50%;bottom:-16%;translate:-50% 0;width:76%;height:52%;
+  border-radius:48% 48% 0 0 / 66% 66% 0 0;background:oklch(.55 .018 262)}
+.feed .head{position:absolute;left:50%;top:24%;translate:-50% 0;width:33%;aspect-ratio:1;
+  border-radius:50%;background:radial-gradient(circle at 34% 28%,oklch(.85 .13 88),oklch(.66 .16 68))}
+.feed.blurfill{position:absolute;inset:0;width:100%;height:100%;filter:blur(26px) saturate(1.2);
+  transform:scale(1.25);opacity:.5}
+.feedwrap{position:relative;overflow:hidden;background:var(--sunken)}
+.feedoff{display:grid;place-items:center;height:100%;font-size:12px;color:var(--mink-3)}
+
+/* controls */
+.ctl{width:44px;height:44px;border-radius:999px;background:var(--sunken);color:var(--mink);
+  display:grid;place-items:center;flex:none}
+.ctl.on-video{background:var(--ovl);backdrop-filter:blur(8px);color:oklch(.98 0 0)}
+.ctl.danger{background:var(--dngr);color:oklch(.99 0 0)}
+.ctlrow{display:flex;gap:10px;justify-content:center}
+.ctlrow.floating{position:absolute;left:50%;bottom:12px;translate:-50% 0}
+
+.levelrow{display:flex;align-items:center;gap:10px}
+.level{height:6px;flex:1;border-radius:999px;background:var(--sunken);overflow:hidden}
+.level > i{display:block;height:100%;width:34%;border-radius:999px;background:var(--succ)}
+.btn-sm{height:30px;padding:0 12px;border-radius:999px;background:var(--sunken);font-size:12px;
+  font-weight:500;display:inline-flex;align-items:center;gap:6px;color:var(--mink);flex:none}
+.btn-sm .i{width:14px;height:14px}
+
+.field{height:44px;border-radius:var(--r-field);background:var(--sunken);display:flex;
+  align-items:center;padding:0 14px;font-size:14px;color:var(--mink);width:100%}
+.field.ph{color:var(--mink-3)}
+.join{height:48px;border-radius:999px;background:var(--acc);color:var(--acc-ink);
+  display:grid;place-items:center;font-size:15px;font-weight:600;width:100%}
+.join.compact{height:44px;width:auto;padding:0 26px;flex:none}
+
+.togglerow{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px}
+.switch{width:38px;height:22px;border-radius:999px;background:var(--sunken);
+  border:1px solid var(--line);position:relative;flex:none}
+.switch::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;
+  border-radius:50%;background:var(--mink)}
+.e2ee{display:flex;align-items:center;gap:7px;background:var(--sunken);border-radius:var(--r-field);
+  padding:8px 12px;font-size:11.5px;color:var(--mink-2)}
+.e2ee .i{width:14px;height:14px;color:var(--succ)}
+.legal{font-size:11px;color:var(--mink-3);text-align:center;line-height:1.45}
+.meta{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--mink-3);flex-wrap:wrap}
+.meta .i{width:13px;height:13px;color:var(--succ)}
+.meta .dot{opacity:.5}
+.chip{display:inline-flex;align-items:center;gap:6px;background:var(--ovl);backdrop-filter:blur(8px);
+  border-radius:999px;padding:6px 12px;font-size:12px;color:oklch(.98 0 0)}
+.chip.icon{padding:0;width:36px;height:36px;justify-content:center}
+
+.col{display:flex;flex-direction:column}
+.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap14{gap:14px}.gap16{gap:16px}
+.row{display:flex}.between{justify-content:space-between}.center{align-items:center}
+.grow{flex:1;min-height:0}
+
+/* ───────── comparison table ───────── */
+.tblwrap{overflow-x:auto;margin:22px 0 0;border-top:1px solid var(--rule)}
+table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:640px}
+th,td{text-align:left;padding:11px 14px 11px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ink-3);font-weight:500;padding-top:14px}
+tbody th{font-weight:600;white-space:nowrap;color:var(--ink)}
+td{color:var(--ink-2)}
+td.n{font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:12.5px;white-space:nowrap}
+tr.pick td,tr.pick th{background:var(--accent-soft)}
+
+.rec{margin:34px 0 0;border:1px solid var(--rule-2);border-left:3px solid var(--accent);
+  border-radius:0 10px 10px 0;padding:20px 22px;background:var(--bg-2)}
+.rec h2{font-size:17px;margin:0 0 10px}
+.rec p{margin:0 0 10px;font-size:14.5px;color:var(--ink-2);max-width:64ch}
+.rec p:last-child{margin-bottom:0}
+.rec code{font-family:var(--mono);font-size:12.5px;background:var(--sunk);padding:1px 5px;
+  border-radius:4px;color:var(--ink)}
+
+.shared{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:12px}
+.shared li{display:grid;grid-template-columns:24px 1fr;gap:12px;font-size:14.5px;color:var(--ink-2)}
+.shared .n{font-family:var(--mono);font-size:11px;color:var(--accent);padding-top:4px}
+.shared b{color:var(--ink);font-weight:600}
+
+footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--ink-3)}
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">Manim · prejoin · layout study</p>
+  <h1>The preview should be the page, not a stamp on it.</h1>
+  <p class="stand">Today the camera feed is capped at <b>32dvh</b> tall and <b>20rem</b> wide, so on a
+  647&nbsp;px window it renders about 230&nbsp;×&nbsp;172&nbsp;px — roughly 10% of the card — while eight
+  stacked rows of secondary chrome own the rest. Five ways to invert that, all keeping the feed at its
+  true camera aspect.</p>
+</header>
+
+<dl class="brief">
+  <div><dt>The one job</dt><dd>Prejoin answers <b>“what will everyone else see?”</b> Every pixel not spent on that answer is overhead.</dd></div>
+  <div><dt>Hard constraint</dt><dd>Feed keeps the <b>camera's real aspect</b> — no crop, no bars. The box is the frame.</dd></div>
+  <div><dt>Hard constraint</dt><dd><b>No page scroll</b> on prejoin, including <code>mobile-sm</code>. Growth has to come from the other rows.</dd></div>
+  <div><dt>Reference set</dt><dd>Meet (split), Zoom &amp; WhatsApp (immersive), Teams (hero card).</dd></div>
+</dl>
+
+<section class="block">
+  <h2>Where the space actually goes</h2>
+  <p class="lede">The feed isn't small because the cap is aggressive — it's small because nine siblings
+  are queued below it and the cap exists to stop them being pushed off-screen. Any variant that only
+  raises <code>--pv-h</code> re-introduces the scroll it was added to prevent. Each prototype instead
+  <em>removes or relocates</em> rows so the feed can take the slack.</p>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:360;--h:700">
+        <div class="screen"><div class="mk" style="padding:14px;align-items:center">
+          <div class="island col gap12" style="width:100%">
+            <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+            <div class="row between">
+              <div style="min-width:0"><p class="eyebrow">Joining</p><p class="roomname">Swift Comet Yrgn5k</p></div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div class="feedwrap" style="width:200px;height:150px;border-radius:var(--r-tile);margin:0 auto">
+              <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+            </div>
+            <div class="ctlrow"><div class="ctl danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+              <div class="ctl"><svg class="i"><use href="#i-cam"/></svg></div></div>
+            <div class="levelrow"><svg class="i" style="width:15px;color:var(--mink-3)"><use href="#i-micoff"/></svg>
+              <div class="level"><i style="width:0"></i></div><div class="btn-sm">Test speaker</div></div>
+            <div class="field ph">Bismark</div>
+            <div class="togglerow"><span>Low-bandwidth mode (audio-first)</span><div class="switch"></div></div>
+            <div class="e2ee"><svg class="i"><use href="#i-lock"/></svg>End-to-end encrypted — secured by your invite link.</div>
+            <div class="join">Join now</div>
+            <p class="legal">Your camera and mic let others see and hear you. Manim doesn't record calls. Privacy</p>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Current — feed ≈ 10% of card</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ A ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">A</span>
+    <h3>Split stage</h3>
+    <span class="ref">ref: google meet</span>
+  </div>
+  <p class="vbody">The card widens to <code>max-w-4xl</code> and splits: feed owns the left column at its
+  native aspect, everything else stacks in a narrow right column. Vertical space stops being contested —
+  the form's nine rows sit <em>beside</em> the feed rather than under it, so the feed can take the card's
+  full height. Device toggles move onto the video as glass pills. Below <code>md</code> it collapses to one
+  column with the feed still first and still full-width.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">gains</span>Feed grows ~4× on desktop with zero rows removed — the least destructive change to existing content.</li>
+    <li><span class="m plus">gains</span>Reads instantly as a video product; matches the pattern most users already know from Meet.</li>
+    <li><span class="m minus">costs</span>Two layouts to keep honest. The mobile branch gains nothing on its own — the phone still needs one of C/D's compressions.</li>
+    <li><span class="m minus">costs</span>A wide card on a short laptop can still overflow; the right column needs its own internal density pass.</li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:940;--h:600">
+        <div class="screen"><div class="mk" style="padding:26px;align-items:center;justify-content:center">
+          <div class="island col gap14" style="width:100%">
+            <div class="row between center">
+              <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div class="row" style="gap:22px">
+              <div class="feedwrap" style="width:520px;height:390px;border-radius:var(--r-tile)">
+                <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+                <div class="ctlrow floating"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                  <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div></div>
+              </div>
+              <div class="col gap12" style="flex:1">
+                <div><p class="eyebrow">Joining</p><p class="roomname">Swift Comet Yrgn5kca64aed</p></div>
+                <div class="levelrow"><svg class="i" style="width:15px;color:var(--mink-3)"><use href="#i-micoff"/></svg>
+                  <div class="level"><i style="width:0"></i></div><div class="btn-sm"><svg class="i"><use href="#i-speaker"/></svg>Test</div></div>
+                <div class="field ph">Bismark</div>
+                <div class="togglerow"><span>Low-bandwidth (audio-first)</span><div class="switch"></div></div>
+                <div class="e2ee"><svg class="i"><use href="#i-lock"/></svg>End-to-end encrypted — secured by your invite link.</div>
+                <div style="flex:1"></div>
+                <div class="join">Join now</div>
+                <p class="legal">Manim doesn't record calls. Privacy</p>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Desktop — feed ≈ 42% of card</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:360;--h:700">
+        <div class="screen"><div class="mk" style="padding:14px;align-items:center">
+          <div class="island col gap12" style="width:100%">
+            <div class="row between center">
+              <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div><p class="eyebrow">Joining</p><p class="roomname">Swift Comet Yrgn5k</p></div>
+            <div class="feedwrap" style="width:100%;height:224px;border-radius:var(--r-tile)">
+              <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+              <div class="ctlrow floating"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div></div>
+            </div>
+            <div class="levelrow"><svg class="i" style="width:15px;color:var(--mink-3)"><use href="#i-micoff"/></svg>
+              <div class="level"><i style="width:0"></i></div><div class="btn-sm">Test speaker</div></div>
+            <div class="field ph">Bismark</div>
+            <div class="togglerow"><span>Low-bandwidth (audio-first)</span><div class="switch"></div></div>
+            <div class="e2ee"><svg class="i"><use href="#i-lock"/></svg>End-to-end encrypted — secured by your invite link.</div>
+            <div class="join">Join now</div>
+            <p class="legal">Manim doesn't record calls. Privacy</p>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Mobile — single column</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ B ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">B</span>
+    <h3>Immersive stage</h3>
+    <span class="ref">ref: zoom · whatsapp</span>
+  </div>
+  <p class="vbody">Drop the card. The feed becomes the surface at its true aspect, centred on the stage,
+  with a blurred, scaled copy of itself filling the leftover area so there are no dead bars at any ratio.
+  Chrome floats: back and share as glass chips top-left/right, room name as a pill, and a single translucent
+  island at the bottom carrying name, toggles and Join. Everything secondary — speaker test, low-bandwidth,
+  E2EE, privacy — folds behind one <em>“More options”</em> disclosure in that island.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">gains</span>Largest possible feed on every viewport, and identical in spirit phone-to-desktop — one layout, no branch.</li>
+    <li><span class="m plus">gains</span>Continuous with the in-call screen: joining feels like stepping through, not switching pages.</li>
+    <li><span class="m minus">costs</span>Breaks the island model (§2 “nothing welded to the edge”) — needs an explicit STYLE.md carve-out, like the in-call stage has.</li>
+    <li><span class="m minus">costs</span>Chrome-over-video means contrast is on <code>--color-overlay</code>, not a surface; the a11y gate has to be re-run on both themes.</li>
+    <li><span class="m minus">costs</span>Camera-off state has no video to sit on — needs a designed empty stage, not a grey box.</li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:940;--h:600">
+        <div class="screen"><div class="mk" style="padding:0;position:relative;display:block">
+          <div class="feedwrap" style="position:absolute;inset:0">
+            <div class="feed blurfill"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+            <div class="feed" style="position:absolute;left:50%;top:50%;translate:-50% -50%;width:800px;height:600px"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+          </div>
+          <div style="position:absolute;inset:0;padding:22px;display:flex;flex-direction:column">
+            <div class="row between center">
+              <div class="chip"><svg class="i" style="width:15px;height:15px"><use href="#i-back"/></svg>Back</div>
+              <div class="chip">Joining · Swift Comet Yrgn5kca64aed</div>
+              <div class="chip icon"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div style="flex:1"></div>
+            <div class="col gap12" style="width:520px;margin:0 auto;background:var(--ovl);
+              backdrop-filter:blur(16px);border-radius:var(--r-island);padding:18px">
+              <div class="ctlrow"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div>
+                <div class="ctl on-video"><svg class="i"><use href="#i-speaker"/></svg></div></div>
+              <div class="row gap10">
+                <div class="field ph" style="background:oklch(1 0 0 / .12);flex:1">Bismark</div>
+                <div class="join compact">Join now</div>
+              </div>
+              <div class="row between center">
+                <div class="meta"><svg class="i"><use href="#i-lock"/></svg>End-to-end encrypted<span class="dot">·</span>Doesn't record</div>
+                <div class="btn-sm" style="background:oklch(1 0 0 / .12)">More options<svg class="i"><use href="#i-more"/></svg></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Desktop — feed = full stage</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:360;--h:700">
+        <div class="screen"><div class="mk" style="padding:0;position:relative;display:block">
+          <div class="feedwrap" style="position:absolute;inset:0">
+            <div class="feed blurfill"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+            <div class="feed" style="position:absolute;left:50%;top:46%;translate:-50% -50%;width:360px;height:270px"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+          </div>
+          <div style="position:absolute;inset:0;padding:16px;display:flex;flex-direction:column">
+            <div class="row between center">
+              <div class="chip icon"><svg class="i" style="width:16px;height:16px"><use href="#i-back"/></svg></div>
+              <div class="chip icon"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div class="chip" style="margin:10px auto 0">Joining · Swift Comet Yrgn5k</div>
+            <div style="flex:1"></div>
+            <div class="col gap12" style="background:var(--ovl);backdrop-filter:blur(16px);
+              border-radius:var(--r-island);padding:16px">
+              <div class="ctlrow"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div>
+                <div class="ctl on-video"><svg class="i"><use href="#i-speaker"/></svg></div></div>
+              <div class="field ph" style="background:oklch(1 0 0 / .12)">Bismark</div>
+              <div class="join">Join now</div>
+              <div class="row between center">
+                <div class="meta"><svg class="i"><use href="#i-lock"/></svg>Encrypted</div>
+                <div class="btn-sm" style="background:oklch(1 0 0 / .12)">More<svg class="i"><use href="#i-more"/></svg></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Mobile — same layout, no branch</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ C ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">C</span>
+    <h3>Hero card, condensed footer</h3>
+    <span class="ref">ref: microsoft teams</span>
+  </div>
+  <p class="vbody">Keep the card exactly where it is and attack the row count instead. The footer collapses
+  from nine rows to three: <em>mic level + device toggles + speaker test</em> on one line, <em>name field
+  and Join side by side</em> on the next, and everything remaining — encryption, low-bandwidth, privacy —
+  onto a single meta line with the toggle inline. The feed then becomes <code>flex-1</code> against the
+  card's height instead of a fixed <code>32dvh</code>: it takes whatever the footer doesn't.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">gains</span>Smallest diff by far — no new layout branch, no STYLE.md exception, existing tests mostly hold.</li>
+    <li><span class="m plus">gains</span>Fixes the real bug: the cap disappears, so the feed grows on tall viewports instead of staying 32dvh forever.</li>
+    <li><span class="m minus">costs</span>Ceiling is lower than A/B — on a wide desktop the card is still narrow, so the feed can only get so big.</li>
+    <li><span class="m minus">costs</span>Name-and-Join on one row makes Join reachable before a name is typed; the disabled state has to read clearly.</li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:360;--h:700">
+        <div class="screen"><div class="mk" style="padding:14px;align-items:center">
+          <div class="island col gap12" style="width:100%">
+            <div class="row between center">
+              <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div><p class="eyebrow">Joining</p><p class="roomname">Swift Comet Yrgn5k</p></div>
+            <div class="feedwrap" style="width:100%;height:249px;border-radius:var(--r-tile)">
+              <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+            </div>
+            <div class="row center gap10">
+              <div class="ctl danger" style="width:40px;height:40px"><svg class="i" style="width:18px;height:18px"><use href="#i-micoff"/></svg></div>
+              <div class="ctl" style="width:40px;height:40px"><svg class="i" style="width:18px;height:18px"><use href="#i-cam"/></svg></div>
+              <div class="level"><i style="width:0"></i></div>
+              <div class="btn-sm"><svg class="i"><use href="#i-speaker"/></svg>Test</div>
+            </div>
+            <div class="row gap10">
+              <div class="field ph" style="flex:1">Bismark</div>
+              <div class="join compact">Join</div>
+            </div>
+            <div class="row between center">
+              <div class="meta"><svg class="i"><use href="#i-lock"/></svg>Encrypted<span class="dot">·</span>No recording<span class="dot">·</span>Privacy</div>
+            </div>
+            <div class="togglerow"><span style="font-size:12px;color:var(--mink-2)">Low-bandwidth (audio-first)</span><div class="switch"></div></div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Mobile — 3 footer rows, feed flex-1</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:600;--h:600">
+        <div class="screen"><div class="mk" style="padding:22px;align-items:center;justify-content:center">
+          <div class="island col gap12" style="width:100%">
+            <div class="row between center">
+              <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div><p class="eyebrow">Joining</p><p class="roomname">Swift Comet Yrgn5kca64aed</p></div>
+            <div class="feedwrap" style="width:100%;height:288px;border-radius:var(--r-tile)">
+              <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+            </div>
+            <div class="row center gap10">
+              <div class="ctl danger" style="width:40px;height:40px"><svg class="i" style="width:18px;height:18px"><use href="#i-micoff"/></svg></div>
+              <div class="ctl" style="width:40px;height:40px"><svg class="i" style="width:18px;height:18px"><use href="#i-cam"/></svg></div>
+              <div class="level"><i style="width:0"></i></div>
+              <div class="btn-sm"><svg class="i"><use href="#i-speaker"/></svg>Test speaker</div>
+            </div>
+            <div class="row gap10">
+              <div class="field ph" style="flex:1">Bismark</div>
+              <div class="join compact">Join now</div>
+            </div>
+            <div class="row between center">
+              <div class="meta"><svg class="i"><use href="#i-lock"/></svg>Encrypted<span class="dot">·</span>No recording<span class="dot">·</span>Privacy</div>
+              <div class="togglerow" style="gap:8px"><span style="font-size:12px;color:var(--mink-2)">Low-bandwidth</span><div class="switch"></div></div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Desktop — same card, same rows</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ D ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">D</span>
+    <h3>Video-header card</h3>
+    <span class="ref">ref: meet mobile · facetime</span>
+  </div>
+  <p class="vbody">The feed bleeds to the card's own edges and becomes its header — full card width, rounded
+  to the island's top corners, with a blurred cover fill behind the contained frame so no ratio ever shows
+  bars. Room name, back and share overlay the video's top; device toggles overlay its bottom. What's left
+  below is a genuinely short form: name, Join, one meta line. The card keeps its shape and shadow, so the
+  island model survives intact.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">gains</span>Feed gets the card's <em>full width</em> — on the 647&nbsp;px window in the screenshot that alone is ~2.5× the current area.</li>
+    <li><span class="m plus">gains</span>Stays inside STYLE.md §2. No welded edges, no new surface rules, no a11y carve-out beyond the on-video chrome the app already ships.</li>
+    <li><span class="m minus">costs</span>The blurred fill is a second decode of the same stream — cheap, but it's real GPU work on a low-end phone at exactly the moment we're about to connect.</li>
+    <li><span class="m minus">costs</span>Room name on video is lower contrast than on a surface; long names need the overlay pill to truncate rather than wrap.</li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:360;--h:700">
+        <div class="screen"><div class="mk" style="padding:14px;align-items:center">
+          <div class="island col gap12" style="width:100%;padding:0;overflow:hidden">
+            <div class="feedwrap" style="width:100%;height:300px;border-radius:var(--r-island) var(--r-island) 0 0;flex:none">
+              <div class="feed blurfill"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+              <div class="feed" style="position:absolute;left:50%;top:50%;translate:-50% -50%;width:332px;height:249px"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+              <div style="position:absolute;inset:0;padding:14px;display:flex;flex-direction:column">
+                <div class="row between center">
+                  <div class="chip icon"><svg class="i" style="width:16px;height:16px"><use href="#i-back"/></svg></div>
+                  <div class="chip icon"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+                </div>
+                <div class="chip" style="margin:8px auto 0">Joining · Swift Comet Yrgn5k</div>
+                <div style="flex:1"></div>
+                <div class="ctlrow"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                  <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div>
+                  <div class="ctl on-video"><svg class="i"><use href="#i-speaker"/></svg></div></div>
+              </div>
+            </div>
+            <div class="col gap10" style="padding:0 18px 18px">
+              <div class="levelrow"><svg class="i" style="width:15px;color:var(--mink-3)"><use href="#i-micoff"/></svg>
+                <div class="level"><i style="width:0"></i></div></div>
+              <div class="field ph">Bismark</div>
+              <div class="join">Join now</div>
+              <div class="row between center">
+                <div class="meta"><svg class="i"><use href="#i-lock"/></svg>Encrypted<span class="dot">·</span>Privacy</div>
+                <div class="btn-sm">More<svg class="i"><use href="#i-more"/></svg></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Mobile — feed = card header</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:600;--h:600">
+        <div class="screen"><div class="mk" style="padding:22px;align-items:center;justify-content:center">
+          <div class="island col gap12" style="width:100%;padding:0;overflow:hidden">
+            <div class="feedwrap" style="width:100%;height:360px;border-radius:var(--r-island) var(--r-island) 0 0;flex:none">
+              <div class="feed blurfill"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+              <div class="feed" style="position:absolute;left:50%;top:50%;translate:-50% -50%;width:480px;height:360px"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+              <div style="position:absolute;inset:0;padding:16px;display:flex;flex-direction:column">
+                <div class="row between center">
+                  <div class="chip"><svg class="i" style="width:15px;height:15px"><use href="#i-back"/></svg>Back</div>
+                  <div class="chip">Joining · Swift Comet Yrgn5kca64aed</div>
+                  <div class="chip icon"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+                </div>
+                <div style="flex:1"></div>
+                <div class="ctlrow"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                  <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div>
+                  <div class="ctl on-video"><svg class="i"><use href="#i-speaker"/></svg></div></div>
+              </div>
+            </div>
+            <div class="col gap10" style="padding:0 20px 20px">
+              <div class="levelrow"><svg class="i" style="width:15px;color:var(--mink-3)"><use href="#i-micoff"/></svg>
+                <div class="level"><i style="width:0"></i></div></div>
+              <div class="row gap10">
+                <div class="field ph" style="flex:1">Bismark</div>
+                <div class="join compact">Join now</div>
+              </div>
+              <div class="row between center">
+                <div class="meta"><svg class="i"><use href="#i-lock"/></svg>End-to-end encrypted<span class="dot">·</span>No recording<span class="dot">·</span>Privacy</div>
+                <div class="btn-sm">More<svg class="i"><use href="#i-more"/></svg></div>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Desktop — same component, wider</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ E ══════════════════ -->
+<section class="block">
+  <div class="vhead">
+    <span class="badge">E</span>
+    <h3>Aspect-adaptive</h3>
+    <span class="ref">no direct ref — derived from the constraint</span>
+  </div>
+  <p class="vbody">The others pick a layout from the <em>viewport</em>. This one picks it from the
+  <em>camera</em>. <code>previewAspect</code> is already computed in <code>PreJoin.tsx</code> — feed it into
+  the layout: a landscape camera (16:9, 4:3) stacks, taking the card's full width; a portrait camera (9:16,
+  a phone held upright) pivots to side-by-side, because a tall frame leaves a natural column of space beside
+  it that the form fills exactly. The frame is never letterboxed and never boxed in by a layout shaped for a
+  ratio it doesn't have.</p>
+  <ul class="tradeoffs">
+    <li><span class="m plus">gains</span>Directly answers the brief — “large enough while maintaining the aspect ratio” — for <em>every</em> camera, not just the common one.</li>
+    <li><span class="m plus">gains</span>Portrait phone cameras currently waste the most space of any case; this is the only variant that recovers it.</li>
+    <li><span class="m minus">costs</span>Layout depends on an async stream read, so it can shift once when the ratio lands. Needs a transition or a held skeleton, or it's a jank source.</li>
+    <li><span class="m minus">costs</span>Hardest to test — visual specs need a ratio matrix, and the camera-off state has no ratio to key off at all.</li>
+    <li><span class="m minus">costs</span>Novel. No reference app does this, so there's no borrowed familiarity to lean on.</li>
+  </ul>
+
+  <div class="frames">
+    <div class="fig">
+      <div class="frame" style="--w:520;--h:640">
+        <div class="screen"><div class="mk" style="padding:18px;align-items:center;justify-content:center">
+          <div class="island col gap12" style="width:100%">
+            <div class="row between center">
+              <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div><p class="eyebrow">Joining</p><p class="roomname">Swift Comet Yrgn5kca64aed</p></div>
+            <div class="feedwrap" style="width:100%;height:324px;border-radius:var(--r-tile)">
+              <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+              <div class="ctlrow floating"><div class="ctl on-video danger"><svg class="i"><use href="#i-micoff"/></svg></div>
+                <div class="ctl on-video"><svg class="i"><use href="#i-cam"/></svg></div></div>
+            </div>
+            <div class="row gap10">
+              <div class="field ph" style="flex:1">Bismark</div>
+              <div class="join compact">Join now</div>
+            </div>
+            <div class="meta"><svg class="i"><use href="#i-lock"/></svg>Encrypted<span class="dot">·</span>No recording<span class="dot">·</span>Low-bandwidth<span class="dot">·</span>Privacy</div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Camera 4:3 → stacked</p>
+    </div>
+    <div class="fig">
+      <div class="frame" style="--w:520;--h:640">
+        <div class="screen"><div class="mk" style="padding:18px;align-items:center;justify-content:center">
+          <div class="island col gap12" style="width:100%">
+            <div class="row between center">
+              <div class="backlink"><svg class="i"><use href="#i-back"/></svg>Back</div>
+              <div class="iconbtn"><svg class="i" style="width:16px;height:16px"><use href="#i-share"/></svg></div>
+            </div>
+            <div class="row" style="gap:16px">
+              <div class="feedwrap" style="width:220px;height:391px;border-radius:var(--r-tile);flex:none">
+                <div class="feed" style="width:100%;height:100%"><i class="win"></i><i class="torso"></i><i class="head"></i></div>
+                <div class="ctlrow floating"><div class="ctl on-video danger" style="width:38px;height:38px"><svg class="i" style="width:17px;height:17px"><use href="#i-micoff"/></svg></div>
+                  <div class="ctl on-video" style="width:38px;height:38px"><svg class="i" style="width:17px;height:17px"><use href="#i-cam"/></svg></div></div>
+              </div>
+              <div class="col gap10" style="flex:1">
+                <div><p class="eyebrow">Joining</p><p class="roomname" style="font-size:16px">Swift Comet Yrgn5k</p></div>
+                <div class="levelrow"><svg class="i" style="width:14px;color:var(--mink-3)"><use href="#i-micoff"/></svg>
+                  <div class="level"><i style="width:0"></i></div></div>
+                <div class="field ph">Bismark</div>
+                <div class="togglerow"><span style="font-size:12px">Low-bandwidth</span><div class="switch"></div></div>
+                <div style="flex:1"></div>
+                <div class="join">Join now</div>
+                <p class="legal">Encrypted · No recording · Privacy</p>
+              </div>
+            </div>
+          </div>
+        </div></div>
+      </div>
+      <p class="cap">Camera 9:16 → pivots beside</p>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════════ shared ══════════════════ -->
+<section class="block">
+  <h2>What all five assume</h2>
+  <p class="lede">These aren't variant-specific — they're the moves that make any of the five possible, and
+  they're where most of the work actually is.</p>
+  <ul class="shared">
+    <li><span class="n">01</span><span><b>Delete the fixed <code>--pv-h</code> cap.</b> It exists to stop nine rows overflowing. Once the rows shrink, the feed should size from remaining space, not a magic <code>dvh</code>.</span></li>
+    <li><span class="n">02</span><span><b>Device toggles move onto the video.</b> They're two 44&nbsp;px targets currently eating a full row plus its gap — on video they cost nothing and read as more direct.</span></li>
+    <li><span class="n">03</span><span><b>Secondary settings get demoted.</b> Low-bandwidth, speaker test and the E2EE assurance are three full-width rows for things most people never touch. One meta line plus a “More” disclosure.</span></li>
+    <li><span class="n">04</span><span><b>Aspect stays honest.</b> No <code>object-cover</code> on the primary frame anywhere — the current comment in <code>PreJoin.tsx</code> is right, and cropping to fill would undo the whole point.</span></li>
+    <li><span class="n">05</span><span><b>Re-run the vertical gates.</b> Every variant needs <code>mobile-sm</code> checked for the no-scroll rule, and B and D need the a11y pass repeated for chrome sitting on video.</span></li>
+  </ul>
+</section>
+
+<section class="block">
+  <h2>Side by side</h2>
+  <div class="tblwrap">
+    <table>
+      <thead>
+        <tr><th>&nbsp;</th><th>Feed area vs today</th><th>Layout branches</th><th>STYLE.md impact</th><th>Effort</th></tr>
+      </thead>
+      <tbody>
+        <tr><th>Current</th><td class="n">1×</td><td>1</td><td>—</td><td>—</td></tr>
+        <tr><th>A · Split stage</th><td class="n">≈ 4× desktop / 2× mobile</td><td>2</td><td>None</td><td>Medium</td></tr>
+        <tr><th>B · Immersive</th><td class="n">≈ 8× desktop / 5× mobile</td><td>1</td><td>Needs §2 carve-out</td><td>High</td></tr>
+        <tr class="pick"><th>D · Video-header</th><td class="n">≈ 4× desktop / 3× mobile</td><td>1</td><td>None</td><td>Medium</td></tr>
+        <tr><th>C · Hero card</th><td class="n">≈ 2.5× both</td><td>1</td><td>None</td><td>Low</td></tr>
+        <tr><th>E · Aspect-adaptive</th><td class="n">≈ 3× / up to 6× portrait cams</td><td>2 (by camera)</td><td>None</td><td>High</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="rec">
+  <h2>If you want a recommendation</h2>
+  <p><b>D, with C's footer compression as the first commit.</b> C alone is a small, safe change that fixes the
+  actual defect — the fixed cap — and it's the prerequisite for every other variant, so it's worth landing on
+  its own regardless of where this ends up. D then takes the freed space and gives the feed the card's full
+  width without touching the island model, adding a layout branch, or opening a new a11y surface.</p>
+  <p>B is the most striking and would look best in a demo, but it welds chrome to the screen edge and moves
+  every label onto <code>--color-overlay</code> — that's a STYLE.md amendment and a full a11y re-run, which is
+  a lot to spend before we know the space problem is solved. A is the safe desktop answer but leaves mobile
+  untouched. E is the most correct idea in the set and the one worth revisiting once D has shipped and we can
+  see how often portrait cameras actually show up.</p>
+</div>
+
+<footer>Manim · prejoin layout study · 5 prototypes · rendered from src/islands/PreJoin.tsx</footer>
+
+</div>

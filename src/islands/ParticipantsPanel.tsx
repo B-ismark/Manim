@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react'
+import { useMemo, useState } from 'react'
 import {
   useLocalParticipant,
   useParticipants,
@@ -36,9 +36,9 @@ import {
   PinIcon,
   ShareIcon,
 } from '@/components/icons'
-import { PeopleIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { ContactsDialog } from '@/islands/Contacts'
+import { AddPeople } from '@/islands/AddPeople'
 import type { ContactRow } from '@/store/useContactsStore'
 import { useHandRaised } from '@/features/reactions/useReactions'
 import { CONTROL_TOPIC } from '@/features/session/useSessionControl'
@@ -66,7 +66,6 @@ export function ParticipantsPanel() {
   const myUserId = useMyUserId()
   const room = useRoomContext()
   const { copied, copy } = useCopyLink()
-  const [email, setEmail] = useState('')
   const [callMsg, setCallMsg] = useState<string | null>(null)
   // Set when the server couldn't send (not configured, or provider rejected the
   // recipient). We render a real mailto link the user can click — a programmatic
@@ -168,10 +167,10 @@ export function ParticipantsPanel() {
     window.open(href, '_blank') // best effort; popup blockers may ignore it
   }
 
-  async function emailInvite(e: FormEvent) {
-    e.preventDefault()
-    const to = email.trim()
-    if (!to) return
+  // Both return whether the address was accepted — AddPeople owns the input now,
+  // and clears it only on success, which is the behaviour this panel had before.
+  async function emailInvite(to: string): Promise<boolean> {
+    if (!to) return false
     setMailto(null)
     const who = localParticipant.name || 'Someone'
     try {
@@ -181,25 +180,25 @@ export function ParticipantsPanel() {
       if (sent) {
         setCallMsg(`Invite emailed to ${to}`)
         addInvite(to)
-        setEmail('')
-      } else {
-        fallbackToMailto(to)
+        return true
       }
+      fallbackToMailto(to)
+      return false
     } catch {
       toast("Couldn't auto-send the invite — use the mail link below", 'warning')
       fallbackToMailto(to)
+      return false
     }
   }
 
-  async function ring() {
-    if (!email.trim()) return
+  async function ring(to: string): Promise<boolean> {
+    if (!to) return false
     setCallMsg('Ringing…')
-    const err = await ringUser(email, room.name, localParticipant.name || 'Someone')
-    setCallMsg(err ?? `Ringing ${email}…`)
-    if (!err) {
-      addInvite(email)
-      setEmail('')
-    }
+    const err = await ringUser(to, room.name, localParticipant.name || 'Someone')
+    setCallMsg(err ?? `Ringing ${to}…`)
+    if (err) return false
+    addInvite(to)
+    return true
   }
 
   // Ring a saved contact into THIS room (the in-call "add to call" path).
@@ -280,42 +279,13 @@ export function ParticipantsPanel() {
           )}
         </div>
 
-        <form onSubmit={emailInvite} className="mt-2 flex gap-2">
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Invite by email"
-            aria-label="Invite by email"
-            autoComplete="off"
-            className="h-9 min-w-0 flex-1 rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-          />
-          {canRing && (
-            <Button type="button" variant="neutral" size="sm" disabled={!email.trim()} onClick={ring}>
-              Call
-            </Button>
-          )}
-          <Button type="submit" variant="accent" size="sm" disabled={!email.trim()}>
-            Invite
-          </Button>
-        </form>
-        {/* Tell the user that entering an address causes us to process/email it
-            (the audit's L4 — disclose the third-party email processing). */}
-        <p className="mt-1.5 text-xs text-ink-subtle">
-          {canRing
-            ? "We'll email them an invite, or ring them if they have an account."
-            : "We'll email them an invite to join this call."}
-        </p>
-        {canRing && (
-          <button
-            type="button"
-            onClick={() => setContactsOpen(true)}
-            className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:text-accent-hover [&_svg]:size-3.5"
-          >
-            <PeopleIcon />
-            Add from contacts
-          </button>
-        )}
+        <AddPeople
+          canRing={canRing}
+          onInviteEmail={emailInvite}
+          onRingEmail={ring}
+          onAddContact={addContactToCall}
+          onOpenContacts={() => setContactsOpen(true)}
+        />
         {callMsg && <p className="mt-1 text-xs text-ink-muted">{callMsg}</p>}
         {mailto && (
           <p className="mt-1 text-xs text-ink-muted">
@@ -323,10 +293,10 @@ export function ParticipantsPanel() {
             <a
               href={mailto.href}
               className="font-medium text-accent underline underline-offset-2 hover:text-accent-hover"
-              onClick={() => {
-                setMailto(null)
-                setEmail('')
-              }}
+              // The address box lives in AddPeople now and clears itself only on
+              // success; a mailto fallback is not success, so there is nothing to
+              // clear here beyond dismissing this notice.
+              onClick={() => setMailto(null)}
             >
               Open mail app to invite {mailto.to}
             </a>

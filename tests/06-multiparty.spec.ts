@@ -1,5 +1,14 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, newParticipant, appErrors, join, openChat, revealChrome, closePanel } from './helpers'
+import {
+  appErrors,
+  closeContext,
+  closePanel,
+  join,
+  newParticipant,
+  openChat,
+  openMore,
+  uniqueRoom,
+} from './helpers'
 
 // Multi-participant flows need real LiveKit (creds in .env). Each participant is
 // its own browser context so they have independent camera/mic + identity.
@@ -30,7 +39,7 @@ test.describe('Multi-party', () => {
 
       expect(appErrors(guest.sink), appErrors(guest.sink).join('\n')).toEqual([])
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 
@@ -51,8 +60,72 @@ test.describe('Multi-party', () => {
       expect(appErrors(g1.sink), appErrors(g1.sink).join('\n')).toEqual([])
       expect(appErrors(g2.sink), appErrors(g2.sink).join('\n')).toEqual([])
     } finally {
-      await g1.context.close()
-      await g2.context.close()
+      await closeContext(g1.context)
+      await closeContext(g2.context)
+    }
+  })
+
+  /**
+   * The floating control island must never sit on top of the grid.
+   *
+   * Every tiled desktop layout reserves the island's band (`useIslandBand`), and
+   * until now only the TOUCH suite asserted it (11-mobile-fit) — so the desktop
+   * side of the same invariant had no test at all, which is how the grid shipped
+   * for months with its top row behind the call timer and its bottom row under the
+   * bar. Checked in both tiled layouts, at a tall viewport and a short one: the
+   * short one is where the packer has the least height to give and is the first
+   * place a lost band shows up.
+   */
+  test('the desktop grid and speaker filmstrip clear the control island', async ({ page, browser }, testInfo) => {
+    // Desktop layouts only. Touch has its own version of this invariant in
+    // 11-mobile-fit, against a different stage: you are the floating self-view
+    // rather than a cell, the gallery SCROLLS past a screenful, and the island
+    // auto-hides — so the same assertion measured here would be measuring
+    // something else, and the `setViewportSize` sweep below isn't a thing a phone
+    // does at all.
+    test.skip(testInfo.project.name !== 'desktop', 'desktop stage layouts only')
+    const room = uniqueRoom('island')
+    await join(page, room, 'Host')
+    const g1 = await newParticipant(browser, room, 'Guest-1')
+    const g2 = await newParticipant(browser, room, 'Guest-2')
+    try {
+      await expect(page.getByRole('button', { name: /Participants \(3\)/ })).toBeVisible({
+        timeout: 40_000,
+      })
+      await page.waitForTimeout(1500)
+
+      const clearance = () =>
+        page.evaluate(() => {
+          const bar = document.querySelector('button[aria-label="Leave call"]')!.closest('.fixed') as HTMLElement
+          const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]')).filter(
+            (e) => (e as HTMLElement).offsetHeight > 40,
+          )
+          return {
+            barTop: bar.getBoundingClientRect().top,
+            lowestTile: Math.max(...tiles.map((e) => e.getBoundingClientRect().bottom)),
+            tiles: tiles.length,
+          }
+        })
+
+      for (const layout of ['Grid', 'Speaker'] as const) {
+        await openMore(page)
+        await page.getByRole('button', { name: layout, exact: true }).click()
+        await closePanel(page)
+        for (const height of [900, 520]) {
+          await page.setViewportSize({ width: 1440, height })
+          await page.waitForTimeout(600)
+          const c = await clearance()
+          expect(c.tiles, `${layout} @ ${height}px renders tiles`).toBeGreaterThan(0)
+          expect(
+            c.lowestTile,
+            `${layout} @ ${height}px: a tile reaches into the control island band`,
+          ).toBeLessThanOrEqual(c.barTop)
+        }
+        await page.setViewportSize({ width: 1280, height: 800 })
+      }
+    } finally {
+      await closeContext(g1.context)
+      await closeContext(g2.context)
     }
   })
 
@@ -60,12 +133,11 @@ test.describe('Multi-party', () => {
     const room = uniqueRoom('lobby')
     await join(page, room, 'Host')
 
-    // Host turns the lobby on (More → Lobby off→on toggle), then closes the menu
+    // Host turns the waiting room on (More → Waiting room toggle), then closes the menu
     // by TAPPING its X — on mobile More is a modal bottom-sheet whose scrim would
     // otherwise block the admit banner (phones have no Esc key).
-    await revealChrome(page)
-    await page.getByRole('button', { name: 'More options' }).click()
-    await page.getByRole('button', { name: /Lobby/ }).click()
+    await openMore(page)
+    await page.getByRole('button', { name: 'Waiting room' }).click()
     await closePanel(page)
 
     // Guest tries to join → should land in the waiting screen.
@@ -84,7 +156,7 @@ test.describe('Multi-party', () => {
       // Guest now connects (mic control appears).
       await expect(guest.getByRole('button', { name: /microphone/i }).first()).toBeVisible({ timeout: 45_000 })
     } finally {
-      await ctx.close()
+      await closeContext(ctx)
     }
   })
 
@@ -103,7 +175,7 @@ test.describe('Multi-party', () => {
       // After muting, the affordance drops (can't re-mute) — guest mic shows off.
       await expect(muteBtn).toBeHidden({ timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 })

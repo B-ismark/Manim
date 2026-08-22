@@ -1,19 +1,17 @@
 # QA Playbook — Manim
 
-> ## 🛑 LiveKit testing FROZEN (since 2026-06)
-> Monthly LiveKit quota is near its limit. **Do not run any layer marked "Creds:
-> yes" below** (Functional E2E desktop/mobile/mobile-sm, a11y, visual, stress,
-> loadtest) and **do not `npm run dev` with LiveKit creds**. They connect to the
-> real LiveKit Cloud test project and burn participant-minutes.
-> Still safe: `typecheck`, `test:unit`, `lighthouse`, `node audit/responsive-audit.mjs`,
-> creds-less `npm run dev`. CI `e2e`/`loadtest` are gated behind repo var
-> `LIVEKIT_TESTS=true`. Re-enable only on owner say-so, then delete this banner.
+> ## 🛑 LiveKit testing is FROZEN — quota near limit
+> **Do not run any layer marked "Creds: yes" below**, and do not `npm run dev`
+> with LiveKit creds. The authoritative freeze banner — exactly what is forbidden,
+> what is still safe, and how to lift it — lives in **[CLAUDE.md](CLAUDE.md)**.
+> Keep it in that one place; don't restate the rules here, they drift.
 
 A replicable QA process for this LiveKit video-call app, written so a future
 Claude agent (or any engineer) can re-run the full audit and know *what* to test,
 *how*, with *which parameters*, and *what counts as a pass*. Pair with:
 - [TESTING.md](TESTING.md) — environment setup (test LiveKit project + secrets).
-- [E2E-FINDINGS.md](E2E-FINDINGS.md) — the original sweep + capacity findings.
+- [docs/archive/](docs/archive/) — closed-out audit + sweep reports, kept for context
+  (including the browser-capacity ceiling that shapes the scale-testing approach).
 
 > **Golden rule:** the in-call UI only exists with LiveKit creds. Verify behaviour
 > against the **running app / served artifact**, never a green build alone.
@@ -46,8 +44,9 @@ Claude agent (or any engineer) can re-run the full audit and know *what* to test
 | Scale stress (50+) | `npm run loadtest` + observe | yes | CI `loadtest` (manual) | host UI clean, no overlaps |
 | Capacity ramp (browser, ≤12) | `npm run test:stress` | yes | gated `STRESS=1` | informational |
 
-`@heavy` specs (visual + load-test-observe) are excluded from the fast functional
-gate; run them via `test:visual`. Spec files live in [tests/](tests/); shared
+`@heavy` specs (visual, load-test-observe, annotate-perf) are excluded from the fast
+functional gate; run them via `test:visual` — the annotation perf run additionally needs
+`ANNOTATE_PERF=1`, since it is the one measurement expensive enough to want opting into. Spec files live in [tests/](tests/); shared
 helpers + every convention below are in [tests/helpers.ts](tests/helpers.ts).
 
 ---
@@ -72,8 +71,25 @@ helpers + every convention below are in [tests/helpers.ts](tests/helpers.ts).
 **Mobile = pure touch.** Phones have **no Esc key, no hover, no keyboard shortcuts**.
 In tests:
 - Close sheets by tapping the **"Close panel" X** (`closePanel()`), never `Escape`.
-- The control bar **auto-hides after ~4s** on touch — call `revealChrome()` (a real
-  `touchscreen.tap` on the top scrim) before tapping a control.
+- The control bar **auto-hides after ~4s** on touch. Never press one of its controls
+  with a bare `.tap()` — use **`pressChrome(page, control, until)`** (or the wrappers
+  `openMore` / `openChat` / `startScreenShare` / `openEndCallMenu`). `revealChrome()`
+  alone is not enough: it promises the island is up *now*, and Playwright's own
+  actionability loop will then spin for its full 15s without ever re-revealing, so a
+  busy machine turns a working test into "element is outside of the viewport".
+  `pressChrome` re-reveals on every attempt; its `until` argument is the outcome that
+  proves the press landed, which is what keeps a retry from toggling a control like
+  "Share screen" back off.
+- Anything that lives in **`CallStatusBar`** (the call timer, the E2EE padlock)
+  **unmounts** with the chrome rather than sliding away — assert it through
+  **`expectChromeVisible()`**, and reveal *immediately before* the assertion, not
+  before a long wait that outlives the countdown.
+- The stage **view chip** does not auto-hide, but its menu still loses taps on a busy
+  page — switch views with **`selectStageView()`**, which retries against the chip's
+  own label and won't close the menu it needs.
+- `revealChrome()` waits for the island to stop moving before deciding whether to tap,
+  because **the stage tap toggles**: a mid-slide misread hides a bar that was on its
+  way in. Don't "optimise" that settle away.
 - The **More menu is a modal bottom-sheet** on mobile; its scrim blocks everything
   behind it (e.g. the waiting-room Admit banner) — close it before the next action.
 - On desktop these are no-ops (controls always shown; panel is a non-modal dock).
@@ -85,10 +101,50 @@ still doesn't move). Enforced by [tests/11-mobile-fit.spec.ts](tests/11-mobile-f
 on `mobile` + `mobile-sm`. A tall phone (Pixel 7) hides short-phone overflow — always
 check `mobile-sm` (375×667) too.
 
+**A spec no gate runs will rot, silently.** The gates are narrower than the config:
+`test` and `test:mobile` both `--grep-invert @heavy`, `test:visual` is desktop-only,
+and `test:mobile-sm` is 11-mobile-fit alone. So `@heavy` on a touch project is run by
+nothing — which is how `09-visual`'s "chat panel docks without covering controls
+(desktop)" kept a name promising desktop, no project gate, and an assertion that can
+only time out on touch. Worse, the two `overlaps()` tests in that file were sitting on
+a REAL mobile bug the whole time (a coachmark covering a tile's mute button). Every
+project should pass in full — `playwright test --project=mobile` with no grep, and the
+same for `mobile-sm` — so run that before you trust a spec you just touched, and gate
+a genuinely single-platform test with `test.skip(await isTouch(page), …)` rather than
+leaving the platform in its title.
+
+**An emulated phone is desktop Chromium, so it LIES about platform capabilities.**
+`devices['Pixel 7']` changes the user-agent, the viewport and the pointer type —
+nothing else. The engine underneath still has every desktop web API, so a feature
+that no real phone can do reports as available and the app takes the desktop path.
+`getDisplayMedia` is the live example: screen capture exists on no mobile browser,
+but every `mobile`/`mobile-sm` run has it. To test what a real phone does, take the
+API away first (`page.addInitScript` + `Object.defineProperty(navigator.mediaDevices,
+'getDisplayMedia', { value: undefined })` — `delete` won't do it, the method is on the
+prototype), which is the same shape as `11-mobile-fit` stubbing `visualViewport` to
+raise a keyboard. Treat "the mobile suite is green" as no evidence at all about a
+capability the emulator can't withhold.
+
+**`aria-disabled` controls need `{ force: true }`.** Playwright's actionability check
+counts `aria-disabled="true"` as not-enabled and will spin until timeout, but the
+browser still delivers the click — which is the whole point of choosing
+`aria-disabled` over `disabled` for a control that must stay pressable to explain
+itself (`disabled` also implies `pointer-events: none`). `force` skips only the
+precondition; the click itself is real, at the element's own coordinates. The
+desktop bar's at-capacity share button is the live example.
+
 **Overlap detection.** Use `overlaps()` (in helpers): it parks the mouse and uses
 `element.checkVisibility()` so buttons inside an **opacity-0 / hidden ancestor**
-(closed effects carousel, retracted hover controls) are correctly ignored.
+(retracted hover controls, the auto-hidden touch chrome) are correctly ignored.
 Element-only opacity checks produce false positives in-call.
+
+Know its **20% threshold**: it reports a pair only when the intersection exceeds a
+fifth of the smaller element's area. That is right for a sweep (a 2px kiss between
+neighbours is not a finding), and wrong as a proof of clearance — it caught a
+coachmark covering a mute button at 100% and said nothing whatever about the 4px
+overlap two almost-right width caps left behind. When a specific clearance is the
+point, assert the geometry directly at zero tolerance (`19-overlays`), and don't read
+a green `overlaps()` as "nothing is on top of anything".
 
 **Large-room tile grid (paged).** Fit-to-viewport pages; navigation is **left/right
 EDGE arrows** (Zoom model) — NOT a bottom-centre pager (that collides with the
@@ -112,6 +168,30 @@ these automatically.
 (server-side sim participants, no browsers) + the host-observe spec
 ([tests/10-loadtest-observe.spec.ts](tests/10-loadtest-observe.spec.ts)). Keep the
 browser participant ramp ≤5–7.
+
+**Screen annotation.** Four traps, each of which cost a debugging session:
+
+1. **A green unit suite does not mean the feature works.** The engine is a plain class
+   with heavy coverage, and every one of those tests passed while the overlay was
+   completely dead in dev — React StrictMode's mount → cleanup → re-mount left the
+   memoised engine permanently disposed. Nothing that only exercises the class can see
+   that. Open a browser, or run [tests/17-annotate.spec.ts](tests/17-annotate.spec.ts).
+2. **The palette must stay out of `@theme`.** Tailwind v4 tree-shakes theme variables no
+   generated utility references, and nothing emits `bg-annotate-3` — the canvas reads
+   the tokens through `getComputedStyle`. Seven of the eight silently vanished from the
+   build that way, collapsing every author onto one colour. Guarded by a test now; don't
+   "tidy" them back into the theme block.
+3. **Position agreement needs different viewport *shapes*, not sizes.** Two 16:9 windows
+   letterbox identically, so they agree even when the maths is wrong. The spec pairs
+   1280×800 with 900×760 for exactly this reason.
+4. **Headless Chromium cannot screen-share.** `fakeScreenShare()` in
+   [tests/helpers.ts](tests/helpers.ts) substitutes a canvas capture of known intrinsic
+   size — which is also what makes stroke positions assertable in unit space.
+
+Note a sharer now sees their own share for as long as they're sharing, so one
+participant can both share and annotate without arming the pen first. A *remote*
+share still takes the big region, so a test that wants to target someone else's
+screen must have that someone else share.
 
 **Flake.** Real LiveKit + WebRTC negotiation is occasionally flaky under load.
 CI uses `retries: 1`; run WebRTC specs with `--workers=1`. Ignore teardown noise
@@ -156,6 +236,9 @@ matches Brave Talk / Zoom.
 - `07-capacity` (12 browser contexts) is `STRESS`-gated and superseded by load-test.
 - Free-tier LiveKit: don't run load-test + the full e2e concurrently against the same
   project (join contention flakes the e2e).
+- Annotation renders only in the **presentation layout**. A viewer who demotes the share
+  to the grid sees no ink until they restore it — the overlay lives inside the big
+  region so it follows the share into fullscreen.
 
 ---
 

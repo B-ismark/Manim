@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalAudioTrack } from 'livekit-client'
+import { Track, TrackEvent, type LocalAudioTrack } from 'livekit-client'
 import { reportError } from '@/lib/report'
 
 type KrispModule = typeof import('@livekit/krisp-noise-filter')
@@ -51,7 +51,7 @@ export function useNoiseFilter() {
   // re-assert echoCancellation + autoGainControl here too. Passing only
   // noiseSuppression drops them back to device default (off) — which is what
   // turned every call into an "echo room".
-  useEffect(() => {
+  const applyDsp = useCallback(() => {
     const mst = track?.mediaStreamTrack
     if (!mst) return
     void mst
@@ -61,7 +61,31 @@ export function useNoiseFilter() {
         noiseSuppression: enabled && !usingKrisp,
       })
       .catch(() => {})
-  }, [enabled, usingKrisp, trackSid])
+    // trackSid participates so a republished mic re-asserts even when the
+    // LocalAudioTrack object is reused.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [track, trackSid, enabled, usingKrisp])
+
+  useEffect(() => applyDsp(), [applyDsp])
+
+  /**
+   * A track RESTART replaces the MediaStreamTrack and, with it, the entire
+   * constraint set — and a restart can come from somewhere this hook never sees:
+   * a device switch, or LiveKit's own device-loss rescue, which restarts with
+   * only `{ deviceId: 'default' }`. Every one of those silently dropped echo
+   * cancellation, auto-gain, and this filter's own noiseSuppression choice for
+   * the remainder of the call. The publication keeps its sid through a restart,
+   * so nothing above re-runs; this listener is what makes the DSP state
+   * self-healing no matter who restarted the capture.
+   */
+  useEffect(() => {
+    if (!track) return
+    const onRestarted = () => applyDsp()
+    track.on(TrackEvent.Restarted, onRestarted)
+    return () => {
+      track.off(TrackEvent.Restarted, onRestarted)
+    }
+  }, [track, applyDsp])
 
   // Krisp = the strongest filter. Engage it when enabled + mic live + supported;
   // suspend it while muted to reclaim CPU; fall back to the browser filter if it

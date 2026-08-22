@@ -22,7 +22,7 @@ confusion once. Develop on `main` (or merge promptly); don't sit on long-lived
 feature branches expecting production to update.
 
 **Never `wrangler deploy` from a dev machine.** The `VITE_*` values
-(`VITE_LIVEKIT_URL`, Supabase, Giphy) live **only** in Cloudflare → Settings →
+(`VITE_LIVEKIT_URL`, Supabase, Giphy, annotation) live **only** in Cloudflare → Settings →
 Build → Variables. A local `.env` is intentionally empty, so a local build bakes
 an empty `VITE_LIVEKIT_URL`; `LIVEKIT_URL` then folds to falsy, the entire
 in-call UI becomes dead code and is tree-shaken out, and you ship a bundle that
@@ -62,6 +62,7 @@ build vars live under the Build section.)
 | `RESEND_API_KEY` | runtime (secret) | optional | real email invites (else mailto) |
 | `RESEND_FROM` | runtime | optional | e.g. `Manim <onboarding@resend.dev>` |
 | `VITE_GIPHY_KEY` | build | optional | GIF picker (free key from developers.giphy.com) |
+| `VITE_ANNOTATE` | build | optional | Draw-on-shared-screen. **Inverted — unset means ON.** Set to exactly `false` to disable it without a code change. |
 
 > Set `VITE_LIVEKIT_URL` in **both** build and runtime (the client connects with
 > it; the Worker uses it to reach the LiveKit RoomService).

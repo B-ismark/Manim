@@ -15,9 +15,10 @@ import {
   MicOffIcon,
   ScreenShareIcon,
 } from '@/components/icons'
-import { focusTrack, hasVideo, isLocalCam } from '@/lib/focusTrack'
+import { hasVideo, isLocalCam, stageFocus } from '@/lib/focusTrack'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useScreenShare } from '@/features/calls/useScreenShare'
 import { cn } from '@/lib/cn'
 
 /**
@@ -30,9 +31,10 @@ import { cn } from '@/lib/cn'
  */
 export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: () => void }) {
   const participants = useParticipants()
-  const { localParticipant, isMicrophoneEnabled, isCameraEnabled, isScreenShareEnabled } =
-    useLocalParticipant()
+  const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
+  const screenShare = useScreenShare()
   const pinned = useRoomStore((s) => s.pinned)
+  const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const coarse = useIsTouch()
   const tracks = useTracks(
     [
@@ -42,10 +44,11 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
     { onlySubscribed: false },
   )
 
-  // Prefer a remote/screen focus; only show self when alone.
-  const localCam = tracks.find(isLocalCam)
-  const others = tracks.filter((t) => !isLocalCam(t))
-  const focus = focusTrack(others, pinned) ?? localCam
+  // Prefer a remote/screen focus; only show self when alone — or when you have
+  // explicitly pinned yourself. Same helper the stage uses, deliberately: this
+  // window is a mirror of the stage's big region, and two surfaces answering
+  // "who is in focus" from their own copy of the rule is how they drift apart.
+  const focus = stageFocus(tracks, pinned, selfViewHidden)
   const p = focus?.participant
   const name = p ? p.name || p.identity.split('#')[0] : ''
   const selfFacing = useRoomStore((s) => s.selfFacing)
@@ -116,11 +119,11 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
           {!coarse && (
             <IconButton
               size="sm"
-              label={isScreenShareEnabled ? 'Stop sharing' : 'Share screen'}
+              label={screenShare.enabled ? 'Stop sharing' : 'Share screen'}
               icon={<ScreenShareIcon />}
-              active={isScreenShareEnabled}
-              className={!isScreenShareEnabled ? 'bg-transparent text-white hover:bg-white/15' : undefined}
-              onClick={() => void localParticipant.setScreenShareEnabled(!isScreenShareEnabled)}
+              active={screenShare.enabled}
+              className={!screenShare.enabled ? 'bg-transparent text-white hover:bg-white/15' : undefined}
+              onClick={screenShare.toggle}
             />
           )}
           <IconButton size="sm" label="Leave call" icon={<LeaveIcon />} tone="danger" onClick={onLeave} />

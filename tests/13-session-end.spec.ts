@@ -1,9 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, newParticipant, revealChrome } from './helpers'
+import {
+  closeContext,
+  join,
+  newParticipant,
+  openEndCallConfirm,
+  uniqueRoom,
+} from './helpers'
 
 // Plain "Leave" is covered by 02-prejoin. The DESTRUCTIVE teardown —
-// end-for-everyone — wasn't (audit T2). The host's split control hides
-// "End call for everyone" behind a caret; on confirm it both broadcasts an
+// end-for-everyone — wasn't (audit T2). The host reaches it behind the caret on
+// their split Leave control with a mouse, and from the More sheet on touch (that
+// caret is too small for a thumb, so it isn't offered there) — openEndCallConfirm
+// takes whichever route this platform has. On confirm it both broadcasts an
 // { type:'end' } control message AND closes the room server-side (so a
 // mid-reconnect peer can't be stranded, finding #13). This test exercises the
 // host->guest disconnect path; the server-side close is what makes the race safe.
@@ -19,10 +27,9 @@ test.describe('Session — end for everyone', () => {
         timeout: 30_000,
       })
 
-      // Host opens the caret menu (host-only) and ends for everyone.
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'End call for everyone' }).click()
-      await page.getByRole('menuitem', { name: 'End call for everyone' }).click()
+      // Host reaches end-for-everyone the way their platform offers it (caret menu
+      // on a pointer, More sheet on touch) and confirms.
+      await openEndCallConfirm(page)
       await page.getByRole('button', { name: 'End for everyone' }).click()
 
       // Guest receives the end signal and is taken out of the call: in-call chrome
@@ -32,7 +39,7 @@ test.describe('Session — end for everyone', () => {
       })
       await expect(guest.page.getByPlaceholder('e.g. team-standup')).toBeVisible({ timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 
@@ -57,9 +64,7 @@ test.describe('Session — end for everyone', () => {
         const r = (window as unknown as { __lkRoom?: { simulateScenario: (s: string) => Promise<void> } }).__lkRoom
         void r?.simulateScenario('leave-full-reconnect')
       })
-      await revealChrome(page)
-      await page.getByRole('button', { name: 'End call for everyone' }).click()
-      await page.getByRole('menuitem', { name: 'End call for everyone' }).click()
+      await openEndCallConfirm(page)
       await page.getByRole('button', { name: 'End for everyone' }).click()
 
       // However the guest's reconnect resolves, they must not remain in-call.
@@ -68,7 +73,7 @@ test.describe('Session — end for everyone', () => {
       })
       await expect(guest.page.getByPlaceholder('e.g. team-standup')).toBeVisible({ timeout: 15_000 })
     } finally {
-      await guest.context.close()
+      await closeContext(guest.context)
     }
   })
 })

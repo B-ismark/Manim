@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   uniqueRoom, join, newParticipant, openChat, setColorScheme,
-  pageMetrics, overlaps, throttleNetwork, appErrors, attachErrorSink,
+  pageMetrics, overlaps, throttleNetwork, appErrors, attachErrorSink, closeContext, isTouch,
 } from './helpers'
 
 /**
@@ -11,8 +11,9 @@ import {
  * the room fills / the panel opens / the name is huge / the network drops".
  *
  * Participant counts stay <= 7 — past ~8 real headless Chromium saturate one
- * machine's CPU (a harness limit, not the product's; see E2E-FINDINGS). Real
- * scale lives in the lk load-test rig (npm run loadtest), not here.
+ * machine's CPU (a harness limit, not the product's; see
+ * docs/archive/E2E-FINDINGS.md). Real scale lives in the lk load-test rig
+ * (npm run loadtest), not here.
  */
 const SHOTS = 'audit/scenarios'
 const shoot = (page: Page, name: string) =>
@@ -28,9 +29,9 @@ test.describe('Visual scenarios @heavy', () => {
 
   test('paged grid ramps cleanly 2→5', async ({ page, browser }) => {
     // Each peer is a full browser context; one machine saturates ~8 (CPU-bound,
-    // a harness limit — see E2E-FINDINGS). Cap the browser ramp at 5 and leave
-    // real scale (20/50/100) to the lk load-test rig. Generous timeout for the
-    // serial connects.
+    // a harness limit — see docs/archive/E2E-FINDINGS.md). Cap the browser ramp
+    // at 5 and leave real scale (20/50/100) to the lk load-test rig. Generous
+    // timeout for the serial connects.
     test.setTimeout(180_000)
     const sink = attachErrorSink(page)
     const room = uniqueRoom()
@@ -46,12 +47,26 @@ test.describe('Visual scenarios @heavy', () => {
       await shoot(page, `grid-${n}`)
       expect(ov, JSON.stringify(ov)).toEqual([]) // no UI collisions at any size
     }
-    for (const p of peers) await p.context.close()
+    // closeContext, not context.close(): tearing down five traced contexts at once
+    // makes Playwright's own trace-zip writer throw ("unexpected number of bytes" /
+    // "End of central directory record signature not found") often enough to turn a
+    // fully-passing run red — every assertion above had already succeeded. That is
+    // exactly the failure `closeContext` was written to swallow, and this was the
+    // heaviest teardown in the suite still bypassing it.
+    for (const p of peers) await closeContext(p.context)
     test.info().attach('grid-metrics.json', { body: JSON.stringify(report, null, 2), contentType: 'application/json' })
     expect(appErrors(sink)).toEqual([])
   })
 
   test('chat panel docks without covering controls (desktop)', async ({ page, browser }) => {
+    // The name said "desktop" and nothing enforced it. There IS no docked panel on
+    // touch — the chat is a modal bottom sheet, and the control bar auto-hides, so
+    // the mic assertion below can only ever time out there. It never showed up
+    // because no gate runs `@heavy` on the mobile projects (`test:visual` is
+    // desktop-only), which is exactly how a spec rots: green everywhere it runs,
+    // broken everywhere it doesn't. The touch half of this invariant belongs to
+    // 11-mobile-fit, against a sheet rather than a dock.
+    test.skip(await isTouch(page), 'the docked side panel is a desktop layout')
     const room = uniqueRoom()
     await join(page, room, 'Host')
     await newParticipant(browser, room, 'Guest')

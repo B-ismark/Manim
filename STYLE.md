@@ -152,7 +152,9 @@ list here when you add one.
 
 - Subtle and purposeful: islands ease in/out, layout shifts animate; nothing
   bounces or distracts from video.
-- Use the `motion` library + `--dur-*` / `--ease-island`.
+- Use CSS transitions/animations with the `--dur-*` / `--ease-*` tokens. (This rule
+  said "use the `motion` library" long after `motion` was dropped from `package.json`.
+  Animation here is plain CSS; the tokens are what keep it consistent.)
 - All motion must degrade under `prefers-reduced-motion` (global rule in §6).
 
 ---

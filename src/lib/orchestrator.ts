@@ -50,6 +50,9 @@ export interface KnockResponse {
   token?: string
   identity?: string
   host?: boolean
+  /** True when the SAME signed-in account is already in the room on another device.
+   *  Lets prejoin offer "join anyway (companion, muted)" vs "transfer to this device". */
+  alsoOnDevice?: boolean
   /** Present when the waiting room queued the request for host approval. */
   pending?: boolean
   requestId?: string
@@ -122,11 +125,13 @@ export interface RoomFlagsRequest {
   token: string
   locked?: boolean
   waiting?: boolean
+  /** Restrict drawing on a shared screen to hosts/co-hosts. Default (false) = everyone. */
+  annotateHostOnly?: boolean
   /** Co-host identities. Only the primary host may change this (server-enforced). */
   coHosts?: string[]
 }
 
-/** Host: set room flags (lock / waiting room / co-hosts). */
+/** Host: set room flags (lock / waiting room / annotation policy / co-hosts). */
 export function setRoomFlags({ token, ...body }: RoomFlagsRequest): Promise<void> {
   return postJson<{ ok: boolean }>('/api/roomflags', body, token).then(() => undefined)
 }

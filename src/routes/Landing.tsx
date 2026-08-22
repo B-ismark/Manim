@@ -232,29 +232,47 @@ export function Landing() {
         {signedIn && <LiveAndRecent onJoin={goTo} />}
 
         <Island pad="none" className="w-full p-5 sm:p-6 short:p-4">
+          {/* Two actions that are NOT variations of each other, laid out so you can
+              see that without being told.
+
+              They used to sit shoulder to shoulder under the field — same row, same
+              pill shape, one accent and one grey — which reads as one action and its
+              understudy. They aren't: Join enters a room that already exists and
+              mints nothing, while New meeting mints a fresh join secret and E2EE key,
+              so for the SAME typed name the two produce different, mutually
+              inaccessible rooms.
+
+              So Join is welded to the field it consumes — one row, matched heights,
+              the shape every "enter a code" control has (Meet, Zoom, Teams) — and
+              New meeting is a full-width button on its own line. Grouping does the
+              explaining; no helper text needed, and none added. New meeting is still
+              the primary despite coming second: it is the widest, loudest thing in
+              the card, which is how Whereby and Jitsi order the same pair. */}
           <form onSubmit={onJoin} className="flex flex-col gap-3 short:gap-2">
             <label htmlFor="room" className="text-sm font-medium">
               Meeting name or code
             </label>
-            {/* text-base on mobile keeps the font ≥16px so iOS doesn't zoom on focus. */}
-            <input
-              id="room"
-              value={room}
-              onChange={(e) => setRoom(e.target.value)}
-              placeholder="e.g. team-standup"
-              autoComplete="off"
-              className="h-11 w-full rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
-            />
             <div className="flex gap-2">
-              {/* New meeting: uses the typed name, or a random room when blank. */}
-              <Button type="button" variant="accent" block onClick={newMeeting}>
-                <CameraIcon />
-                New meeting
-              </Button>
-              <Button type="submit" variant="neutral" disabled={!room.trim()}>
+              {/* text-base on mobile keeps the font ≥16px so iOS doesn't zoom on focus. */}
+              <input
+                id="room"
+                value={room}
+                onChange={(e) => setRoom(e.target.value)}
+                placeholder="e.g. team-standup"
+                autoComplete="off"
+                className="h-11 min-w-0 flex-1 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
+              />
+              {/* h-11 to match the input exactly — a button a notch shorter than the
+                  field it sits beside stops reading as part of it. */}
+              <Button type="submit" variant="neutral" className="h-11" disabled={!room.trim()}>
                 Join
               </Button>
             </div>
+            {/* Uses the typed name, or a random room when blank. */}
+            <Button type="button" variant="accent" block onClick={newMeeting}>
+              <CameraIcon />
+              New meeting
+            </Button>
           </form>
         </Island>
       </div>
@@ -335,8 +353,23 @@ function RecentMeetings({
               <CameraIcon />
             </span>
             <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.name}</span>
+            {/* Secondary, deliberately — `neutral`, not `accent`.
+                The recents list is the one place on this page that repeats a button
+                per ROW, so an accent fill here doesn't read as "the important
+                action", it reads as a column of them: three or four saturated pills
+                stacked directly above "New meeting", each louder than the page's
+                actual primary CTA and none of them more urgent than the last call
+                you happened to leave. Emphasis has to be scarce to mean anything.
+
+                The rule this settles, for the whole page: `accent` is for STARTING
+                something (New meeting) and for a call that is LIVE right now (the
+                other-devices list above — one row, time-sensitive, and usually
+                absent). Re-entering something from history is `neutral`, which is
+                already what the form's own Join button uses, so every "go to a room
+                that already exists" control now looks the same. The row's remove ✕
+                stays a bare icon below both. */}
             <Button
-              variant="accent"
+              variant="neutral"
               size="sm"
               onClick={() => onJoin(r.slug, { secret: r.secret, e2ee: r.e2ee })}
             >

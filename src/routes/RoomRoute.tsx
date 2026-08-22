@@ -4,9 +4,11 @@ import { Island, Button } from '@/components/primitives'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
-import { knock, knockStatus, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
+import { useRoomStore } from '@/store/useRoomStore'
+import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
 import { supabase } from '@/lib/supabase'
-import { parseRoomHash } from '@/lib/roomLink'
+import { parseRoomHash, roomHash } from '@/lib/roomLink'
+import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roomKeys'
 import { toast } from '@/store/useToastStore'
 import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
@@ -99,11 +101,41 @@ export function RoomRoute() {
   const deviceId = useAppStore((s) => s.deviceId)
   const prejoin = useAppStore((s) => s.prejoin)
   const setRoomToken = useAppStore((s) => s.setRoomToken)
+  const companion = useRoomStore((s) => s.companion)
+  const setCompanion = useRoomStore((s) => s.setCompanion)
 
   // Security material rides in the URL #fragment (see lib/roomLink): the join
   // secret gates server-side entry, the E2EE key keys the media. Both live only in
   // the link, never the path/store.
-  const { secret, e2ee } = useMemo(() => parseRoomHash(location.hash), [location.hash])
+  //
+  // …but a fragment is the most fragile part of a URL, and we were losing it — most
+  // damagingly on the round trip through sign-in, which comes back with the
+  // provider's own `#access_token=…` where the room's credential used to be. So the
+  // link is the AUTHORITY and lib/roomKeys is the memory: whatever the link carries
+  // wins and is remembered, and a fragment-less arrival falls back to what this
+  // browser saw last time. Read lib/roomKeys before changing any of this.
+  const fromLink = useMemo(() => parseRoomHash(location.hash), [location.hash])
+  const { secret, e2ee } = useMemo(() => resolveRoomSecrets(room, fromLink), [room, fromLink])
+
+  // Put the recovered fragment back in the address bar. Not cosmetic: copy-link,
+  // native share and the email invite all read `window.location.href`, so a tab
+  // whose fragment was eaten by the auth redirect was handing out dead invite links
+  // to everyone it shared with — one person signing in mid-call could break the
+  // link for the whole room. Restoring it here fixes every one of those callers at
+  // once.
+  //
+  // Never over an auth fragment: Supabase has to consume its own tokens from the
+  // hash at startup, and replacing it first would trade one lost credential for
+  // another (isAuthFragment).
+  useEffect(() => {
+    if (!secret && !e2ee) return
+    if (fromLink.secret || fromLink.e2ee) return
+    if (isAuthFragment(location.hash)) return
+    navigate({ pathname: location.pathname, search: location.search, hash: roomHash({ secret, e2ee }) }, {
+      replace: true,
+      state: location.state,
+    })
+  }, [secret, e2ee, fromLink, location.hash, location.pathname, location.search, location.state, navigate])
 
   const [token, setToken] = useState<string | null>(null)
 
@@ -117,6 +149,10 @@ export function RoomRoute() {
   const [error, setError] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
   const [waitingId, setWaitingId] = useState<string | null>(null)
+  // Set when the knock reports the same account is already in the call on another
+  // device — we hold the (already-minted) token and let the user pick "join anyway"
+  // (companion, muted) vs "transfer here" (drop the other device) before connecting.
+  const [deviceChoice, setDeviceChoice] = useState<string | null>(null)
 
   const handleJoin = useCallback(async () => {
     setError(null)
@@ -142,7 +178,14 @@ export function RoomRoute() {
         const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
         const res = await knock({ room, name: displayName, deviceId, accessToken, secret })
         if (res.token) {
-          setToken(res.token)
+          // Same account already in the call on another device? Don't auto-connect —
+          // let the user choose companion vs transfer first (the token is held).
+          if (res.alsoOnDevice) {
+            setDeviceChoice(res.token)
+            setConnecting(false)
+          } else {
+            setToken(res.token)
+          }
         } else if (res.pending && res.requestId) {
           // Waiting room is on — wait for the host to admit us.
           setWaitingId(res.requestId)
@@ -157,6 +200,16 @@ export function RoomRoute() {
         // the dedicated "link expired" screen that tells the user what to do next.
         if (e instanceof ApiError && e.code === 'link_expired') {
           setExpired(true)
+          setConnecting(false)
+          return
+        }
+        // The join-secret gate turned us away. If we got here on a REMEMBERED secret
+        // it is stale (the room was recreated, or the link epoch moved), and keeping
+        // it would make every future attempt fail the same way with nothing the user
+        // could do about it — so forget it and let the next real link win.
+        if (e instanceof ApiError && e.code === 'need_link') {
+          forgetRoomSecrets(room)
+          setError(e.message)
           setConnecting(false)
           return
         }
@@ -182,6 +235,35 @@ export function RoomRoute() {
       }
     }
   }, [room, displayName, deviceId, secret])
+
+  // "You're already in on another device" choices (see deviceChoice). Both connect with
+  // the held token; companion joins muted, transfer drops the other device.
+  const joinAsCompanion = useCallback(() => {
+    setDeviceChoice((tok) => {
+      if (tok) {
+        setCompanion(true)
+        setToken(tok)
+      }
+      return null
+    })
+  }, [setCompanion])
+  const transferHere = useCallback(() => {
+    setDeviceChoice((tok) => {
+      if (tok) {
+        setCompanion(false)
+        setToken(tok)
+        // Drop our OTHER device(s) in this room. Server-mediated, authorized on the
+        // signed token's account id (can't be forged). Fire-and-forget — the other
+        // session receives the disconnect and self-exits.
+        void handoff(room, tok, deviceId).catch(() => {})
+      }
+      return null
+    })
+  }, [room, deviceId, setCompanion])
+  const cancelDeviceChoice = useCallback(() => {
+    setDeviceChoice(null)
+    setConnecting(false)
+  }, [])
 
   // While queued in the waiting room, poll for the host's decision.
   useEffect(() => {
@@ -226,6 +308,8 @@ export function RoomRoute() {
       setWaitingId(null)
       setError(null)
       setExpired(false)
+      setDeviceChoice(null)
+      setCompanion(false)
     }
     if (autojoin && displayName && joinedFor.current !== room) {
       joinedFor.current = room
@@ -237,6 +321,8 @@ export function RoomRoute() {
     setToken(null)
     setConnecting(false)
     setWaitingId(null)
+    setDeviceChoice(null)
+    setCompanion(false)
     navigate('/')
   }
 
@@ -250,8 +336,11 @@ export function RoomRoute() {
         <CallRoom
           serverUrl={LIVEKIT_URL}
           token={token}
-          micEnabled={prejoin.micEnabled}
-          cameraEnabled={prejoin.cameraEnabled}
+          // Companion (same account on another device): join with mic + camera off to
+          // avoid echo / a duplicate self-view. Speaker mute + the companion banner are
+          // applied in-call by RoomView.
+          micEnabled={companion ? false : prejoin.micEnabled}
+          cameraEnabled={companion ? false : prejoin.cameraEnabled}
           lowBandwidth={prejoin.lowBandwidth}
           e2ee={e2ee}
           onLeave={leave}
@@ -281,6 +370,13 @@ export function RoomRoute() {
   return (
     <div className="relative">
       <PreJoin room={room} onJoin={handleJoin} encrypted={Boolean(e2ee)} />
+      {deviceChoice && (
+        <AlreadyOnDevicePrompt
+          onJoinAnyway={joinAsCompanion}
+          onTransfer={transferHere}
+          onCancel={cancelDeviceChoice}
+        />
+      )}
       {error && (
         <div className="fixed inset-x-0 top-4 z-30 flex justify-center px-4">
           <Island elevation="raised" className="max-w-md">
@@ -325,6 +421,46 @@ function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
         </Button>
       </Island>
     </main>
+  )
+}
+
+/**
+ * Prejoin prompt shown when the SAME account is already in the call on another device
+ * (Meet/Teams model). Two paths: "Join anyway" adds this device as a muted companion
+ * (mic + camera + speaker off, so two co-located devices don't echo — the user can turn
+ * any back on in-call); "Transfer to this device" moves the call here and drops the
+ * other session. Cancel returns to prejoin.
+ */
+function AlreadyOnDevicePrompt({
+  onJoinAnyway,
+  onTransfer,
+  onCancel,
+}: {
+  onJoinAnyway: () => void
+  onTransfer: () => void
+  onCancel: () => void
+}) {
+  return (
+    <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
+      <Island pad="lg" className="w-full max-w-sm">
+        <h2 className="text-lg font-semibold">You're already in this call</h2>
+        <p className="mt-1 text-sm text-ink-muted">
+          You're in this call on another device. Join here too (muted, to avoid echo), or move the
+          call to this device.
+        </p>
+        <div className="mt-5 flex flex-col gap-2">
+          <Button variant="accent" onClick={onJoinAnyway}>
+            Join anyway
+          </Button>
+          <Button variant="neutral" onClick={onTransfer}>
+            Transfer to this device
+          </Button>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+        </div>
+      </Island>
+    </div>
   )
 }
 

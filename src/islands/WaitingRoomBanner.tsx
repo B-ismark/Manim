@@ -42,29 +42,28 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
 
   if (!active || pending.length === 0) return null
 
+  // Positioned by TopStack — see the layer scale there.
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-30 flex justify-center px-4">
-      <Island elevation="raised" pad="sm" className="pointer-events-auto w-full max-w-sm">
-        <p className="mb-2 text-xs font-medium text-ink-subtle">
-          Waiting to join ({pending.length})
-        </p>
-        <ul className="space-y-2">
-          {pending.map((p) => (
-            <li key={p.id} className="flex items-center gap-2.5">
-              <Avatar name={p.name} size="sm" />
-              <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
-              {/* Default (40px) size: admitting/denying a person is consequential
-                  enough to deserve a full touch target, not the compact sm. */}
-              <Button variant="accent" onClick={() => decide(p.id, true)}>
-                Admit
-              </Button>
-              <Button variant="ghost" onClick={() => decide(p.id, false)}>
-                Deny
-              </Button>
-            </li>
-          ))}
-        </ul>
-      </Island>
-    </div>
+    <Island elevation="raised" pad="sm" className="pointer-events-auto w-full max-w-sm">
+      <p className="mb-2 text-xs font-medium text-ink-subtle">
+        Waiting to join ({pending.length})
+      </p>
+      <ul className="space-y-2">
+        {pending.map((p) => (
+          <li key={p.id} className="flex items-center gap-2.5">
+            <Avatar name={p.name} size="sm" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
+            {/* Default (40px) size: admitting/denying a person is consequential
+                enough to deserve a full touch target, not the compact sm. */}
+            <Button variant="accent" onClick={() => decide(p.id, true)}>
+              Admit
+            </Button>
+            <Button variant="ghost" onClick={() => decide(p.id, false)}>
+              Deny
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Island>
   )
 }

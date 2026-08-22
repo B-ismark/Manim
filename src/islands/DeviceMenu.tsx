@@ -2,6 +2,7 @@ import { useMediaDeviceSelect } from '@livekit/components-react'
 import { DropdownMenu, DropdownItem } from '@/components/primitives'
 import { CheckIcon, ChevronDownIcon } from '@/components/icons'
 import { toast } from '@/store/useToastStore'
+import { useDeviceStore, type StoredDeviceKind } from '@/store/useDeviceStore'
 
 interface RowProps {
   kind: MediaDeviceKind
@@ -13,10 +14,12 @@ interface RowProps {
  * active device, opening the full list. Clearer than a single flat list — you
  * see the current camera/mic/speaker at a glance (Meet/Zoom settings pattern).
  * Hidden when the platform exposes no devices of that kind (e.g. speaker pick on
- * mobile Safari).
+ * mobile Safari). A manual pick is remembered (useDeviceStore) so it's restored
+ * on the next call.
  */
-function DeviceRow({ kind, label }: RowProps) {
+export function DeviceRow({ kind, label }: RowProps) {
   const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind })
+  const remember = useDeviceStore((s) => s.remember)
   if (devices.length === 0) return null
   const active = devices.find((d) => d.deviceId === activeDeviceId) ?? devices[0]
 
@@ -43,7 +46,10 @@ function DeviceRow({ kind, label }: RowProps) {
             icon={d.deviceId === active?.deviceId ? <CheckIcon /> : <span className="size-4" />}
             onSelect={() => {
               void setActiveMediaDevice(d.deviceId)
-                .then(() => toast(`${label}: ${d.label || 'changed'}`, 'neutral'))
+                .then(() => {
+                  remember(kind as StoredDeviceKind, d.deviceId, d.label)
+                  toast(`${label}: ${d.label || 'changed'}`, 'neutral')
+                })
                 .catch(() => toast(`Couldn't switch ${label.toLowerCase()}`, 'danger'))
             }}
           >

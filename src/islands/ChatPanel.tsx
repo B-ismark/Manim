@@ -1,10 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useParticipants } from '@livekit/components-react'
-import { Avatar, Button, IconButton, Popover, Sheet } from '@/components/primitives'
-import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
+import { Avatar, Button, IconButton, Popover, Sheet, Tooltip } from '@/components/primitives'
+import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PeopleIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
 import { EmojiPicker } from '@/islands/EmojiPicker'
 import { encodeMentions, mentionsIdentity, plainText, type MentionTarget } from '@/features/chat/mentions'
-import type { ReactionMap } from '@/features/chat/useChatMessages'
+import { joinNames, reactorList } from '@/features/chat/reactors'
+import type { ReactionMap, ReactorNames } from '@/features/chat/useChatMessages'
 import {
   type useChatMessages,
   type ChatItem,
@@ -31,7 +32,7 @@ interface MentionMatch {
 
 /** If the caret sits inside an `@query` token, return it (so the picker can open).
  *  The '@' must start the line or follow whitespace, and the query can't span a
- *  newline — matches the Slack/Discord trigger rule. */
+ *  newline â€” matches the Slack/Discord trigger rule. */
 function activeMention(value: string, caret: number): MentionMatch | null {
   const upto = value.slice(0, caret)
   const at = upto.lastIndexOf('@')
@@ -42,7 +43,7 @@ function activeMention(value: string, caret: number): MentionMatch | null {
   return { start: at, query }
 }
 
-/** Short label for what a chat item contains — used in reply chips + pins. Mentions
+/** Short label for what a chat item contains â€” used in reply chips + pins. Mentions
  *  are flattened to readable `@Name` (these surfaces don't run the rich renderer). */
 function previewOf(item: ChatItem): string {
   return item.kind === 'text' ? plainText(item.text) : item.fileName
@@ -62,12 +63,12 @@ function timeOf(ts: number): string {
 /** Consecutive messages from the same sender within a short window collapse into
  *  one visual group (Meet / Slack / WhatsApp convention): the avatar + name +
  *  time render once for the run, follow-ups are just the bubble. A reply always
- *  breaks the group — it needs its own header for the quoted context to read. */
+ *  breaks the group â€” it needs its own header for the quoted context to read. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000
 function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
   if (!prev) return false
   if (item.kind === 'text' && item.replyTo) return false
-  // Never group across the verified/replayed boundary — a peer-replayed (unverified)
+  // Never group across the verified/replayed boundary â€” a peer-replayed (unverified)
   // message must not hide under a live, verified-author header.
   const prevReplayed = prev.kind === 'text' && prev.replayed
   const itemReplayed = item.kind === 'text' && item.replayed
@@ -79,9 +80,9 @@ function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
   )
 }
 
-/** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
+/** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md Â§5 Tier-1). */
 export function ChatPanel({ chat }: { chat: ChatApi }) {
-  const { items, sendText, sendFile, pinned, togglePin, unpin, reactions, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
+  const { items, sendText, sendFile, pinned, togglePin, unpin, reactions, reactorNames, toggleReaction, myIdentity, typingNames, notifyTyping, stopTyping, editMessage } = chat
   const [draft, setDraft] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [gifOpen, setGifOpen] = useState(false)
@@ -169,7 +170,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   // Keep the latest message + composer above the on-screen keyboard on mobile.
   // scrollIntoView-on-send doesn't fire when the keyboard *opens* (a visualViewport
   // resize, not a send), so on iOS Safari the keyboard could cover the last message
-  // or the input. Only re-pin while the composer is focused — otherwise opening the
+  // or the input. Only re-pin while the composer is focused â€” otherwise opening the
   // keyboard would yank someone out of scrolled-up history.
   useEffect(() => {
     const vv = window.visualViewport
@@ -200,7 +201,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     // client can resolve who was tagged regardless of name changes.
     const body = encodeMentions(original, mentionTargets)
     const reply = replyTo ?? undefined
-    // Optimistic clear so the composer feels instant…
+    // Optimistic clear so the composer feels instantâ€¦
     setDraft('')
     setMention(null)
     stopTyping()
@@ -208,10 +209,10 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     if (ok) {
       setReplyTo(null)
     } else {
-      // …but if the transport rejected it (e.g. mid-reconnect), put the message
-      // back (the original, not the encoded form) and say so — don't lose it.
+      // â€¦but if the transport rejected it (e.g. mid-reconnect), put the message
+      // back (the original, not the encoded form) and say so â€” don't lose it.
       setDraft(original)
-      setError("Couldn't send — check your connection and try again.")
+      setError("Couldn't send â€” check your connection and try again.")
     }
   }
 
@@ -221,7 +222,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     else stopTyping()
   }
 
-  // Wrap the current selection (or caret) in a markdown marker — the Cmd/Ctrl+B
+  // Wrap the current selection (or caret) in a markdown marker â€” the Cmd/Ctrl+B
   // (bold), +I (italic), +E (code) shortcuts. Restores the selection around the
   // wrapped text so you can keep typing.
   function wrapSelection(marker: string) {
@@ -283,7 +284,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     inputRef.current?.focus()
   }, [])
 
-  // Tap a reply's quote → scroll the original into view and flash it. Imperative
+  // Tap a reply's quote â†’ scroll the original into view and flash it. Imperative
   // (querySelector + classList) so the ~200-row memoized list isn't re-rendered
   // just to highlight one row. No-op if the original has scrolled out of history.
   const listRef = useRef<HTMLDivElement>(null)
@@ -316,7 +317,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     setUnseen(0)
   }
 
-  // Insert an emoji at the caret (composer emoji picker — distinct from reacting to
+  // Insert an emoji at the caret (composer emoji picker â€” distinct from reacting to
   // a message). Keeps focus + caret after the inserted glyph so typing continues.
   function insertEmoji(emoji: string) {
     const el = inputRef.current
@@ -363,6 +364,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           <MessageList
             items={items}
             reactions={reactions}
+            reactorNames={reactorNames}
             pinned={pinned}
             myIdentity={myIdentity}
             onReact={toggleReaction}
@@ -382,7 +384,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
             onClick={scrollToBottom}
             aria-label={
               unseen > 0
-                ? `Scroll to latest — ${unseen} new ${unseen === 1 ? 'message' : 'messages'}`
+                ? `Scroll to latest â€” ${unseen} new ${unseen === 1 ? 'message' : 'messages'}`
                 : 'Scroll to latest messages'
             }
             className="absolute bottom-3 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-line bg-raised py-1.5 pl-2.5 pr-3 text-xs font-medium text-ink shadow-pop transition-colors hover:bg-sunken [&_svg]:size-4"
@@ -448,7 +450,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                   role="option"
                   aria-selected={i === mentionIdx}
                   // onPointerDown (not onClick) so the pick fires before the textarea
-                  // blurs — and pointer covers touch too, where a click would land
+                  // blurs â€” and pointer covers touch too, where a click would land
                   // after blur dismissed the list (and behind the on-screen keyboard).
                   onPointerDown={(e) => {
                     e.preventDefault()
@@ -486,7 +488,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           onBlur={() => setMention(null)}
           onKeyDown={onComposerKeyDown}
           rows={1}
-          placeholder="Message — @ to mention"
+          placeholder="Message â€” @ to mention"
           aria-label="Message"
           role="combobox"
           aria-expanded={showMentions}
@@ -513,7 +515,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
             onClick={() => fileInputRef.current?.click()}
           />
           {/* Emoji insert (distinct from reacting to a message): popover on desktop,
-              bottom sheet on touch — same pattern as the GIF picker. */}
+              bottom sheet on touch â€” same pattern as the GIF picker. */}
           {narrow ? (
             <>
               <IconButton
@@ -619,6 +621,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
 const MessageList = memo(function MessageList({
   items,
   reactions,
+  reactorNames,
   pinned,
   myIdentity,
   onReact,
@@ -629,6 +632,7 @@ const MessageList = memo(function MessageList({
 }: {
   items: ChatItem[]
   reactions: ReactionMap
+  reactorNames: ReactorNames
   pinned: PinnedMessage[]
   myIdentity: string
   onReact: (id: string, emoji: string) => void
@@ -655,8 +659,12 @@ const MessageList = memo(function MessageList({
           key={item.id}
           item={item}
           grouped={continuesGroup(items[i - 1], item)}
+          sameMinuteAsPrev={
+            !!items[i - 1] && timeOf(items[i - 1].timestamp) === timeOf(item.timestamp)
+          }
           pinned={isPinned(item.id)}
           reactions={reactions[item.id]}
+          reactorNames={reactorNames}
           myIdentity={myIdentity}
           onReact={(emoji) => onReact(item.id, emoji)}
           onReply={() => onReply(item)}
@@ -672,8 +680,10 @@ const MessageList = memo(function MessageList({
 function MessageRow({
   item,
   grouped,
+  sameMinuteAsPrev,
   pinned,
   reactions,
+  reactorNames,
   myIdentity,
   onReact,
   onReply,
@@ -682,16 +692,20 @@ function MessageRow({
   onJumpTo,
 }: {
   item: ChatItem
-  /** True when this continues the previous sender's run — avatar/header collapse. */
+  /** True when this continues the previous sender's run â€” avatar/header collapse. */
   grouped: boolean
+  /** The previous row already printed this exact clock time. */
+  sameMinuteAsPrev: boolean
   pinned: boolean
-  /** This message's reactions: emoji → identities who reacted. */
+  /** This message's reactions: emoji â†’ identities who reacted. */
   reactions?: ReactionMap[string]
+  /** Identity â†’ display name for reactors, so a pill can say WHO. */
+  reactorNames: ReactorNames
   myIdentity: string
   onReact: (emoji: string) => void
   onReply: () => void
   onTogglePin: () => void
-  /** Defined only for your own text messages — edits the body in place. */
+  /** Defined only for your own text messages â€” edits the body in place. */
   onEdit?: (text: string) => void
   /** Scroll to + flash the message a reply quotes. */
   onJumpTo: (id: string) => void
@@ -704,8 +718,11 @@ function MessageRow({
   // edit, pin); swipe-left is a shortcut for reply. Desktop keeps the hover toolbar.
   const [actionsOpen, setActionsOpen] = useState(false)
   // Touch reaction picker rides a bottom Sheet (full width + scrollable + scrim)
-  // rather than the cramped long-press popover — the emoji grid needs the room.
+  // rather than the cramped long-press popover â€” the emoji grid needs the room.
   const [reactOpen, setReactOpen] = useState(false)
+  // "Who reacted" â€” the touch counterpart to the desktop chip tooltip.
+  const [whoOpen, setWhoOpen] = useState(false)
+  const hasReactions = Object.values(reactions ?? {}).some((by) => by.length > 0)
   const [swipeX, setSwipeX] = useState(0)
   const press = useRef<{ x: number; y: number; moved: boolean; swiping: boolean }>({
     x: 0,
@@ -820,7 +837,12 @@ function MessageRow({
         {!grouped && (
           <div className="flex items-baseline gap-2">
             <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
-            <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
+            {/* Only when it has actually changed. Four groups inside one minute
+                printed "09:52 PM" four times, which is four chances to read a
+                number that carries no new information. */}
+            {!sameMinuteAsPrev && (
+              <span className="text-xs text-ink-subtle">{timeOf(item.timestamp)}</span>
+            )}
             {item.kind === 'text' && item.edited && (
               <span className="text-[11px] text-ink-subtle">(edited)</span>
             )}
@@ -829,16 +851,16 @@ function MessageRow({
             {item.kind === 'text' && item.replayed && (
               <span
                 className="text-[11px] text-ink-subtle italic"
-                title="Sent before you joined — sender not verified"
+                title="Sent before you joined â€” sender not verified"
               >
-                · before you joined
+                Â· before you joined
               </span>
             )}
             {pinned && <PinIcon className="size-3 text-accent" aria-label="Pinned" />}
           </div>
         )}
 
-        {/* Quoted message this one replies to — a compact card with an accent rail
+        {/* Quoted message this one replies to â€” a compact card with an accent rail
             so the threaded context reads at a glance. When the original is linkable
             (its id rode along in the reply), the card is a button that scrolls back
             to it; otherwise it stays a static quote. */}
@@ -910,9 +932,9 @@ function MessageRow({
               <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 Cancel
               </Button>
-              {/* Keyboard hint is desktop-only guidance — hidden on touch. */}
+              {/* Keyboard hint is desktop-only guidance â€” hidden on touch. */}
               <span className="hidden text-xs text-ink-subtle sm:inline">
-                Enter to save · Esc to cancel
+                Enter to save Â· Esc to cancel
               </span>
             </div>
           </div>
@@ -926,7 +948,12 @@ function MessageRow({
           <FileMessage file={item} />
         )}
 
-        <ReactionChips reactions={reactions} myIdentity={myIdentity} onReact={onReact} />
+        <ReactionChips
+          reactions={reactions}
+          reactorNames={reactorNames}
+          myIdentity={myIdentity}
+          onReact={onReact}
+        />
       </div>
 
       {/* DESKTOP: hover/focus-revealed toolbar. Hidden on touch (which uses
@@ -934,7 +961,28 @@ function MessageRow({
       {!narrow && (
         <div
           className={cn(
-            'absolute right-0 top-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+            'absolute right-0 flex gap-0.5 rounded-control bg-surface p-0.5 opacity-0 shadow-pop transition-opacity focus-within:opacity-100 group-hover:opacity-100',
+            // WHERE this sits decides whether you can read the message you are
+            // about to act on. Measured at the panel's real width: the bar is
+            // 116px wide (154px on your own messages, which add Edit).
+            //
+            // On an ungrouped row `top-0` lines up with the name+time header,
+            // which is short â€” 139-245px of clearance â€” so the bar has room and
+            // the text below is untouched. A GROUPED row has no header, so the
+            // same `top-0` lands squarely on the first line of the message: a
+            // line with 83px of clearance lost its last word the moment you
+            // reached for the reaction button.
+            //
+            // Grouped rows therefore float the bar just above themselves. It
+            // still overlaps something â€” in a 400px panel there is no free
+            // column to retreat to, and reserving 116px permanently would cost
+            // a third of the text width â€” but what it overlaps is the previous
+            // line of the SAME author's run, which is context you have already
+            // read, rather than the message you are pointing at.
+            // Flush, no gap: any space between the bar and its row is a strip of
+            // the PREVIOUS row, and the pointer crossing it on the way to a
+            // button would leave the group and take the bar with it.
+            grouped ? 'bottom-full z-10' : 'top-0',
             editing && 'hidden',
           )}
         >
@@ -978,7 +1026,7 @@ function MessageRow({
           It's MODAL so a swipe inside it can't reach the rows behind it, and Radix
           collision-detection flips/shifts it so it never clips at the panel edge.
           The trigger is a zero-size anchor pinned to the bubble; the tap toggles
-          `actionsOpen`. "Add reaction" hands off to a full bottom Sheet — the emoji
+          `actionsOpen`. "Add reaction" hands off to a full bottom Sheet â€” the emoji
           grid needs more room than this little menu has. */}
       {narrow && (
         <>
@@ -1013,6 +1061,22 @@ function MessageRow({
                 <ReactionIcon />
                 Add reaction
               </button>
+              {/* Only once there is something to show. A touch tap on a pill spends
+                  itself toggling your own reaction (and there is no hover to carry a
+                  tooltip), so this menu is the phone's only route to WHO reacted. */}
+              {hasReactions && (
+                <button
+                  type="button"
+                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  onClick={() => {
+                    setActionsOpen(false)
+                    setWhoOpen(true)
+                  }}
+                >
+                  <PeopleIcon />
+                  Who reacted
+                </button>
+              )}
               {onEdit && (
                 <button
                   type="button"
@@ -1045,13 +1109,20 @@ function MessageRow({
           <Sheet open={reactOpen} onOpenChange={setReactOpen} side="bottom" title="Add reaction">
             <EmojiPicker onSelect={react} />
           </Sheet>
+          <Sheet open={whoOpen} onOpenChange={setWhoOpen} side="bottom" title="Reactions">
+            <ReactorBreakdown
+              reactions={reactions}
+              reactorNames={reactorNames}
+              myIdentity={myIdentity}
+            />
+          </Sheet>
         </>
       )}
     </div>
   )
 }
 
-/** "… is typing" line above the composer. Names collapse past two so it never
+/** "â€¦ is typing" line above the composer. Names collapse past two so it never
  *  grows unbounded. Three pulsing dots cue live activity (WhatsApp/Messenger). */
 function TypingIndicator({ names }: { names: string[] }) {
   if (names.length === 0) return null
@@ -1078,29 +1149,39 @@ function TypingIndicator({ names }: { names: string[] }) {
 }
 
 /** Reaction pills under a message. Each shows the emoji + count; your own
- *  reactions are highlighted, and tapping a pill toggles yours (Slack/Discord). */
+ *  reactions are highlighted, and tapping a pill toggles yours (Slack/Discord).
+ *
+ *  WHO reacted is carried three ways, because no single one covers every user:
+ *  the `aria-label` names them (screen readers, both pointer types), a hover/focus
+ *  tooltip names them on a mouse, and touch â€” which has no hover and whose tap is
+ *  already spent on toggling â€” gets "Who reacted" in the message's action menu.
+ *  A tooltip alone was the version that left every phone unable to find out. */
 function ReactionChips({
   reactions,
+  reactorNames,
   myIdentity,
   onReact,
 }: {
   reactions?: ReactionMap[string]
+  reactorNames: ReactorNames
   myIdentity: string
   onReact: (emoji: string) => void
 }) {
+  const narrow = useIsTouch()
   const entries = reactions ? Object.entries(reactions).filter(([, by]) => by.length > 0) : []
   if (entries.length === 0) return null
   return (
     <div className="mt-1 flex flex-wrap gap-1">
       {entries.map(([emoji, by]) => {
         const mine = by.includes(myIdentity)
-        return (
+        const who = joinNames(reactorList(by, reactorNames, myIdentity))
+        const chip = (
           <button
             key={emoji}
             type="button"
             onClick={() => onReact(emoji)}
             aria-pressed={mine}
-            aria-label={`${emoji} ${by.length}${mine ? ', you reacted' : ''}`}
+            aria-label={`${emoji} ${by.length} â€” reacted by ${who}`}
             className={cn(
               'flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs leading-none transition-colors',
               mine
@@ -1112,14 +1193,63 @@ function ReactionChips({
             <span className="tabular-nums">{by.length}</span>
           </button>
         )
+        // No tooltip on touch: it opens on the same tap that toggles the reaction,
+        // so it would flash on every press and say nothing you asked for.
+        return narrow ? (
+          chip
+        ) : (
+          <Tooltip key={emoji} content={`${who} reacted with ${emoji}`}>
+            {chip}
+          </Tooltip>
+        )
       })}
     </div>
   )
 }
 
+/** The full "who reacted" breakdown, grouped by emoji â€” the touch route to the
+ *  same information the desktop tooltip gives. Rendered inside a bottom Sheet. */
+function ReactorBreakdown({
+  reactions,
+  reactorNames,
+  myIdentity,
+}: {
+  reactions?: ReactionMap[string]
+  reactorNames: ReactorNames
+  myIdentity: string
+}) {
+  const entries = reactions ? Object.entries(reactions).filter(([, by]) => by.length > 0) : []
+  if (entries.length === 0) {
+    return <p className="px-1 py-2 text-sm text-ink-muted">No reactions yet.</p>
+  }
+  return (
+    <ul className="flex flex-col gap-3">
+      {entries.map(([emoji, by]) => (
+        <li key={emoji}>
+          <p className="flex items-center gap-2 text-sm font-medium text-ink">
+            <span className="text-lg leading-none">{emoji}</span>
+            <span className="tabular-nums text-ink-muted">{by.length}</span>
+          </p>
+          {/* Keyed by index, not by name: two guests can carry the same display
+              name, and a duplicate React key would drop one of them from the list
+              that exists to account for everybody. */}
+          <ul className="mt-1.5 flex flex-col gap-1.5">
+            {reactorList(by, reactorNames, myIdentity).map((name, i) => (
+              <li key={`${emoji}-${i}`} className="flex items-center gap-2">
+                <Avatar name={name} size="sm" />
+                <span className="truncate text-sm text-ink">{name}</span>
+              </li>
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** A row in the pinned bar at the top of chat. Mirrors the reply-quote card
  *  (accent rail + label + preview) so it reads as part of the app, and the body
- *  is a button that jumps to the original message — same affordance as tapping a
+ *  is a button that jumps to the original message â€” same affordance as tapping a
  *  reply's quote. */
 function PinnedRow({ pin, onJump, onUnpin }: { pin: PinnedMessage; onJump: () => void; onUnpin: () => void }) {
   return (
@@ -1134,7 +1264,7 @@ function PinnedRow({ pin, onJump, onUnpin }: { pin: PinnedMessage; onJump: () =>
         <div className="min-w-0 flex-1">
           <p className="flex items-center gap-1 text-[11px] font-medium text-accent [&_svg]:size-3">
             <PinIcon />
-            Pinned · {pin.name}
+            Pinned Â· {pin.name}
           </p>
           <p className="truncate text-xs text-ink">{pin.text}</p>
         </div>
@@ -1214,7 +1344,7 @@ function FileMessage({ file }: { file: FileItem }) {
         <p className="truncate text-sm font-medium">{file.fileName}</p>
         <p className="text-xs text-ink-muted">
           {humanSize(file.size)}
-          {done && isImage(file.mimeType) ? ' · large image — download to view' : ''}
+          {done && isImage(file.mimeType) ? ' Â· large image â€” download to view' : ''}
         </p>
         {!done && (
           <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-sunken">
