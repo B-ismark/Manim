@@ -31,6 +31,11 @@ function copyStyles(win: Window) {
   const theme = document.documentElement.getAttribute('data-theme')
   if (theme) doc.documentElement.setAttribute('data-theme', theme)
   doc.body.style.margin = '0'
+  // Full-height chain: some Chromium builds resolve vh/vw inside a Document-PiP
+  // window against the OPENER's size, so panels must never depend on viewport
+  // units — give html/body a real 100% height for anything that uses percentages.
+  doc.documentElement.style.height = '100%'
+  doc.body.style.height = '100%'
   doc.body.style.background = 'var(--color-stage)'
   doc.body.style.color = 'var(--color-ink)'
   doc.body.style.fontFamily = 'var(--font-sans)'

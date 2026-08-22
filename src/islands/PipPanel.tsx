@@ -26,8 +26,16 @@ import { cn } from '@/lib/cn'
  * speaker/screen-share fills the frame; the call controls float as a single
  * translucent island *over* the video (so nothing steals vertical space) — mic,
  * camera, screen-share, back-to-window, leave. The root is overflow-hidden and
- * everything is sized in relative/viewport units, so a resized PiP window never
- * grows a scrollbar and the layout stays neat at any size (Meet/Teams style).
+ * sized to the PiP window itself, so a resized PiP window never grows a
+ * scrollbar and the layout stays neat at any size (Meet/Teams style).
+ *
+ * The root anchors with `fixed inset-0`, NOT `h-screen w-screen`: Chromium has
+ * resolved viewport units inside Document-PiP windows against the OPENER's
+ * dimensions, so a 480×320 bubble laid itself out as if it were the 1280×800
+ * main window — the video cropped to whatever slice fit, and the control island
+ * parked ~300px below the bubble's floor, invisible. `fixed`/`inset` derive
+ * from the containing block (the PiP window's own viewport), not from vh/vw
+ * units, so they track the real bubble size however Chromium feels about vh.
  */
 export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: () => void }) {
   const participants = useParticipants()
@@ -57,7 +65,7 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
   const showVideo = focus ? hasVideo(focus) : false
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black text-ink">
+    <div className="fixed inset-0 overflow-hidden bg-black text-ink">
       {/* Fit the whole video into the window (letterboxed) rather than cropping
           to fill — you see the full feed, like Meet/Teams PiP. */}
       {focus && showVideo ? (
