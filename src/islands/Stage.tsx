@@ -1947,14 +1947,21 @@ function Tile({
 
       {/* Flip camera + effects, anchored to your own tile (Snapchat/WhatsApp).
           Touch only. Bottom-right (above the name row) so they clear the
-          screen-level participants chip in the top-right corner. */}
+          screen-level participants chip in the top-right corner.
+
+          `md` (44px), not `sm` (36px): `showSelfTools` is already gated on `coarse`,
+          so these two render on nothing but a thumb, and 44px is the size every
+          other touch control in the app is held to — the island's rule, and the
+          reason the mute control two blocks up takes `coarse ? 'md' : 'sm'`. They
+          were 36px, which is over WCAG 2.5.8's 24px floor and under both platform
+          guidelines, sitting on the one surface with no keyboard or hover fallback. */}
       {showSelfTools && (
         <div
           className="absolute bottom-12 right-2 z-10 flex flex-col gap-1.5"
           onPointerDown={(e) => e.stopPropagation()}
         >
           <IconButton
-            size="sm"
+            size="md"
             label="Flip camera"
             icon={<FlipCameraIcon />}
             className="bg-overlay text-white hover:bg-overlay"
@@ -1967,7 +1974,7 @@ function Tile({
               the blur itself arrives a beat later. */}
           {blur?.supported && (
             <IconButton
-              size="sm"
+              size="md"
               label={blur.mode === 'blur' ? 'Turn off background blur' : 'Blur my background'}
               icon={<EffectsIcon />}
               // `neutral` + `active`, which is how every other toggle in the app

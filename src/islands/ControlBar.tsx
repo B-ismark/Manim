@@ -363,6 +363,17 @@ export function ControlBar({
 
       <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">Quick actions</p>
       <div className="grid grid-cols-4 gap-1">
+        {/* Screen share — touch only here; the desktop bar inlines it.
+
+            Absent, not dimmed, where `getDisplayMedia` is missing. That is every
+            real phone: no mobile browser implements screen capture (WebKit never
+            has, so iOS Safari and iOS Chrome are both out, and neither Chrome nor
+            Firefox for Android has either — capture there goes through ReplayKit /
+            MediaProjection, native APIs a web page cannot reach). A control that
+            cannot ever work is not worth a slot in a four-column grid a thumb has
+            to aim at, so it isn't offered at all rather than offered greyed out.
+            `useScreenShare().supported` is the one check, shared with the mini
+            player's Share again so the two can never disagree. */}
         {canScreenShare && (
           <GridTile
             className="pointer-fine:hidden"
@@ -661,14 +672,28 @@ export function ControlBar({
           )}
         </div>
 
-        {/* Audio routing — always visible (Brave/Skype/WhatsApp pattern), the control
-            users hunt for most on mobile.
+        {/* Audio routing — TOUCH ONLY, and the control users hunt for most on mobile.
+            The button STATES the route it's on ("AirPods") rather than showing a
+            generic speaker glyph, so "where is my audio going?" is answered without
+            opening anything, and it opens the island's own tray.
 
-            Touch opens the island's own tray and the button STATES the route it's
-            on ("AirPods") rather than showing a generic speaker glyph, so "where is
-            my audio going?" is answered without opening anything. Desktop keeps the
-            popover: there's no auto-hide to fight and no thumb to reach with. */}
-        {touch ? (
+            There is deliberately no desktop counterpart. A speaker button used to
+            sit here on `!touch` as well, opening a popover — and that popover was
+            `AudioDevicePanel`, the very same component the mic caret two controls to
+            the left already opens. Not a similar panel: the same one, same props,
+            mic row and speaker row and Bluetooth and noise. So the bar carried two
+            controls that did exactly one thing, which is also the ambiguity
+            AudioDevicePanel's own comments were working around. Every desktop app
+            we compare against (Meet, Teams, Zoom) hangs speaker choice off the mic's
+            caret for this reason. Touch is the case that genuinely needs its own
+            control: there are no carets there at all.
+
+            Removing it also gives the desktop bar back 52px (measured: 614 -> 562),
+            which is not spare
+            change — lib/panelDock's whole `xl` threshold exists because the bar was
+            wider than the prototype measured, and its docs note the bar grows every
+            time a control is added. This is the first time one has come off. */}
+        {touch && (
           // Folded away below 360px, where six controls cannot fit: 5 x 44px plus
           // gaps and padding is 268 of the 288 available at 320px, and adding a
           // sixth makes 318. More -> "Audio & video" reaches every one of these
@@ -677,8 +702,6 @@ export function ControlBar({
           <span className="hidden min-[360px]:inline-flex">
             <AudioRouteButton open={audioTrayOpen} onToggle={() => setAudioTrayOpen((o) => !o)} />
           </span>
-        ) : (
-          <OutputDeviceButton noise={noise} />
         )}
 
         {/* Screen share — desktop (mouse) only; folded into More on touch. Hidden
@@ -1107,10 +1130,13 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
   return (
     <div className="flex flex-col gap-3">
       <DeviceRow kind="audioinput" label="Microphone" />
-      {/* "Speaker", not "Audio output": the button that opens this panel is the
-          one called Audio output, and two controls with the same accessible name
-          doing different things is a genuine ambiguity for a screen reader.
-          Matches what DeviceSettings has always called this row. */}
+      {/* "Speaker", not "Audio output" — matching DeviceSettings, and still the
+          right name now that the bar's own Audio output button is gone. Touch's
+          AudioRouteButton is named `Audio output: <device>`, and the reason to
+          keep these two apart hasn't changed: two controls with the same
+          accessible name doing different things is a real ambiguity for a screen
+          reader, and Chromium's fake devices are called "Fake Default Audio
+          Output", so a row named for the category collides with its own contents. */}
       <DeviceRow kind="audiooutput" label="Speaker" />
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
@@ -1362,29 +1388,6 @@ function BluetoothTrayToggle() {
       checked={autoBluetooth}
       onChange={setAutoBluetooth}
     />
-  )
-}
-
-/** Always-visible audio-output control (Brave/Skype/WhatsApp). Shows the speaker
- *  list plus the Bluetooth-auto toggle — the routing users most want at a tap. */
-function OutputDeviceButton({ noise }: { noise: NoiseFilterControls }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <Popover
-      open={open}
-      onOpenChange={setOpen}
-      side="top"
-      align="center"
-      trigger={
-        <Tooltip content="Audio output">
-          <IconButton label="Audio output" tone="neutral" active={open} icon={<SoundOnIcon />} />
-        </Tooltip>
-      }
-    >
-      <div className="w-72 max-w-[85vw]">
-        <AudioDevicePanel noise={noise} />
-      </div>
-    </Popover>
   )
 }
 

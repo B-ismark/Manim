@@ -100,6 +100,26 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
   and the host's split leave-and-end control both had to come off), and nothing on it
   may be a status indicator: those go in `TopStack`. `test:mobile-sm` asserts the fit.
+- **Speaker choice lives behind the mic caret on desktop — there is no audio-output
+  button on the bar.** One used to sit there, and the popover it opened was
+  `AudioDevicePanel`: the same component, same props, that the caret two controls to
+  its left already opens. Not a similar panel — the same one. Meet/Teams/Zoom all hang
+  output off the mic's caret for this reason. Touch is the case that needs its own
+  control (`AudioRouteButton` → the island's tray) because there are no carets there
+  at all. Don't re-add the desktop button: it also cost 52px of a bar whose width is
+  the scarce resource `lib/panelDock` is built around, and `03-controls` now asserts
+  exactly one control opens that panel.
+- **Screen sharing is desktop-only, and that is the PLATFORM, not a gap in the app.**
+  No mobile browser implements `getDisplayMedia` — WebKit never has (so iOS Safari
+  *and* iOS Chrome are out), and neither Chrome nor Firefox for Android does; capture
+  on a phone goes through ReplayKit / MediaProjection, native APIs a web page cannot
+  reach. `useScreenShare().supported` is the ONE check (shared with the mini player,
+  so the two share controls can't disagree), and where it's false the control is
+  **absent, not dimmed**: a tile that can never work isn't worth a slot in a
+  four-column grid a thumb has to aim at. Beware: **Playwright's emulated phones are
+  desktop Chromium**, so they report capture as fully supported and render the
+  ordinary tile — a test for the real mobile path has to `defineProperty` the API
+  away first (`03-controls`), the same way `11-mobile-fit` has to fake a keyboard.
 - **The band the stage reserves for the island is `useIslandBand()`, never a constant.**
   The island sits at `bottom: max(1rem, env(safe-area-inset-bottom))`, so its band is
   its height plus whichever offset wins. A hardcoded `76` (= `16 + 60`) is right only
@@ -160,6 +180,19 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   auto-hide while ANY Radix layer is open (`overlayOpen()` in `RoomView` — it asks the
   DOM, so a new control can't forget to opt in), and the audio picker is a tray *inside*
   the island whose last row is the control bar, so it can't outlive its anchor.
+  - **A full-width TopStack child covers a tile's corner controls on touch.** The
+    column anchors at `top: max(1rem, safe-area)` and stretches `inset-x-0`; a
+    tile's own controls are pinned VISIBLE at 44px on touch (no hover to reveal
+    them) and occupy **x 16..60** — the stage insets the tile 8px, the control sits
+    `left-2` inside that. `PinCoachmark` was wide enough to reach both corners and,
+    being tap-to-dismiss, swallowed the tap on a host's "Mute <name>" button for
+    its whole 6s life. Cap a wide child so a centred pill clears that band:
+    `max-w-[calc(100%-6rem)]` lands at 64px, and `16 + C/2` is the general form
+    (the cap and the centring cancel the viewport out). Do NOT lean on 09-visual's
+    `overlaps()` for this — it only reports an intersection above 20% of the
+    smaller element's area, so it caught the original 100% collision and said
+    nothing about the 4px one two almost-right caps left behind. `19-overlays`
+    asserts both edges against the band at zero tolerance.
 - **The invite link's #fragment is fragile — `lib/roomKeys.ts` is the safety net.**
   A URL has exactly one fragment, so a sign-in round trip (`redirectTo` +
   `#access_token=…`) overwrites the room's `#k=…&e=…`, and everything that shares

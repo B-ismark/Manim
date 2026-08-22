@@ -1,5 +1,12 @@
 import { test, expect, type BrowserContext, type Page } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, isTouch } from './helpers'
+import {
+  appErrors,
+  attachErrorSink,
+  closeContext,
+  isTouch,
+  join,
+  uniqueRoom,
+} from './helpers'
 
 /**
  * Opening the chat/people panel must never park a call-ending control under a
@@ -192,6 +199,7 @@ test.describe('Side panel reflow', () => {
         await join(p, room, `P${String(i).padStart(2, '0')}`)
         extras.push(context)
       } catch {
+        // Not closeContext — see 07-capacity: on a give-up path, swallow everything.
         await context.close().catch(() => {})
         break
       }
@@ -215,6 +223,9 @@ test.describe('Side panel reflow', () => {
 
       expect(await tiles(), 'opening the panel paged someone out').toBeGreaterThanOrEqual(closed)
     } finally {
+      // Not closeContext: this `finally` runs after a possibly-failed assertion, so
+      // anything thrown here would mask it. These already swallowed everything, and
+      // that was right.
       for (const c of extras) await c.close().catch(() => {})
     }
   })
