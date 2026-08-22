@@ -1,7 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import {
   uniqueRoom, join, newParticipant, openChat, setColorScheme,
-  pageMetrics, overlaps, throttleNetwork, appErrors, attachErrorSink,
+  pageMetrics, overlaps, throttleNetwork, appErrors, attachErrorSink, closeContext,
 } from './helpers'
 
 /**
@@ -47,7 +47,13 @@ test.describe('Visual scenarios @heavy', () => {
       await shoot(page, `grid-${n}`)
       expect(ov, JSON.stringify(ov)).toEqual([]) // no UI collisions at any size
     }
-    for (const p of peers) await p.context.close()
+    // closeContext, not context.close(): tearing down five traced contexts at once
+    // makes Playwright's own trace-zip writer throw ("unexpected number of bytes" /
+    // "End of central directory record signature not found") often enough to turn a
+    // fully-passing run red — every assertion above had already succeeded. That is
+    // exactly the failure `closeContext` was written to swallow, and this was the
+    // heaviest teardown in the suite still bypassing it.
+    for (const p of peers) await closeContext(p.context)
     test.info().attach('grid-metrics.json', { body: JSON.stringify(report, null, 2), contentType: 'application/json' })
     expect(appErrors(sink)).toEqual([])
   })
