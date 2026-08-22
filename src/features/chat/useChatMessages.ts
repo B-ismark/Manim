@@ -3,6 +3,8 @@ import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@l
 import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
+import { sounds } from '@/lib/sounds'
+import { toast } from '@/store/useToastStore'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
@@ -27,6 +29,17 @@ const TYPING_TTL_MS = 4000
 export type MessageReactions = Record<string, string[]>
 /** All reactions in the room: message id → its reactions. */
 export type ReactionMap = Record<string, MessageReactions>
+/**
+ * Identity → display name for everyone who has reacted this session.
+ *
+ * The reaction map stores IDENTITIES, which is what the toggle has to key off (it
+ * is the unforgeable thing on the wire), but "who reacted" has to show names. A
+ * live `useParticipants()` lookup can't answer it: a reactor who has since left
+ * the call is no longer a participant, and their reaction stays on the message.
+ * So each `react` broadcast carries the sender's display name and we remember it
+ * here — the same shape the pin and history replays already use.
+ */
+export type ReactorNames = Record<string, string>
 
 /** A quoted message a reply points at (denormalized so it renders without history). */
 export interface ReplyRef {
@@ -199,6 +212,12 @@ export function useChatMessages() {
   }, [])
 
   const myIdentity = localParticipant.identity
+  // Own display name, hoisted above the reaction/typing broadcasts that both send
+  // it. `myNameRef` is what the data-channel handlers read — they're registered
+  // once, so a closure over the value would replay a stale name after a rename.
+  const myName = displayName(localParticipant.identity, localParticipant.name)
+  const myNameRef = useRef(myName)
+  myNameRef.current = myName
 
   // Author edits: an overlay keyed by message id (the LiveKit chat history is
   // immutable, so we layer the new body on top at render). Broadcast like pins,
@@ -458,6 +477,14 @@ export function useChatMessages() {
   const [reactions, setReactions] = useState<ReactionMap>({})
   const reactionsRef = useRef<ReactionMap>({})
   reactionsRef.current = reactions
+  // Names of everyone who has reacted, kept alongside the identity buckets — see
+  // ReactorNames. Additive only: a reactor who leaves keeps their name on the pill.
+  const [reactorNames, setReactorNames] = useState<ReactorNames>({})
+  const rememberReactor = useCallback((identity: string, name?: string) => {
+    if (!identity) return
+    const resolved = displayName(identity, name)
+    setReactorNames((prev) => (prev[identity] === resolved ? prev : { ...prev, [identity]: resolved }))
+  }, [])
 
   // Pure add/remove of one identity from one (message, emoji) bucket.
   function applyReaction(map: ReactionMap, messageId: string, emoji: string, identity: string, added: boolean): ReactionMap {
@@ -477,13 +504,13 @@ export function useChatMessages() {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
-        | { kind?: 'react'; messageId: string; emoji: string; identity: string; added: boolean }
+        | { kind?: 'react'; messageId: string; emoji: string; identity: string; name?: string; added: boolean }
       // Late joiner catching up — replay only the reactions I own.
       if ('kind' in d && d.kind === 'sync-request') {
         for (const [messageId, byEmoji] of Object.entries(reactionsRef.current)) {
           for (const [emoji, ids] of Object.entries(byEmoji)) {
             if (ids.includes(myIdentity)) {
-              sendReactionRef.current?.({ kind: 'react', messageId, emoji, identity: myIdentity, added: true })
+              sendReactionRef.current?.({ kind: 'react', messageId, emoji, identity: myIdentity, name: myNameRef.current, added: true })
             }
           }
         }
@@ -496,7 +523,14 @@ export function useChatMessages() {
         // (you rejoin under a new name, have no history, yet keep getting
         // reactions for your old messages). Drop those.
         if (!(d.messageId in authorRef.current)) return
-        setReactions((prev) => applyReaction(prev, d.messageId, d.emoji, d.identity, d.added))
+        // Attribute by the SENDER's identity, not the payload's claimed one — the
+        // same rule the typing indicator learned, so a peer can't post a reaction
+        // as somebody else. The payload identity is only a fallback for a client
+        // whose sender identity didn't come through.
+        const from = msg.from?.identity || d.identity
+        if (!from) return
+        rememberReactor(from, from === d.identity ? d.name : undefined)
+        setReactions((prev) => applyReaction(prev, d.messageId, d.emoji, from, d.added))
       }
     } catch {
       /* malformed — ignore */
@@ -519,15 +553,15 @@ export function useChatMessages() {
     (messageId: string, emoji: string) => {
       const had = reactionsRef.current[messageId]?.[emoji]?.includes(myIdentity) ?? false
       setReactions((prev) => applyReaction(prev, messageId, emoji, myIdentity, !had))
-      broadcastReaction({ kind: 'react', messageId, emoji, identity: myIdentity, added: !had })
+      rememberReactor(myIdentity, myNameRef.current)
+      broadcastReaction({ kind: 'react', messageId, emoji, identity: myIdentity, name: myNameRef.current, added: !had })
     },
-    [broadcastReaction, myIdentity],
+    [broadcastReaction, myIdentity, rememberReactor],
   )
 
   // Typing indicator: ephemeral pings broadcast while composing, others render
   // "… is typing". Each ping carries a fresh timestamp; entries self-expire after
   // TYPING_TTL_MS so a typer who closes their tab doesn't get stuck "typing".
-  const myName = displayName(localParticipant.identity, localParticipant.name)
   const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({})
 
   const { send: sendTypingMsg } = useDataChannel(TYPING_TOPIC, (msg) => {
@@ -608,20 +642,39 @@ export function useChatMessages() {
     [typing],
   )
 
-  // Track remote-message count → bump unread badge while chat is closed.
-  // Exclude peer-replayed history: a late-join sync can inject a batch of old
-  // messages at once, which would otherwise spike the badge for things the user
-  // never missed (they predate the join).
-  const prevRemote = useRef(0)
+  // Notify on new remote messages while chat is closed: bump the control bar's
+  // unread badge, play the message chime, and surface a toast (the same
+  // cross-cutting pattern used for join/leave/hand-raise in useCallSounds) —
+  // the toast matters because the control bar itself auto-hides on mobile, so
+  // the badge alone can be sitting off-screen when a message actually arrives.
+  // Tracked by id (not a running count) so a burst that arrives out of render
+  // order still notifies exactly once per message. Peer-replayed history is
+  // excluded: a late-join sync can inject a batch of old messages at once,
+  // which would otherwise spam notifications for things the user never missed
+  // (they predate the join).
+  const notifiedIds = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const remote = items.reduce(
-      (n, i) => (i.isLocal || (i.kind === 'text' && i.replayed) ? n : n + 1),
-      0,
+    const fresh = items.filter(
+      (i) => !i.isLocal && !(i.kind === 'text' && i.replayed) && !notifiedIds.current.has(i.id),
     )
-    if (remote > prevRemote.current && panelRef.current !== 'chat') {
-      bumpUnread(remote - prevRemote.current)
-    }
-    prevRemote.current = remote
+    if (fresh.length === 0) return
+    for (const i of fresh) notifiedIds.current.add(i.id)
+    if (panelRef.current === 'chat') return
+    bumpUnread(fresh.length)
+    sounds.message()
+    // Deliberately no content preview: the message text is already about to
+    // render in the chat panel, and echoing it here means the exact same
+    // string is briefly on screen twice (confusing for a reader, and it's
+    // what made 06-multiparty's `getByText('hi from host')` match both the
+    // toast and the real bubble). Naming the sender is enough to say "look
+    // at chat" without duplicating their words.
+    const last = fresh[fresh.length - 1]
+    toast(
+      fresh.length > 1
+        ? `${fresh.length} new messages, including from ${last.fromName}`
+        : `New message from ${last.fromName}`,
+      'info',
+    )
   }, [items, bumpUnread])
 
   /** Send a chat message. Returns false if the transport rejected it (e.g. sent
@@ -682,6 +735,7 @@ export function useChatMessages() {
     togglePin,
     unpin,
     reactions,
+    reactorNames,
     toggleReaction,
     myIdentity,
     typingNames,

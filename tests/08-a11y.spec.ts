@@ -1,5 +1,17 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, join, openChat, axeViolations, setColorScheme, newParticipant } from './helpers'
+import {
+  activate,
+  axeViolations,
+  closeContext,
+  isTouch,
+  join,
+  newParticipant,
+  openChat,
+  openEndCallMenu,
+  selectStageView,
+  setColorScheme,
+  uniqueRoom,
+} from './helpers'
 
 /**
  * Automated WCAG 2.1 A/AA sweep (axe-core) across every surface in BOTH colour
@@ -43,9 +55,14 @@ for (const scheme of ['light', 'dark'] as const) {
       const room = uniqueRoom()
       await join(page, room, 'Ada')
       const peer = await newParticipant(browser, room, 'Grace')
+      // Say "grid" and mean it on BOTH pointer types. Desktop opens in grid, but a
+      // phone opens in SPEAKER, so on touch this scanned one full-bleed feed and a
+      // floating card — never the tiled gallery, which is a different set of
+      // elements entirely and now carries the local participant's own cell.
+      if (await isTouch(page)) await selectStageView(page, 'Gallery')
       await openChat(page)
       const v = await axeViolations(page)
-      await peer.context.close()
+      await closeContext(peer.context)
       expect(v, JSON.stringify(v, null, 2)).toEqual([])
     })
 
@@ -58,16 +75,17 @@ for (const scheme of ['light', 'dark'] as const) {
       await setColorScheme(page, scheme)
       await join(page, uniqueRoom(), 'Ada')
 
-      // Open the end-call dropdown (the caret beside Leave) — renders the danger
-      // menu item whose contrast regressed.
-      await page.getByRole('button', { name: 'End call for everyone' }).click()
-      const item = page.getByRole('menuitem', { name: 'End call for everyone' })
+      // Open whichever surface this platform offers end-for-everyone on — the
+      // caret's dropdown on a pointer, the More sheet on touch — and axe it while
+      // it is actually mounted. Both render the danger item whose contrast
+      // regressed; only one of them is a menu.
+      const item = await openEndCallMenu(page)
       await expect(item).toBeVisible()
       const menuViolations = await axeViolations(page)
       expect(menuViolations, JSON.stringify(menuViolations, null, 2)).toEqual([])
 
       // Selecting it opens the confirm dialog — axe its content too.
-      await item.click()
+      await activate(page, item)
       await expect(page.getByRole('heading', { name: 'End the call for everyone?' })).toBeVisible()
       const dialogViolations = await axeViolations(page)
       expect(dialogViolations, JSON.stringify(dialogViolations, null, 2)).toEqual([])

@@ -2,6 +2,7 @@ import * as RD from '@radix-ui/react-dialog'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { useKeyboardInset } from '@/lib/keyboardInset'
 
 export interface SheetProps {
   open: boolean
@@ -45,9 +46,23 @@ const sideClass: Record<NonNullable<SheetProps['side']>, string> = {
   bottom: 'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-island pb-[env(safe-area-inset-bottom)]',
   responsive:
     'inset-x-0 bottom-0 max-h-[85dvh] rounded-t-island pb-[env(safe-area-inset-bottom)] ' +
-    // Docked chat/people panel. Narrower on small laptops (it ate ~40% of an md
-    // viewport at 22rem) and steps up only on large screens.
-    'md:inset-x-auto md:right-3 md:top-3 md:bottom-3 md:w-[min(92vw,19rem)] md:max-h-none md:rounded-island md:pb-0 lg:w-[21rem] xl:w-[24rem]',
+    // Chat/people panel on a pointer device. Narrower on small laptops (it ate
+    // ~40% of an md viewport at 22rem) and steps up only on large screens.
+    'md:inset-x-auto md:right-3 md:top-3 md:w-[min(92vw,19rem)] md:max-h-none md:rounded-island md:pb-0 ' +
+    // Below `xl` the panel STOPS ABOVE the control bar — 5.75rem clears the bar's
+    // 1rem inset, its 62px island and the usual 12px gutter. That is what keeps
+    // the bar whole and motionless at those widths: it has nothing to dodge, so
+    // it never slides a Leave control under a resting cursor (lib/panelDock).
+    // Squeezing the two side by side doesn't work there anyway — the bar is
+    // 614px and an md viewport only has 768px to give.
+    'md:bottom-[5.75rem] ' +
+    // Below `lg` it also OVERLAYS: the stage keeps its full width and the panel
+    // floats over it. From `lg` the stage reflows for it (RoomView).
+    'lg:w-[21rem] ' +
+    // Only at `xl` is there room for the panel to run full-height BESIDE the bar.
+    // This width is mirrored in lib/panelDock's collidingPanelWidth, which the
+    // control bar measures its clearance against — change both together.
+    'xl:bottom-3 xl:w-[24rem]',
 }
 
 // Snap detents as a fraction of viewport height (dvh). The sheet's height is
@@ -133,6 +148,32 @@ export function Sheet({
   const draggableStyle =
     expandable && frac != null ? { height: `${Math.round(frac * 100)}dvh`, maxHeight: 'none' } : undefined
 
+  /**
+   * Lift a bottom-anchored sheet clear of the on-screen keyboard.
+   *
+   * `bottom-0` is an anchor in the LAYOUT viewport, which the keyboard doesn't
+   * shrink (see lib/keyboardInset) — so a phone typing into the chat composer had
+   * the composer drawn underneath its own keyboard, worst of all in fullscreen
+   * where no browser chrome absorbs any of it.
+   *
+   * The max-height has to come with it. Without it the sheet keeps its
+   * `85dvh` / dragged-detent height while its bottom edge moves up by the
+   * keyboard's height, so it grows off the TOP of the screen and takes the
+   * message list's scroll anchor with it. Clamping to what's left below the
+   * keyboard (less a gutter) keeps the composer parked on the keyboard's edge,
+   * which is where every messaging app puts it.
+   *
+   * `right` is exempt: that variant is the desktop docked island, anchored
+   * top+bottom with no keyboard to dodge. `responsive` is NOT exempt — a tablet
+   * wide enough for the docked layout still raises a software keyboard, and
+   * lifting the panel above it is right there too.
+   */
+  const kb = useKeyboardInset()
+  const keyboardStyle =
+    kb > 0 && side !== 'right'
+      ? { bottom: kb, maxHeight: `calc(100dvh - ${kb}px - 1rem)` }
+      : undefined
+
   return (
     <RD.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <RD.Portal>
@@ -143,12 +184,19 @@ export function Sheet({
           // Non-modal: keep the panel open when the user clicks the stage or the
           // control bar (mute / leave / etc.) — only Esc or the close button shuts it.
           onInteractOutside={modal ? undefined : (e) => e.preventDefault()}
-          style={draggableStyle}
+          // Keyboard offset last: it must win over the dragged detent's
+          // `maxHeight: 'none'`, or a dragged-open sheet ignores the clamp.
+          style={{ ...draggableStyle, ...keyboardStyle }}
           className={cn(
             'fixed z-50 flex flex-col bg-surface text-ink shadow-raised focus:outline-none',
             sideClass[side],
             // When a drag height is applied, neutralise it at the desktop breakpoint.
-            draggableStyle && 'md:!h-auto md:!max-h-none',
+            draggableStyle && 'md:!h-auto',
+            // The max-height half is dropped while a keyboard offset is in force:
+            // `!important` in a stylesheet BEATS an inline style, so `md:!max-h-none`
+            // would cancel the inline clamp and let a tablet's sheet grow off the
+            // top of the screen — the exact failure the clamp exists to stop.
+            draggableStyle && !keyboardStyle && 'md:!max-h-none',
             // While dragging, drop the height transition for 1:1 finger tracking.
             !drag.current && expandable && 'transition-[height] duration-200 ease-out',
             className,

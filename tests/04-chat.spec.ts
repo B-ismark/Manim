@@ -1,7 +1,64 @@
 import { test, expect } from '@playwright/test'
-import { uniqueRoom, attachErrorSink, appErrors, join, openChat, openMessageActions, replyToMessage } from './helpers'
+import {
+  appErrors,
+  attachErrorSink,
+  closeContext,
+  isTouch,
+  join,
+  newParticipant,
+  openChat,
+  openMessageActions,
+  replyToMessage,
+  uniqueRoom,
+} from './helpers'
 
 test.describe('Chat', () => {
+  /**
+   * Where the hover toolbar sits decides whether you can read the message you are
+   * about to act on. It used to sit at the row's top-right, which is fine on an
+   * UNGROUPED row — that aligns with the short name+time header — but a grouped
+   * row has no header, so the bar landed on the first line of the text. Measured
+   * at the panel's real width: a 116px bar against 83px of clearance ate the last
+   * word the moment the pointer arrived.
+   *
+   * Two messages in a row from the same author is all it takes to group.
+   */
+  test('the hover actions never cover the message they act on', async ({ page }) => {
+    test.skip(await isTouch(page), 'the hover toolbar is desktop-only; touch uses a popover')
+    await join(page, uniqueRoom(), 'Ada')
+    const composer = await openChat(page)
+    await composer.fill('First line, short.')
+    await composer.press('Enter')
+    await composer.fill('A second line, deliberately long enough to run to the right edge.')
+    await composer.press('Enter')
+
+    const grouped = page.locator('[data-mid]').last()
+    await expect(grouped).toBeVisible()
+    await grouped.hover()
+
+    // Real 2D intersection of the toolbar with the first rendered line of text —
+    // not a width heuristic, which would miss the vertical move entirely.
+    const covered = await grouped.evaluate((row) => {
+      const bar = row.querySelector(':scope > div.absolute')
+      const el = [...row.querySelectorAll('p, span')].filter((n) => (n.textContent || '').length > 8).pop()
+      const tn = el && [...el.childNodes].find((n) => n.nodeType === 3)
+      if (!bar || !tn) return null
+      const rg = document.createRange()
+      rg.selectNodeContents(tn)
+      const line = [...rg.getClientRects()][0]
+      const b = bar.getBoundingClientRect()
+      if (!line) return null
+      return !(b.right <= line.left || b.left >= line.right || b.bottom <= line.top || b.top >= line.bottom)
+    })
+    expect(covered, 'the action bar must not overlap the text of its own message').toBe(false)
+
+    // Floating it clear of the text is only half the fix — it still has to be
+    // reachable. Scoped to THIS row: unscoped, the other row's (invisible) bar
+    // matches too, and this one legitimately covers it.
+    await grouped.getByRole('button', { name: /^Reply$/i }).click()
+    await expect(page.getByRole('button', { name: /Cancel reply/i })).toBeVisible()
+  })
+
   test('send a message; it renders and the composer clears', async ({ page }) => {
     const sink = attachErrorSink(page)
     await join(page, uniqueRoom(), 'Ada')
@@ -62,6 +119,65 @@ test.describe('Chat', () => {
     await emoji.click()
     // A reaction chip (aria-pressed because it's mine) appears under the message.
     await expect(row.locator('button[aria-pressed="true"]').first()).toBeVisible()
+  })
+
+  /**
+   * A count is not an answer. "3 people liked this" without saying who is the thing
+   * people ask about, so the chip has to name them — Teams/Slack behaviour.
+   *
+   * The wire carries IDENTITIES (the unforgeable thing, and what the toggle keys
+   * off), so the display name rides along on each reaction broadcast and is
+   * remembered per identity — a `useParticipants()` lookup could not answer it,
+   * because a reactor who has left the call still owns their reaction.
+   *
+   * Asserted through the accessible name, which is the one route that exists on
+   * both pointer types: desktop also gets it as a hover tooltip, touch also gets it
+   * as "Who reacted" in the message's action menu.
+   */
+  test('a reaction chip names who reacted, including a remote reactor', async ({ page, browser }) => {
+    const room = uniqueRoom('who')
+    await join(page, room, 'Ada')
+    const guest = await newParticipant(browser, room, 'Grace')
+    try {
+      const composer = await openChat(page)
+      await composer.fill('who liked this')
+      await composer.press('Enter')
+
+      // Ada reacts to her own message.
+      const row = page.locator('.group', { hasText: 'who liked this' }).first()
+      await openMessageActions(page, row)
+      await page.getByRole('button', { name: 'Add reaction' }).click()
+      const search = page.getByRole('textbox', { name: 'Search emoji' })
+      await search.fill('grinning')
+      await page.getByRole('button', { name: /grinning/i }).first().click()
+
+      // Yours reads "You", not your own name.
+      await expect(row.locator('button[aria-pressed="true"]').first()).toHaveAttribute(
+        'aria-label',
+        /reacted by You$/,
+      )
+
+      // Grace taps the same chip on her side, which toggles hers on.
+      const guestComposer = await openChat(guest.page)
+      await expect(guestComposer).toBeVisible()
+      const guestRow = guest.page.locator('.group', { hasText: 'who liked this' }).first()
+      await guestRow.locator('button[aria-pressed="false"]').first().click()
+
+      // Ada's chip now names both, hers first.
+      await expect(row.locator('button[aria-pressed="true"]').first()).toHaveAttribute(
+        'aria-label',
+        /reacted by You and Grace$/,
+        { timeout: 20_000 },
+      )
+      // …and Grace sees the pair from her side too.
+      await expect(guestRow.locator('button[aria-pressed="true"]').first()).toHaveAttribute(
+        'aria-label',
+        /reacted by You and Ada$/,
+        { timeout: 20_000 },
+      )
+    } finally {
+      await closeContext(guest.context)
+    }
   })
 
   test('reply to a message quotes it (swipe on touch, toolbar on desktop)', async ({ page }) => {

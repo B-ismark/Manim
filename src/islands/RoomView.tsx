@@ -4,24 +4,26 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
 import { ConnectionState, RoomEvent } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
-import { Stage } from '@/islands/Stage'
+import { Stage, PresentingIndicator } from '@/islands/Stage'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { PipPanel } from '@/islands/PipPanel'
 import { ControlBar } from '@/islands/ControlBar'
 import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
-import { HandoffBanner } from '@/islands/HandoffBanner'
+import { HandoffBanner, CompanionBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
 import { CallStatusBar } from '@/islands/CallStatusBar'
 import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { StageTopBar } from '@/islands/StageTopBar'
-import { EffectsCarousel } from '@/islands/EffectsCarousel'
 import { PinCoachmark } from '@/islands/PinCoachmark'
+import { RemoteInkPill } from '@/islands/RemoteInkPill'
 import { InCallIncomingBanner } from '@/islands/InCallIncomingBanner'
+import { TopStack } from '@/islands/TopStack'
 import { useChatMessages } from '@/features/chat/useChatMessages'
 import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
+import { BlurProvider } from '@/features/effects/BlurContext'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
@@ -29,30 +31,65 @@ import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
 import { useApplyBlocks } from '@/features/moderation/useApplyBlocks'
 import { useSessionControl } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
-import { useEffectsUi } from '@/store/useEffectsUi'
 import { Button } from '@/components/primitives'
-import { HandIcon, PipIcon } from '@/components/icons'
+import { HandIcon, LockIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
+import { useCameraInterruption } from '@/features/calls/useCameraInterruption'
+import { useShareSurfaceWatch } from '@/features/calls/useScreenShare'
+import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
+import { useAudioSession } from '@/features/calls/useAudioSession'
+import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
-import { parseRoomHash } from '@/lib/roomLink'
+import { useSharePresence } from '@/lib/useSharePresence'
+import { parseRoomHash, roomTo } from '@/lib/roomLink'
+import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
+/** Idle delay before the touch chrome slides out of the thumb zone. */
+const CHROME_HIDE_MS = 4000
+
+/**
+ * Is a transient layer (menu / popover / sheet / dialog) currently on screen?
+ *
+ * Radix gives every one of them `role="dialog"` or `role="menu"`, so this one
+ * query answers for all of them — including layers that don't exist yet.
+ *
+ * That generality is the point. The auto-hide used to be held open only by the
+ * controls that remembered to call `setChromeHold` (the More sheet, the host's
+ * end-call caret). The device pickers on the control bar never did, so opening one
+ * and waiting four seconds slid the island out from under its own open popover: a
+ * menu floating over the stage, anchored to a control bar that was no longer
+ * there, with no visible way back to it. Wiring one more callback would have fixed
+ * those and left the trap armed for the next control someone adds. Asking the DOM
+ * cannot be forgotten.
+ */
+function overlayOpen(): boolean {
+  return !!document.querySelector('[role="dialog"], [role="menu"]')
+}
+
 /**
  * Mobile gesture + auto-hide-chrome controller for the stage.
  * - Tap empty stage → toggle the control bar (FaceTime/Zoom/Telegram pattern).
- * - Horizontal swipe → switch grid ↔ speaker layout.
  * - Controls auto-hide after 4s on touch devices; any tap brings them back.
+ *
+ * There is deliberately NO swipe gesture here any more. It used to step through the
+ * stage's page sequence, which was also how you changed view — and that was the
+ * problem: the only route between speaker and gallery was a gesture nothing
+ * advertised, discovered by accident and un-done by guessing. The stage now carries
+ * a named view chip (Stage's StageViewSwitcher). Re-adding a swipe on top of it
+ * would also have to answer what it means during a screen share, and fight the
+ * gallery's own scroll — neither is worth it for an accelerator nobody asked for.
+ * - The island NEVER auto-hides while a layer it anchors is open (see overlayOpen),
+ *   nor within 4s of the user touching it.
  * Desktop keeps controls always visible (hover model) and ignores gestures.
  */
 function useStageChrome() {
   // Touch-UX (auto-hide / gestures) keys off pointer type, matching the compact
   // bar and portrait tiles — so wide foldables behave consistently.
   const mobile = useMemo(() => isTouch(), [])
-  const layout = useRoomStore((s) => s.layout)
-  const setLayout = useRoomStore((s) => s.setLayout)
   const [visible, setVisible] = useState(true)
   const hideTimer = useRef<number | undefined>(undefined)
   const held = useRef(false)
@@ -62,8 +99,20 @@ function useStageChrome() {
     // Don't auto-hide while a menu is open (held) — the control bar must stay
     // put or the open popover loses its anchor.
     if (!mobile || held.current) return
-    window.clearTimeout(hideTimer.current)
-    hideTimer.current = window.setTimeout(() => setVisible(false), 4000)
+    // Re-check at the moment of hiding, not only when the timer was armed. A menu
+    // opened DURING the countdown is the orphan case, and the countdown is usually
+    // already running by then: the island arms its timer on mount and on every
+    // stage tap, so a picker opened at t=3.9s had 100ms to live. While a layer is
+    // up this re-arms (a 4s no-op poll) rather than hiding; the first tick after
+    // it closes hides normally.
+    const arm = () => {
+      window.clearTimeout(hideTimer.current)
+      hideTimer.current = window.setTimeout(() => {
+        if (overlayOpen()) return arm()
+        setVisible(false)
+      }, CHROME_HIDE_MS)
+    }
+    arm()
   }, [mobile])
 
   const show = useCallback(() => {
@@ -105,14 +154,14 @@ function useStageChrome() {
       const dx = e.clientX - d.x
       const dy = e.clientY - d.y
       const dt = e.timeStamp - d.t
-      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-        setLayout(layout === 'grid' ? 'speaker' : 'grid') // horizontal swipe
-      } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
-        setVisible((v) => !v) // tap toggles chrome
+      // A tap, and nothing else. The distance test also keeps a scroll of the
+      // gallery — or a drag of the self-view — from toggling the chrome on release.
+      if (Math.abs(dx) < 10 && Math.abs(dy) < 10 && dt < 300) {
+        setVisible((v) => !v)
         scheduleHide()
       }
     },
-    [mobile, layout, setLayout, scheduleHide],
+    [mobile, scheduleHide],
   )
 
   return { chromeVisible: visible, show, setChromeHold: setHold, stageHandlers: { onPointerDown, onPointerUp } }
@@ -173,7 +222,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // the store: the E2EE key keys the media, the join secret is re-advertised to the
   // user's own other devices for quick-join. A strong random key shared only via
   // the link — no typed passphrase.
-  const linkSecrets = useMemo(() => parseRoomHash(window.location.hash), [])
+  // Resolved the same way RoomRoute resolves it — the link's fragment if it has
+  // one, this browser's memory of that link if it doesn't (lib/roomKeys). Reading
+  // the raw fragment here meant that in a tab whose fragment had been eaten (the
+  // sign-in round trip), the QUICK-JOIN advertisement to your other devices went
+  // out with no secret in it, so the phone you picked it up on couldn't get in
+  // either — the loss propagated device to device.
+  const linkSecrets = useMemo(() => resolveRoomSecrets(room.name, parseRoomHash(window.location.hash)), [room.name])
   const e2eePassphrase = linkSecrets.e2ee
   const { active, sendReaction, handRaised, toggleHand } = useReactions()
   // Chat state is owned here (persists across the side panel opening/closing —
@@ -220,6 +275,22 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // Detect mid-call device loss (camera unplugged / mic disconnected / OS revoke)
   // and surface it instead of letting the tile silently freeze (E5).
   useMediaDeviceWatch()
+  // Revive a camera the OS suspended while the app was backgrounded — the iOS
+  // "minimise Safari and your video never comes back" case. Sibling of the watch
+  // above: that one reports a camera that died, this one re-acquires one that was
+  // merely interrupted.
+  useCameraInterruption()
+  // Track WHAT the local share is capturing (window / tab / whole monitor). Mounted
+  // once here rather than inside useScreenShare, which several components call —
+  // three copies would attach the same listeners three times.
+  useShareSurfaceWatch()
+  // Auto-route devices: restore the user's remembered mic/speaker/camera, and grab a
+  // Bluetooth headset the moment it connects (useDeviceStore prefs).
+  useDeviceAutoswitch()
+  // Owns the audio session: holds it open across an app switch, and repairs
+  // playback + capture on the way back. Nothing did this before, which is why a
+  // trip to another app on a phone silenced the call in both directions for good.
+  const audio = useAudioSession()
 
   // Breadcrumb connection-state transitions so a reported error carries the recent
   // connection history (E1) — e.g. "errored right after a Reconnecting blip".
@@ -299,6 +370,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave)
   const panel = useRoomStore((s) => s.panel)
+  const companion = useRoomStore((s) => s.companion)
+  const setCompanion = useRoomStore((s) => s.setCompanion)
   // Warm the side-panel chunk as soon as we're in the call, so tapping chat/people
   // opens it instantly. It's lazy() (Suspense fallback is null), so a cold import
   // left the panel invisible-but-"active" until the chunk downloaded — seconds on a
@@ -307,16 +380,11 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     void import('@/islands/SidePanel')
   }, [])
-  const carouselOpen = useEffectsUi((s) => s.carouselOpen)
-  const { chromeVisible, setChromeHold, stageHandlers } = useStageChrome()
-  // Opening the effects carousel must reveal + pin the chrome. The Effects button
-  // lives on the self-view tile (always visible on touch), but the carousel is a
-  // sibling of the auto-hiding control bar — so after the 4s auto-hide a tap would
-  // flip carouselOpen with the chrome gone, and the strip never appeared. Treat an
-  // open carousel like an open menu: hold the chrome up until it closes.
-  useEffect(() => {
-    setChromeHold(carouselOpen)
-  }, [carouselOpen, setChromeHold])
+  const { chromeVisible, show: keepChromeUp, setChromeHold, stageHandlers } = useStageChrome()
+  // Same source Stage derives its layout from, so the pill and the stage can't
+  // disagree about whose screen is on show.
+  const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
+  const toggleOwnShareShown = useRoomStore((s) => s.toggleOwnShareShown)
   // Leave via the control bar is instant by design (a sound choice on desktop), but
   // on a thumb-zone mobile bar a fat-finger drops you and rejoin can mean re-knocking
   // the waiting room. Pair the explicit Leave button with an undo toast that rejoins
@@ -330,10 +398,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       duration: 8000,
       action: {
         label: 'Rejoin',
-        onClick: () => navigate(`/r/${encodeURIComponent(slug)}`, { state: { autojoin: true } }),
+        // WITH the link secrets. Rejoining to a bare `/r/<slug>` dropped the join
+        // secret, so undoing an accidental leave failed the server's link gate and
+        // told you the room needed an invite link you were holding a second ago.
+        onClick: () => navigate(roomTo(slug, linkSecrets), { state: { autojoin: true } }),
       },
     })
-  }, [doLeave, navigate, room.name])
+  }, [doLeave, navigate, room.name, linkSecrets])
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.
@@ -371,8 +442,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   }
 
   return (
-    <>
-      <RoomAudioRenderer />
+    // BlurProvider wraps the whole call subtree, not just the stage: the control
+    // bar's Effects dialog and the self-view tile's blur toggle have to be driving
+    // the SAME processor instance, and a provider around both is what guarantees it.
+    <BlurProvider controls={blur}>
+      {/* Companion (same account on another device) mutes the speaker to avoid echo —
+          the user hears the call on their other device. "Turn on sound" clears it. */}
+      <RoomAudioRenderer muted={companion} />
       <CallAnnouncer />
       {/* Faint top scrim: visually groups the floating top chrome (layout chip /
           timer / participants) and guarantees their contrast over bright video.
@@ -384,15 +460,38 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           !chromeVisible && 'opacity-0',
         )}
       />
-      <ConnectionBanner />
-      <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
       <StageTopBar visible={chromeVisible} />
-      <PinCoachmark />
-      <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
 
-      {sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />}
-      <WaitingRoomBanner active={isHost && waiting} />
-      <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
+      {/* One top-centre column, most urgent first. Order here IS the visual order —
+          each banner used to place itself, and four of them had independently picked
+          the same offset, so any two on screen at once landed on top of each other.
+          Anything new goes in this list, not into a fresh `fixed` div. */}
+      <TopStack>
+        <InCallIncomingBanner isHost={isHost} onMerge={mergeInto} />
+        {/* Audio that isn't working outranks a reconnect that's already in hand. */}
+        <MicUnavailableBanner />
+        <AudioBlockedBanner canPlayback={audio.canPlayback} onResume={() => void audio.resume()} />
+        <ConnectionBanner />
+        <WaitingRoomBanner active={isHost && waiting} />
+        {companion ? (
+          <CompanionBanner onTakeOver={() => setCompanion(false)} onTransfer={switchToThisDevice} />
+        ) : (
+          sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
+        )}
+        <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
+        {presenting && (
+          <PresentingIndicator
+            annotating={annotatingOwnShare}
+            sharingMonitor={sharingMonitor}
+            ownShareShown={ownShareShown}
+            onToggleOwnShare={() => toggleOwnShareShown(ownShareShown)}
+          />
+        )}
+        <RemoteInkPill />
+        <RoomLockedPill locked={locked} visible={chromeVisible} />
+        <RaisedHandPill raised={handRaised} onLower={toggleHand} visible={chromeVisible} />
+        <PinCoachmark />
+      </TopStack>
 
       <div
         {...stageHandlers}
@@ -406,7 +505,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           'mn-fade flex min-h-0 flex-1 flex-col outline-none transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
           // Fade only (no scale): scaling a container that holds live <video>
           // causes a repaint flash on connect. transition is for the panel reflow.
-          panel && 'md:pr-[20rem] lg:pr-[22rem] xl:pr-[25rem]',
+          // Only from `lg` — below that the panel floats over the stage instead of
+          // docking it (Sheet's `responsive` side), so there is nothing to reflow.
+          panel && 'lg:pr-[22rem] xl:pr-[25rem]',
         )}
       >
         {/* While the call is in the floating PiP window, don't also render the
@@ -418,6 +519,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       <ControlBar
         chromeVisible={chromeVisible}
         onMenuOpenChange={setChromeHold}
+        onInteract={keepChromeUp}
         onLeave={leaveWithUndo}
         onEndForEveryone={endForEveryone}
         isHost={isHost}
@@ -432,7 +534,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         noise={noise}
         docPip={{ supported: docPip.supported, active: docPip.active, toggle: docPip.toggle }}
       />
-      <EffectsCarousel controls={blur} visible={chromeVisible && carouselOpen} />
       <ReactionsOverlay reactions={active} />
 
       {panel !== null && (
@@ -448,7 +549,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           <PipPanel onLeave={doLeave} onClose={docPip.toggle} />,
           docPip.pipWindow.document.body,
         )}
-    </>
+    </BlurProvider>
   )
 }
 
@@ -460,13 +561,37 @@ function PipPlaceholder({ onBack }: { onBack: () => void }) {
         <PipIcon />
       </div>
       <div>
-        <p className="text-sm font-medium">Your call is in picture-in-picture</p>
+        <p className="text-sm font-medium">Your call is in the mini player</p>
         <p className="mt-1 text-xs text-ink-muted">It's playing in the floating window.</p>
       </div>
       <Button variant="accent" onClick={onBack}>
         Bring back to window
       </Button>
     </div>
+  )
+}
+
+/**
+ * "Room locked" status pill.
+ *
+ * This used to be a 36px pill on the control island, which is the wrong place
+ * twice over: it's status rather than a control, and TopStack is where the layering
+ * rules put status (never a fresh `fixed` div with a hand-picked z-index). It also
+ * cost 42px of a bar that had 343px to spend at 375px and was already overflowing —
+ * with the pill showing, the host bar wanted 414px and spilled off both edges.
+ *
+ * Not folded into CallStatusBar's row: that one already carries a padlock for
+ * end-to-end encryption, and two padlocks a few pixels apart meaning different
+ * things is worse than either alone.
+ */
+function RoomLockedPill({ locked, visible }: { locked: boolean; visible: boolean }) {
+  // Unmounted, not hidden, for the same reason as CallStatusBar: an invisible row
+  // still holds its slot and its gap in TopStack.
+  if (!locked || !visible) return null
+  return (
+    <span className="mn-pop pointer-events-none flex items-center gap-2 rounded-control bg-overlay px-3 py-1.5 text-xs font-medium text-white shadow-raised backdrop-blur [&_svg]:size-3.5">
+      <LockIcon /> Room locked
+    </span>
   )
 }
 
@@ -484,22 +609,16 @@ function RaisedHandPill({
   onLower: () => void
   visible: boolean
 }) {
-  if (!raised) return null
+  // Unmounted, not translated away, for the same reason as CallStatusBar: a row
+  // that's merely invisible still holds its slot (and its gap) in TopStack.
+  if (!raised || !visible) return null
   return (
-    <div
-      className={cn(
-        'fixed inset-x-0 top-[max(5.5rem,calc(env(safe-area-inset-top)+5rem))] z-20 flex justify-center px-4',
-        'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        !visible && 'pointer-events-none -translate-y-[200%] opacity-0',
-      )}
+    <button
+      type="button"
+      onClick={onLower}
+      className="mn-pop pointer-events-auto flex items-center gap-2 rounded-control bg-overlay px-4 py-2 text-sm font-medium text-warning shadow-raised backdrop-blur [&_svg]:size-4"
     >
-      <button
-        type="button"
-        onClick={onLower}
-        className="pointer-events-auto flex items-center gap-2 rounded-control bg-overlay px-4 py-2 text-sm font-medium text-warning shadow-raised backdrop-blur [&_svg]:size-4"
-      >
-        <HandIcon /> Lower hand
-      </button>
-    </div>
+      <HandIcon /> Lower hand
+    </button>
   )
 }
