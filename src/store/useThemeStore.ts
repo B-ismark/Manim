@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import {
+  accentTextFor,
   baseDark,
   baseLight,
   defaultAccentId,
@@ -48,18 +49,6 @@ export function applyTheme(
 
   const tokens: TokenMap = { ...base, ...preset.tokens }
 
-  // Accent as TEXT/ICON on an accent-soft background, derived per-mode from the
-  // chosen preset (same pattern as --color-danger-text). Light keeps the fill
-  // accent — it reads on the near-white soft mix. Dark lightens toward white:
-  // the raw accent (L≈0.55) against the dark soft mix (L≈0.28) is only ~2:1,
-  // which fails even the 3:1 UI-component bar.
-  const accentForText = preset.tokens['--color-accent']
-  if (accentForText) {
-    tokens['--color-accent-text'] = dark
-      ? `color-mix(in oklch, ${accentForText} 55%, white)`
-      : accentForText
-  }
-
   // Tint the neutral surfaces toward the accent so picking a theme visibly
   // recolours the WHOLE app (Slack model), not just buttons. Skipped for
   // vision-assistive presets and high contrast, which must stay neutral.
@@ -79,6 +68,17 @@ export function applyTheme(
   }
 
   Object.assign(tokens, state.custom)
+
+  // Accent as TEXT/ICON on an accent-soft background. Derived LAST, from
+  // whichever accent actually won — a custom override included — because
+  // --color-accent-soft is a CSS color-mix off --color-accent: deriving the text
+  // from the *preset* accent while the background follows a custom one
+  // guarantees the pair disagrees. An explicit custom accent-text still wins.
+  if (!state.custom['--color-accent-text']) {
+    const effectiveAccent = tokens['--color-accent']
+    if (effectiveAccent) tokens['--color-accent-text'] = accentTextFor(effectiveAccent, dark)
+  }
+
   for (const [key, value] of Object.entries(tokens)) {
     root.style.setProperty(key, value)
   }
