@@ -51,6 +51,7 @@ import { toast } from '@/store/useToastStore'
 import { useCopyLink } from '@/lib/useCopyLink'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
+import { countSettled } from '@/lib/settle'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
@@ -233,7 +234,12 @@ export function ParticipantsPanel() {
   async function muteAll(source: Track.Source, kind: 'mic' | 'camera') {
     if (!roomToken) return
     const targets = participants.filter((p) => p.identity !== localParticipant.identity)
-    const results = await Promise.all(
+    // Count what actually changed — "Muted everyone" when nobody had an open mic
+    // is a false claim that sends the host re-checking every tile. `moderate`
+    // resolves to void, so only fulfilment-vs-rejection carries the signal;
+    // countSettled owns that (see lib/settle.ts). A rejected request (postJson
+    // throws on non-2xx) doesn't count as changed.
+    const n = await countSettled(
       targets.map((p) => {
         const pub = p.getTrackPublication(source)
         if (!pub || pub.isMuted || !pub.trackSid) return undefined
@@ -244,13 +250,9 @@ export function ParticipantsPanel() {
           action: 'mute',
           trackSid: pub.trackSid,
           source: kind === 'camera' ? 'camera' : 'microphone',
-        }).catch(() => {})
+        })
       }),
     )
-    // Count what actually changed — "Muted everyone" when nobody had an open mic
-    // is a false claim that sends the host re-checking every tile. Failures
-    // (caught above) don't count as changed.
-    const n = results.filter(Boolean).length
     if (n === 0) {
       toast(kind === 'mic' ? 'Everyone was already muted' : 'No one’s camera was on', 'neutral')
       return

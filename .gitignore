@@ -28,3 +28,5 @@ audit/scenarios
 audit/responsive-audit.json
 audit/loadtest-*.txt
 .lighthouseci
+gate-status.txt
+unmerged.txt
