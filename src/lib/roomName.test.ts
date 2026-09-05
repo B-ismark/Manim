@@ -43,6 +43,24 @@ describe('toSlug', () => {
     expect(toSlug('会议')).toBe('会议')
     expect(toSlug('Привет мир')).toBe('привет-мир')
     expect(toSlug('café')).toBe('café')
+    expect(toSlug('한국어')).toBe('한국어')
+    expect(toSlug('العربية')).toBe('العربية')
+  })
+
+  it('keeps combining marks, which carry the vowels in many scripts', () => {
+    // \p{M}, not \p{L}: a letter-only class shreds these into a different word.
+    expect(toSlug('हिन्दी')).toBe('हिन्दी')
+    expect(toSlug('ไทย')).toBe('ไทย')
+  })
+
+  it('slugs a composed and a decomposed name to the SAME room', () => {
+    // macOS and several IMEs hand over the decomposed form. Without NFC the two
+    // spellings of one visible name route to two different rooms.
+    const composed = 'café' // é as a single code point
+    const decomposed = 'café' // e + combining acute
+    expect(composed).not.toBe(decomposed)
+    expect(toSlug(decomposed)).toBe(toSlug(composed))
+    expect(toSlug(decomposed)).toBe('café')
   })
 
   it('keeps underscores, which need no URL encoding', () => {
