@@ -105,11 +105,13 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   }
 
   const showPriming = permission === 'prompt'
-  // Hold the preview while we're showing the rationale card ('prompt'): acquiring
-  // here would fire the raw OS prompt on top of the card — the exact double-prompt
-  // this screen exists to prevent. requestAccess() primes both devices from the
-  // intentional tap; flipping holdPreview false starts the preview prompt-free.
-  const holdPreview = permission === 'prompt'
+  // Hold the preview for exactly as long as the rationale card is up: acquiring
+  // behind it would fire the raw OS prompt on top of the card — the exact
+  // double-prompt this screen exists to prevent. requestAccess() primes both
+  // devices from the intentional tap; clearing the hold starts the preview
+  // prompt-free. Aliased off showPriming rather than re-testing `permission`, so
+  // the two can't drift apart.
+  const holdPreview = showPriming
 
   // Preview only needs video — the mic isn't monitored here, so toggling it is a
   // pure intent flag (applied at connect) and must not restart the stream, which

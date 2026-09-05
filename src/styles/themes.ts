@@ -151,6 +151,23 @@ export const accentPresets: AccentPreset[] = [
   },
 ]
 
+/**
+ * Accent used as TEXT/ICON on an `--color-accent-soft` background (the same role
+ * `--color-danger-text` plays for red). BOTH modes have to move off the raw
+ * accent: `--color-accent-soft` is `color-mix(accent 16%, surface)`, i.e. a wash
+ * of the accent itself, so the undiluted accent sits at 2.4–4.0:1 on it in light
+ * and ~2–3.6:1 in dark. Dark lightens toward white, light darkens toward black.
+ *
+ * The mix fractions are the loosest that clear AA 4.5:1 across every preset ×
+ * mode × high-contrast combination — accentText.test.ts computes the real WCAG
+ * ratios and fails if any drops below. Worst case is clementine light at 4.78:1.
+ */
+export function accentTextFor(accent: string, dark: boolean): string {
+  return dark
+    ? `color-mix(in oklch, ${accent} 55%, white)`
+    : `color-mix(in oklch, ${accent} 75%, black)`
+}
+
 export const defaultAccentId = 'aurora'
 
 export function getAccentPreset(id: string): AccentPreset {

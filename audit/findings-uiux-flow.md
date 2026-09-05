@@ -112,18 +112,20 @@ between clients that decode differently.
 **Suggested fix:** Strip to `[a-z0-9-]` (collapse repeats, trim dashes) inside
 `parseTyped`/`goTo` — matching what `callContact` already does — and consider a
 gentle inline hint when sanitization changes what the user typed.
+**RESOLVED** — `toSlug` now sanitises typed names, and `callContact`'s duplicate
+copy calls it instead of carrying its own. Two corrections to the fix as
+suggested above: the class is `\p{L}\p{N}_-`, not `[a-z0-9-]` (ASCII-only erases
+a name like `会议` to the empty string, making non-Latin rooms uncreatable), and
+sanitising is confined to the TYPED branch — a pasted invite link is authoritative
+about its destination, so re-slugging it silently reroutes the join.
 
 ### [MEDIUM] Dead component: `LayoutChip` violates the zero-orphan law
-**File:** `src/islands/LayoutChip.tsx` — defined, **never imported anywhere**
-(verified by project-wide search).
+**File:** `src/islands/LayoutChip.tsx` — was defined, **never imported anywhere**.
 **Issue:** STYLE.md §3's anti-orphan gate governs shipped UI; an unwired island
-file is the code-level equivalent. Either the top-chrome layout switcher it
-implements was superseded by the unified View section in More (comments suggest
-yes) and the file should be deleted, or it was meant to sit beside the
-participants chip and the wiring was lost.
-**Suggested fix:** Delete it, or wire it into `StageTopBar` if quick layout
-switching at top-right is still desired (the More-menu View section currently
-covers the need).
+file is the code-level equivalent. The top-chrome layout switcher it implemented
+was superseded by the unified View section in More.
+**RESOLVED** — deleted. The More-menu View section covers the need; the touch
+stage's own view chip sets the same `layout` value.
 
 ### [MEDIUM] Secondary touch targets fall short of platform minimums
 **Files:** `src/routes/Landing.tsx` (recents remove button `size-7` = 28px),
