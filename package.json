@@ -20,7 +20,8 @@
     "test:visual": "playwright test --project=desktop --grep @heavy --workers=1",
     "test:stress": "cross-env STRESS=1 playwright test 07-capacity --project=desktop --workers=1",
     "loadtest": "bash scripts/load-test.sh",
-    "lighthouse": "lhci autorun"
+    "lighthouse": "lhci autorun",
+    "test:sharebw": "playwright test --project=desktop --grep @heavy 90-share-bandwidth"
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.9",
