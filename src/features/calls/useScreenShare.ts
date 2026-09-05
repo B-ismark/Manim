@@ -11,26 +11,34 @@ type ShareSurface = 'monitor' | 'window' | 'browser' | 'unknown'
  * How many people may share at once.
  *
  * Not a round number picked for feel — it falls out of how shares are published
- * here. A share goes out at 1920x1080, ~2.13 Mbps, and on the desktop VP9 path
- * LiveKit encodes it as SVC `L1T3`: ONE spatial layer. Cameras carry three
- * simulcast layers, so a camera in a thumbnail really does drop to 180p; a share
- * in that same thumbnail is still shipping and decoding full 1920x1080. Extra
- * shares therefore cost full price no matter how small they are drawn, and
- * `lowBandwidth` doesn't help — it degrades cameras only, never the share path.
+ * here. A share goes out at 1920x1080, ~2.5 Mbps (ScreenSharePresets.h1080fps15),
+ * and the cost of an extra one depends on the codec, which is NOT uniform:
+ *
+ *  - Desktop VP9 (an open, typed-name room): LiveKit forces SVC `L1T3` on screen
+ *    shares — ONE spatial layer. Cameras carry three simulcast layers, so a camera
+ *    in a thumbnail really does drop to 180p; a share in that same thumbnail is
+ *    still shipping and decoding full 1920x1080. Extra shares cost full price no
+ *    matter how small they are drawn.
+ *  - VP8 (any E2EE room — which is every "New meeting" and contact call — and
+ *    every phone): `screenShareSimulcastLayers` gives a 360p/720p/1080p ladder, so
+ *    a thumbnail subscriber can take 360p and dynacast can stop unused layers.
+ *
+ * So the expensive case still exists; it is just no longer the only case.
  *
  * The stage also only ever FEATURES one share (primaryShare, and it is sticky).
- * Anything past the second is a thumbnail nobody can read at the price of a
- * full-resolution stream.
+ * Anything past the second is a thumbnail nobody can read — at full price on the
+ * VP9 path, and at ladder price on the VP8 one.
  *
  * Two keeps the cases people actually need — a presenter handing off while the
  * next one sets up, and comparing two screens side by side — and bounds share
- * traffic at ~4.3 Mbps, which leaves room for cameras on a 10 Mbps link.
+ * traffic at ~5 Mbps worst case (two VP9 shares at the 1080p cap), which leaves
+ * room for cameras on a 10 Mbps link.
  *
  * For reference: Teams allows one at a time, Zoom defaults to one and lets a host
  * raise it to four, Meet allows ten. Meet can afford ten because everything there
- * is multi-layer; we are at the other end of that trade until screen shares get
- * `screenShareSimulcastLayers`, which is the change that would make a higher cap
- * cheap. Raise this then, not before.
+ * is multi-layer. Half of Manim now is. Raising this cap needs the VP9 path to
+ * stop being single-layer as well — plus a real bandwidth measurement, which has
+ * never been taken. Not before both.
  */
 export const MAX_CONCURRENT_SHARES = 2
 
