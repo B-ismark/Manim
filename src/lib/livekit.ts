@@ -74,7 +74,24 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
     publishDefaults: {
       videoCodec: useVp8 ? 'vp8' : 'vp9',
       ...(useVp8 ? {} : { backupCodec: { codec: 'vp8' as const } }),
-      simulcast: true,
+      // Simulcast off in low-bandwidth, and ONLY there. That mode forces the
+      // camera off (CallRoom: `video={cameraEnabled && !lowBandwidth}`), so the
+      // share is the only video track and this cannot cost a camera its layers.
+      //
+      // MEASURED, because the intuitive configs are all wrong here. LiveKit's
+      // computeVideoEncodings always APPENDS `original` at source resolution to
+      // whatever ladder you ask for, so on a 1080p share every simulcast variant
+      // publishes a full-resolution layer and no choice of presets avoids it.
+      // E2EE/VP8 share, low-bandwidth on, isolated runs (90-share-bandwidth):
+      //
+      //   [h360fps3] ladder (what we shipped) .... 1225-1257 kbps
+      //   [h360fps15, h720fps15] ladder .......... 1278 kbps
+      //   no ladder, LiveKit defaults ............ 1346-1355 kbps
+      //   simulcast off (this) ...................  430-503 kbps
+      //
+      // The mode meant to save bandwidth was costing TWICE the non-E2EE path
+      // (620 kbps). One capped layer is what "low bandwidth" should mean.
+      simulcast: !lowBandwidth,
       videoSimulcastLayers: layers,
       // Share capture cap. The normal value is deliberately the SAME as
       // livekit-client's own publishDefaults (h1080fps15), pinned here so a
@@ -87,21 +104,19 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
         ? ScreenSharePresets.h720fps5
         : ScreenSharePresets.h1080fps15
       ).encoding,
-      // VP8 publishers ONLY — an SVC codec never reads this (see the header: a
-      // VP9 share is pinned to L1T3, one spatial layer). Where it does apply it
-      // replaces LiveKit's single default lower layer (half resolution, same
-      // fps) with a proper ladder, so adaptiveStream can hand a grid-sized tile
-      // 360p instead of 540p and dynacast can stop what nobody subscribes to.
-      //
-      // The trade is real and unmeasured: the publisher encodes three layers
-      // instead of two. It is the right shape for a stage that draws one big
-      // share and the rest as thumbnails, but if share uplink is ever the
-      // binding constraint, MEASURE before widening this ladder further.
-      ...(useVp8
+      // VP8 publishers ONLY, and only when simulcasting — an SVC codec never
+      // reads this (see the header: a VP9 share is pinned to L1T3, one spatial
+      // layer), and low-bandwidth turns simulcast off above. Where it does apply
+      // it replaces LiveKit's single default lower layer (half resolution) with a
+      // proper ladder, so adaptiveStream can hand a grid-sized tile 360p instead
+      // of 540p and dynacast can stop what nobody subscribes to. Measured at
+      // 991 kbps against 1952 for the single-layer VP9 path.
+      ...(useVp8 && !lowBandwidth
         ? {
-            screenShareSimulcastLayers: lowBandwidth
-              ? [ScreenSharePresets.h360fps3]
-              : [ScreenSharePresets.h360fps15, ScreenSharePresets.h720fps15],
+            screenShareSimulcastLayers: [
+              ScreenSharePresets.h360fps15,
+              ScreenSharePresets.h720fps15,
+            ],
           }
         : {}),
       // Keep the picture sharp under load; drop fps before resolution.
