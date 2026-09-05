@@ -43,12 +43,6 @@ describe('roomOptions — screen-share cost', () => {
     }
   })
 
-  it('sends ONE cheap layer, not a ladder, in low-bandwidth mode', () => {
-    expect(pub({ low: true, e2ee: true }).screenShareSimulcastLayers).toEqual([
-      ScreenSharePresets.h360fps3,
-    ])
-  })
-
   it('omits the ladder on the VP9 path, where LiveKit would ignore it anyway', () => {
     // Not an oversight — an assertion of the asymmetry. For an SVC codec on a
     // ScreenShare track livekit-client forces scalabilityMode 'L1T3' ("vp9 svc
@@ -105,5 +99,26 @@ describe('roomOptions — camera capture', () => {
   it('drops the top camera layer in low-bandwidth mode', () => {
     expect(pub({ low: true }).videoSimulcastLayers).toHaveLength(2)
     expect(pub().videoSimulcastLayers).toHaveLength(3)
+  })
+})
+
+describe('roomOptions — low-bandwidth share cost', () => {
+  it('turns simulcast OFF in low-bandwidth mode', () => {
+    // Measured: leaving it on made an E2EE share cost 1225-1257 kbps, twice the
+    // 620 kbps of the non-E2EE path, in the mode that exists to save bandwidth.
+    // LiveKit always appends a source-resolution layer to any ladder, so no
+    // choice of presets fixes it — only publishing one layer does (430-503 kbps).
+    expect(pub({ low: true }).simulcast).toBe(false)
+    expect(pub({ low: true, e2ee: true }).simulcast).toBe(false)
+  })
+
+  it('keeps simulcast on everywhere else', () => {
+    for (const o of [{}, { e2ee: true }, { mobile: true }]) {
+      expect(pub(o).simulcast, JSON.stringify(o)).toBe(true)
+    }
+  })
+
+  it('drops the share ladder in low-bandwidth, since nothing would read it', () => {
+    expect(pub({ low: true, e2ee: true }).screenShareSimulcastLayers).toBeUndefined()
   })
 })
