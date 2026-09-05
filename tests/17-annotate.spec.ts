@@ -618,9 +618,10 @@ test.describe('Annotation over a shared screen @annotate', () => {
     test.skip(await isTouch(page), 'the desktop share button is the one under test')
     const room = uniqueRoom('annot')
 
-    // Two shares is the cap: a share is a full-resolution stream no matter how
-    // small it is drawn (single spatial layer on the VP9 path), so the third one
-    // costs everyone real bandwidth for a thumbnail nobody can read.
+    // Two shares is the cap. Note which path this test is on: uniqueRoom() has no
+    // E2EE key, so this is an open room → desktop VP9 → SVC L1T3, one spatial
+    // layer. The share-simulcast ladder does NOT apply here; a third share really
+    // would be a full-resolution stream behind a thumbnail nobody can read.
     const first = await addSharer(browser, room, 'Zed')
     const second = await addSharer(browser, room, 'Ada', 640, 480)
 
