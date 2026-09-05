@@ -16,7 +16,7 @@ import { getMe } from '@/lib/orchestrator'
 import { supabase } from '@/lib/supabase'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
-import { prettyRoom } from '@/lib/roomName'
+import { prettyRoom, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
 
@@ -38,18 +38,6 @@ function randomRoom(): string {
   let suffix = ''
   for (let i = 0; i < 13; i++) suffix += CODE_ALPHABET[bytes[i + 2] % CODE_ALPHABET.length]
   return `${pick(a, 0)}-${pick(b, 1)}-${suffix}`
-}
-
-/** URL-safe room slug: lowercase, whitespace→dash, strip anything that would
- *  corrupt the path segment or the #fragment where invite secrets ride. */
-function toSlug(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
-    .replace(/-{2,}/g, '-')
-    .replace(/^-+|-+$/g, '')
 }
 
 export function Landing() {
@@ -98,9 +86,14 @@ export function Landing() {
   }
 
   // A typed value is usually a bare meeting name, but may be a pasted invite link
-  // (which carries its own secrets in the #fragment) — handle both. Both branches
-  // pass through toSlug: `/ ? # %` in a typed name used to flow into the URL and
-  // corrupt the fragment encoding of the generated invite link.
+  // (which carries its own secrets in the #fragment) — handle both.
+  //
+  // Only the TYPED branch is sanitised: `/ ? # %` in a hand-typed name used to
+  // flow into the URL and corrupt the fragment encoding of the generated invite
+  // link. A pasted link is the AUTHORITY on which room it points at (see
+  // lib/roomKeys.ts) — re-slugging it rewrites the destination, so a link to
+  // `/r/my_room` would quietly open `/r/myroom` and hand that room's occupants
+  // an E2EE key minted for a different one. Decode and lowercase, nothing more.
   function parseTyped(value: string): { slug: string; secrets: RoomSecrets } {
     const v = value.trim()
     const m = v.match(/\/r\/([^/?#]+)(#.*)?$/)
@@ -111,7 +104,7 @@ export function Landing() {
       } catch {
         /* malformed escape — use the raw segment */
       }
-      return { slug: toSlug(raw), secrets: parseRoomHash(m[2] || '') }
+      return { slug: raw.toLowerCase(), secrets: parseRoomHash(m[2] || '') }
     }
     return { slug: toSlug(v), secrets: {} }
   }
@@ -160,17 +153,23 @@ export function Landing() {
       return
     }
     if (!typed) return goTo(randomRoom(), newRoomSecrets())
-    // Typed only symbols → slug came back empty: mint a random room rather than
-    // silently doing nothing.
-    goTo(parsed.slug || randomRoom(), parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
+    if (!parsed.slug) {
+      // Typed only symbols. Minting a random room here would silently discard
+      // what they wrote and drop them into a differently-named call — say why
+      // instead, matching onJoin.
+      toast('Meeting names need letters or numbers', 'warning')
+      return
+    }
+    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
   }
 
   // Call a contact: mint a fresh secured room, ring them into it (the ring carries
   // the secrets so they can pass the join gate), register a "waiting" hint, join.
   function callContact(c: ContactRow, roomName: string) {
     if (!c.email) return
-    const slug =
-      roomName.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') || randomRoom()
+    // One sanitiser, shared with parseTyped — a second copy here drifted from it
+    // the moment toSlug learned about non-Latin names.
+    const slug = toSlug(roomName) || randomRoom()
     const secrets = newRoomSecrets()
     void ringUser(c.email, slug, myName || 'Someone', secrets)
     // Shows an "Invited · waiting" row in the in-call People panel; it clears when
