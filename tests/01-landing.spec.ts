@@ -50,3 +50,50 @@ test.describe('Landing', () => {
     await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
   })
 })
+
+/**
+ * The landing header is `fixed` and transparent, and it stretches `inset-x-4`
+ * across the full width with its controls pinned to the two ends. The brand sits
+ * in the gap between them — on the short phone with only 8px to spare, because
+ * `short:pt-4` pulls the content back up under the header band.
+ *
+ * Zero tolerance, deliberately: 09-visual's `overlaps()` only reports an
+ * intersection above 20% of the smaller element's area, so it would stay silent
+ * on exactly the few-pixel collision this margin is one padding change away from.
+ */
+test('the landing brand never collides with the header controls', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
+
+  const geom = await page.evaluate(() => {
+    const header = document.querySelector('header')
+    const main = document.querySelector('main')
+    if (!header || !main) throw new Error('landing header/main not found')
+    const rect = (el: Element) => el.getBoundingClientRect()
+    const controls = [...header.querySelectorAll('button, a, [role="button"]')]
+      .map((el) => ({ label: (el.getAttribute('aria-label') || el.textContent || '?').trim(), r: rect(el) }))
+      .filter((c) => c.r.width > 0 && c.r.height > 0)
+    // Everything the page itself paints in the header's band, header excluded.
+    const subjects = [...main.querySelectorAll('h1, h1 + *, [data-brand]')]
+      .filter((el) => !header.contains(el))
+      .map((el) => ({ label: (el.textContent || 'brand').trim().slice(0, 24), r: rect(el) }))
+    const hit = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+    const collisions: string[] = []
+    let tightest = Infinity
+    for (const s of subjects) {
+      for (const c of controls) {
+        const vertical = s.r.top < c.r.bottom && s.r.bottom > c.r.top
+        if (!vertical) continue // not in the header's band at all; horizontal gap is meaningless
+        if (hit(s.r, c.r)) collisions.push(`"${s.label}" overlaps "${c.label}"`)
+        else tightest = Math.min(tightest, Math.max(c.r.left - s.r.right, s.r.left - c.r.right))
+      }
+    }
+    return { collisions, tightest, controlCount: controls.length, subjectCount: subjects.length }
+  })
+
+  // Guard the guard: if the selectors ever stop matching, this test would pass
+  // over an empty list and prove nothing.
+  expect(geom.controlCount, 'header controls found').toBeGreaterThan(0)
+  expect(geom.subjectCount, 'brand elements found').toBeGreaterThan(0)
+  expect(geom.collisions).toEqual([])
+})
