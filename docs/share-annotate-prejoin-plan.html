@@ -293,8 +293,14 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
         <li><s>F10 — publish the share track specifically as VP8 so <code>contentHint: 'detail'</code>
           survives.</s> <b>Not shipped: the finding was withdrawn.</b> The motion-hint stomp is real, but
           LiveKit already cancels its consequence with <code>degradationPreference: 'maintain-resolution'</code>
-          for screen shares, and so does <code>livekit.ts:68</code>. VP8 would have cost VP9’s efficiency and
-          added a simulcast layer. See the corrected F10 in the audit.</li>
+          for screen shares, and so does <code>livekit.ts</code>. VP8 would have cost VP9’s efficiency and
+          added a simulcast layer. See the corrected F10 in the audit.
+          <br><br>
+          A <i>different</i> change did later ship in the same file: low-bandwidth mode used to ignore
+          screen shares entirely, so <code>screenShareEncoding</code> now drops them to 720p/5fps there,
+          and VP8 publishers get a <code>screenShareSimulcastLayers</code> ladder for thumbnail-sized
+          tiles. It bounds cost; it does not discharge F10, it is unmeasured, and it does not reach the
+          desktop VP9 path at all (LiveKit pins share SVC to <code>L1T3</code>).</li>
       </ul>
       <p>The plan said F10 needed a real bandwidth comparison before shipping. It turned out to need one
       more careful read of the mechanism instead — which is the cheaper check, and should have come first.</p>

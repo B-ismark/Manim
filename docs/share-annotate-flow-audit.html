@@ -456,7 +456,7 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
 
   <!-- F10 -->
   <div class="finding">
-    <div class="fhead"><span class="fid">F10</span><h3><s>Shared text is encoded as motion, and <code>contentHint</code> can’t fix it on the desktop path</s> — <b>withdrawn, the premise was wrong</b></h3>
+    <div class="fhead"><span class="fid">F10</span><h3><s>Shared text is encoded as motion, and <code>contentHint</code> can’t fix it on the desktop path</s> — <b>withdrawn; a narrower, unrelated change shipped later</b></h3>
       <span class="sev med">withdrawn</span></div>
     <dl class="fgrid">
       <div class="frow"><dt>Evidence</dt><dd><ul class="ev">
@@ -471,7 +471,7 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
       </ul></dd></div>
       <div class="frow"><dt>What I got wrong</dt><dd>The stomp is real; the harm attributed to it is not.
         The motion hint’s consequence — dropping resolution before frame rate — is already cancelled by
-        LiveKit, deliberately, and <code>src/lib/livekit.ts:68</code> sets the same
+        LiveKit, deliberately, and <code>src/lib/livekit.ts</code> sets the same
         <code>maintain-resolution</code> explicitly on top. I read the first half of the mechanism and
         stopped before the half that compensates for it.</dd></div>
       <div class="frow"><dt>Why the proposed fix was backwards</dt><dd>Publishing the share as VP8 would
@@ -479,11 +479,22 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
         SVC path into <code>simulcast: true</code>, adding a second ~540p layer that spends uplink on nothing.
         Setting <code>contentHint: 'detail'</code> while keeping VP9 is worse still — the L1T3 workaround the
         stomp exists to avoid caps Chrome at ~5&nbsp;fps. Both directions regress.</dd></div>
-      <div class="frow"><dt>Standing recommendation</dt><dd><b>Ship nothing.</b> If a share ever does look
-        soft, the lever is <code>screenShareEncoding</code> / <code>screenShareSimulcastLayers</code> in
-        <code>publishDefaults</code> — never the codec. Unverified either way without real bandwidth
-        measurement: VP9-vs-VP8 sharpness at these bitrates, and whether ~4&nbsp;Mbps is ever the binding
-        constraint.</dd></div>
+      <div class="frow"><dt>Standing recommendation</dt><dd><b>Do not change the codec.</b> If a share ever
+        looks soft, the lever is <code>screenShareEncoding</code> / <code>screenShareSimulcastLayers</code>
+        in <code>publishDefaults</code> — never the codec. Still unverified either way without real
+        bandwidth measurement: VP9-vs-VP8 sharpness at these bitrates, and whether ~5&nbsp;Mbps is ever the
+        binding constraint.</dd></div>
+      <div class="frow"><dt>What did ship (separately)</dt><dd>Not this finding — the lever named above,
+        applied for a different reason: <b>low-bandwidth mode used to skip screen shares entirely</b>, so a
+        user on a metered link still received a full 1080p/15 share. <code>screenShareEncoding</code> now
+        drops to 720p/5 there. Alongside it, VP8 publishers (every E2EE room, and every phone) get a
+        <code>screenShareSimulcastLayers</code> ladder so a thumbnail can take 360p instead of LiveKit’s
+        single 540p default layer.
+        <br><br>
+        <b>This does not discharge F10, and it is not a measured win.</b> The publisher now encodes three
+        layers where it encoded two, and desktop VP9 — any open, typed-name room — is untouched: LiveKit
+        pins screen shares to <code>L1T3</code>, one spatial layer, and never reads the ladder. The
+        measurement this finding was always waiting on has still not been taken.</dd></div>
     </dl>
   </div>
 </section>
@@ -503,7 +514,7 @@ footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);
         <tr><th>F7</th><td>Three hand-picked tile offsets</td><td>High</td><td>New primitive</td></tr>
         <tr><th>F8</th><td>Pen shown when no canvas is mounted</td><td>Medium</td><td><code>useSharePresence</code></td></tr>
         <tr><th>F9</th><td>Unexplained ink on touch</td><td>Medium</td><td>1 pill</td></tr>
-        <tr><th>F10</th><td><s>Screen text encoded as motion</s> — withdrawn, premise wrong</td><td>—</td><td>Nothing to change</td></tr>
+        <tr><th>F10</th><td><s>Screen text encoded as motion</s> — withdrawn, premise wrong. A separate, unmeasured share-bitrate change shipped later; see F10</td><td>—</td><td>Nothing to change</td></tr>
       </tbody>
     </table>
   </div>
