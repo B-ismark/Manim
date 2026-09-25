@@ -559,7 +559,15 @@ export function useChatMessages() {
   // Typing indicator: ephemeral pings broadcast while composing, others render
   // "… is typing". Each ping carries a fresh timestamp; entries self-expire after
   // TYPING_TTL_MS so a typer who closes their tab doesn't get stuck "typing".
-  const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({})
+  //
+  // The timestamps live in a REF, not state: a typer re-pings every ~1.5s, and
+  // this hook's state re-renders RoomView — the whole call tree — so stamping
+  // `at` into state cost one full-tree render per typer per ping for a value
+  // nothing renders. State holds only what IS rendered (who, under what name),
+  // and changes only when someone starts, stops, or renames. The expiry tick
+  // reads the ref, so a typer still drops TYPING_TTL_MS after their last ping.
+  const [typing, setTyping] = useState<Record<string, string>>({})
+  const typingAtRef = useRef<Record<string, number>>({})
 
   const { send: sendTypingMsg } = useDataChannel(TYPING_TOPIC, (msg) => {
     try {
@@ -572,15 +580,19 @@ export function useChatMessages() {
       // identity — otherwise a peer could spoof "X is typing" for someone else.
       const from = msg.from?.identity
       if (!from || from === myIdentity) return
-      setTyping((prev) => {
-        if (!d.typing) {
-          if (!prev[from]) return prev
+      if (!d.typing) {
+        delete typingAtRef.current[from]
+        setTyping((prev) => {
+          if (!(from in prev)) return prev
           const next = { ...prev }
           delete next[from]
           return next
-        }
-        return { ...prev, [from]: { name: d.name, at: Date.now() } }
-      })
+        })
+        return
+      }
+      typingAtRef.current[from] = Date.now()
+      // Returning `prev` when nothing visible changed bails out of the render.
+      setTyping((prev) => (prev[from] === d.name ? prev : { ...prev, [from]: d.name }))
     } catch {
       /* malformed — ignore */
     }
@@ -589,13 +601,21 @@ export function useChatMessages() {
   // Drop stale typers (no fresh ping within the TTL) on a slow tick.
   useEffect(() => {
     const id = window.setInterval(() => {
+      const now = Date.now()
+      const stale: string[] = []
+      for (const [id2, at] of Object.entries(typingAtRef.current)) {
+        if (now - at >= TYPING_TTL_MS) stale.push(id2)
+      }
+      if (!stale.length) return
+      for (const id2 of stale) delete typingAtRef.current[id2]
       setTyping((prev) => {
-        const now = Date.now()
         let changed = false
-        const next: typeof prev = {}
-        for (const [id2, v] of Object.entries(prev)) {
-          if (now - v.at < TYPING_TTL_MS) next[id2] = v
-          else changed = true
+        const next = { ...prev }
+        for (const id2 of stale) {
+          if (id2 in next) {
+            delete next[id2]
+            changed = true
+          }
         }
         return changed ? next : prev
       })
@@ -635,7 +655,7 @@ export function useChatMessages() {
   }, [broadcastTyping])
 
   const typingNames = useMemo(
-    () => Object.values(typing).map((v) => v.name),
+    () => Object.values(typing),
     [typing],
   )
 
