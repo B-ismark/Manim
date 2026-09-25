@@ -19,7 +19,11 @@ interface SentryLike {
   captureException?: (error: unknown, context?: unknown) => void
   addBreadcrumb?: (breadcrumb: unknown) => void
   // Provided by the Sentry Loader Script — queue init until the full SDK arrives.
-  init?: (options: { dsn: string }) => void
+  init?: (options: {
+    dsn: string
+    beforeSend?: (event: unknown) => unknown
+    beforeBreadcrumb?: (crumb: unknown) => unknown
+  }) => void
   onLoad?: (cb: () => void) => void
 }
 
@@ -104,9 +108,27 @@ function initSentry(): void {
   script.addEventListener('load', () => {
     const s = sentry()
     // The loader exposes onLoad; configure the SDK once it's actually present.
-    s?.onLoad?.(() => s.init?.({ dsn }))
+    s?.onLoad?.(() => s.init?.({ dsn, beforeSend: stripFragments, beforeBreadcrumb: stripFragments }))
   })
   document.head.appendChild(script)
+}
+
+/**
+ * Strip the #fragment from every URL anywhere in a report. A room URL's fragment
+ * IS the room's credentials (`#k=<join secret>&e=<E2EE key>`, lib/roomLink), and
+ * Sentry's default request context and navigation breadcrumbs carry
+ * `location.href` verbatim — so without this, the first error in an encrypted
+ * call would hand its key to a third party. Structural (JSON round-trip) so a new
+ * field that happens to hold a URL can't slip past.
+ */
+export function stripFragments<T>(value: T): T {
+  try {
+    return JSON.parse(
+      JSON.stringify(value).replace(/(https?:\/\/[^\s"'#]*)#[^\s"']*/g, '$1'),
+    ) as T
+  } catch {
+    return value
+  }
 }
 
 /** Install the global last-resort handlers. Idempotent; call once at startup
