@@ -128,13 +128,31 @@ export function Stage() {
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
-  const tracks = useTracks(
+  const visibleTracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false },
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
+  // `.filter` hands back a NEW array every render, which made every useMemo
+  // downstream keyed on `tracks` (the gallery order, the packer's rows…) recompute
+  // on EVERY Stage render, whatever caused it. Keep the previous array while it
+  // holds the same entries in the same order. Participant and publication are live,
+  // mutable LiveKit objects, so a kept entry still reads current state at render
+  // time — but two memos downstream read mutable fields and were only ever correct
+  // because the array churned: the "videos first" sorts (`hasLiveVideo` →
+  // `publication.isMuted`) and the off-page speaker jump (`isSpeaking`). Those two
+  // fields ride in the key so those memos still refresh exactly when they must.
+  const tracksKey = visibleTracks
+    .map(
+      (t) =>
+        `${t.participant.identity}|${t.source}|${t.publication?.trackSid ?? ''}|` +
+        `${t.publication?.isMuted ? 1 : 0}${t.participant.isSpeaking ? 1 : 0}`,
+    )
+    .join(',')
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content, see above
+  const tracks = useMemo(() => visibleTracks, [tracksKey])
 
   const coarse = useIsTouch()
 
@@ -1805,6 +1823,13 @@ function Tile({
   // object-fit — the letterbox-vs-crop call needs the source shape too.
   const [videoAspect, setVideoAspect] = useState(0)
   const wantsAspect = Boolean(onAspect) || boxAspect !== undefined
+  // The grid passes `onAspect` as an inline closure (it binds the tile's key), so
+  // its identity changes every render. Read it through a ref: with it in the deps,
+  // every parent render tore down and re-attached the video listeners for nothing.
+  const onAspectRef = useRef(onAspect)
+  useEffect(() => {
+    onAspectRef.current = onAspect
+  })
   useEffect(() => {
     if (!wantsAspect || !hasVideo) return
     const root = tileRef.current
@@ -1815,7 +1840,7 @@ function Tile({
       if (video && video.videoWidth && video.videoHeight) {
         const ratio = video.videoWidth / video.videoHeight
         setVideoAspect(ratio)
-        onAspect?.(ratio)
+        onAspectRef.current?.(ratio)
       }
     }
     const attach = () => {
@@ -1835,7 +1860,7 @@ function Tile({
       video?.removeEventListener('resize', read)
       video?.removeEventListener('loadedmetadata', read)
     }
-  }, [onAspect, wantsAspect, hasVideo])
+  }, [wantsAspect, hasVideo])
 
   // Letterbox rather than crop when the two shapes are far apart — a laptop's
   // landscape camera in a phone's tall tile. Shares are always contained (a
