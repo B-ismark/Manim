@@ -23,13 +23,31 @@ export function uploadError(file: File): string | null {
 }
 
 const IMAGE_URL = /\.(gif|png|jpe?g|webp|avif)(\?.*)?$/i
-const TRUSTED_IMAGE_HOST = /(\.|\/\/)(tenor|giphy)\.com|media\.tenor/i
+/** The GIF picker's own CDNs — the only hosts an image may auto-load from. */
+const TRUSTED_IMAGE_HOSTS = ['giphy.com', 'tenor.com', 'tenor.co']
+
+/**
+ * Host check on the PARSED hostname. The old test was a regex over the whole URL,
+ * so `https://evil.example/?x=.giphy.com` and `https://giphy.com.evil.example/`
+ * both passed — and auto-loading is exactly what makes a URL a tracking pixel.
+ */
+function isTrustedImageHost(text: string): boolean {
+  let url: URL
+  try {
+    url = new URL(text.trim())
+  } catch {
+    return false
+  }
+  if (url.protocol !== 'https:') return false
+  const host = url.hostname.toLowerCase()
+  return TRUSTED_IMAGE_HOSTS.some((h) => host === h || host.endsWith(`.${h}`))
+}
 
 /** A bare URL that points at an image / GIF (so chat can render it inline). */
 export function looksLikeImageUrl(text: string): boolean {
   const t = text.trim()
   if (!/^https?:\/\/\S+$/.test(t) || /\s/.test(t)) return false
-  return IMAGE_URL.test(t) || TRUSTED_IMAGE_HOST.test(t)
+  return IMAGE_URL.test(t) || isTrustedImageHost(t)
 }
 
 /**
@@ -39,5 +57,5 @@ export function looksLikeImageUrl(text: string): boolean {
  * to harvest every recipient's IP/UA/online-timing on message receipt.
  */
 export function isAutoLoadImageUrl(text: string): boolean {
-  return TRUSTED_IMAGE_HOST.test(text.trim())
+  return isTrustedImageHost(text)
 }
