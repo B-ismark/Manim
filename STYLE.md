@@ -141,7 +141,7 @@ list here when you add one.
 | `Tooltip` | Hover/focus hint (Radix Tooltip). |
 | `Toggle` | On/off switch (Radix Switch). |
 | `Slider` | Range input (Radix Slider) — e.g. blur radius. |
-| `DropdownMenu` | Action menu (Radix DropdownMenu) — per-participant moderation, device pickers. Ships `DropdownItem`, `DropdownSeparator`, `DropdownLabel`. |
+| `DropdownMenu` | Action menu (Radix DropdownMenu) — per-participant moderation, device pickers. Ships `DropdownItem`, `DropdownSeparator`. |
 | `Tabs` | Segmented tab control (Radix Tabs) — combines Chat / People into one `SidePanel`. Ships `TabPanel`. |
 | `Avatar` | Participant identity fallback (initials over tinted bg). |
 | `Badge` | Small status/count chip. |

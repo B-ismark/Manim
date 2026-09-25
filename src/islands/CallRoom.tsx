@@ -4,7 +4,6 @@ import { RoomView } from '@/islands/RoomView'
 import { AnnouncerProvider } from '@/features/a11y/AnnouncerContext'
 import { roomOptions } from '@/lib/livekit'
 import { mediaErrorMessage } from '@/lib/mediaErrors'
-import { toast } from '@/store/useToastStore'
 
 /**
  * The whole in-call subtree (LiveKitRoom provider + RoomView). Split into its own
@@ -38,15 +37,15 @@ export default function CallRoom({
   const options = useMemo(() => roomOptions(lowBandwidth, e2ee), [lowBandwidth, e2ee])
   // LiveKitRoom reports a failed initial mic/camera publish through onError, the
   // same callback as a failed connect (lib/mediaErrors). Only the latter ends the
-  // join; a device that won't start leaves you in the call without it, told why.
+  // join; a device that won't start leaves you in the call without it. Saying why
+  // is useMediaDeviceWatch's job: LiveKit raises MediaDevicesError for the same
+  // failure first, so a toast here too would double it.
   // Held in a ref so the handler is stable — LiveKitRoom re-binds its room
   // listeners whenever this prop's identity changes.
   const onErrorRef = useRef(onError)
   onErrorRef.current = onError
   const handleError = useCallback((e: Error) => {
-    const device = mediaErrorMessage(e)
-    if (device) toast(device, 'warning')
-    else onErrorRef.current(e)
+    if (!mediaErrorMessage(e)) onErrorRef.current(e)
   }, [])
   return (
     <LiveKitRoom

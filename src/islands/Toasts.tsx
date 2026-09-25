@@ -43,8 +43,9 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
       // Capped so a centred toast clears a tile's corner controls on touch (x 16..60,
-      // see CLAUDE.md "A full-width TopStack child…") — it used to reach them, and
-      // the prejoin Back button, on a phone.
+      // see CLAUDE.md "A full-width TopStack child…"); it used to reach them. A long
+      // one still overlaps prejoin's Back label (x ~28..86) while it's up — moving
+      // toasts into TopStack is in docs/audit-backlog.md.
       className="mn-pop pointer-events-auto flex max-w-[calc(100%-6rem)] items-center gap-2.5 rounded-control bg-raised px-3.5 py-2 text-sm text-ink shadow-pop border border-line sm:max-w-md"
     >
       <span className={cn('size-2 shrink-0 rounded-full', dotTone[toast.tone])} aria-hidden />
@@ -72,7 +73,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
           type="button"
           onClick={onDismiss}
           aria-label="Dismiss"
-          className="-my-1 -mr-2 grid size-8 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&_svg]:size-4"
+          className="-my-2.5 -mr-3 grid size-11 shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&_svg]:size-4"
         >
           <CloseIcon />
         </button>

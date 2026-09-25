@@ -147,7 +147,9 @@ export function Stage() {
   const tracksKey = visibleTracks
     .map(
       (t) =>
-        `${t.participant.identity}|${t.source}|${t.publication?.trackSid ?? ''}|` +
+        // sid, not just identity: a rejoin under the same name#device is a NEW
+        // participant object, and a camera-off placeholder has no trackSid to differ.
+        `${t.participant.sid}|${t.participant.identity}|${t.source}|${t.publication?.trackSid ?? ''}|` +
         `${t.publication?.isMuted ? 1 : 0}${t.participant.isSpeaking ? 1 : 0}`,
     )
     .join(',')

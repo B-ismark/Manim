@@ -1288,7 +1288,7 @@ function PinnedRow({ pin, onJump, onUnpin }: { pin: PinnedMessage; onJump: () =>
             <PinIcon />
             Pinned · {pin.name}
           </p>
-          <p className="truncate text-xs text-ink">{pin.text}</p>
+          <p dir="auto" className="truncate text-xs text-ink">{pin.text}</p>
         </div>
       </button>
       <IconButton size="sm" tone="neutral" label="Unpin message" icon={<CloseIcon />} onClick={onUnpin} className="self-center" />

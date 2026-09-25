@@ -4,6 +4,7 @@ import { RoomEvent, Track, TrackEvent, type LocalAudioTrack, type LocalVideoTrac
 import { toast } from '@/store/useToastStore'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { addBreadcrumb, reportError } from '@/lib/report'
+import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { useScreenShare } from '@/features/calls/useScreenShare'
 import { recoverMicrophone } from '@/lib/audioRecovery'
 import { setMicFault } from '@/store/useAudioStore'
@@ -187,14 +188,21 @@ export function useMediaDeviceWatch() {
     return () => md.removeEventListener('devicechange', onChange)
   }, [])
 
-  // LiveKit's own device-acquisition errors (e.g. a re-acquire that fails because
-  // the device is gone). Surface + report rather than letting it disappear.
+  // LiveKit's own device-acquisition errors: a camera or mic that won't start,
+  // at join or on a later toggle, or a re-acquire that fails because the device
+  // is gone. This is the ONE place that tells the user — LiveKit also rethrows a
+  // failed join-time publish into LiveKitRoom's onError, and CallRoom leaves
+  // those to this event rather than toast twice. The wording says why (in use,
+  // missing, blocked) where the browser says so (lib/mediaErrors).
   useEffect(() => {
     if (!room) return
-    const onErr = (e: Error) => {
+    const onErr = (e: Error, kind?: MediaDeviceKind) => {
       reportError(e, { context: 'media-devices-error' })
-      announce('A camera or microphone problem interrupted your devices', 'assertive')
-      toast('A camera or microphone problem interrupted your devices', 'danger')
+      const what = kind === 'videoinput' ? 'camera' : kind === 'audioinput' ? 'microphone' : undefined
+      const known = mediaErrorMessage(e, what)
+      const text = known ?? 'A camera or microphone problem interrupted your devices'
+      announce(text, 'assertive')
+      toast(text, known ? 'warning' : 'danger')
     }
     room.on(RoomEvent.MediaDevicesError, onErr)
     return () => {

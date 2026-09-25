@@ -128,24 +128,46 @@ export interface FileItem {
 export type ChatItem = TextItem | FileItem
 
 /**
+ * Ask the room for something ONCE, `delay` ms after it first reaches Connected.
+ * These hooks mount while the room is still Connecting and `publish` drops
+ * anything sent before Connected, so a mount-time timer was lost on any connect
+ * slower than its delay. (It used to limp through only because the channel's
+ * `send` changed identity every render and kept re-arming it — see
+ * lib/useDataTopic.) Once, not on every reconnect: a resumed session still holds
+ * its state, and each ask makes every peer answer the whole room.
+ */
+function useAskOnceConnected(connection: ConnectionState, ask: () => void, delay: number): void {
+  const asked = useRef(false)
+  const askRef = useRef(ask)
+  askRef.current = ask
+  useEffect(() => {
+    if (asked.current || connection !== ConnectionState.Connected) return
+    const t = window.setTimeout(() => {
+      asked.current = true
+      askRef.current()
+    }, delay)
+    return () => window.clearTimeout(t)
+  }, [connection, delay])
+}
+
+/**
  * Unified chat timeline: text (LiveKit useChat) + P2P file transfers (byte streams),
  * merged and sorted by timestamp so files render as inline cards. No persistence,
  * no storage at rest — everything flows over the data channel (STYLE.md / Architecture).
  */
 export function useChatMessages() {
   const room = useRoomContext()
+  const connection = useConnectionState(room)
   const { localParticipant } = useLocalParticipant()
   const { chatMessages, send: sendChatText, isSending } = useChat()
   const [files, setFiles] = useState<FileItem[]>([])
 
   // Guarded data-channel publish. The chat hooks mount during the Connecting
   // phase (RoomView runs its hooks before the connected gate renders the call),
-  // so the join-time sync-request timers below can fire before the transport is
-  // up — and LiveKit's publishData throws ("Cannot read properties of undefined
-  // (reading 'next')") when the engine isn't ready. Gate every broadcast on the
-  // connected state and swallow any transient failure: the periodic sync-requests
-  // and live resends recover, so a dropped not-ready publish is harmless and must
-  // never surface as an unhandled error.
+  // and publishing before the transport is up throws. Gate every broadcast on the
+  // connected state and swallow any transient failure (mid-reconnect): it must
+  // never surface as an unhandled error. The join-time asks wait for Connected
+  // themselves (useAskOnceConnected), so this gate doesn't swallow them.
   const publish = useCallback(
     (
       send: (payload: Uint8Array, options: { reliable: boolean; topic: string }) => unknown,
@@ -313,10 +335,7 @@ export function useChatMessages() {
   const broadcastEdit = useCallback((data: object) => publish(sendEdit, EDIT_TOPIC, data), [publish, sendEdit])
   sendEditRef.current = broadcastEdit
 
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastEdit({ kind: 'sync-request' }), 800)
-    return () => window.clearTimeout(t)
-  }, [broadcastEdit])
+  useAskOnceConnected(connection, () => broadcastEdit({ kind: 'sync-request' }), 800)
 
   /** Author edits the body of their own text message (reply quote is preserved). */
   const editMessage = useCallback(
@@ -412,18 +431,8 @@ export function useChatMessages() {
   )
   sendHistoryRef.current = broadcastHistory
 
-  // Request a replay shortly after we're CONNECTED (let the data channel settle
-  // first). Keyed on the connection state, not on mount: this hook mounts while
-  // the room is still Connecting, `publish` drops anything sent before Connected,
-  // and a mount-time timer fired once into that gap — so a late joiner on a slow
-  // connect never asked, and silently saw no history. A reconnect asks again;
-  // replies are deduped by id.
-  const connection = useConnectionState(room)
-  useEffect(() => {
-    if (connection !== ConnectionState.Connected) return
-    const t = window.setTimeout(() => broadcastHistory({ kind: 'request' }), 900)
-    return () => window.clearTimeout(t)
-  }, [connection, broadcastHistory])
+  // Request a replay once we're connected (the data channel settles first).
+  useAskOnceConnected(connection, () => broadcastHistory({ kind: 'request' }), 900)
 
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
@@ -437,12 +446,16 @@ export function useChatMessages() {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
-        | (PinnedMessage & { kind?: 'pin'; pinned: boolean })
+        | (PinnedMessage & { kind?: 'pin'; pinned: boolean; replay?: boolean })
       // A late joiner asked for the current pins — replay mine so they catch up.
+      // Replayed pins are earlier messages too, so the host's Chat history setting
+      // covers them on both sides, like the history replay itself.
       if ('kind' in d && d.kind === 'sync-request') {
-        for (const p of pinnedRef.current) sendPinRef.current?.({ kind: 'pin', ...p, pinned: true })
+        if (!historyOnRef.current) return
+        for (const p of pinnedRef.current) sendPinRef.current?.({ kind: 'pin', ...p, pinned: true, replay: true })
         return
       }
+      if ('replay' in d && d.replay && !historyOnRef.current) return
       setPinned((prev) => {
         if (!d.pinned) return prev.filter((p) => p.id !== d.id)
         if (prev.some((p) => p.id === d.id)) return prev
@@ -459,10 +472,7 @@ export function useChatMessages() {
   // On entry, ask peers to replay their pins so the pinned bar isn't empty for
   // someone who joined after the pins were set. (Small delay lets the data
   // channel settle after connect.)
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastPin({ kind: 'sync-request' }), 800)
-    return () => window.clearTimeout(t)
-  }, [broadcastPin])
+  useAskOnceConnected(connection, () => broadcastPin({ kind: 'sync-request' }), 800)
 
   const togglePin = useCallback(
     (item: ChatItem) => {
@@ -561,10 +571,7 @@ export function useChatMessages() {
   sendReactionRef.current = broadcastReaction
 
   // Ask peers to replay their reactions on entry (same late-join handshake as pins).
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastReaction({ kind: 'sync-request' }), 800)
-    return () => window.clearTimeout(t)
-  }, [broadcastReaction])
+  useAskOnceConnected(connection, () => broadcastReaction({ kind: 'sync-request' }), 800)
 
   const toggleReaction = useCallback(
     (messageId: string, emoji: string) => {
