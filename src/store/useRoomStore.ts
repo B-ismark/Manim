@@ -115,7 +115,6 @@ interface RoomState {
   toggleOwnShareShown: (currentlyShown: boolean) => void
   setPanel: (panel: PanelTab) => void
   bumpUnread: (by?: number) => void
-  clearUnread: () => void
   setSelfFacing: (facing: 'user' | 'environment') => void
 }
 
@@ -214,5 +213,4 @@ export const useRoomStore = create<RoomState>((set) => ({
   toggleOwnShareShown: (currentlyShown) => set({ showOwnShareOverride: !currentlyShown }),
   setPanel: (panel) => set((s) => ({ panel, unread: panel === 'chat' ? 0 : s.unread })),
   bumpUnread: (by = 1) => set((s) => ({ unread: s.unread + by })),
-  clearUnread: () => set({ unread: 0 }),
 }))

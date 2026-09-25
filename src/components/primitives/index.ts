@@ -14,7 +14,6 @@ export {
   DropdownMenu,
   DropdownItem,
   DropdownSeparator,
-  DropdownLabel,
   type DropdownMenuProps,
   type DropdownItemProps,
 } from './DropdownMenu'

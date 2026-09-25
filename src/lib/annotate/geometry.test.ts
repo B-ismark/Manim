@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { contentRect, toUnit, fromUnit, insideContent } from './geometry'
+import { contentRect, toUnit, fromUnit } from './geometry'
 
 describe('contentRect (object-contain letterbox math)', () => {
   it('matching aspect fills the box exactly — no bars', () => {
@@ -106,22 +106,5 @@ describe('toUnit / fromUnit round-trip', () => {
 
   it('a zero content box degrades to origin instead of dividing by zero', () => {
     expect(toUnit({ x: 10, y: 10 }, { x: 0, y: 0, w: 0, h: 0 })).toEqual({ x: 0, y: 0 })
-  })
-})
-
-describe('insideContent', () => {
-  const rect = contentRect(900, 900, 16 / 9) // letterboxed: bars above/below
-
-  it('true inside the painted video', () => {
-    expect(insideContent({ x: 450, y: 450 }, rect)).toBe(true)
-  })
-
-  it('false in the letterbox bars', () => {
-    expect(insideContent({ x: 450, y: 5 }, rect)).toBe(false)
-    expect(insideContent({ x: 450, y: 895 }, rect)).toBe(false)
-  })
-
-  it('false for a zero rect', () => {
-    expect(insideContent({ x: 0, y: 0 }, { x: 0, y: 0, w: 0, h: 0 })).toBe(false)
   })
 })

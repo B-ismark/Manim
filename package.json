@@ -25,7 +25,6 @@
   },
   "dependencies": {
     "@livekit/components-react": "^2.9.9",
-    "@livekit/components-styles": "^1.1.6",
     "@livekit/krisp-noise-filter": "^0.3.4",
     "@livekit/track-processors": "^0.6.0",
     "@radix-ui/react-dialog": "^1.1.6",
@@ -53,7 +52,6 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
-    "axe-core": "^4.12.1",
     "concurrently": "^9.1.2",
     "cors": "^2.8.5",
     "cross-env": "^10.1.0",
