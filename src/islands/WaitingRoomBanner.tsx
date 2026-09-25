@@ -20,14 +20,30 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
     }
     let stop = false
     async function poll() {
+      // A background tab can't admit anyone, so don't spend a request every 3s on
+      // it; the visibilitychange below catches up the moment the host looks back.
+      if (document.hidden) return
       const list = await listPending(room.name, token!)
-      if (!stop) setPending(list)
+      if (stop) return
+      // The poll almost always returns the queue it returned last time. A fresh
+      // array would re-render the banner (and its avatars) every 3s for nothing,
+      // so keep the previous one unless who's waiting actually changed.
+      setPending((prev) =>
+        prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.name === list[i].name)
+          ? prev
+          : list,
+      )
+    }
+    const onVisible = () => {
+      if (!document.hidden) void poll()
     }
     void poll()
     const id = window.setInterval(poll, 3000)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       stop = true
       window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [active, room.name, token])
 

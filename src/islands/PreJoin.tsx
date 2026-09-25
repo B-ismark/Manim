@@ -458,11 +458,18 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
         analyser.fftSize = 256
         ctx.createMediaStreamSource(s).connect(analyser)
         const data = new Uint8Array(analyser.frequencyBinCount)
-        const tick = () => {
-          analyser.getByteTimeDomainData(data)
-          let peak = 0
-          for (const v of data) peak = Math.max(peak, Math.abs(v - 128))
-          setLevel(Math.min(1, peak / 64))
+        // Keep the frame loop but read + commit the level at ~20Hz: a setLevel per frame
+        // re-rendered this component 60-120 times a second for a bar whose own
+        // 75ms width transition smooths anything faster than that anyway.
+        let lastCommit = 0
+        const tick = (now: number = performance.now()) => {
+          if (now - lastCommit >= 50) {
+            lastCommit = now
+            analyser.getByteTimeDomainData(data)
+            let peak = 0
+            for (const v of data) peak = Math.max(peak, Math.abs(v - 128))
+            setLevel(Math.min(1, peak / 64))
+          }
           raf = requestAnimationFrame(tick)
         }
         tick()
