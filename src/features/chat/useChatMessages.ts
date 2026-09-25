@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@livekit/components-react'
+import {
+  useChat,
+  useConnectionState,
+  useLocalParticipant,
+  useRoomContext,
+} from '@livekit/components-react'
+import { useDataTopic } from '@/lib/useDataTopic'
 import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
@@ -279,7 +285,7 @@ export function useChatMessages() {
   }, [chatMessages, files, myIdentity, edits, history])
 
   const sendEditRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendEdit } = useDataChannel(EDIT_TOPIC, (msg) => {
+  const { send: sendEdit } = useDataTopic(EDIT_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
@@ -345,7 +351,7 @@ export function useChatMessages() {
   const historyOn = useChatHistoryOn()
   const historyOnRef = useRef(historyOn)
   historyOnRef.current = historyOn
-  const { send: sendHistory } = useDataChannel(HISTORY_TOPIC, (msg) => {
+  const { send: sendHistory } = useDataTopic(HISTORY_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'request' }
@@ -406,11 +412,18 @@ export function useChatMessages() {
   )
   sendHistoryRef.current = broadcastHistory
 
-  // Request a replay shortly after join (let the data channel settle first).
+  // Request a replay shortly after we're CONNECTED (let the data channel settle
+  // first). Keyed on the connection state, not on mount: this hook mounts while
+  // the room is still Connecting, `publish` drops anything sent before Connected,
+  // and a mount-time timer fired once into that gap — so a late joiner on a slow
+  // connect never asked, and silently saw no history. A reconnect asks again;
+  // replies are deduped by id.
+  const connection = useConnectionState(room)
   useEffect(() => {
+    if (connection !== ConnectionState.Connected) return
     const t = window.setTimeout(() => broadcastHistory({ kind: 'request' }), 900)
     return () => window.clearTimeout(t)
-  }, [broadcastHistory])
+  }, [connection, broadcastHistory])
 
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
@@ -420,7 +433,7 @@ export function useChatMessages() {
   pinnedRef.current = pinned
 
   const sendPinRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendPin } = useDataChannel(PIN_TOPIC, (msg) => {
+  const { send: sendPin } = useDataTopic(PIN_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
@@ -504,7 +517,7 @@ export function useChatMessages() {
   }
 
   const sendReactionRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendReactionMsg } = useDataChannel(REACTION_TOPIC, (msg) => {
+  const { send: sendReactionMsg } = useDataTopic(REACTION_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
@@ -576,7 +589,7 @@ export function useChatMessages() {
   const [typing, setTyping] = useState<Record<string, string>>({})
   const typingAtRef = useRef<Record<string, number>>({})
 
-  const { send: sendTypingMsg } = useDataChannel(TYPING_TOPIC, (msg) => {
+  const { send: sendTypingMsg } = useDataTopic(TYPING_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as {
         identity: string

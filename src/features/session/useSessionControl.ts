@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  useDataChannel,
   useLocalParticipant,
   useParticipants,
   useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
+import { useDataTopic } from '@/lib/useDataTopic'
 import { useAppStore } from '@/store/useAppStore'
 import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
@@ -144,7 +144,7 @@ export function useSessionControl(onLeave: () => void) {
     onLeave()
   }, [room, onLeave])
 
-  const { send } = useDataChannel(CONTROL_TOPIC, (msg) => {
+  const { send } = useDataTopic(CONTROL_TOPIC, (msg) => {
     let data: ControlMessage
     try {
       data = JSON.parse(new TextDecoder().decode(msg.payload))
