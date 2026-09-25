@@ -46,17 +46,18 @@ export function useSessionControl(onLeave: () => void) {
   // Authority comes from ROOM metadata (server-written), never participant
   // metadata — participants can rewrite their own metadata (canUpdateOwnMetadata,
   // needed for raise-hand) and would otherwise self-promote to host.
-  const { hostId, locked, waiting, coHosts } = useMemo(() => {
+  const { hostId, locked, waiting, chatHistory, coHosts } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
       return {
         hostId: f.hostId || '',
         locked: Boolean(f.locked),
         waiting: Boolean(f.waiting),
+        chatHistory: f.chatHistory !== false,
         coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
       }
     } catch {
-      return { hostId: '', locked: false, waiting: false, coHosts: [] as string[] }
+      return { hostId: '', locked: false, waiting: false, chatHistory: true, coHosts: [] as string[] }
     }
   }, [roomMetadata])
 
@@ -254,6 +255,23 @@ export function useSessionControl(onLeave: () => void) {
     }
   }, [room.name, roomToken, waiting])
 
+  /** Host: whether people who join later see earlier chat (default on). */
+  const toggleChatHistory = useCallback(async () => {
+    if (!roomToken) return
+    try {
+      await setRoomFlags({ room: room.name, token: roomToken, chatHistory: !chatHistory })
+      toast(
+        chatHistory
+          ? 'People who join from now on won’t see earlier messages'
+          : 'People who join later will see earlier messages',
+        'neutral',
+      )
+    } catch (e) {
+      reportError(e, { context: 'toggle-chat-history' })
+      toast('Couldn’t change chat history — try again', 'danger')
+    }
+  }, [room.name, roomToken, chatHistory])
+
   return {
     isHost,
     isPrimaryHost,
@@ -261,6 +279,8 @@ export function useSessionControl(onLeave: () => void) {
     setCoHost,
     locked,
     waiting,
+    chatHistory,
+    toggleChatHistory,
     doLeave,
     endForEveryone,
     mergeInto,

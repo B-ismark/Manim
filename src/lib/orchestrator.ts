@@ -148,6 +148,8 @@ export interface RoomFlagsRequest {
   waiting?: boolean
   /** Restrict drawing on a shared screen to hosts/co-hosts. Default (false) = everyone. */
   annotateHostOnly?: boolean
+  /** Show earlier chat to people who join later. Absent (default) = on. */
+  chatHistory?: boolean
   /** Co-host identities. Only the primary host may change this (server-enforced). */
   coHosts?: string[]
 }

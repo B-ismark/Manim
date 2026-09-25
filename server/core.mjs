@@ -10,6 +10,7 @@
 import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
+import { withoutE2eeKey } from './invite.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -778,7 +779,7 @@ export async function handleModerate(env, body, token) {
 
 export async function handleRoomflags(env, body, token) {
   const { roomService } = services(env)
-  const { room, locked, waiting, annotateHostOnly, coHosts } = body ?? {}
+  const { room, locked, waiting, annotateHostOnly, chatHistory, coHosts } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const identity = await verifyCaller(env, token, room)
   if (!identity) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
@@ -794,6 +795,9 @@ export async function handleRoomflags(env, body, token) {
   // it's a moderation control over the shared screen, not a change to who holds
   // authority. Absent/false means everyone in the room may draw.
   if (typeof annotateHostOnly === 'boolean') patch.annotateHostOnly = annotateHostOnly
+  // Whether people who join later are shown earlier chat. Absent = on (the
+  // behaviour rooms always had); enforced by the peers that replay it.
+  if (typeof chatHistory === 'boolean') patch.chatHistory = chatHistory
   if (coHosts !== undefined) {
     // Only the primary host may change the co-host roster — otherwise a co-host
     // could demote the host or promote allies.
@@ -854,7 +858,13 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
   // The sender is who the signed token says, not a free-text field.
   const who = escapeHtml(String(caller).split('#')[0].slice(0, 64) || 'Someone')
   const safeRoom = room ? escapeHtml(room) : ''
-  const href = escapeHtml(url.href)
+  // Never mail the encryption key (server/invite.mjs). The join secret stays, so
+  // the link still opens the room.
+  const { url: mailed, hadKey } = withoutE2eeKey(url.href)
+  const href = escapeHtml(mailed.href)
+  const encryptedNote = hadKey
+    ? `<p>This call is end-to-end encrypted, so its encryption key isn't in this email. Ask ${who} to send you the full link to join with encryption.</p>`
+    : ''
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
@@ -863,7 +873,7 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
       to: [String(to)],
       subject: `${who} invited you to a Manim call`,
       html: `<p>${who} invited you to join a Manim call${safeRoom ? ` (room <b>${safeRoom}</b>)` : ''}.</p>
-             <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>`,
+             <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>${encryptedNote}`,
     }),
   })
   if (!r.ok) return { status: 502, body: { error: 'email send failed' } }

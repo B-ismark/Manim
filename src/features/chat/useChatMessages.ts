@@ -6,6 +6,7 @@ import { plainText } from '@/features/chat/mentions'
 import { sounds } from '@/lib/sounds'
 import { displayNameOf } from '@/lib/participantName'
 import { toast } from '@/store/useToastStore'
+import { useChatHistoryOn } from '@/features/chat/chatHistory'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
@@ -339,11 +340,17 @@ export function useChatMessages() {
     edited?: boolean
   }
   const sendHistoryRef = useRef<((data: object) => void) | null>(null)
+  // The host's "chat history" setting (features/chat/chatHistory), read at call
+  // time: off means we neither answer a replay request nor accept a replay.
+  const historyOn = useChatHistoryOn()
+  const historyOnRef = useRef(historyOn)
+  historyOnRef.current = historyOn
   const { send: sendHistory } = useDataChannel(HISTORY_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'request' }
         | { kind: 'history'; items: HistoryWireItem[] }
+      if (!historyOnRef.current) return
       if (d.kind === 'request') {
         if (replayRef.current.length === 0) return
         const items: HistoryWireItem[] = replayRef.current.map((it) => ({

@@ -361,6 +361,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     isHost,
     locked,
     waiting,
+    chatHistory,
+    toggleChatHistory,
     doLeave,
     endForEveryone,
     mergeInto,
@@ -527,6 +529,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         onToggleLock={toggleLock}
         waiting={waiting}
         onToggleWaiting={toggleWaiting}
+        chatHistory={chatHistory}
+        onToggleChatHistory={toggleChatHistory}
         sendReaction={sendReaction}
         handRaised={handRaised}
         toggleHand={toggleHand}

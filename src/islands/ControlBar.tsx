@@ -89,6 +89,9 @@ export interface ControlBarProps {
   /** Waiting-room state + host toggle. */
   waiting: boolean
   onToggleWaiting: () => void
+  /** Host: show earlier chat to people who join later (room flag, default on). */
+  chatHistory: boolean
+  onToggleChatHistory: () => void
   sendReaction: (emoji: string) => void
   handRaised: boolean
   toggleHand: () => void
@@ -122,6 +125,8 @@ export function ControlBar({
   onToggleLock,
   waiting,
   onToggleWaiting,
+  chatHistory,
+  onToggleChatHistory,
   sendReaction,
   handRaised,
   toggleHand,
@@ -427,6 +432,14 @@ export function ControlBar({
             label="Waiting room"
             active={waiting}
             onClick={onToggleWaiting}
+          />
+        )}
+        {isHost && (
+          <GridTile
+            icon={<ChatIcon />}
+            label="Chat history"
+            active={chatHistory}
+            onClick={onToggleChatHistory}
           />
         )}
       </div>

@@ -32,6 +32,7 @@ import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, isAutoLoadImageUrl,
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { renderRichText } from '@/lib/formatText'
+import { useChatHistoryOn } from '@/features/chat/chatHistory'
 import { displayNameOf } from '@/lib/participantName'
 import { cn } from '@/lib/cn'
 
@@ -659,6 +660,7 @@ const MessageList = memo(function MessageList({
         <div>
           <p className="text-sm font-medium">No messages yet</p>
           <p className="mt-1 text-xs text-ink-muted">Say hi or share a file.</p>
+          <HistoryNote className="mt-3" />
         </div>
       </div>
     )
@@ -666,6 +668,7 @@ const MessageList = memo(function MessageList({
   const isPinned = (id: string) => pinned.some((p) => p.id === id)
   return (
     <>
+      <HistoryNote className="pb-2 text-center" />
       {items.map((item, i) => (
         <MessageRow
           key={item.id}
@@ -688,6 +691,20 @@ const MessageList = memo(function MessageList({
     </>
   )
 })
+
+/**
+ * Who else will read this: chat is replayed to people who join later unless the
+ * host turned that off (features/chat/chatHistory). Said once, quietly, at the top
+ * of the conversation, because nobody expected it and it was never disclosed.
+ */
+function HistoryNote({ className }: { className?: string }) {
+  const on = useChatHistoryOn()
+  return (
+    <p className={cn('text-xs text-ink-subtle', className)}>
+      {on ? 'People who join later can see earlier messages.' : 'People who join later won’t see earlier messages.'}
+    </p>
+  )
+}
 
 function MessageRow({
   item,
