@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
+import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
@@ -43,6 +44,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // 4:3 — the most common webcam mode, and a middle ground that barely moves when
   // the true ratio lands, instead of the 16:9→4:3 lurch a landscape default gives.
   const [previewAspect, setPreviewAspect] = useState(4 / 3)
+  // Mirror like a selfie only when the camera faces you. A rear or external
+  // camera mirrored shows the world (and any text in it) backwards — the stage
+  // tile already follows this rule via `selfFacing`; the preview didn't.
+  const [previewFacesUser, setPreviewFacesUser] = useState(true)
   // 'prompt' → we can prime; 'denied' → guide to OS settings; 'granted'/unknown → nothing.
   const [permission, setPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>(
     'unknown',
@@ -141,6 +146,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         // for browsers that report nothing here (and for a mid-preview change).
         const s = stream.getVideoTracks()[0]?.getSettings()
         if (s?.width && s?.height) setPreviewAspect(clampAspect(s.width / s.height))
+        setPreviewFacesUser(s?.facingMode !== 'environment')
         // A successful preview means access is already granted — never show the
         // priming card (esp. on browsers without the Permissions API).
         setPermission('granted')
@@ -274,7 +280,14 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
                 playsInline
                 // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
                 // the frame is shown whole rather than trimmed to fit.
-                className="size-full object-contain [transform:scaleX(-1)]"
+                // Not a media player: no PiP / cast buttons on a live preview
+                // (lib/mediaGuards covers the context menu for every feed).
+                disablePictureInPicture
+                disableRemotePlayback
+                className={cn(
+                  'size-full object-contain',
+                  previewFacesUser && '[transform:scaleX(-1)]',
+                )}
               />
             ) : (
               <div className="grid size-full place-items-center px-4 text-center text-sm text-ink-subtle">

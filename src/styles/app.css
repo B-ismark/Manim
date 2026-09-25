@@ -170,6 +170,19 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Live feeds are not media players. lib/mediaGuards blocks the context menu
+     ("Show controls", Loop, PiP); this hides native controls however they get
+     switched on, and stops a feed being dragged out or long-press-saved. */
+  video {
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  video::-webkit-media-controls,
+  video::-webkit-media-controls-enclosure {
+    display: none !important;
+  }
+
   /* Subtle, theme-aware scrollbars — thin, rounded, low-contrast, fading into
      the surface instead of the chunky default. */
   * {
