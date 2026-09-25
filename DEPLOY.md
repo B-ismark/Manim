@@ -141,6 +141,45 @@ revoke all on function lookup_profile_id(text) from public;
 grant execute on function lookup_profile_id(text) to authenticated;
 ```
 
+#### 3.1 Rate-limit the email lookup (run once — added 2026-09)
+`lookup_profile_id` answers "does this email have a Manim account?" for any
+signed-in caller, so without a limit it can check a whole list of addresses. This
+replaces it with the same lookup, throttled to **30 lookups per 10 minutes per
+account**. A throttled call raises `rate_limited`, which the app shows as "Too many
+lookups — try again in a few minutes." Safe to re-run.
+
+```sql
+create table if not exists lookup_attempts (
+  user_id uuid not null,
+  ts timestamptz not null default now()
+);
+create index if not exists lookup_attempts_user_ts on lookup_attempts (user_id, ts);
+alter table lookup_attempts enable row level security; -- no policies: only the function touches it
+
+create or replace function lookup_profile_id(lookup_email text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  recent int;
+begin
+  if uid is null then return null; end if;
+  delete from lookup_attempts where user_id = uid and ts < now() - interval '10 minutes';
+  select count(*) into recent from lookup_attempts where user_id = uid;
+  if recent >= 30 then
+    raise exception 'rate_limited' using errcode = 'P0001';
+  end if;
+  insert into lookup_attempts (user_id) values (uid);
+  return (select id from profiles where email = lower(lookup_email) limit 1);
+end;
+$$;
+revoke all on function lookup_profile_id(text) from public;
+grant execute on function lookup_profile_id(text) to authenticated;
+```
+
 ### 3a. Avatars (profile photos)
 Profile photos are uploaded to a **public Storage bucket** (downscaled to a small
 square webp client-side first, so objects stay a few KB), and the resulting public

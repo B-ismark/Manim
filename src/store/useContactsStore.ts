@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase'
+import { lookupError } from '@/lib/lookupError'
 import { useAuthStore } from '@/store/useAuthStore'
 
 /**
@@ -91,7 +92,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     if (!clean) return 'Enter an email.'
 
     const { data: id, error: lookupErr } = await sb.rpc('lookup_profile_id', { lookup_email: clean })
-    if (lookupErr) return 'Could not look up that user.'
+    if (lookupErr) return lookupError(lookupErr)
     if (!id) return 'No Manim account with that email.'
     const otherId = id as string
 
