@@ -40,6 +40,7 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
 import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
+import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
 import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
@@ -1108,7 +1109,7 @@ function RosterStrip({
 
 /** Display name for a tile's participant (strips the `#deviceId` identity suffix). */
 function tileName(t: TrackReferenceOrPlaceholder): string {
-  return t.participant.name || t.participant.identity.split('#')[0]
+  return displayNameOf(t.participant.identity, t.participant.name, '')
 }
 
 /**
@@ -1718,7 +1719,7 @@ function Tile({
   actions?: ReactNode
 }) {
   const p = trackRef.participant
-  const name = p.name || p.identity.split('#')[0]
+  const name = displayNameOf(p.identity, p.name, '')
   const { localParticipant } = useLocalParticipant()
   const room = useRoomContext()
   const { metadata: roomMetadata } = useRoomInfo()

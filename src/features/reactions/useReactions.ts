@@ -6,6 +6,7 @@ import {
 } from '@livekit/components-react'
 import type { Participant } from 'livekit-client'
 import { sounds } from '@/lib/sounds'
+import { displayNameOf } from '@/lib/participantName'
 
 /** Ephemeral reaction broadcast topic. */
 const REACTION_TOPIC = 'mn.reaction'
@@ -25,10 +26,6 @@ export interface FloatingReaction {
 
 const LANES = 7
 const LANE_SPACING = 46
-
-function displayName(identity: string, name?: string): string {
-  return name || identity.split('#')[0] || 'Guest'
-}
 
 const REACTION_TTL = 4000
 
@@ -62,7 +59,7 @@ export function useReactions() {
       const data = JSON.parse(new TextDecoder().decode(msg.payload)) as { emoji?: string }
       if (!data.emoji) return
       const from = msg.from
-      push(data.emoji, displayName(from?.identity ?? '', from?.name))
+      push(data.emoji, displayNameOf(from?.identity ?? '', from?.name))
       sounds.reaction()
     } catch {
       /* malformed payload — ignore */
@@ -71,7 +68,7 @@ export function useReactions() {
 
   const sendReaction = useCallback(
     async (emoji: string) => {
-      push(emoji, displayName(localParticipant.identity, localParticipant.name))
+      push(emoji, displayNameOf(localParticipant.identity, localParticipant.name))
       const payload = new TextEncoder().encode(JSON.stringify({ emoji }))
       try {
         await send(payload, { reliable: false, topic: REACTION_TOPIC })

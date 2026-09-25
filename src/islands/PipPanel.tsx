@@ -16,6 +16,7 @@ import {
   ScreenShareIcon,
 } from '@/components/icons'
 import { hasVideo, isLocalCam, stageFocus } from '@/lib/focusTrack'
+import { displayNameOf } from '@/lib/participantName'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useScreenShare } from '@/features/calls/useScreenShare'
@@ -58,7 +59,7 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
   // "who is in focus" from their own copy of the rule is how they drift apart.
   const focus = stageFocus(tracks, pinned, selfViewHidden)
   const p = focus?.participant
-  const name = p ? p.name || p.identity.split('#')[0] : ''
+  const name = p ? displayNameOf(p.identity, p.name, '') : ''
   const selfFacing = useRoomStore((s) => s.selfFacing)
   // Mirror the front self camera only (rear camera mirrored = flipped world).
   const mirror = focus ? isLocalCam(focus) && selfFacing === 'user' : false

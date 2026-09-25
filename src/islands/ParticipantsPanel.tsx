@@ -52,12 +52,13 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
 import { countSettled } from '@/lib/settle'
+import { displayNameOf } from '@/lib/participantName'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
 
 function displayName(p: Participant): string {
-  return p.name || p.identity.split('#')[0] || 'Guest'
+  return displayNameOf(p.identity, p.name)
 }
 
 /** Roster with live state (speaking / mic / hand / connection) and per-row actions. */

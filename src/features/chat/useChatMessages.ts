@@ -4,6 +4,7 @@ import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
 import { sounds } from '@/lib/sounds'
+import { displayNameOf } from '@/lib/participantName'
 import { toast } from '@/store/useToastStore'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
@@ -119,10 +120,6 @@ export interface FileItem {
 
 export type ChatItem = TextItem | FileItem
 
-function displayName(identity: string, name?: string): string {
-  return name || identity.split('#')[0] || 'Guest'
-}
-
 /**
  * Unified chat timeline: text (LiveKit useChat) + P2P file transfers (byte streams),
  * merged and sorted by timestamp so files render as inline cards. No persistence,
@@ -176,7 +173,7 @@ export function useChatMessages() {
         id,
         timestamp: info.timestamp,
         fromIdentity: identity,
-        fromName: displayName(identity, sender?.name),
+        fromName: displayNameOf(identity, sender?.name),
         isLocal: false,
         fileName: info.name,
         mimeType: info.mimeType,
@@ -215,7 +212,7 @@ export function useChatMessages() {
   // Own display name, hoisted above the reaction/typing broadcasts that both send
   // it. `myNameRef` is what the data-channel handlers read — they're registered
   // once, so a closure over the value would replay a stale name after a rename.
-  const myName = displayName(localParticipant.identity, localParticipant.name)
+  const myName = displayNameOf(localParticipant.identity, localParticipant.name)
   const myNameRef = useRef(myName)
   myNameRef.current = myName
 
@@ -253,7 +250,7 @@ export function useChatMessages() {
         id,
         timestamp: m.timestamp,
         fromIdentity: m.from?.identity ?? '',
-        fromName: displayName(m.from?.identity ?? '', m.from?.name),
+        fromName: displayNameOf(m.from?.identity ?? '', m.from?.name),
         isLocal: m.from?.identity === myIdentity,
         text: edited ?? decoded.text,
         replyTo: decoded.replyTo,
@@ -482,7 +479,7 @@ export function useChatMessages() {
   const [reactorNames, setReactorNames] = useState<ReactorNames>({})
   const rememberReactor = useCallback((identity: string, name?: string) => {
     if (!identity) return
-    const resolved = displayName(identity, name)
+    const resolved = displayNameOf(identity, name)
     setReactorNames((prev) => (prev[identity] === resolved ? prev : { ...prev, [identity]: resolved }))
   }, [])
 
@@ -707,7 +704,7 @@ export function useChatMessages() {
           id: localId,
           timestamp: Date.now(),
           fromIdentity: localParticipant.identity,
-          fromName: displayName(localParticipant.identity, localParticipant.name),
+          fromName: displayNameOf(localParticipant.identity, localParticipant.name),
           isLocal: true,
           fileName: file.name,
           mimeType,
