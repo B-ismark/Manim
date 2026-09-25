@@ -77,12 +77,24 @@ export interface KnockStatus {
   seat?: string
 }
 
-/** Poll the host's decision on a queued knock. `claim` came back with the knock. */
-export async function knockStatus(room: string, requestId: string, claim: string): Promise<KnockStatus> {
+/**
+ * Poll the host's decision on a queued knock. `claim` came back with the knock.
+ * Resolves `null` for a poll that simply didn't get through (offline, a 5xx, a
+ * dropped connection) — the caller keeps waiting. Only the server saying so ends
+ * the wait: mapping every failed fetch to `expired` turned one network blip into
+ * "your request timed out" for a guest the host was about to let in.
+ */
+export async function knockStatus(room: string, requestId: string, claim: string): Promise<KnockStatus | null> {
   const q = new URLSearchParams({ room, requestId, claim })
-  const res = await fetch(`/api/knock-status?${q}`)
+  let res: Response
+  try {
+    res = await fetch(`/api/knock-status?${q}`)
+  } catch {
+    return null
+  }
+  if (res.status >= 500) return null
   if (!res.ok) return { status: 'expired' }
-  return (await res.json()) as KnockStatus
+  return (await res.json().catch(() => null)) as KnockStatus | null
 }
 
 export interface PendingKnocker {

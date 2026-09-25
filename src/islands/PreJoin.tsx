@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
@@ -21,7 +22,8 @@ const clampAspect = (r: number) =>
 
 export interface PreJoinProps {
   room: string
-  onJoin: () => void
+  /** Resolves once the attempt settles (see `join`). */
+  onJoin: () => void | Promise<void>
   /** True when the invite link carries an E2EE key (#e) — the call is encrypted. */
   encrypted?: boolean
 }
@@ -49,6 +51,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // camera mirrored shows the world (and any text in it) backwards — the stage
   // tile already follows this rule via `selfFacing`; the preview didn't.
   const [previewFacesUser, setPreviewFacesUser] = useState(true)
+  // Bumped to re-acquire the preview after a join that didn't leave this screen.
+  const [previewNonce, setPreviewNonce] = useState(0)
   // 'prompt' → we can prime; 'denied' → guide to OS settings; 'granted'/unknown → nothing.
   const [permission, setPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>(
     'unknown',
@@ -151,8 +155,15 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         // A successful preview means access is already granted — never show the
         // priming card (esp. on browsers without the Permissions API).
         setPermission('granted')
-      } catch {
-        setError('Camera permission denied or unavailable.')
+      } catch (e) {
+        if (cancelled) return
+        setError(mediaErrorMessage(e, 'camera') ?? "Couldn't start your camera.")
+        // A camera that can't start now won't start at connect either, and with the
+        // toggle left on the call would try (and warn) again. Switch it off so Join
+        // means "join without video"; the toggle is right there to retry. Blocked
+        // access is the exception: that's the priming/permission flow's job.
+        const name = (e as { name?: string } | null)?.name
+        if (name !== 'NotAllowedError' && name !== 'SecurityError') setPrejoin({ cameraEnabled: false })
       }
     }
 
@@ -166,7 +177,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       cancelled = true
       stop()
     }
-  }, [cameraOn, holdPreview])
+  }, [cameraOn, holdPreview, previewNonce])
 
   // Backstop for the aspect read in `start()`: a browser whose getSettings()
   // reports nothing useful, and a camera that renegotiates mid-preview. Bound
@@ -212,10 +223,25 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // (preview still live while the call grabs it) is what flickered/blacked the
   // first in-call frame. The unmount cleanup also stops it, but releasing here
   // gives the OS a head start.
-  const join = () => {
+  //
+  // If the attempt settles and we're STILL here (the join failed and dropped back
+  // to this screen without a remount), turn the preview back on — otherwise the
+  // error card sat over a black box, which reads as "your camera broke".
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const join = async () => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
-    onJoin()
+    try {
+      await onJoin()
+    } finally {
+      if (mounted.current) setPreviewNonce((n) => n + 1)
+    }
   }
 
   return (
@@ -356,7 +382,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
             maxLength={MAX_NAME_LEN}
             aria-label="Your name"
             autoComplete="name"
-            className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-base outline-none sm:text-sm placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
 
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>

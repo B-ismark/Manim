@@ -280,7 +280,7 @@ export function RoomRoute() {
     let stop = false
     const id = window.setInterval(async () => {
       const s = await knockStatus(room, waitingId, waitClaim.current)
-      if (stop) return
+      if (stop || !s) return
       if (s.status === 'approved' && s.token) {
         rememberSeat(room, s.identity, s.seat)
         // If they backgrounded the app while waiting, ping them to come back.
