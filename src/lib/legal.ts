@@ -17,7 +17,7 @@ export const APP_NAME = 'Manim'
 export const CONTACT_EMAIL = 'privacy@manim.app'
 
 /** Shown on the policy/terms pages so users know how current the text is. */
-export const LAST_UPDATED = '19 June 2026'
+export const LAST_UPDATED = '25 September 2026'
 
 /** Third-party services that process data on Manim's behalf. Enumerated in the
  *  privacy policy (the audit's L8) so the sub-processor posture is disclosed. */
@@ -27,16 +27,29 @@ export const SUBPROCESSORS: { name: string; purpose: string }[] = [
   { name: 'Cloudflare', purpose: 'Hosting, content delivery, and rate limiting.' },
   { name: 'Resend / Brevo', purpose: 'Sending sign-in codes and email invites.' },
   { name: 'Google', purpose: 'Optional "Continue with Google" sign-in.' },
-  { name: 'Giphy', purpose: 'GIF search in chat (only when you open the picker).' },
-  { name: 'MediaPipe CDN (jsDelivr)', purpose: 'Background-blur model files, loaded in your browser.' },
+  {
+    name: 'Giphy and Tenor',
+    purpose:
+      'GIF search when you open the picker, and GIFs anyone posts in chat, which load for everyone in the call. They see your IP address.',
+  },
+  {
+    name: 'jsDelivr and Google Cloud Storage',
+    purpose: 'Background-blur model files, downloaded by your browser only when you turn blur on.',
+  },
+  { name: 'Krisp (through LiveKit)', purpose: 'Noise suppression, processed in your browser.' },
 ]
 
 /** The data Manim collects, and why — the core of the privacy disclosure (L1). */
 export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
   {
     what: 'Display name & a device id',
-    where: 'Your browser (local storage)',
-    why: 'So returning users skip re-typing their name; the device id powers multi-device handoff.',
+    where: 'Your browser (local storage), and shown to the people in each call you join',
+    why: 'So returning users skip re-typing their name; the device id tells your devices apart and powers multi-device handoff.',
+  },
+  {
+    what: 'Recent rooms and their links',
+    where: 'Your browser (local storage), for 30 days',
+    why: 'So you can rejoin a meeting from the home screen. Signing out clears them.',
   },
   {
     what: 'Email, display name, profile photo',
@@ -55,8 +68,13 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
   },
   {
     what: "Another person's email",
-    where: 'Processed in transit (not stored against your account)',
+    where: 'Processed in transit (not stored against your account); invites are sent through Resend',
     why: 'When you call or invite someone by email, we look up their account or email them an invite.',
+  },
+  {
+    what: 'Room name and when it was last used',
+    where: 'Our edge storage (Cloudflare), for up to a year',
+    why: 'So an invite link that has been unused for 30 days expires instead of reopening an old room.',
   },
   {
     what: 'Your IP address',

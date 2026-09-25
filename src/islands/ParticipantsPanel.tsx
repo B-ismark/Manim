@@ -180,7 +180,14 @@ export function ParticipantsPanel() {
       // no provider configured or the provider rejects the recipient.
       const sent = await sendEmailInvite(to, room.name, window.location.href, who, roomToken ?? undefined)
       if (sent) {
-        setCallMsg(`Invite emailed to ${to}`)
+        // The server leaves the encryption key out of the email (server/invite.mjs),
+        // so say what the guest still needs before they hit a mismatch.
+        const encrypted = new URLSearchParams(window.location.hash.slice(1)).has('e')
+        setCallMsg(
+          encrypted
+            ? `Invite emailed to ${to}. This call is encrypted, so also send them the full link.`
+            : `Invite emailed to ${to}`,
+        )
         addInvite(to)
         return true
       }

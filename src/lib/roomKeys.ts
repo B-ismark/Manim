@@ -28,8 +28,9 @@
  * Storage is the same trade `useRecentRoomsStore` already makes and for the same
  * reason: the identical #fragment is in this browser's history already, so writing
  * it to this browser's localStorage is no new exposure on the user's own device.
- * Nothing here is ever sent anywhere — the E2EE key in particular must never reach a
- * server, and doesn't.
+ * Nothing HERE is ever sent anywhere. (The key does reach Supabase elsewhere — ringing
+ * a contact and cross-device presence carry it; the privacy page says so. Email
+ * invites strip it: server/invite.mjs.)
  */
 import type { RoomSecrets } from '@/lib/roomLink'
 

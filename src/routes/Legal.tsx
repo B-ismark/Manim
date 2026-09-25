@@ -97,8 +97,12 @@ export function Privacy() {
             transported live between participants and are not stored anywhere by {APP_NAME}.
           </li>
           <li>
-            Calls can be <span className="text-ink">end-to-end encrypted</span> — when you start a
-            new meeting, the encryption key lives only in the invite link, never on our servers.
+            <span className="text-ink">Audio and video can be end-to-end encrypted.</span> When
+            you start a new meeting, its encryption key travels in the invite link. We don't keep
+            it, but it does pass through our providers in two cases: when you ring a contact, and
+            when your own signed-in devices sync which call you're in (both through Supabase).
+            Email invites leave the key out. Chat, files and drawings are encrypted in transit but
+            are not end-to-end encrypted.
           </li>
           <li>Push notifications carry no message content — only "someone is calling".</li>
           <li>We don't use tracking or advertising cookies, and we don't sell your data.</li>
@@ -106,12 +110,24 @@ export function Privacy() {
       </section>
 
       <section>
+        <Heading>In a call, others can see</Heading>
+        <P>
+          Everyone in a call sees your display name and a short device identifier, and receives
+          your chat messages, files and drawings. By default, people who join later can also see
+          earlier chat messages, because the people still in the call pass them on. A host can turn
+          that off from More → Chat history; the chat panel always says which applies. GIFs posted
+          in chat load from Giphy or Tenor for everyone in the call.
+        </P>
+      </section>
+
+      <section>
         <Heading>Local storage (no cookie banner)</Heading>
         <P>
-          {APP_NAME} stores a few functional preferences in your browser's local storage — your
-          display name, a device id for multi-device handoff, and your notification choice. These
-          are used only to make the app work, not to track you across sites, so there's no consent
-          banner. Clearing your browser storage removes them.
+          {APP_NAME} stores what it needs to work in your browser's local storage: your display
+          name, a device id, your notification choice, your device and effect preferences, and your
+          recent rooms with their invite links. Nothing is used to track you across sites, so
+          there's no consent banner. Signing out clears everything personal from this browser;
+          clearing your browser storage removes all of it.
         </P>
       </section>
 
@@ -135,7 +151,7 @@ export function Privacy() {
         <P>
           Account data (profile, contacts, push subscriptions) is kept while your account exists.
           You can delete your account from Settings → Delete account; this removes your profile,
-          contacts, and push subscriptions. Call media is never retained, since it isn't recorded.
+          photo, contacts, and push subscriptions, and clears your data from that browser. Call media is never retained, since it isn't recorded.
           To request deletion or ask a privacy question, email <MailLink />.
         </P>
       </section>

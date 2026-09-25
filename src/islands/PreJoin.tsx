@@ -401,7 +401,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               {encrypted && (
                 <>
                   <LockIcon />
-                  <span>Encrypted</span>
+                  {/* "Encrypted link", not "Encrypted": this screen can only vouch
+                      that the link carries a key. Encryption starts at connect,
+                      and it covers audio and video, not chat. */}
+                  <span>Encrypted link</span>
                   <span aria-hidden className="opacity-50">
                     ·
                   </span>
