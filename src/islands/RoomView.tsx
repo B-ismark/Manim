@@ -370,7 +370,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     toggleWaiting,
     sameNameOther,
     switchToThisDevice,
-  } = useSessionControl(onLeave)
+  } = useSessionControl(onLeave, e2eeActive)
   const panel = useRoomStore((s) => s.panel)
   const companion = useRoomStore((s) => s.companion)
   const setCompanion = useRoomStore((s) => s.setCompanion)

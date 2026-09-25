@@ -34,7 +34,11 @@ type ControlMessage =
  * to disconnect another participant. Joining a second device without switching
  * keeps both, which already works.
  */
-export function useSessionControl(onLeave: () => void) {
+/**
+ * `encryptedHere` — this client's end-to-end encryption is actually on (RoomView's
+ * e2eeActive, not merely "a key was in the link").
+ */
+export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const room = useRoomContext()
   const navigate = useNavigate()
   const { localParticipant } = useLocalParticipant()
@@ -46,7 +50,7 @@ export function useSessionControl(onLeave: () => void) {
   // Authority comes from ROOM metadata (server-written), never participant
   // metadata — participants can rewrite their own metadata (canUpdateOwnMetadata,
   // needed for raise-hand) and would otherwise self-promote to host.
-  const { hostId, locked, waiting, chatHistory, coHosts } = useMemo(() => {
+  const { hostId, locked, waiting, chatHistory, coHosts, markedEncrypted } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
       return {
@@ -55,9 +59,17 @@ export function useSessionControl(onLeave: () => void) {
         waiting: Boolean(f.waiting),
         chatHistory: f.chatHistory !== false,
         coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
+        markedEncrypted: f.encrypted === true,
       }
     } catch {
-      return { hostId: '', locked: false, waiting: false, chatHistory: true, coHosts: [] as string[] }
+      return {
+        hostId: '',
+        locked: false,
+        waiting: false,
+        chatHistory: true,
+        coHosts: [] as string[],
+        markedEncrypted: false,
+      }
     }
   }, [roomMetadata])
 
@@ -256,6 +268,19 @@ export function useSessionControl(onLeave: () => void) {
   }, [room.name, roomToken, waiting])
 
   /** Host: whether people who join later see earlier chat (default on). */
+  // Tell the server this call is encrypted — only THAT it is, never the key — so
+  // someone who arrives without the key (emailed invites leave it out) is told at
+  // the door to ask for the full link, instead of joining a call they can't see or
+  // hear while their own camera goes out unencrypted (server/core.mjs need_key).
+  // Only once our encryption is really on: a failed enable must not lock out
+  // guests from a call that isn't encrypted after all.
+  useEffect(() => {
+    if (!encryptedHere || !isHost || markedEncrypted || !roomToken) return
+    void setRoomFlags({ room: room.name, token: roomToken, encrypted: true }).catch((e) =>
+      reportError(e, { context: 'mark-encrypted' }),
+    )
+  }, [encryptedHere, isHost, markedEncrypted, roomToken, room.name])
+
   const toggleChatHistory = useCallback(async () => {
     if (!roomToken) return
     try {

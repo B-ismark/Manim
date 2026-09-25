@@ -46,6 +46,9 @@ export interface JoinRequest {
   /** This browser's key for the seat it's knocking as (lib/seatKeys). Required
    *  by the server to reclaim host or step back into a seat it already holds. */
   seat?: string
+  /** Whether this browser holds the room's E2EE key. An encrypted room turns away
+   *  a knock without it (`need_key`) rather than let it join unable to see or hear. */
+  hasKey?: boolean
 }
 
 export interface KnockResponse {
@@ -152,6 +155,8 @@ export interface RoomFlagsRequest {
   chatHistory?: boolean
   /** Co-host identities. Only the primary host may change this (server-enforced). */
   coHosts?: string[]
+  /** Mark the room end-to-end encrypted (never the key). One way: it can't be unset. */
+  encrypted?: true
 }
 
 /** Host: set room flags (lock / waiting room / annotation policy / co-hosts). */

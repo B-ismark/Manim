@@ -52,6 +52,40 @@ test.describe('Seat keys', () => {
     expect(badDevice.status()).toBe(400)
   })
 
+  test('an encrypted room tells a keyless knock to get the full link', async ({ request }) => {
+    const room = uniqueRoom('seat')
+    const knock = (data: Record<string, unknown>) => request.post('/api/knock', { data: { room, ...data } })
+    const host = await (await knock({ name: 'Ama', deviceId: 'dev-host', hasKey: true })).json()
+    expect(host.host).toBe(true)
+
+    // Before the host marks it, nobody is gated.
+    expect((await knock({ name: 'Kofi', deviceId: 'k1', hasKey: false })).status()).toBe(200)
+
+    // The host's client marks the room once its encryption is on. One way only.
+    const mark = await request.post('/api/roomflags', {
+      data: { room, encrypted: true },
+      headers: { authorization: `Bearer ${host.token}` },
+    })
+    expect(mark.status()).toBe(200)
+
+    const keyless = await knock({ name: 'Esi', deviceId: 'e1', hasKey: false })
+    expect(keyless.status()).toBe(409)
+    const body = await keyless.json()
+    expect(body.code).toBe('need_key')
+    expect(body.token).toBeUndefined()
+    expect((await knock({ name: 'Esi', deviceId: 'e1', hasKey: true })).status()).toBe(200)
+    // An older client that doesn't say is let through, as before.
+    expect((await knock({ name: 'Yaw', deviceId: 'y1' })).status()).toBe(200)
+
+    // Only a host may mark a room.
+    const guest = await (await knock({ name: 'Abena', deviceId: 'a1', hasKey: true })).json()
+    const notHost = await request.post('/api/roomflags', {
+      data: { room, encrypted: true },
+      headers: { authorization: `Bearer ${guest.token}` },
+    })
+    expect(notHost.status()).toBe(403)
+  })
+
   test('a waiting-room request can only be polled with its claim key', async ({ request }) => {
     const room = uniqueRoom('seat')
     // An unknown request with no claim gets nothing — in particular, no token.

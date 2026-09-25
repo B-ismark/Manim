@@ -311,7 +311,7 @@ export async function handleMe(env, body) {
 
 export async function handleKnock(env, body) {
   const { apiKey, apiSecret, roomService } = services(env)
-  const { room, name, deviceId, host, accessToken, secret, seat } = body ?? {}
+  const { room, name, deviceId, host, accessToken, secret, seat, hasKey } = body ?? {}
   if (!room || !name) return { status: 400, body: { error: 'room and name are required' } }
   if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
   // Bound what lands in the identity and in room metadata (the waiting-room queue
@@ -496,6 +496,24 @@ export async function handleKnock(env, body) {
           code: 'need_link',
         },
       }
+    }
+  }
+
+  // Encryption-key gate. A host whose encryption is on marks the room `encrypted`
+  // (never the key — the server can't hold it). Someone arriving without the key,
+  // usually from an emailed invite, which leaves it out on purpose, would join a
+  // call they can't see or hear while their own camera and mic went out
+  // unencrypted. Tell them at the door instead. `hasKey` is the client's word, so
+  // this is a courtesy, not a control: a client that lies only hurts itself.
+  // Absent (an older client) = no gate.
+  if (flags.encrypted === true && hasKey === false && !alreadyIn) {
+    return {
+      status: 409,
+      body: {
+        error:
+          'This call is end-to-end encrypted, and the link you opened doesn’t include its key. Ask whoever invited you for the full invite link.',
+        code: 'need_key',
+      },
     }
   }
 
@@ -784,7 +802,7 @@ export async function handleModerate(env, body, token) {
 
 export async function handleRoomflags(env, body, token) {
   const { roomService } = services(env)
-  const { room, locked, waiting, annotateHostOnly, chatHistory, coHosts } = body ?? {}
+  const { room, locked, waiting, annotateHostOnly, chatHistory, encrypted, coHosts } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const identity = await verifyCaller(env, token, room)
   if (!identity) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
@@ -803,6 +821,9 @@ export async function handleRoomflags(env, body, token) {
   // Whether people who join later are shown earlier chat. Absent = on (the
   // behaviour rooms always had); enforced by the peers that replay it.
   if (typeof chatHistory === 'boolean') patch.chatHistory = chatHistory
+  // One way: once a host with encryption on has marked the room, nobody can
+  // unmark it for the room's lifetime (it resets when the room empties).
+  if (encrypted === true) patch.encrypted = true
   if (coHosts !== undefined) {
     // Only the primary host may change the co-host roster — otherwise a co-host
     // could demote the host or promote allies.
@@ -874,10 +895,13 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
   const who = escapeHtml(sender)
   const safeRoom = room ? escapeHtml(room) : ''
   // Never mail the encryption key (server/invite.mjs). The join secret stays, so
-  // the link still opens the room.
+  // the link still opens the room. The client strips it first, so whether to say
+  // "encrypted" comes from the room's own flag as well as the link.
   const { url: mailed, hadKey } = withoutE2eeKey(url.href)
+  const { roomService } = services(env)
+  const encrypted = hadKey || (roomService ? (await getRoomFlags(roomService, room)).encrypted === true : false)
   const href = escapeHtml(mailed.href)
-  const encryptedNote = hadKey
+  const encryptedNote = encrypted
     ? `<p>This call is end-to-end encrypted, so its encryption key isn't in this email. Ask ${who} to send you the full link to join with encryption.</p>`
     : ''
   const r = await fetch('https://api.resend.com/emails', {

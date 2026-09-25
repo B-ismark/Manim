@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Island, Button } from '@/components/primitives'
+import { LockIcon } from '@/components/icons'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
@@ -149,6 +150,8 @@ export function RoomRoute() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
+  // The room is marked encrypted and this link had no key (see NeedFullLink).
+  const [needKey, setNeedKey] = useState(false)
   const [waitingId, setWaitingId] = useState<string | null>(null)
   // Goes with waitingId: the proof knock-status asks for (the id itself is public).
   const waitClaim = useRef('')
@@ -180,7 +183,7 @@ export function RoomRoute() {
         // userId — the server derives the trusted account id from it. Absent → guest.
         const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
         const seat = seatFor(room, `${displayName}#${deviceId}`)
-        const res = await knock({ room, name: displayName, deviceId, accessToken, secret, seat })
+        const res = await knock({ room, name: displayName, deviceId, accessToken, secret, seat, hasKey: Boolean(e2ee) })
         rememberSeat(room, res.identity, res.seat)
         if (res.token) {
           // Same account already in the call on another device? Don't auto-connect —
@@ -206,6 +209,11 @@ export function RoomRoute() {
         // the dedicated "link expired" screen that tells the user what to do next.
         if (e instanceof ApiError && e.code === 'link_expired') {
           setExpired(true)
+          setConnecting(false)
+          return
+        }
+        if (e instanceof ApiError && e.code === 'need_key') {
+          setNeedKey(true)
           setConnecting(false)
           return
         }
@@ -243,7 +251,7 @@ export function RoomRoute() {
         return
       }
     }
-  }, [room, displayName, deviceId, secret])
+  }, [room, displayName, deviceId, secret, e2ee])
 
   // "You're already in on another device" choices (see deviceChoice). Both connect with
   // the held token; companion joins muted, transfer drops the other device.
@@ -318,6 +326,7 @@ export function RoomRoute() {
       setWaitingId(null)
       setError(null)
       setExpired(false)
+      setNeedKey(false)
       setDeviceChoice(null)
       setCompanion(false)
     }
@@ -367,6 +376,11 @@ export function RoomRoute() {
 
   if (expired) {
     return <ExpiredLink room={room} onHome={() => navigate('/')} />
+  }
+
+  // Opening the full link afterwards brings the key, and this screen steps aside.
+  if (needKey && !e2ee) {
+    return <NeedFullLink room={room} onHome={() => navigate('/')} />
   }
 
   if (waitingId) {
@@ -428,6 +442,34 @@ function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
         </p>
         <Button variant="accent" className="mt-5" onClick={onHome}>
           Start a new meeting
+        </Button>
+      </Island>
+    </main>
+  )
+}
+
+/**
+ * The call is end-to-end encrypted and the link that brought you here has no key.
+ * Emailed invites leave it out on purpose (so the key never passes through a mail
+ * provider), and joining without it would put you in a call you can't see or hear
+ * while your own camera went out unencrypted. So the server turns the knock away
+ * (need_key) and this says what to do instead.
+ */
+function NeedFullLink({ room, onHome }: { room: string; onHome: () => void }) {
+  return (
+    <main className="grid min-h-dvh place-items-center p-4">
+      <Island pad="lg" className="w-full max-w-sm text-center">
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-sunken text-ink-muted [&_svg]:size-6">
+          <LockIcon />
+        </span>
+        <h1 className="mt-4 text-lg font-semibold">This call is encrypted</h1>
+        <p className="mt-1 text-sm text-ink-muted">
+          To join <span className="font-medium text-ink">{prettyRoom(room)}</span> you need its full
+          invite link. Email invites leave out the encryption key, so it never passes through a mail
+          server. Ask whoever invited you for the full link.
+        </p>
+        <Button variant="accent" className="mt-5" onClick={onHome}>
+          Back to home
         </Button>
       </Island>
     </main>

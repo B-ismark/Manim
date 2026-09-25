@@ -75,6 +75,20 @@ export function roomHash({ secret, e2ee }: RoomSecrets): string {
 }
 
 /**
+ * A room link fit to pass through someone else's servers — an email invite: the
+ * join secret stays (so it still opens the room) and the E2EE key goes. Whoever
+ * opens it on an encrypted call is told to ask for the full link (RoomRoute's
+ * NeedFullLink). The server strips the key too (server/invite.mjs); doing it here
+ * means it never leaves the browser, which the mail-app fallback needs anyway.
+ */
+export function linkWithoutKey(href: string): { href: string; hadKey: boolean } {
+  const url = new URL(href)
+  const { secret, e2ee } = parseRoomHash(url.hash)
+  url.hash = roomHash({ secret })
+  return { href: url.href, hadKey: Boolean(e2ee) }
+}
+
+/**
  * A react-router navigation target for a room, carrying any secrets in the hash.
  * Use the object form (not a template string) so the hash isn't percent-encoded
  * into the path.

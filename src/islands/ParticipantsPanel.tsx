@@ -56,6 +56,7 @@ import { displayNameOf } from '@/lib/participantName'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
+import { linkWithoutKey } from '@/lib/roomLink'
 
 function displayName(p: Participant): string {
   return displayNameOf(p.identity, p.name)
@@ -155,8 +156,12 @@ export function ParticipantsPanel() {
   }
 
   function mailtoHref(to: string): string {
+    const { href, hadKey } = linkWithoutKey(window.location.href)
     const subject = encodeURIComponent("You're invited to a Manim call")
-    const body = encodeURIComponent(`Join my call:\n\n${window.location.href}`)
+    const note = hadKey
+      ? "\n\nThis call is end-to-end encrypted, so the encryption key isn't in this email. I'll send you the full link separately."
+      : ''
+    const body = encodeURIComponent(`Join my call:\n\n${href}${note}`)
     return `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`
   }
 
@@ -178,11 +183,10 @@ export function ParticipantsPanel() {
     try {
       // Try a real email first; fall back to the mail client if the server has
       // no provider configured or the provider rejects the recipient.
-      const sent = await sendEmailInvite(to, room.name, window.location.href, who, roomToken ?? undefined)
+      const { href, hadKey: encrypted } = linkWithoutKey(window.location.href)
+      const sent = await sendEmailInvite(to, room.name, href, who, roomToken ?? undefined)
       if (sent) {
-        // The server leaves the encryption key out of the email (server/invite.mjs),
-        // so say what the guest still needs before they hit a mismatch.
-        const encrypted = new URLSearchParams(window.location.hash.slice(1)).has('e')
+        // The key stays out of the email, so say what the guest still needs.
         setCallMsg(
           encrypted
             ? `Invite emailed to ${to}. This call is encrypted, so also send them the full link.`
