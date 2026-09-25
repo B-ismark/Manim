@@ -70,9 +70,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { error } = await supabase.auth.signInWithOtp({
       // Return to the EXACT page sign-in started from (e.g. /r/standup), not the
       // bare origin — otherwise a user who signs in mid-join lands on / and has to
-      // re-navigate. href carries the path + any query.
+      // re-navigate. The room's #fragment (its join secret and E2EE key) stays
+      // behind: this goes to Supabase and into the email, and the sign-in round
+      // trip replaces the fragment anyway — lib/roomKeys puts it back from this
+      // browser's memory when you land.
       email,
-      options: { emailRedirectTo: window.location.href },
+      options: { emailRedirectTo: returnUrl() },
     })
     if (error) throw error
   },
@@ -91,7 +94,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // DEPLOY.md. (The exact return URL must be in Supabase's allow-list.)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.href },
+      options: { redirectTo: returnUrl() },
     })
     if (error) throw error
   },
@@ -284,6 +287,11 @@ export function persistNameToAccount(name: string): void {
   nameWriteTimer = setTimeout(() => {
     void sb.from('profiles').upsert({ id, display_name }).then(() => {})
   }, 600)
+}
+
+/** Where a sign-in returns to: this page, without its #fragment (see signInWithEmail). */
+function returnUrl(): string {
+  return location.origin + location.pathname + location.search
 }
 
 /**

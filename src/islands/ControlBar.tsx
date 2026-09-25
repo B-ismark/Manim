@@ -1090,7 +1090,7 @@ function MenuRow({
       // 44px on a coarse pointer (audit F6). The More sheet is a touch-only surface
       // and these rows were ~36px — clear of WCAG 2.5.8's 24px, short of both
       // platform guidelines, and sitting next to 68px GridTiles.
-      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent data-[danger=true]:text-danger-text"
+      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent-text data-[danger=true]:text-danger-text"
       data-active={active}
     >
       {icon}
@@ -1341,7 +1341,7 @@ function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: st
                 }}
                 className={cn(
                   'flex w-full items-center gap-3 px-3 text-left [&_svg]:size-5 [&_svg]:shrink-0',
-                  active ? 'text-accent' : 'text-ink hover:bg-sunken',
+                  active ? 'text-accent-text' : 'text-ink hover:bg-sunken',
                   TOUCH_ROW,
                 )}
               >
@@ -1451,7 +1451,7 @@ function GridTile({
       >
         {icon}
       </span>
-      <span className={cn('text-center text-[11px] leading-tight', active ? 'text-accent' : 'text-ink-muted')}>
+      <span className={cn('text-center text-[11px] leading-tight', active ? 'text-accent-text' : 'text-ink-muted')}>
         {label}
       </span>
     </button>

@@ -79,6 +79,10 @@ key, and a Worker crash on returning visitors that never reached production.
 - [ ] Prejoin mic/camera choices aren't remembered between visits.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone.
 - [ ] Firefox's own PiP button appears on hover over tiles.
+- [ ] Turning a camera back ON after another app took it fails silently: a muted
+      track re-acquires via `unmute()` → `restart()`, which never raises LiveKit's
+      `MediaDevicesError` (`useMediaDeviceWatch`), so no message and an unhandled
+      rejection. Catch at the toggle call sites or wrap `setCameraEnabled`.
 - [ ] Re-granting camera access in browser settings needs a reload
       (listen for `PermissionStatus` changes).
 - [ ] Long toasts still overlap prejoin's Back label on a phone while they're up

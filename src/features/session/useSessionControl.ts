@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   useLocalParticipant,
@@ -267,20 +267,25 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     }
   }, [room.name, roomToken, waiting])
 
-  /** Host: whether people who join later see earlier chat (default on). */
   // Tell the server this call is encrypted — only THAT it is, never the key — so
   // someone who arrives without the key (emailed invites leave it out) is told at
   // the door to ask for the full link, instead of joining a call they can't see or
   // hear while their own camera goes out unencrypted (server/core.mjs need_key).
   // Only once our encryption is really on: a failed enable must not lock out
-  // guests from a call that isn't encrypted after all.
+  // guests from a call that isn't encrypted after all. Retried a few times until the
+  // mark shows up in room metadata: a failed request, or a knock's flag write that
+  // lands on top of ours, would otherwise leave the room unmarked for good.
+  const [markTry, setMarkTry] = useState(0)
   useEffect(() => {
-    if (!encryptedHere || !isHost || markedEncrypted || !roomToken) return
+    if (!encryptedHere || !isHost || markedEncrypted || !roomToken || markTry > 3) return
     void setRoomFlags({ room: room.name, token: roomToken, encrypted: true }).catch((e) =>
       reportError(e, { context: 'mark-encrypted' }),
     )
-  }, [encryptedHere, isHost, markedEncrypted, roomToken, room.name])
+    const t = setTimeout(() => setMarkTry((n) => n + 1), 15_000)
+    return () => clearTimeout(t)
+  }, [encryptedHere, isHost, markedEncrypted, roomToken, room.name, markTry])
 
+  /** Host: whether people who join later see earlier chat (default on). */
   const toggleChatHistory = useCallback(async () => {
     if (!roomToken) return
     try {

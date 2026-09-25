@@ -161,7 +161,7 @@ function Thumb({
       >
         {children}
       </span>
-      <span className={cn('text-[11px] leading-none', selected ? 'text-accent' : 'text-ink-muted')}>{label}</span>
+      <span className={cn('text-[11px] leading-none', selected ? 'text-accent-text' : 'text-ink-muted')}>{label}</span>
     </button>
   )
 }

@@ -189,14 +189,20 @@ export function useMediaDeviceWatch() {
   }, [])
 
   // LiveKit's own device-acquisition errors: a camera or mic that won't start,
-  // at join or on a later toggle, or a re-acquire that fails because the device
-  // is gone. This is the ONE place that tells the user — LiveKit also rethrows a
-  // failed join-time publish into LiveKitRoom's onError, and CallRoom leaves
-  // those to this event rather than toast twice. The wording says why (in use,
-  // missing, blocked) where the browser says so (lib/mediaErrors).
+  // at join or when first switched on, or a re-acquire that fails because the
+  // device is gone. This is the ONE place that tells the user — LiveKit also
+  // rethrows a failed join-time publish into LiveKitRoom's onError, and CallRoom
+  // leaves those to this event rather than toast twice. The wording says why (in
+  // use, missing, blocked) where the browser says so (lib/mediaErrors).
+  // Not covered: turning a camera back on after it was muted goes through
+  // track.unmute() → restart(), which never emits this event (audit backlog).
   useEffect(() => {
     if (!room) return
     const onErr = (e: Error, kind?: MediaDeviceKind) => {
+      // No kind = a screen share. Cancelling the picker lands here too, and
+      // useScreenShare already tells a real failure from a cancel; "your camera or
+      // microphone is blocked" would send the user to the wrong setting.
+      if (kind !== 'videoinput' && kind !== 'audioinput') return
       reportError(e, { context: 'media-devices-error' })
       const what = kind === 'videoinput' ? 'camera' : kind === 'audioinput' ? 'microphone' : undefined
       const known = mediaErrorMessage(e, what)

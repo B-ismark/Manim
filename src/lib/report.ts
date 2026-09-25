@@ -119,8 +119,15 @@ const FRAGMENT = /#[^\s"'`<>()\\]*/g
  *  key (`e`), and the tokens a sign-in round trip leaves (`access_token`, …). */
 const SECRET_PARAM = /(?:^|[#&])(?:k|e|[a-z_]*token)=/i
 
+/** The same, percent-encoded inside another URL — e.g. a sign-in request's
+ *  `redirect_to=…%2Fr%2Fslug%23k%3D…%26e%3D…`, which a fetch breadcrumb records. */
+const ENCODED_FRAGMENT = /%23[^\s"'`<>()\\&]*/gi
+const ENCODED_SECRET_PARAM = /(?:^|%23|%26)(?:k|e|[a-z_]*token)%3D/i
+
 function scrubText(s: string): string {
-  return s.includes('#') ? s.replace(FRAGMENT, (f) => (SECRET_PARAM.test(f) ? '' : f)) : s
+  if (s.includes('#')) s = s.replace(FRAGMENT, (f) => (SECRET_PARAM.test(f) ? '' : f))
+  if (/%23/i.test(s)) s = s.replace(ENCODED_FRAGMENT, (f) => (ENCODED_SECRET_PARAM.test(f) ? '' : f))
+  return s
 }
 
 /**

@@ -56,7 +56,8 @@ import { displayNameOf } from '@/lib/participantName'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
-import { linkWithoutKey } from '@/lib/roomLink'
+import { linkWithoutKey, parseRoomHash } from '@/lib/roomLink'
+import { resolveRoomSecrets } from '@/lib/roomKeys'
 
 function displayName(p: Participant): string {
   return displayNameOf(p.identity, p.name)
@@ -204,10 +205,14 @@ export function ParticipantsPanel() {
     }
   }
 
+  // A ring carries the room's secrets, as Landing's does: without them the person
+  // you ring is stopped at the door (need_link, or need_key in an encrypted call).
+  const ringSecrets = () => resolveRoomSecrets(room.name, parseRoomHash(window.location.hash))
+
   async function ring(to: string): Promise<boolean> {
     if (!to) return false
     setCallMsg('Ringing…')
-    const err = await ringUser(to, room.name, localParticipant.name || 'Someone')
+    const err = await ringUser(to, room.name, localParticipant.name || 'Someone', ringSecrets())
     setCallMsg(err ?? `Ringing ${to}…`)
     if (err) return false
     addInvite(to)
@@ -219,7 +224,7 @@ export function ParticipantsPanel() {
     setContactsOpen(false)
     if (!c.email) return
     setCallMsg('Ringing…')
-    const err = await ringUser(c.email, room.name, localParticipant.name || 'Someone')
+    const err = await ringUser(c.email, room.name, localParticipant.name || 'Someone', ringSecrets())
     setCallMsg(err ?? `Ringing ${c.name}…`)
     // Label by name (not email) so the "Invited · waiting" row clears when they
     // join (the ghost matches against participant display names).

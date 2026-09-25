@@ -38,6 +38,12 @@ describe('stripFragments', () => {
     expect(out.self).toBe(out)
   })
 
+  it('scrubs a room link percent-encoded inside another URL, and keeps the rest of the query', () => {
+    const url = 'https://x.supabase.co/auth/v1/otp?redirect_to=https%3A%2F%2Fm.app%2Fr%2Fa%23k%3D1%26e%3DKEY&x=1'
+    expect(stripFragments({ url }).url).toBe('https://x.supabase.co/auth/v1/otp?redirect_to=https%3A%2F%2Fm.app%2Fr%2Fa&x=1')
+    expect(stripFragments({ c: '/q?to=%2Fdocs%23section' }).c).toBe('/q?to=%2Fdocs%23section')
+  })
+
   it('leaves reports without secrets untouched', () => {
     expect(stripFragments({ a: 1, b: 'plain #hashtag', c: '/docs#section', d: null })).toEqual({
       a: 1,
