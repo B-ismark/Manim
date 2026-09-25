@@ -78,7 +78,9 @@ async function handleApi(request, env, url) {
           return json({ status: 429, body: { error: 'Too many invites — try again in a minute.' } })
         }
       }
-      return json(await handleEmailInvite(env, await bodyOf(), bearer(request)))
+      // The app's own origin, from the URL this request actually hit — never a
+      // client header — so an invite can only ever link back here.
+      return json(await handleEmailInvite(env, await bodyOf(), bearer(request), url.origin))
     }
     if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
     return new Response('Not found', { status: 404 })

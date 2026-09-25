@@ -809,8 +809,13 @@ export async function handleRoomflags(env, body, token) {
   return { status: 200, body: { ok: true, ...patch } }
 }
 
-export async function handleEmailInvite(env, body, token) {
-  const { to, room, link, fromName } = body ?? {}
+/**
+ * `appOrigin` is where this deployment serves the app (the Worker passes the
+ * origin of the URL the request hit). When given, the link must point there;
+ * without it (the local dev server, behind Vite's proxy) only the path is checked.
+ */
+export async function handleEmailInvite(env, body, token, appOrigin) {
+  const { to, room, link } = body ?? {}
   if (!to || !link) return { status: 400, body: { error: 'to and link required' } }
   // Require a valid join token for the room being invited to. Without this the
   // endpoint is an open relay: anyone could make our verified Resend domain send
@@ -818,7 +823,8 @@ export async function handleEmailInvite(env, body, token) {
   // burn). The token is the same signed LiveKit token the inviter holds in-call,
   // bound to this room (verifyCaller rejects a token minted for another room).
   if (!room) return { status: 400, body: { error: 'room required' } }
-  if (!(await verifyCaller(env, token, room))) {
+  const caller = await verifyCaller(env, token, room)
+  if (!caller) {
     return { status: 401, body: { error: 'Join the call before inviting others.' } }
   }
   // Validate the recipient + the link. The link must be an http(s) URL — this
@@ -834,11 +840,19 @@ export async function handleEmailInvite(env, body, token) {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { status: 400, body: { error: 'invalid link' } }
   }
+  // And it must be THIS room on THIS app. Any http(s) link used to pass, which let
+  // anyone who'd joined any open room send mail from our verified domain, under a
+  // name of their choosing, to a destination of their choosing: a phishing kit.
+  // (The #fragment carries the room's secrets and is left alone.)
+  if ((appOrigin && url.origin !== appOrigin) || url.pathname !== `/r/${encodeURIComponent(room)}`) {
+    return { status: 400, body: { error: 'invalid link' } }
+  }
   const key = env.RESEND_API_KEY
   if (!key) return { status: 501, body: { error: 'email not configured' } }
   const from = env.RESEND_FROM || 'Manim <onboarding@resend.dev>'
   // All interpolated values are escaped — they come from the client.
-  const who = escapeHtml(fromName || 'Someone')
+  // The sender is who the signed token says, not a free-text field.
+  const who = escapeHtml(String(caller).split('#')[0].slice(0, 64) || 'Someone')
   const safeRoom = room ? escapeHtml(room) : ''
   const href = escapeHtml(url.href)
   const r = await fetch('https://api.resend.com/emails', {

@@ -97,12 +97,22 @@ export function useAnnotate(featuredShareId: string | null) {
   // The latest handler, reachable from a subscription that is made once. Refreshed
   // after every render so it always closes over current props/state, without the
   // subscription itself churning.
+  // Who may draw, from room metadata (set by the effect below). Read on RECEIVE
+  // too: `allowed` only disarms this client's own pen, so a modified client could
+  // otherwise ignore host-only and ink everyone's screen anyway.
+  const policy = useRef<{ hostOnly: boolean; hostId: string; coHosts: string[] }>({
+    hostOnly: false,
+    hostId: '',
+    coHosts: [],
+  })
   const onPacket = useRef<(payload: Uint8Array, from?: RemoteParticipant) => void>(() => {})
   onPacket.current = (payload, from) => {
     // Attribution comes from the SFU-attributed sender, never the payload — a
     // payload field would let anyone draw under someone else's name.
     const identity = from?.identity
     if (!identity || identity === localParticipant.identity) return
+    const { hostOnly, hostId, coHosts } = policy.current
+    if (hostOnly && identity !== hostId && !coHosts.includes(identity)) return
     const packet = decode(payload)
     if (!packet) return
     // Ink is addressed in unit coordinates against the share it was drawn on, so a
@@ -197,6 +207,7 @@ export function useAnnotate(featuredShareId: string | null) {
     } catch {
       /* malformed metadata — fall back to permissive, matching the default */
     }
+    policy.current = { hostOnly, hostId, coHosts }
     const me = localParticipant.identity
     setAllowed(!hostOnly || me === hostId || coHosts.includes(me))
   }, [roomMetadata, localParticipant.identity, setAllowed])
