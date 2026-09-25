@@ -10,8 +10,8 @@ import { cn } from '@/lib/cn'
 
 /**
  * Effects in their own dialog (not crammed in the More menu) so the live preview
- * gets real estate — you see blur / a virtual background applied before
- * committing. Same picker on web + mobile.
+ * gets real estate — you see the blur applied before committing. Same picker on
+ * web + mobile.
  */
 export function EffectsDialog({
   open,
@@ -29,7 +29,7 @@ export function EffectsDialog({
       title="Background blur"
       description="Blur your background. Changes preview live before they apply."
     >
-      <BackgroundEffects controls={controls} previewSize="lg" />
+      <BackgroundEffects controls={controls} />
     </Dialog>
   )
 }
@@ -39,14 +39,7 @@ export function EffectsDialog({
  * high-quality toggle when blur is active. (Image replacement was removed — it
  * kept breaking the live feed; blur is the reliable effect.)
  */
-export function BackgroundEffects({
-  controls,
-  previewSize = 'sm',
-}: {
-  controls: BackgroundBlurControls
-  /** 'lg' gives the live preview more height — used in the dedicated dialog. */
-  previewSize?: 'sm' | 'lg'
-}) {
+function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
   const {
     supported,
     busy,
@@ -60,6 +53,7 @@ export function BackgroundEffects({
     useBlur,
   } = controls
   const { localParticipant, isCameraEnabled } = useLocalParticipant()
+  const selfFacing = useRoomStore((s) => s.selfFacing)
 
   if (!supported) {
     return (
@@ -70,7 +64,6 @@ export function BackgroundEffects({
   }
 
   const lowPower = isLowPowerDevice()
-  const selfFacing = useRoomStore((s) => s.selfFacing)
   const camPub = localParticipant.getTrackPublication(Track.Source.Camera)
   const previewRef = camPub
     ? ({ participant: localParticipant, source: Track.Source.Camera, publication: camPub } as TrackReferenceOrPlaceholder)
@@ -81,12 +74,7 @@ export function BackgroundEffects({
       {/* Live self-preview so the choice is visible before it's applied (the
           processor is already on the published track, so the effect shows here
           in real time). Mirrored like the stage self-view. */}
-      <div
-        className={cn(
-          'relative mb-3 w-full overflow-hidden rounded-tile bg-sunken',
-          previewSize === 'lg' ? 'aspect-video max-h-[40vh]' : 'aspect-video',
-        )}
-      >
+      <div className="relative mb-3 aspect-video max-h-[40vh] w-full overflow-hidden rounded-tile bg-sunken">
         {isCameraEnabled && previewRef ? (
           <VideoTrack
             trackRef={previewRef as Parameters<typeof VideoTrack>[0]['trackRef']}

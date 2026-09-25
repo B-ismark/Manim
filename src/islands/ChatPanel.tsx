@@ -1,7 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useParticipants } from '@livekit/components-react'
 import { Avatar, Button, IconButton, Popover, Sheet, Tooltip } from '@/components/primitives'
-import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PeopleIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
+import {
+  AttachIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  DownloadIcon,
+  EditIcon,
+  GifIcon,
+  PeopleIcon,
+  PinIcon,
+  ReactionIcon,
+  ReplyIcon,
+  SendIcon,
+} from '@/components/icons'
 import { EmojiPicker } from '@/islands/EmojiPicker'
 import { encodeMentions, mentionsIdentity, plainText, type MentionTarget } from '@/features/chat/mentions'
 import { joinNames, reactorList } from '@/features/chat/reactors'
@@ -20,6 +32,7 @@ import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, isAutoLoadImageUrl,
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { renderRichText } from '@/lib/formatText'
+import { displayNameOf } from '@/lib/participantName'
 import { cn } from '@/lib/cn'
 
 /** A live mention candidate the composer can tag. */
@@ -108,7 +121,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     () =>
       participants
         .filter((p) => p.identity !== myIdentity)
-        .map((p) => ({ identity: p.identity, name: p.name || p.identity.split('#')[0] || 'Guest' }))
+        .map((p) => ({ identity: p.identity, name: displayNameOf(p.identity, p.name) }))
         .filter((t) => t.name),
     [participants, myIdentity],
   )
@@ -395,9 +408,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
               </span>
             )}
             <span>{unseen > 0 ? 'new' : 'Latest'}</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
+            <ChevronDownIcon />
           </button>
         )}
       </div>
@@ -1001,12 +1012,7 @@ function MessageRow({
               size="sm"
               tone="neutral"
               label="Edit message"
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              }
+              icon={<EditIcon />}
               onClick={startEdit}
             />
           )}
@@ -1086,10 +1092,7 @@ function MessageRow({
                     startEdit()
                   }}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
+                  <EditIcon />
                   Edit message
                 </button>
               )}
