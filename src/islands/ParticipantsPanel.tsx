@@ -460,7 +460,7 @@ function ParticipantRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
+        <p dir="auto" className="truncate text-sm font-medium">
           {name}
           {ambiguous && !isLocal && (
             <span className="text-ink-subtle"> ·{participant.identity.split('#')[1]?.slice(0, 4) ?? ''}</span>

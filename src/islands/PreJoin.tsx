@@ -380,6 +380,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
             }}
             placeholder="Your name"
             maxLength={MAX_NAME_LEN}
+            dir="auto"
             aria-label="Your name"
             autoComplete="name"
             className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-base outline-none sm:text-sm placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"

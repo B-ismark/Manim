@@ -1808,12 +1808,23 @@ function Tile({
   const activate = onActivate ?? (() => togglePin(p.identity))
 
   // Long-press (touch) — a second, more discoverable gesture alongside double-tap.
-  // A drag (swipe to switch layout) cancels it.
+  // Real movement cancels it (the touch gallery scrolls), but not the pixel or two
+  // a resting thumb always jitters: cancelling on ANY pointermove made the
+  // long-press nearly impossible to land on a real phone.
   const pressTimer = useRef<number | undefined>(undefined)
-  const startPress = () => {
+  const pressFrom = useRef<{ x: number; y: number } | null>(null)
+  const startPress = (e: React.PointerEvent) => {
+    pressFrom.current = { x: e.clientX, y: e.clientY }
     pressTimer.current = window.setTimeout(activate, 500)
   }
-  const cancelPress = () => window.clearTimeout(pressTimer.current)
+  const cancelPress = () => {
+    pressFrom.current = null
+    window.clearTimeout(pressTimer.current)
+  }
+  const movePress = (e: React.PointerEvent) => {
+    const from = pressFrom.current
+    if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 10) cancelPress()
+  }
 
   // Read the video's intrinsic aspect off the <video> element and report it to the
   // grid packer. 'resize' fires when the publisher rotates their phone mid-call, so
@@ -1908,9 +1919,14 @@ function Tile({
       onPointerDown={startPress}
       onPointerUp={cancelPress}
       onPointerLeave={cancelPress}
-      onPointerMove={cancelPress}
+      onPointerCancel={cancelPress}
+      onPointerMove={movePress}
       className={cn(
         'group relative overflow-hidden rounded-tile bg-sunken',
+        // A tile is a gesture surface, not a document: without these a long-press
+        // selected the name pill or raised iOS's callout, and double-tap (pin) could
+        // zoom the page instead.
+        'touch-manipulation select-none [-webkit-touch-callout:none]',
         fill ? 'size-full' : 'aspect-video',
         'ring-2 transition-[box-shadow] duration-[var(--dur-fast)]',
         speaking ? 'ring-[var(--color-speaking)]' : 'ring-transparent',
@@ -2066,10 +2082,17 @@ function Tile({
           ) : (
             speaking && <SpeakingBars />
           )}
-          <span className="max-w-40 truncate">
-            {name}
-            {p.isLocal ? ' (you)' : myOtherDevice ? ' (your device)' : ''}
-            {isScreen ? ' — screen' : ''}
+          {/* The suffix sits outside the truncation: a long name used to push
+              "(you)" and "— screen" off the end, and those are the part that says
+              whose tile this is. */}
+          <span className="flex min-w-0 max-w-40">
+            <span className="truncate" dir="auto">
+              {name}
+            </span>
+            <span className="shrink-0 whitespace-pre">
+              {p.isLocal ? ' (you)' : myOtherDevice ? ' (your device)' : ''}
+              {isScreen ? ' — screen' : ''}
+            </span>
           </span>
         </span>
         <ConnectionQuality participant={p} degradedOnly className="rounded-control bg-overlay p-1" />

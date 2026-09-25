@@ -488,6 +488,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           onChange={(e) => onPickFiles(e.target.files)}
         />
         <textarea
+          dir="auto"
           ref={inputRef}
           value={draft}
           onChange={(e) => {
@@ -909,6 +910,7 @@ function MessageRow({
         {editing && item.kind === 'text' ? (
           <div className="mt-0.5 flex flex-col gap-1.5">
             <textarea
+              dir="auto"
               value={editDraft}
               ref={(el) => {
                 // Size to content on open so the whole message is visible.
@@ -953,7 +955,7 @@ function MessageRow({
           looksLikeImageUrl(item.text) ? (
             <ImageBubble src={item.text} />
           ) : (
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderRichText(item.text, myIdentity)}</p>
+            <p dir="auto" className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderRichText(item.text, myIdentity)}</p>
           )
         ) : (
           <FileMessage file={item} />

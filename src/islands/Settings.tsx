@@ -152,6 +152,7 @@ function SettingsContent() {
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           maxLength={MAX_NAME_LEN}
+          dir="auto"
           placeholder="Your name"
           aria-label="Your name"
           autoComplete="name"
