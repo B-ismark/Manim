@@ -47,6 +47,9 @@ test.describe('Seat keys', () => {
     expect((await knock('Bob#2')).status()).toBe(400)
     expect((await knock('x'.repeat(65))).status()).toBe(400)
     expect((await knock('   ')).status()).toBe(400)
+    // The device half of the identity is held to the same rule.
+    const badDevice = await request.post('/api/knock', { data: { room, name: 'Bob', deviceId: 'a#b' } })
+    expect(badDevice.status()).toBe(400)
   })
 
   test('a waiting-room request can only be polled with its claim key', async ({ request }) => {

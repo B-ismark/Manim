@@ -324,7 +324,7 @@ export async function handleKnock(env, body) {
   if (name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim()) {
     return { status: 400, body: { error: 'Please use a shorter name without special characters.' } }
   }
-  if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64)) {
+  if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64 || /[#\u0000-\u001f\u007f]/.test(deviceId))) {
     return { status: 400, body: { error: 'Invalid device' } }
   }
 
@@ -397,14 +397,19 @@ export async function handleKnock(env, body) {
   // co-host, stepping back into a live seat, skipping the lobby — needs the seat
   // key minted for it (server/seat.mjs). Identities are public (the roster, and
   // hostId in metadata), so without this anyone who'd seen one could knock as it,
-  // get its grants, and evict its owner. A claim without the key is refused
-  // outright rather than downgraded: minting a plain token under that identity
-  // would still collide with the owner's session and still match hostId in
-  // ensureHost.
+  // get its grants, and evict its owner.
+  //  - Holding a seat (host, co-host, live) without the key is refused outright
+  //    rather than downgraded: a plain token under that identity would still
+  //    collide with the owner's session and still match hostId in ensureHost.
+  //  - A past lobby approval without the key is just dropped, and the knock queues
+  //    like any other. Nobody holds that seat, and the honest case is common: a
+  //    guest who closed the tab while waiting and was approved anyway never
+  //    received the key, and must not be told their own name is taken.
   const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
-  const claimsSeat =
-    identity === flags.hostId || coHosts.includes(identity) || participants.some((p) => p.identity === identity) || approvedBefore
-  if (claimsSeat && !(await seatKeyValid(apiSecret, room, identity, seat))) {
+  const holdsSeat =
+    identity === flags.hostId || coHosts.includes(identity) || participants.some((p) => p.identity === identity)
+  const seatOk = (holdsSeat || approvedBefore) && (await seatKeyValid(apiSecret, room, identity, seat))
+  if (holdsSeat && !seatOk) {
     return {
       status: 409,
       body: {
@@ -414,7 +419,7 @@ export async function handleKnock(env, body) {
     }
   }
   const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
-  const wasApproved = approvedBefore
+  const wasApproved = approvedBefore && seatOk
 
   // Beta allowlist gate (host-gated). Only an approved account may CREATE/hold a
   // room; their invited guests join the link without being on the list (still
@@ -848,7 +853,16 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
   // anyone who'd joined any open room send mail from our verified domain, under a
   // name of their choosing, to a destination of their choosing: a phishing kit.
   // (The #fragment carries the room's secrets and is left alone.)
-  if ((appOrigin && url.origin !== appOrigin) || url.pathname !== `/r/${encodeURIComponent(room)}`) {
+  // Compared decoded, trailing slash ignored: browsers keep `:@+,;=&$` literal in a
+  // path and may lowercase percent-hex, so the raw form of a real link can differ
+  // from encodeURIComponent's.
+  let path
+  try {
+    path = decodeURIComponent(url.pathname).replace(/\/+$/, '')
+  } catch {
+    return { status: 400, body: { error: 'invalid link' } }
+  }
+  if ((appOrigin && url.origin !== appOrigin) || path !== `/r/${room}`) {
     return { status: 400, body: { error: 'invalid link' } }
   }
   const key = env.RESEND_API_KEY
@@ -856,7 +870,8 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
   const from = env.RESEND_FROM || 'Manim <onboarding@resend.dev>'
   // All interpolated values are escaped — they come from the client.
   // The sender is who the signed token says, not a free-text field.
-  const who = escapeHtml(String(caller).split('#')[0].slice(0, 64) || 'Someone')
+  const sender = String(caller).split('#')[0].slice(0, 64) || 'Someone'
+  const who = escapeHtml(sender)
   const safeRoom = room ? escapeHtml(room) : ''
   // Never mail the encryption key (server/invite.mjs). The join secret stays, so
   // the link still opens the room.
@@ -871,7 +886,9 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
     body: JSON.stringify({
       from,
       to: [String(to)],
-      subject: `${who} invited you to a Manim call`,
+      // Plain text, not HTML — escaping here would mail "O&#39;Neil invited you".
+      // Knock already refuses control characters in names, so no header tricks.
+      subject: `${sender} invited you to a Manim call`,
       html: `<p>${who} invited you to join a Manim call${safeRoom ? ` (room <b>${safeRoom}</b>)` : ''}.</p>
              <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>${encryptedNote}`,
     }),

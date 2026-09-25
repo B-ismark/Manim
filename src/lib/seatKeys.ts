@@ -34,11 +34,14 @@ export function rememberSeat(room: string, identity: string | undefined, seat: s
   if (!identity || !seat) return
   try {
     const fresh = Date.now() - TTL_MS
+    const here = slot(room, identity)
+    // This slot's old entry is left out, not merged: spread after the fresh one it
+    // won, so a seat in daily use still expired 30 days after it was first saved.
     const kept = Object.entries(load())
-      .filter(([, v]) => v && typeof v.ts === 'number' && v.ts >= fresh)
+      .filter(([k, v]) => k !== here && v && typeof v.ts === 'number' && v.ts >= fresh)
       .sort((a, b) => b[1].ts - a[1].ts)
       .slice(0, MAX - 1)
-    localStorage.setItem(KEY, JSON.stringify({ [slot(room, identity)]: { seat, ts: Date.now() }, ...Object.fromEntries(kept) }))
+    localStorage.setItem(KEY, JSON.stringify({ [here]: { seat, ts: Date.now() }, ...Object.fromEntries(kept) }))
   } catch {
     /* private mode / quota — the seat just isn't reclaimable from this browser */
   }

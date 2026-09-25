@@ -132,10 +132,17 @@ export default {
     headers.set('X-Content-Type-Options', 'nosniff')
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    if (roomFromPath(url.pathname)) headers.set('X-Robots-Tag', 'noindex, nofollow')
     // Link previews: the one HTML document gets a head written for the URL it's
-    // served at (per-room title, absolute image) — see server/preview.mjs.
-    if (request.method === 'GET' && (res.headers.get('content-type') || '').includes('text/html')) {
-      if (roomFromPath(url.pathname)) headers.set('X-Robots-Tag', 'noindex, nofollow')
+    // served at (per-room title, absolute image) — see server/preview.mjs. Only a
+    // 200 has a body to rewrite: a revalidation 304 must pass through untouched
+    // (a Response with a body and a null-body status throws, which would fail
+    // every returning visitor's page load).
+    if (
+      request.method === 'GET' &&
+      res.status === 200 &&
+      (res.headers.get('content-type') || '').includes('text/html')
+    ) {
       headers.delete('content-length')
       const html = rewriteHead(await res.text(), { origin: url.origin, pathname: url.pathname })
       return new Response(html, { status: res.status, statusText: res.statusText, headers })

@@ -57,7 +57,9 @@ const INVITE_DESCRIPTION = 'You’re invited to a video call. It opens in your b
 function setMeta(html, attr, key, content) {
   const tag = `<meta ${attr}="${key}" content="${esc(content)}" />`
   const re = new RegExp(`<meta\\s+${attr}="${key.replace(/[:.]/g, '\\$&')}"[^>]*>`, 'i')
-  return re.test(html) ? html.replace(re, tag) : html.replace('</head>', `    ${tag}\n  </head>`)
+  // Function replacements throughout: a string one would treat `$&`, `$'` and `$\``
+  // in a (decoded, attacker-chosen) room name as patterns and splice the page in.
+  return re.test(html) ? html.replace(re, () => tag) : html.replace('</head>', () => `    ${tag}\n  </head>`)
 }
 
 /**
@@ -67,14 +69,14 @@ function setMeta(html, attr, key, content) {
 export function rewriteHead(html, { origin, pathname }) {
   let out = html
   // Absolute image URLs everywhere: several unfurlers drop a relative og:image.
-  out = out.replace(/(<meta\s+(?:property|name)="(?:og:image|twitter:image)"\s+content=")\/(?!\/)/gi, `$1${origin}/`)
+  out = out.replace(/(<meta\s+(?:property|name)="(?:og:image|twitter:image)"\s+content=")\/(?!\/)/gi, (_, head) => `${head}${esc(origin)}/`)
   out = setMeta(out, 'property', 'og:url', origin + pathname)
 
   const slug = roomFromPath(pathname)
   if (!slug) return out
   const name = roomTitle(slug)
   const title = name ? `${name} · Manim` : 'Join a call · Manim'
-  out = out.replace(/<title>[^<]*<\/title>/i, `<title>${esc(title)}</title>`)
+  out = out.replace(/<title>[^<]*<\/title>/i, () => `<title>${esc(title)}</title>`)
   out = setMeta(out, 'property', 'og:title', title)
   out = setMeta(out, 'name', 'twitter:title', title)
   out = setMeta(out, 'property', 'og:description', INVITE_DESCRIPTION)

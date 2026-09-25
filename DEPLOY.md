@@ -167,6 +167,9 @@ declare
   recent int;
 begin
   if uid is null then return null; end if;
+  -- One caller at a time per user: without it, parallel calls each count the same
+  -- committed rows and all pass, so a burst of 500 at once would bypass the cap.
+  perform pg_advisory_xact_lock(hashtext('lookup_profile_id'), hashtext(uid::text));
   delete from lookup_attempts where user_id = uid and ts < now() - interval '10 minutes';
   select count(*) into recent from lookup_attempts where user_id = uid;
   if recent >= 30 then

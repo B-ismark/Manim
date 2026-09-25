@@ -53,6 +53,16 @@ describe('rewriteHead', () => {
     expect(html).toContain('<title>Manim — Video Calls</title>')
   })
 
+  it('treats $ in a room name as text, not a replacement pattern', () => {
+    const base = at('/').length
+    for (const path of ['/r/a%24%60b', '/r/%24%26', "/r/%24'x"]) {
+      const html = at(path)
+      expect(html.match(/<title>/g)).toHaveLength(1)
+      expect(html.match(/<!doctype/gi)).toHaveLength(1)
+      expect(html.length).toBeLessThan(base + 1200)
+    }
+  })
+
   it('escapes whatever the slug contains', () => {
     const html = at(`/r/${encodeURIComponent('"><script>x</script>')}`)
     expect(html).not.toContain('<script>x')
