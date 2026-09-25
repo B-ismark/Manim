@@ -48,9 +48,9 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       className="mn-pop pointer-events-auto flex max-w-[calc(100%-6rem)] items-center gap-2.5 rounded-control bg-raised px-3.5 py-2 text-sm text-ink shadow-pop border border-line sm:max-w-md"
     >
       <span className={cn('size-2 shrink-0 rounded-full', dotTone[toast.tone])} aria-hidden />
-      {/* Wrap, never truncate: the clipped tail was usually the part that mattered
-          ("…is NOT end-to-end encrypted"). Three lines is plenty for any we send. */}
-      <span className="line-clamp-3 min-w-0" dir="auto">
+      {/* Wrap, never truncate or clamp: the clipped tail was usually the part that
+          mattered ("…is NOT end-to-end encrypted"). */}
+      <span className="min-w-0" dir="auto">
         {toast.text}
       </span>
       {toast.action && (
