@@ -43,12 +43,17 @@ export interface JoinRequest {
    *  room records its hash; absent for open (typed-name) rooms. */
   secret?: string
   host?: boolean
+  /** This browser's key for the seat it's knocking as (lib/seatKeys). Required
+   *  by the server to reclaim host or step back into a seat it already holds. */
+  seat?: string
 }
 
 export interface KnockResponse {
   /** Present when admitted immediately (host, existing participant, or no waiting room). */
   token?: string
   identity?: string
+  /** Seat key for `identity` — keep it (lib/seatKeys) to rejoin as this seat. */
+  seat?: string
   host?: boolean
   /** True when the SAME signed-in account is already in the room on another device.
    *  Lets prejoin offer "join anyway (companion, muted)" vs "transfer to this device". */
@@ -56,6 +61,8 @@ export interface KnockResponse {
   /** Present when the waiting room queued the request for host approval. */
   pending?: boolean
   requestId?: string
+  /** Proof this client made the queued request; knock-status needs it. */
+  claim?: string
 }
 
 /** Request to join. May return a token directly or a pending knock. */
@@ -67,11 +74,13 @@ export interface KnockStatus {
   status: 'pending' | 'approved' | 'denied' | 'expired'
   token?: string
   identity?: string
+  seat?: string
 }
 
-/** Poll the host's decision on a queued knock. */
-export async function knockStatus(room: string, requestId: string): Promise<KnockStatus> {
-  const res = await fetch(`/api/knock-status?room=${encodeURIComponent(room)}&requestId=${requestId}`)
+/** Poll the host's decision on a queued knock. `claim` came back with the knock. */
+export async function knockStatus(room: string, requestId: string, claim: string): Promise<KnockStatus> {
+  const q = new URLSearchParams({ room, requestId, claim })
+  const res = await fetch(`/api/knock-status?${q}`)
   if (!res.ok) return { status: 'expired' }
   return (await res.json()) as KnockStatus
 }

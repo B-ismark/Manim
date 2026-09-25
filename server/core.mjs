@@ -9,6 +9,7 @@
 */
 import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 import { sendPush, pushConfigured } from './webpush.mjs'
+import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -22,6 +23,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // waits forever on a knock no one will action (host left / never opened admit).
 // knock-status flips stale pending → expired; new knocks also prune by it.
 const KNOCK_TTL_MS = 5 * 60 * 1000
+/** Display names are shown on tiles and stored in the waiting-room queue. */
+const MAX_NAME_LEN = 64
+const MAX_ROOM_LEN = 128
 
 // Link expiry. A link-shared room (one entered with an invite secret) is recorded
 // in durable KV on join and refreshed on every join; if no one joins for LINK_TTL,
@@ -113,7 +117,9 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
     canUpdateOwnMetadata: true,
     roomAdmin: isHost,
   })
-  return { token: await at.toJwt(), identity }
+  // The seat key travels with every token and only ever to the client this token
+  // was minted for; it's what lets that client (and only it) reclaim the seat.
+  return { token: await at.toJwt(), identity, seat: await seatKey(apiSecret, room, identity) }
 }
 
 async function listParticipants(roomService, room) {
@@ -304,9 +310,22 @@ export async function handleMe(env, body) {
 
 export async function handleKnock(env, body) {
   const { apiKey, apiSecret, roomService } = services(env)
-  const { room, name, deviceId, host, accessToken, secret } = body ?? {}
+  const { room, name, deviceId, host, accessToken, secret, seat } = body ?? {}
   if (!room || !name) return { status: 400, body: { error: 'room and name are required' } }
   if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
+  // Bound what lands in the identity and in room metadata (the waiting-room queue
+  // stores names, and LiveKit caps metadata size — a few huge names would make
+  // every later knock's metadata write fail). `#` would make the identity's
+  // name#device split ambiguous.
+  if (typeof room !== 'string' || room.length > MAX_ROOM_LEN || typeof name !== 'string') {
+    return { status: 400, body: { error: 'Invalid room or name' } }
+  }
+  if (name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim()) {
+    return { status: 400, body: { error: 'Please use a shorter name without special characters.' } }
+  }
+  if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64)) {
+    return { status: 400, body: { error: 'Invalid device' } }
+  }
 
   const identity = `${name}#${deviceId || 'web'}`
   // SERVER-DERIVED account — never the client-supplied `userId` (which a client can
@@ -366,14 +385,35 @@ export async function handleKnock(env, body) {
         return false
       }
     })
-  const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
   const queue = Array.isArray(flags.queue) ? flags.queue : []
   // Already admitted this session? Someone the host let in, who then left, should
   // walk straight back in rather than re-queueing in the lobby (the "can't rejoin
   // after being allowed in" bug). Match on the stable name+device identity.
-  const wasApproved = queue.some(
+  const approvedBefore = queue.some(
     (e) => e.name === name && (e.deviceId || '') === (deviceId || '') && e.status === 'approved',
   )
+  // Every privilege below that keys off an EXISTING identity — reclaiming host,
+  // co-host, stepping back into a live seat, skipping the lobby — needs the seat
+  // key minted for it (server/seat.mjs). Identities are public (the roster, and
+  // hostId in metadata), so without this anyone who'd seen one could knock as it,
+  // get its grants, and evict its owner. A claim without the key is refused
+  // outright rather than downgraded: minting a plain token under that identity
+  // would still collide with the owner's session and still match hostId in
+  // ensureHost.
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  const claimsSeat =
+    identity === flags.hostId || coHosts.includes(identity) || participants.some((p) => p.identity === identity) || approvedBefore
+  if (claimsSeat && !(await seatKeyValid(apiSecret, room, identity, seat))) {
+    return {
+      status: 409,
+      body: {
+        error: 'Someone with this name is already part of this call. Change your name to join.',
+        code: 'seat_taken',
+      },
+    }
+  }
+  const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
+  const wasApproved = approvedBefore
 
   // Beta allowlist gate (host-gated). Only an approved account may CREATE/hold a
   // room; their invited guests join the link without being on the list (still
@@ -526,13 +566,20 @@ export async function handleKnock(env, body) {
   const live = queue.filter((e) => e.status !== 'pending' || now - (e.ts || now) < KNOCK_TTL_MS)
   live.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now })
   await mergeRoomFlags(roomService, room, { queue: live.slice(-50) })
-  return { status: 200, body: { pending: true, requestId } }
+  // The request id is readable by everyone in the room (it's in the queue above);
+  // the claim key is what knock-status actually honours, and only this caller has it.
+  return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
 }
 
 export async function handleKnockStatus(env, query) {
-  const { roomService } = services(env)
+  const { roomService, apiSecret } = services(env)
   if (!roomService) return { status: 200, body: { status: 'expired' } }
-  const { room, requestId } = query
+  const { room, requestId, claim } = query
+  // Without the claim key an approved request id — public in room metadata — would
+  // mint the admitted guest's token for whoever polled it first.
+  if (!(await claimKeyValid(apiSecret, room, requestId, claim))) {
+    return { status: 403, body: { status: 'expired', error: 'Not your request' } }
+  }
   const flags = await getRoomFlags(roomService, room)
   const entry = (Array.isArray(flags.queue) ? flags.queue : []).find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }

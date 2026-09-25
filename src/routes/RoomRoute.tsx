@@ -6,6 +6,7 @@ import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
+import { rememberSeat, seatFor } from '@/lib/seatKeys'
 import { supabase } from '@/lib/supabase'
 import { parseRoomHash, roomHash } from '@/lib/roomLink'
 import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roomKeys'
@@ -149,6 +150,8 @@ export function RoomRoute() {
   const [error, setError] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
   const [waitingId, setWaitingId] = useState<string | null>(null)
+  // Goes with waitingId: the proof knock-status asks for (the id itself is public).
+  const waitClaim = useRef('')
   // Set when the knock reports the same account is already in the call on another
   // device — we hold the (already-minted) token and let the user pick "join anyway"
   // (companion, muted) vs "transfer here" (drop the other device) before connecting.
@@ -176,7 +179,9 @@ export function RoomRoute() {
         // Send the Supabase session token (if signed in), NOT a client-asserted
         // userId — the server derives the trusted account id from it. Absent → guest.
         const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
-        const res = await knock({ room, name: displayName, deviceId, accessToken, secret })
+        const seat = seatFor(room, `${displayName}#${deviceId}`)
+        const res = await knock({ room, name: displayName, deviceId, accessToken, secret, seat })
+        rememberSeat(room, res.identity, res.seat)
         if (res.token) {
           // Same account already in the call on another device? Don't auto-connect —
           // let the user choose companion vs transfer first (the token is held).
@@ -188,6 +193,7 @@ export function RoomRoute() {
           }
         } else if (res.pending && res.requestId) {
           // Waiting room is on — wait for the host to admit us.
+          waitClaim.current = res.claim ?? ''
           setWaitingId(res.requestId)
           setConnecting(false)
         } else {
@@ -215,7 +221,10 @@ export function RoomRoute() {
         }
         // Beta gate rejections are definitive — no retry. Show the server's message
         // (invite-only / room full) verbatim rather than the generic join error.
-        if (e instanceof ApiError && (e.code === 'not_in_beta' || e.code === 'room_full')) {
+        if (
+          e instanceof ApiError &&
+          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken')
+        ) {
           setError(e.message)
           setConnecting(false)
           return
@@ -270,9 +279,10 @@ export function RoomRoute() {
     if (!waitingId) return
     let stop = false
     const id = window.setInterval(async () => {
-      const s = await knockStatus(room, waitingId)
+      const s = await knockStatus(room, waitingId, waitClaim.current)
       if (stop) return
       if (s.status === 'approved' && s.token) {
+        rememberSeat(room, s.identity, s.seat)
         // If they backgrounded the app while waiting, ping them to come back.
         if (document.hidden) notifyAdmitted(room)
         setToken(s.token)

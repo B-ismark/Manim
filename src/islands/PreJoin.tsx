@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
@@ -352,6 +353,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               }
             }}
             placeholder="Your name"
+            maxLength={MAX_NAME_LEN}
             aria-label="Your name"
             autoComplete="name"
             className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
