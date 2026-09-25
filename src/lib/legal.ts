@@ -37,6 +37,10 @@ export const SUBPROCESSORS: { name: string; purpose: string }[] = [
     purpose: 'Background-blur model files, downloaded by your browser only when you turn blur on.',
   },
   { name: 'Krisp (through LiveKit)', purpose: 'Noise suppression, processed in your browser.' },
+  {
+    name: 'Sentry',
+    purpose: 'Crash reports, when error reporting is switched on. Room links are removed from them first.',
+  },
 ]
 
 /** The data Manim collects, and why — the core of the privacy disclosure (L1). */

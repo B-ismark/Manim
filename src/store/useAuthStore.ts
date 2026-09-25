@@ -5,7 +5,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/store/useToastStore'
 import { squareDownscale } from '@/lib/image'
 import { disablePush } from '@/lib/push'
-import { forgetPersonalData } from '@/lib/localData'
+import { forgetAuthSession, forgetPersonalData } from '@/lib/localData'
 
 /** Public Storage bucket holding user avatars (see DEPLOY.md §4a). */
 const AVATAR_BUCKET = 'avatars'
@@ -19,6 +19,7 @@ const AVATAR_BUCKET = 'avatars'
  */
 function leaveThisBrowser(): void {
   forgetPersonalData()
+  forgetAuthSession()
   window.location.assign('/')
 }
 
@@ -99,7 +100,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // session still exists — after sign-out this browser would keep ringing for
     // an account nobody here is signed into.
     await disablePush()
-    if (supabase) await supabase.auth.signOut()
+    // Offline or mid-outage this fails and keeps the session; leaveThisBrowser
+    // drops it regardless.
+    if (supabase) await supabase.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
 
@@ -116,7 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { error } = await sb.rpc('delete_account')
     if (error) throw new Error('Could not delete your account. Please contact support.')
     // The user no longer exists — clear the (now invalid) session and drop to guest.
-    await sb.auth.signOut()
+    await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
 

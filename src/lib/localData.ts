@@ -32,3 +32,26 @@ export function forgetPersonalData(storage: Pick<Storage, 'removeItem'> = localS
     }
   }
 }
+
+/** supabase-js's default session keys: `sb-<project>-auth-token` (+ `-code-verifier`). */
+const AUTH_SESSION_KEY = /^sb-.+-auth-token(?:-code-verifier)?$/
+
+/**
+ * Drop the saved sign-in session itself. supabase-js only removes it when the
+ * server confirms the sign-out: offline, on flaky wifi or during a Supabase
+ * outage it returns an error and KEEPS the token — and since sign-out reloads the
+ * page, the next person at a shared computer would come back signed in as you.
+ * The server-side session then just expires on its own.
+ */
+export function forgetAuthSession(storage: Pick<Storage, 'removeItem' | 'key' | 'length'> = localStorage): void {
+  try {
+    const keys: string[] = []
+    for (let i = 0; i < storage.length; i++) {
+      const k = storage.key(i)
+      if (k && AUTH_SESSION_KEY.test(k)) keys.push(k)
+    }
+    for (const k of keys) storage.removeItem(k)
+  } catch {
+    /* storage blocked — no session was persisted there either */
+  }
+}

@@ -99,8 +99,10 @@ export function Privacy() {
           <li>
             <span className="text-ink">Audio and video can be end-to-end encrypted.</span> When
             you start a new meeting, its encryption key travels in the invite link. We don't keep
-            it, but it does pass through our providers in two cases: when you ring a contact, and
-            when your own signed-in devices sync which call you're in (both through Supabase).
+            it, but it does pass through our providers in three cases: when you ring a contact, and
+            when your own signed-in devices sync which call you're in (both through Supabase), and
+            when a host merges one call into another (through the call's own message channel, which
+            LiveKit can read).
             Email invites leave the key out. Chat, files and drawings are encrypted in transit but
             are not end-to-end encrypted.
           </li>
@@ -126,8 +128,10 @@ export function Privacy() {
           {APP_NAME} stores what it needs to work in your browser's local storage: your display
           name, a device id, your notification choice, your device and effect preferences, and your
           recent rooms with their invite links. Nothing is used to track you across sites, so
-          there's no consent banner. Signing out clears everything personal from this browser;
-          clearing your browser storage removes all of it.
+          there's no consent banner. Signing out removes your sign-in, name, device id and recent
+          rooms from this browser. Other tabs that are still open, and your browser's history, keep
+          what they already have, so on a shared computer close them and clear the history too.
+          Clearing your browser storage removes everything.
         </P>
       </section>
 
