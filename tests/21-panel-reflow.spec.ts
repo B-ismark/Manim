@@ -256,8 +256,13 @@ test.describe('Side panel reflow', () => {
 
     // The guard must only ever reject a click the pointer never aimed. Travelling
     // to Leave and pressing it is aimed, so it has to work first time — no second
-    // press, no confirmation.
-    await page.getByRole('button', { name: 'Leave call', exact: true }).first().click()
+    // press, no confirmation. The pointer goes somewhere else first: centred
+    // under the videos, Leave can land exactly where Open chat was, and a click
+    // with zero travel there IS the unaimed press test 1 refuses.
+    const leave = page.getByRole('button', { name: 'Leave call', exact: true }).first()
+    const box = (await leave.boundingBox())!
+    await page.mouse.move(box.x + box.width / 2, box.y - 120, { steps: 4 })
+    await leave.click()
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeHidden({
       timeout: 20_000,
     })
