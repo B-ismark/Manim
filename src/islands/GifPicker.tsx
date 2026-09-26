@@ -18,6 +18,12 @@ interface GifItem {
   gif: string
 }
 
+// Results already fetched this page load, by query ('' = trending). Reopening the
+// picker asked Giphy again every time, and the beta key allows ~100 calls an hour
+// for everyone together.
+const seen = new Map<string, GifItem[]>()
+const SEEN_MAX = 30
+
 /** Giphy GIF search/picker. Selecting a GIF sends its URL as a chat message. */
 export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
   const [query, setQuery] = useState('')
@@ -27,9 +33,15 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
   useEffect(() => {
     let cancelled = false
     async function run() {
+      const q = query.trim()
+      const hit = seen.get(q)
+      if (hit) {
+        setItems(hit)
+        setLoading(false)
+        return
+      }
       setLoading(true)
       try {
-        const q = query.trim()
         const base = q
           ? `https://api.giphy.com/v1/gifs/search?q=${encodeURIComponent(q)}`
           : 'https://api.giphy.com/v1/gifs/trending?'
@@ -44,6 +56,10 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
             gif: g.images?.downsized?.url ?? g.images?.original?.url ?? '',
           }))
           .filter((g) => g.preview && g.gif)
+        if (res.ok) {
+          if (seen.size >= SEEN_MAX) seen.delete(seen.keys().next().value!)
+          seen.set(q, mapped)
+        }
         setItems(mapped)
       } catch {
         if (!cancelled) setItems([])

@@ -15,17 +15,19 @@ encryption claims, the chat-history host setting, the find-by-email throttle, an
 "need the full link" screen for guests who arrive at an encrypted call without its
 key, and a Worker crash on returning visitors that never reached production.
 Words and voice (Sept 2026): one voice across the app, no developer text in front
-of people (see that PR).
+of people (see that PR). Later in Sept 2026: rings and the other-device offer carry
+the call's key locked to the recipient's devices, anonymous usage counts
+(`docs/usage-counts.md`), and a quota pass (static files off the Worker, no 3s
+waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
 
 ## Needs doing outside the code
 
 - [ ] **Deploy when no important calls are live.** Seat keys start working on deploy;
       someone already in a call who reloads afterwards has no key for their seat and
       is asked to change their name (a host rejoins as a guest). Once only.
-- [ ] Have counsel read the updated Privacy page. Still missing and theirs to decide:
-      the legal basis for each use and the safeguards for data processed in the US.
-      The page deliberately names no operator (owner's choice); counsel should
-      confirm that's acceptable where you operate. Minimum age is 16.
+- Not planned (owner, Sept 2026: a private beta among friends): a counsel read of
+  the Privacy page (legal basis per use, US-processing safeguards, naming no
+  operator, minimum age 16). Revisit before opening it up.
 - [ ] **Email invites only reach you** (deferred, Sept 2026: needs a domain).
       `RESEND_FROM` is Resend's test sender (`onboarding@resend.dev`), which
       delivers only to the Resend account owner, and a `workers.dev` address can't
@@ -38,34 +40,32 @@ of people (see that PR).
       run DEPLOY.md §3c step 6 in a browser without an ad blocker (they block
       Sentry's loader, which is also why some visitors will never report).
 - [ ] Run the new SQL (Sept 2026 batch): the `avatar read own` policy (§3a), the
-      push `seen_at` column and trigger (§4c), and the nightly clean-up jobs (§4d).
+      push `seen_at` column and trigger (§4c), the nightly clean-up jobs (§4d), and
+      the device keys for sealed rings (§4e, after §4c). Until §4e runs, rings work
+      the old way.
+- [ ] After the deploy, check the served site: a file under `/assets/` answers with
+      `Cache-Control: … immutable` plus the COOP/COEP/CSP headers, and a call page
+      still reports `crossOriginIsolated` true in the console.
 
 ## Areas not yet audited
 
-- [ ] **Accessibility: the screen-reader walk.** The code-level pass is done (focus
-      returns on close, Escape stays in the composer, landmarks, honest toggle
-      states, announcements, switchable one-key shortcuts). What's left needs a
-      real screen reader: `docs/screen-reader-check.md` (~15 minutes). Live
-      captions: not for now (owner, Sept 2026).
-- [ ] **Real devices and bad networks.** `docs/real-device-checklist.md`: iPhone
-      Safari, a low-end Android, a weak or lossy connection, on your own devices.
-- [ ] **Product analytics: decide.** `docs/analytics-proposal.md` recommends eight
-      anonymous counters in the Worker (no cookies, no third party). One decision:
-      anonymous counts, yes or no.
-- [ ] **Cost and scale: decide the levers.** The model is `docs/cost-and-scale.md`
-      (free plan everywhere). LiveKit's 5,000 participant-minutes a month is the
-      first wall, at roughly 13 three-person half-hour calls a week. Product calls
-      for you: default video quality, room size cap, and how soon a call ends when
-      you're alone in it. Code levers still open: fewer KV writes per join, the
-      host's 3-second waiting-room poll, static files counting as Worker requests.
+- [ ] **Real devices and bad networks** (owner, later). `docs/real-device-checklist.md`:
+      iPhone Safari, a low-end Android, a weak or lossy connection, on your own devices.
+- [ ] **Cost and scale.** The model is `docs/cost-and-scale.md` (free plan
+      everywhere). LiveKit's 5,000 participant-minutes a month is the first wall.
+      Video quality stays as is (owner, Sept 2026); room size cap and how soon a
+      call ends when you're alone in it are still yours to call. The code levers
+      are done.
+- Not planned (owner, Sept 2026): the screen-reader walk (`docs/screen-reader-check.md`
+  is there if that changes) and live captions.
 
 ## Security
 
-- [ ] **The E2EE key through Supabase.** It still passes through Supabase when
-      ringing a contact (`features/calls/calls.ts`) and in cross-device presence
-      (`features/calls/usePresence.ts`). Encrypt it per recipient device.
-      (Chat, files, drawings and reactions are end-to-end encrypted on an
-      encrypted call since Sept 2026, and so is a merge's key.)
+- [ ] **Who vouches for a device key.** Rings are sealed to the keys Supabase hands
+      out (`features/calls/deviceKeys.ts`), so Supabase itself could swap one in, and
+      a lookup that fails twice sends the key unsealed so the call still gets
+      through. Fix: remember each contact's device keys the first time and warn on
+      a change, and never fall back once keys have been seen.
 - [ ] **Forgeable chat state.** Pins and history replay relay other people's
       messages, so the author and text are whatever the relayer says. Needs signed
       messages to fix properly. (Report notices now name the verified sender.)
