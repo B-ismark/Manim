@@ -14,11 +14,11 @@ encryption claims, the chat-history host setting, the find-by-email throttle, an
 (from the review of all that) call data channels that rebuilt on every render, a
 "need the full link" screen for guests who arrive at an encrypted call without its
 key, and a Worker crash on returning visitors that never reached production.
+Words and voice (Sept 2026): one voice across the app, no developer text in front
+of people (see that PR).
 
 ## Needs doing outside the code
 
-- [ ] **Run the SQL in DEPLOY.md §3.1 once** in the Supabase SQL editor. The app
-      already handles the throttled response; until the SQL runs there is no limit.
 - [ ] **Deploy when no important calls are live.** Seat keys start working on deploy;
       someone already in a call who reloads afterwards has no key for their seat and
       is asked to change their name (a host rejoins as a guest). Once only.
@@ -27,21 +27,31 @@ key, and a Worker crash on returning visitors that never reached production.
       The page deliberately names no operator (owner's choice); counsel should
       confirm that's acceptable where you operate. Minimum age is 16.
 - [ ] Confirm Brevo is the sign-in email sender configured in Supabase (the Privacy
-      page lists it).
+      page lists it). Without custom SMTP, Supabase only emails the project team.
+- [ ] **Email invites only reach you.** `RESEND_FROM` is Resend's test sender
+      (`onboarding@resend.dev`), which delivers only to the Resend account owner.
+      Verify a domain you own in Resend and point `RESEND_FROM` at it. Until then
+      guests get the mail-app fallback, which works.
+- [ ] Set `VAPID_SUBJECT` as a Worker **Secret** (`mailto:` your address). It left
+      `wrangler.toml` because the repo is public; unset, push uses the repo URL.
+- [ ] Update the Sentry advanced scrubbing rule to the one in DEPLOY.md §3c (it now
+      also catches a token in a query string).
 
 ## Areas not yet audited
 
 - [ ] **Accessibility in real use.** Walk a whole call keyboard-only and with a
-      screen reader (VoiceOver, NVDA). Decide on live captions for deaf and
-      hard-of-hearing guests. Automated axe checks already run in CI.
+      screen reader (VoiceOver, NVDA). Automated axe checks already run in CI. Live
+      captions: not for now (owner, Sept 2026).
 - [ ] **Real devices and bad networks.** Real iPhone Safari, a low-end Android, a
       weak or lossy connection. Best done locally, on your own devices.
-- [ ] **Words and voice.** One tone across copy, errors and empty states; remove
-      developer-facing text from production (e.g. "restart the dev server").
 - [ ] **Product analytics.** A privacy-respecting view of what's used and where
       people drop out of the join flow, so keep/cut calls have data.
-- [ ] **Cost and scale.** Model LiveKit participant-minutes against growth; the
-      quota cap is a product risk, not just a testing one.
+- [ ] **Cost and scale: decide the levers.** The model is `docs/cost-and-scale.md`
+      (free plan everywhere). LiveKit's 5,000 participant-minutes a month is the
+      first wall, at roughly 13 three-person half-hour calls a week. Product calls
+      for you: default video quality, room size cap, and how soon a call ends when
+      you're alone in it. Code levers still open: fewer KV writes per join, the
+      host's 3-second waiting-room poll, static files counting as Worker requests.
 
 ## Security
 
@@ -57,7 +67,7 @@ key, and a Worker crash on returning visitors that never reached production.
 - [ ] **Forgeable chat state.** Pins, history replay and "report" notices take the
       sender's name from the message. Attribute to the verified sender.
 - [ ] Hardening: narrow CSP `script-src` from all of jsDelivr to the MediaPipe path;
-      rate-limit `/api/push`; show only fixed strings for auth errors from the URL.
+      rate-limit `/api/push`.
 - [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set
       `VITE_SENTRY_DSN` in the Cloudflare build and keep Session Replay and
       tracing off in Sentry's Loader Script settings (steps in DEPLOY.md).
@@ -84,13 +94,12 @@ key, and a Worker crash on returning visitors that never reached production.
 - [ ] **Solo auto-leave**: add "Keep call open", or ask "Still there?".
 - [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
       should move into TopStack so the layering rules cover them.
-- [ ] Hide the random code in generated room titles in-app and in Recents (the link
-      preview already does).
 - [ ] Room URLs are case-sensitive (`/r/Team` vs `/r/team`). Redirect to lowercase.
-- [ ] "Start a new meeting" on the expired-link screen only goes home.
+- [ ] "Start a new call" on the expired-link screen only goes home.
 - [ ] Join is disabled with no hint when the name is empty.
 - [ ] Prejoin mic/camera choices aren't remembered between visits.
-- [ ] Landing brand touches the Setup pill on a 375×667 phone.
+- [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
+      now: visitors no longer see the pill).
 - [ ] Firefox's own PiP button appears on hover over tiles.
 - [ ] Turning a camera back ON after another app took it fails silently: a muted
       track re-acquires via `unmute()` → `restart()`, which never raises LiveKit's

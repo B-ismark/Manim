@@ -6,6 +6,7 @@ import { useIncomingCalls } from '@/features/calls/calls'
 import { useAppStore } from '@/store/useAppStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { roomTo } from '@/lib/roomLink'
+import { prettyRoom } from '@/lib/roomName'
 
 /**
  * App-level incoming-call surface, mounted once. Owns the single Realtime
@@ -53,7 +54,7 @@ export function IncomingCallBanner() {
           <div>
             <p className="text-xl font-semibold">{incoming.fromName}</p>
             <p className="mt-1 text-sm text-ink-muted">
-              is calling · Room {incoming.room} · {mmss}
+              is calling · {prettyRoom(incoming.room)} · {mmss}
             </p>
           </div>
         </div>
@@ -92,7 +93,7 @@ export function IncomingCallBanner() {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{incoming.fromName} is calling</p>
           <p className="text-xs text-ink-muted">
-            Room {incoming.room} · {mmss}
+            {prettyRoom(incoming.room)} · {mmss}
           </p>
         </div>
         <Button size="sm" variant="accent" onClick={accept}>

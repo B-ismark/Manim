@@ -24,7 +24,7 @@ import { addBreadcrumb, reportError } from '@/lib/report'
 function notifyAdmitted(room: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   try {
-    const n = new Notification("You're in — tap to join", {
+    const n = new Notification("You’re in — open Manim to join", {
       body: `${prettyRoom(room)} is ready for you.`,
       tag: 'mn-admit',
     })
@@ -48,24 +48,23 @@ function notifyAdmitted(room: string) {
 const CallRoom = lazy(() => import('@/islands/CallRoom'))
 
 /**
- * Turn a raw LiveKit connection-error / disconnect string into something a user
- * can act on. The headline offender was "Client initiated disconnect" surfacing
- * verbatim when a mobile join was torn down (e.g. a duplicate session or the tab
- * backgrounding mid-connect) — meaningless to the user. Map the known ones; pass
- * anything genuinely unexpected through unchanged.
+ * Turn a failed join into something a user can act on. The server's own `error`
+ * (an `ApiError` carrying a body) is written as UI copy, so it passes through.
+ * Everything else is a LiveKit or browser string — "Client initiated disconnect",
+ * "could not createOffer…", "WebSocket error" — meaningless to the person reading
+ * it, so the known ones are mapped and the rest get one generic line (the raw text
+ * still goes to `reportError`).
  */
-function friendlyJoinError(raw: string): string {
+function friendlyJoinError(e: unknown, raw: string): string {
+  if (e instanceof ApiError && e.fromServer) return raw
   const m = raw.toLowerCase()
   if (m.includes('client initiated') || m.includes('duplicate identity')) {
-    return 'Connection closed — tap Join to reconnect.'
-  }
-  if (m.includes('timeout') || m.includes('could not establish') || m.includes('failed to connect')) {
-    return 'Couldn’t reach the call. Check your connection and tap Join to retry.'
+    return 'Connection closed. Join again to reconnect.'
   }
   if (m.includes('permission') || m.includes('notallowed') || m.includes('denied')) {
-    return 'Allow camera and microphone access, then tap Join.'
+    return 'Allow camera and microphone access, then join again.'
   }
-  return raw
+  return 'Couldn’t reach the call. Check your connection and join again.'
 }
 
 /**
@@ -75,7 +74,10 @@ function friendlyJoinError(raw: string): string {
  * mobile user on a spotty connection had to manually re-tap Join. We auto-retry
  * just these classes with a short backoff before falling back to the manual card.
  */
-function isTransientJoinError(raw: string): boolean {
+function isTransientJoinError(e: unknown, raw: string): boolean {
+  // A gateway error page (502/504, Cloudflare's 52x) has no JSON body: the Worker
+  // never answered, so trying again is the right move.
+  if (e instanceof ApiError) return !e.fromServer && e.status >= 502
   const m = raw.toLowerCase()
   return (
     m.includes('timeout') ||
@@ -163,7 +165,8 @@ export function RoomRoute() {
   const handleJoin = useCallback(async () => {
     setError(null)
     if (!LIVEKIT_URL) {
-      setError('No media server configured. Set VITE_LIVEKIT_URL in .env (LiveKit Cloud ws URL), then restart the dev server.')
+      console.warn('No media server configured: set VITE_LIVEKIT_URL in .env, then restart the dev server.')
+      setError('Calls aren’t set up here yet.')
       return
     }
     setConnecting(true)
@@ -200,7 +203,7 @@ export function RoomRoute() {
           setWaitingId(res.requestId)
           setConnecting(false)
         } else {
-          setError('Could not join this room.')
+          setError('Couldn’t join this call. Try again.')
           setConnecting(false)
         }
         return
@@ -237,16 +240,16 @@ export function RoomRoute() {
           setConnecting(false)
           return
         }
-        const raw = e instanceof Error ? e.message : 'Failed to join'
-        if (isTransientJoinError(raw) && attempt < JOIN_MAX_ATTEMPTS) {
+        const raw = e instanceof Error ? e.message : String(e)
+        if (isTransientJoinError(e, raw) && attempt < JOIN_MAX_ATTEMPTS) {
           // Stay on the JoiningScreen (connecting && !error) and tell the user we're
           // retrying rather than flashing an error card between attempts.
-          toast('Connection hiccup — reconnecting…', 'info')
+          toast('Connection dropped — trying again…', 'info')
           await delay(JOIN_BACKOFF_MS[attempt - 1])
           continue
         }
         reportError(e, { context: 'join', room, attempt })
-        setError(friendlyJoinError(raw))
+        setError(friendlyJoinError(e, raw))
         setConnecting(false)
         return
       }
@@ -365,7 +368,7 @@ export function RoomRoute() {
           onLeave={leave}
           onError={(e) => {
             reportError(e, { context: 'livekit-room', room })
-            setError(friendlyJoinError(e.message))
+            setError(friendlyJoinError(e, e.message))
             setToken(null)
             setConnecting(false)
           }}
@@ -436,12 +439,12 @@ function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
         </span>
         <h1 className="mt-4 text-lg font-semibold">This link has expired</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          The invite for <span className="font-medium text-ink">{prettyRoom(room)}</span> hasn't been
-          used in a while, so it's no longer active. Start a new meeting and share its fresh link — or
+          The invite for <span className="font-medium text-ink">{prettyRoom(room)}</span> hasn’t been
+          used in a while, so it’s no longer active. Start a new call and share its link — or
           ask whoever invited you for a current one.
         </p>
         <Button variant="accent" className="mt-5" onClick={onHome}>
-          Start a new meeting
+          Start a new call
         </Button>
       </Island>
     </main>
@@ -469,7 +472,7 @@ function NeedFullLink({ room, onHome }: { room: string; onHome: () => void }) {
           server. Ask whoever invited you for the full link.
         </p>
         <Button variant="accent" className="mt-5" onClick={onHome}>
-          Back to home
+          Go home
         </Button>
       </Island>
     </main>
@@ -495,9 +498,9 @@ function AlreadyOnDevicePrompt({
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
       <Island pad="lg" className="w-full max-w-sm">
-        <h2 className="text-lg font-semibold">You're already in this call</h2>
+        <h2 className="text-lg font-semibold">You’re already in this call</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          You're in this call on another device. Join here too (muted, to avoid echo), or move the
+          You’re in this call on another device. Join here too (muted, to avoid echo), or move the
           call to this device.
         </p>
         <div className="mt-5 flex flex-col gap-2">
@@ -546,19 +549,19 @@ function WaitingRoom({ room, onCancel }: { room: string; onCancel: () => void })
       <Island pad="lg" className="w-full max-w-sm text-center">
         <h1 className="text-lg font-semibold">Waiting to be let in</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          The host has been notified. You'll join {prettyRoom(room)} as soon as they admit you.
+          The host has been notified. You’ll join {prettyRoom(room)} as soon as they admit you.
         </p>
         <p className="mt-1 text-xs text-ink-subtle tabular-nums">
           Waiting {Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}
         </p>
         {supported && perm === 'default' && (
           <Button variant="neutral" className="mt-4" onClick={() => void arm()}>
-            Notify me when I'm let in
+            Notify me when I’m let in
           </Button>
         )}
         {supported && perm === 'granted' && (
           <p className="mt-4 text-xs text-ink-subtle">
-            We'll notify you the moment you're admitted — you can switch to another app.
+            We’ll notify you the moment you’re admitted — you can switch to another app.
           </p>
         )}
         <div className="mt-4">

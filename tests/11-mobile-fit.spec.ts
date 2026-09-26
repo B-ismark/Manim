@@ -247,7 +247,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     try {
       await page.waitForTimeout(2000)
       await openMore(page)
-      await page.getByRole('button', { name: 'Grid', exact: true }).tap()
+      await page.getByRole('button', { name: 'Gallery', exact: true }).tap()
       await closePanel(page)
       await page.waitForTimeout(600)
 
@@ -544,7 +544,7 @@ test.describe('Mobile fit (no page scroll)', () => {
     try {
       await page.waitForTimeout(1500)
       await openMore(page)
-      await page.getByRole('button', { name: 'Grid', exact: true }).tap()
+      await page.getByRole('button', { name: 'Gallery', exact: true }).tap()
       await closePanel(page)
       await revealChrome(page)
       await page.waitForTimeout(500)
@@ -626,7 +626,7 @@ test.describe('Mobile fit (no page scroll)', () => {
       ['Abena', 'Ama', 'Kofi', 'Kojo', 'Yaw'].map((n) => newParticipant(browser, room, n)),
     )
     try {
-      // Via the view chip, not More → Grid: the chip never auto-hides, so the setup
+      // Via the view chip, not More → Gallery: the chip never auto-hides, so the setup
       // can't lose a race with the control island sliding out of the thumb zone.
       await selectStageView(page, 'Gallery')
       await page.waitForTimeout(500)

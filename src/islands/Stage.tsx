@@ -595,7 +595,7 @@ function TouchStage({
    *
    * "Shared screen" un-demotes it and "Speaker"/"Gallery" demote it, because
    * `demotedShares` IS the per-viewer "I don't want this share full-bleed" flag —
-   * the same one the tile's own "Show as grid" button sets. Routing the switcher
+   * the same one the tile's own "Show in gallery" button sets. Routing the switcher
    * through it means the chip and that button can't disagree about what you asked
    * for, which two independent flags would eventually do.
    */
@@ -648,7 +648,7 @@ function TouchStage({
               onActivate={() => toggleShareDemoted(shareSid)}
               action={{
                 icon: <GridIcon />,
-                label: 'Show as grid',
+                label: 'Show in gallery',
                 onClick: () => toggleShareDemoted(shareSid),
               }}
               actions={
@@ -1098,7 +1098,7 @@ function RosterStrip({
               {ordered.length} {ordered.length === 1 ? 'person' : 'people'}
             </span>
           )}
-          <span className="sr-only">{expanded ? 'Hide participants' : 'Show participants'}</span>
+          <span className="sr-only">{expanded ? 'Hide people' : 'Show people'}</span>
         </button>
         {expanded && (
           <div className="flex gap-1.5 overflow-x-auto px-2 no-scrollbar">
@@ -1197,7 +1197,7 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
       <div className="absolute right-2 top-2 z-30" onPointerDown={(e) => e.stopPropagation()}>
         <IconButton
           size="md"
-          label="Exit fullscreen"
+          label="Exit full screen"
           icon={<ExitFullscreenIcon />}
           className="bg-overlay text-white hover:bg-overlay"
           onClick={exit}
@@ -1209,7 +1209,7 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
     <TileAction>
       <IconButton
         size="sm"
-        label="Fullscreen shared screen"
+        label="View shared screen full screen"
         icon={<FullscreenIcon />}
         className="bg-overlay text-white hover:bg-overlay"
         onClick={enter}
@@ -1262,7 +1262,7 @@ function OverflowTile({ count, onClick }: { count: number; onClick: () => void }
       type="button"
       onClick={onClick}
       className="grid size-full place-items-center rounded-tile bg-sunken text-ink ring-1 ring-line transition-colors hover:bg-line [&_svg]:size-5"
-      aria-label={`View all participants (${count} more)`}
+      aria-label={`View all people (${count} more)`}
     >
       <span className="flex flex-col items-center gap-1 text-sm font-medium">
         <PeopleIcon />
@@ -1486,7 +1486,7 @@ function ContentStage({
                   onActivate={() => (bigIsShare ? toggleShareDemoted(featuredSid) : setSpotlight(null))}
                   action={
                     bigIsShare
-                      ? { icon: <GridIcon />, label: 'Show as grid', onClick: () => toggleShareDemoted(featuredSid) }
+                      ? { icon: <GridIcon />, label: 'Show in gallery', onClick: () => toggleShareDemoted(featuredSid) }
                       : { icon: <ScreenShareIcon />, label: 'Back to shared screen', onClick: () => setSpotlight(null) }
                   }
                   actions={
@@ -1576,7 +1576,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
         )}
       </div>
       <div className="shrink-0 text-center">
-        <p className="text-sm font-medium">You're the only one here</p>
+        <p className="text-sm font-medium">You’re the only one here</p>
         <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
         <Button variant="accent" className="mt-3" onClick={copy}>
           {copied ? <CheckIcon /> : <CopyIcon />}
@@ -1764,7 +1764,7 @@ function Tile({
     try {
       await moderate({ room: room.name, token: roomToken, target: p.identity, action: 'mute', trackSid, source: 'microphone' })
     } catch {
-      toast(`Couldn't mute ${name}`, 'danger')
+      toast(`Couldn’t mute ${name} — try again`, 'danger')
     }
   }
   const myOtherDevice = isMyOtherDevice(p, myUserId)

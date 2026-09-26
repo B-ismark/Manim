@@ -23,7 +23,7 @@ test.describe('Session — end for everyone', () => {
     const guest = await newParticipant(browser, room, 'Guest')
 
     try {
-      await expect(page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({
+      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({
         timeout: 30_000,
       })
 
@@ -52,7 +52,7 @@ test.describe('Session — end for everyone', () => {
     const guest = await newParticipant(browser, room, 'Guest')
 
     try {
-      await expect(page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({
+      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({
         timeout: 30_000,
       })
 

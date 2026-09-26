@@ -70,7 +70,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
     return (
       <main className="grid min-h-dvh place-items-center p-4">
         <Island pad="lg" className="w-full max-w-sm text-center">
-          <h1 className="text-lg font-semibold">Something went wrong</h1>
+          <h1 className="text-lg font-semibold">{stale ? 'A new version is available' : 'Something went wrong'}</h1>
           <p className="mt-1 text-sm text-ink-muted">
             {stale
               ? 'The app updated in the background. Reload to get the latest version.'

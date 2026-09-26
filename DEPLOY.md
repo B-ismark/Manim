@@ -492,7 +492,7 @@ grant execute on function get_push_targets(uuid) to authenticated;
 
 **VAPID keys** — generate one keypair: `npx web-push generate-vapid-keys`.
 - Client/build var (Cloudflare → manim → Build): `VITE_VAPID_PUBLIC_KEY` = the public key.
-- Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (e.g. `mailto:you@domain.com`), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
+- Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` as a **Secret** (e.g. `mailto:you@domain.com`: push services use it to reach you about problems; a Secret because this repo is public; unset, it falls back to the repo's URL), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
 - iOS note: Web Push needs the PWA installed to the Home Screen (Add to Home Screen) — Safari only delivers push to installed web apps.
 
 ## 5. LiveKit Cloud
@@ -506,9 +506,11 @@ deploy`) automatically, to 100%. Your app is live at
 subdomain — rename it under Workers & Pages → account settings, or add a custom
 domain in the Worker → Settings → Domains & Routes).
 
-Verify config at runtime from the Landing page **Setup** menu — it reports which
+Verify config at runtime from the Landing page **Setup** menu — open the site with
+`?setup` on the address (`https://…/?setup`); visitors never see it. It reports which
 of LiveKit / accounts / email / GIFs are live (green) or missing (with the env
-var to set). A red banner appears if calls aren't configured.
+var to set). A red banner appears if calls aren't configured (for visitors it just
+says calls aren't available right now).
 
 ## Local development
 `npm run dev` runs Vite (5173) + the Express dev server (3001) which mirrors the

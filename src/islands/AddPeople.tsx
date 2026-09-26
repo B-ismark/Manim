@@ -142,8 +142,8 @@ export function AddPeople({
               the address, so it moved in here with it rather than being cut. */}
           <p className="mt-1.5 text-xs text-ink-subtle">
             {canRing
-              ? "We'll email them an invite, or ring them if they have an account."
-              : "We'll email them an invite to join this call."}
+              ? "We’ll email them an invite, or ring them if they have an account."
+              : "We’ll email them an invite to join this call."}
           </p>
 
           {/* An address nobody is saved under: offer it directly, so one box

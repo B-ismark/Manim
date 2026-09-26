@@ -35,14 +35,15 @@ SUPABASE_URL = "https://xrbvjcxefdihkojxebur.supabase.co"
 # wipe it (a plaintext dashboard var gets erased on every deploy; that's why it kept
 # vanishing). RLS — not key secrecy — protects the data.
 SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhyYnZqY3hlZmRpaGtvanhlYnVyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0NTI5OTYsImV4cCI6MjA5NzAyODk5Nn0.CZaXYizzM_kZmhKpfpIQAUbbaReoT0DIus7nnx2DmWs"
-# Web Push (background incoming-call notifications). Public key + subject pinned here
-# so a deploy doesn't wipe them (same reason as SUPABASE_URL above); VAPID_PRIVATE_KEY
-# is a Worker Secret. This SAME public key must also be the VITE_VAPID_PUBLIC_KEY build
+# Web Push (background incoming-call notifications). Public key pinned here
+# so a deploy doesn't wipe it (same reason as SUPABASE_URL above); VAPID_PRIVATE_KEY
+# and VAPID_SUBJECT (a mailto: with your address — this repo is public) are Worker
+# Secrets.
+# This SAME public key must also be the VITE_VAPID_PUBLIC_KEY build
 # var so the client subscribes with the matching key. Push stays a graceful no-op
 # until VAPID_PRIVATE_KEY is set AND the push_subscriptions table + get_push_targets
 # RPC exist (DEPLOY.md §4c).
 VAPID_PUBLIC_KEY = "BADDBgiHH8moL6Wc4Re005pxPOulTr9lNuQvFTTqHpvl_C4NuYRM5Qs-a61ROhJQrDpBNbKyxDRnYpgA72B21eI"
-VAPID_SUBJECT = "mailto:bismark.gyau@amalitech.com"
 # Beta allowlist gate (server/core.mjs). When "true", only accounts whose login
 # email has an `allow:<email>` key in ROOM_KV may START a room; their invited guests
 # join via the link without being listed. Seed the allowlist BEFORE flipping this on,
@@ -81,3 +82,8 @@ simple = { limit = 20, period = 60 }
 binding = "ROOM_KV"
 id = "aa044ac9f8024ef786813cb7995a1d2d"
 preview_id = "32f20a00b86d4eebadce9c0090ee8711"
+
+# Supabase keep-alive (worker/index.js `scheduled`): a free project pauses after a
+# week without activity. Mondays and Thursdays, 06:17 UTC.
+[triggers]
+crons = ["17 6 * * 1,4"]

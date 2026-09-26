@@ -79,7 +79,7 @@ function ContactBody({ topic }: { topic: string }) {
     )
   return (
     <>
-      We're setting up a contact address for {topic.toLowerCase()} and will publish it here.
+      We’re setting up a contact address for {topic.toLowerCase()} and will publish it here.
       Meanwhile you can delete your account yourself from Settings → Delete account.
     </>
   )
@@ -119,11 +119,11 @@ export function Privacy() {
       </section>
 
       <section>
-        <Heading>What we don't do</Heading>
+        <Heading>What we don’t do</Heading>
         <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm leading-relaxed text-ink-muted">
           <li>
-            <span className="text-ink">We don't record your calls.</span> Audio and video pass
-            live through LiveKit's servers and are not stored anywhere by {APP_NAME}. Other people
+            <span className="text-ink">We don’t record your calls.</span> Audio and video pass
+            live through LiveKit’s servers and are not stored anywhere by {APP_NAME}. Other people
             in a call could still record it on their own devices.
           </li>
           <li>
@@ -132,19 +132,19 @@ export function Privacy() {
             link, so anyone with the full link can join and see and hear the call: share it only
             with people you mean to invite. The key reaches our providers in three cases. When you
             ring a contact, it goes through Supabase and stays in our database for up to 3 days.
-            When your own signed-in devices show which call you're in, it passes through Supabase
-            without being stored. When a host merges two calls, it is sent over the call's message
+            When your own signed-in devices show which call you’re in, it passes through Supabase
+            without being stored. When a host merges two calls, it is sent over the call’s message
             channel, which LiveKit can read. Email invites leave the key out. Chat, files, drawings
-            and reactions are encrypted on their way to LiveKit but not end-to-end, so LiveKit's
-            servers can read them. A call opened without a key isn't end-to-end encrypted; the
+            and reactions are encrypted on their way to LiveKit but not end-to-end, so LiveKit’s
+            servers can read them. A call opened without a key isn’t end-to-end encrypted; the
             padlock in the call shows which applies.
           </li>
           <li>
             Background notifications say only that someone is calling. If {APP_NAME} is open in
-            another tab, the notification shows the caller's name and the room.
+            another tab, the notification shows the caller’s name and the room.
           </li>
-          <li>We don't make automated decisions about you or build profiles.</li>
-          <li>We don't use tracking or advertising cookies, and we don't sell your data.</li>
+          <li>We don’t make automated decisions about you or build profiles.</li>
+          <li>We don’t use tracking or advertising cookies, and we don’t sell your data.</li>
         </ul>
       </section>
 
@@ -152,7 +152,7 @@ export function Privacy() {
         <Heading>In a call, others can see</Heading>
         <P>
           Everyone in a call sees your display name (if you signed in by email and never set one,
-          that's the part of your email before the @) and a random device id. If you're signed
+          that’s the part of your email before the @) and a random device id. If you’re signed
           in, they also receive your account number, which can be used to view your profile photo.
           They receive your chat messages, files and drawings. If the host uses a waiting room,
           people in the call can see the names of everyone who asked to join. By default, people who join later can also see
@@ -165,12 +165,12 @@ export function Privacy() {
       <section>
         <Heading>Local storage (no cookie banner)</Heading>
         <P>
-          {APP_NAME} stores what it needs to work in your browser's local storage: your sign-in,
+          {APP_NAME} stores what it needs to work in your browser’s local storage: your sign-in,
           display name, device and guest ids, your notification choice, your theme, sound, device
           and effect preferences, and your recent rooms with their invite links and saved keys. It
-          doesn't use cookies, and nothing is used to track you across sites, so there's no consent
+          doesn’t use cookies, and nothing is used to track you across sites, so there’s no consent
           banner. Signing out removes your sign-in, name, ids, notification subscription, recent
-          rooms and saved keys from this browser, and keeps your theme and device preferences. Other tabs that are still open, and your browser's history, keep
+          rooms and saved keys from this browser, and keeps your theme and device preferences. Other tabs that are still open, and your browser’s history, keep
           what they already have, so on a shared computer close them and clear the history too.
           Clearing your browser storage removes everything.
         </P>
@@ -201,15 +201,15 @@ export function Privacy() {
           database (up to 3 days), our email and crash-report providers' logs (for as long as they
           keep them), and, if you were given early access, your email on our access list until we
           remove it. <ContactUs start /> to have those removed too. Call audio and video are never
-          kept, since calls aren't recorded.
+          kept, since calls aren’t recorded.
         </P>
       </section>
 
       <section>
         <Heading>Calling or inviting someone by email</Heading>
         <P>
-          When you enter another person's email to call or invite them, {APP_NAME} uses it to look
-          up their account or send them a one-off invitation email. We don't add them to a mailing
+          When you enter another person’s email to call or invite them, {APP_NAME} uses it to look
+          up their account or send them a one-off invitation email. We don’t add them to a mailing
           list or store the address against your account. Resend, which sends the email, keeps a
           delivery record of it, and the email shows your name and the room name.
         </P>
@@ -218,9 +218,9 @@ export function Privacy() {
       <section>
         <Heading>Children</Heading>
         <P>
-          {APP_NAME} is for people aged {MIN_AGE} and over. We don't knowingly collect data from
+          {APP_NAME} is for people aged {MIN_AGE} and over. We don’t knowingly collect data from
           anyone younger. If you think a child under {MIN_AGE} has given us their data,{' '}
-          <ContactUs /> and we'll delete it.
+          <ContactUs /> and we’ll delete it.
         </P>
       </section>
 
@@ -229,7 +229,7 @@ export function Privacy() {
         <P>
           You can ask for a copy of the data we hold about you, have it corrected or deleted, ask
           us to stop or limit using it, or take back a choice you made, such as notifications.{' '}
-          <ContactUs start /> and we'll reply within a month. If you're unhappy with the answer,
+          <ContactUs start /> and we’ll reply within a month. If you’re unhappy with the answer,
           you can complain to your local data protection authority.
         </P>
       </section>
@@ -246,7 +246,7 @@ export function Privacy() {
         <Heading>Contact</Heading>
         <P>
           <ContactBody topic="Questions, deletion requests and abuse reports" /> The Report button
-          in a call alerts that call's host and co-hosts only.
+          in a call alerts that call’s host and co-hosts only.
         </P>
       </section>
     </LegalPage>
@@ -258,7 +258,7 @@ export function Terms() {
     <LegalPage title="Terms of Service">
       <section>
         <P>
-          By using {APP_NAME} you agree to these terms. If you don't agree, please don't use the
+          By using {APP_NAME} you agree to these terms. If you don’t agree, please don’t use the
           service.
         </P>
       </section>
@@ -273,12 +273,12 @@ export function Terms() {
         <P>You agree not to use {APP_NAME} to:</P>
         <ul className="mt-2 flex list-disc flex-col gap-1.5 pl-5 text-sm leading-relaxed text-ink-muted">
           <li>harass, threaten, or abuse anyone, or share illegal or infringing content;</li>
-          <li>send unsolicited or bulk invitations (spam) to people who haven't asked for them;</li>
-          <li>attempt to access rooms, accounts, or data you aren't authorised to;</li>
+          <li>send unsolicited or bulk invitations (spam) to people who haven’t asked for them;</li>
+          <li>attempt to access rooms, accounts, or data you aren’t authorised to;</li>
           <li>disrupt, overload, or probe the service or its infrastructure.</li>
         </ul>
         <P>
-          We may suspend or remove access for anyone who breaks these rules. You're responsible for
+          We may suspend or remove access for anyone who breaks these rules. You’re responsible for
           the content you transmit and for anyone you invite.
         </P>
       </section>
@@ -286,7 +286,7 @@ export function Terms() {
       <section>
         <Heading>No warranty</Heading>
         <P>
-          {APP_NAME} is provided "as is", without warranties of any kind. We don't guarantee the
+          {APP_NAME} is provided "as is", without warranties of any kind. We don’t guarantee the
           service will be uninterrupted, error-free, or that calls will always connect.
         </P>
       </section>

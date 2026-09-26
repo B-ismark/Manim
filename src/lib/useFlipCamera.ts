@@ -26,7 +26,7 @@ export function useFlipCamera() {
       await track.restartTrack({ facingMode: next })
       setSelfFacing(next)
     } catch {
-      toast("Couldn't switch camera", 'danger')
+      toast("Couldn’t switch camera", 'danger')
     }
   }, [localParticipant, setSelfFacing])
 }

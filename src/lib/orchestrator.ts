@@ -10,11 +10,16 @@
 export class ApiError extends Error {
   status: number
   code?: string
-  constructor(message: string, status: number, code?: string) {
+  /** The message is the server's own `error`, written as UI copy. False when the
+   *  response had no JSON body (a gateway error page, say) and the message is our
+   *  generic fallback. */
+  fromServer: boolean
+  constructor(message: string, status: number, code?: string, fromServer = true) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
+    this.fromServer = fromServer
   }
 }
 
@@ -26,7 +31,8 @@ async function postJson<T>(url: string, body: unknown, token?: string): Promise<
   const res = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body) })
   if (!res.ok) {
     const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string }
-    throw new ApiError(data.error ?? `request failed (${res.status})`, res.status, data.code)
+    if (typeof data.error === 'string') throw new ApiError(data.error, res.status, data.code)
+    throw new ApiError('Couldn’t connect. Check your connection and try again.', res.status, data.code, false)
   }
   return (await res.json()) as T
 }

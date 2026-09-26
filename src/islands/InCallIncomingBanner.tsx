@@ -3,6 +3,7 @@ import { Island, Button, Avatar } from '@/components/primitives'
 import { MergeIcon } from '@/components/icons'
 import { useCallStore } from '@/store/useCallStore'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
+import { prettyRoom } from '@/lib/roomName'
 
 /**
  * Incoming call while you're ALREADY in a call. This is the only place merge is
@@ -35,7 +36,7 @@ export function InCallIncomingBanner({
       <Avatar name={incoming.fromName} size="sm" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{incoming.fromName} is calling</p>
-        <p className="text-xs text-ink-muted">Room {room}</p>
+        <p className="text-xs text-ink-muted">{prettyRoom(room)}</p>
       </div>
       {isHost && (
         <Button
