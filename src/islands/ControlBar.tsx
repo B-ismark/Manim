@@ -60,6 +60,7 @@ import { useCameraToggle } from '@/lib/useCameraToggle'
 import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScreenShare'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
@@ -186,6 +187,12 @@ export function ControlBar({
   // would slide out of the thumb zone taking an open tray with it.
   const [audioTrayOpen, setAudioTrayOpen] = useState(false)
   const touch = useIsTouch()
+  // A desktop window narrower than the full bar — 400% zoom on a 1280px screen is
+  // 320 CSS px (WCAG reflow), and the bar measures ~560. It used to run off both
+  // edges, taking Mute and End for everyone with it. Narrow, it keeps mic, camera,
+  // chat, More and Leave, and the rest moves into More exactly as it does on touch.
+  const narrowBar = useMediaQuery('(max-width: 599px)') && !touch
+  const compact = touch || narrowBar
   useEffect(() => {
     onMenuOpenChange?.(audioTrayOpen)
   }, [audioTrayOpen, onMenuOpenChange])
@@ -351,7 +358,7 @@ export function ControlBar({
   // breakpoint, so nothing duplicates.
   const moreContent = (
     <div className="flex flex-col">
-      <div className="mb-2 pointer-fine:hidden">
+      <div className={cn('mb-2', !narrowBar && 'pointer-fine:hidden')}>
         <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">React</p>
         <div className="flex flex-wrap items-center justify-center gap-1">
           {REACTION_EMOJI.map((e) => (
@@ -394,13 +401,25 @@ export function ControlBar({
             player's Share again so the two can never disagree. */}
         {canScreenShare && (
           <GridTile
-            className="pointer-fine:hidden"
+            className={cn(!narrowBar && 'pointer-fine:hidden')}
             icon={<ScreenShareIcon />}
             label={shareSlotsFull ? 'Share screen (in use)' : 'Share screen'}
             active={screenShare.enabled}
             disabled={shareSlotsFull}
             // State toggle: stays open so you see the state flip.
             onClick={() => screenShare.toggle()}
+          />
+        )}
+        {/* A narrow desktop window has no room for Annotate on the bar. */}
+        {canAnnotate && narrowBar && (
+          <GridTile
+            icon={<AnnotateIcon />}
+            label={annotateActive ? 'Stop annotating' : 'Annotate'}
+            active={annotateActive}
+            onClick={() => {
+              toggleAnnotate()
+              closeMore()
+            }}
           />
         )}
         {/* Grid/Speaker moved into the unified "View" control below (layout + density
@@ -547,7 +566,7 @@ export function ControlBar({
         {/* Host-only, touch-only: the desktop bar has this behind the leave caret,
             which is too small to aim at with a thumb. Still routed through the
             confirm dialog — this is the one action in the sheet that can't be undone. */}
-        {isHost && touch && (
+        {isHost && compact && (
           <MenuRow
             icon={<LeaveIcon />}
             label="End call for everyone"
@@ -668,7 +687,7 @@ export function ControlBar({
               popover full of nested dropdowns, which is what the mobile device
               picker rework replaces. Touch reaches every one of these devices via
               the Output button and "Audio & video" in More. */}
-          {!touch && (
+          {!compact && (
             <DeviceCaret label="Audio options">
               <AudioDevicePanel noise={noise} />
             </DeviceCaret>
@@ -686,7 +705,7 @@ export function ControlBar({
             />
           </Tooltip>
           {/* Desktop only — same inert-class trap as the audio caret above. */}
-          {!touch && (
+          {!compact && (
             <DeviceCaret label="Camera options">
               <CameraDevicePanel />
             </DeviceCaret>
@@ -733,7 +752,7 @@ export function ControlBar({
             `hidden` in the cascade, so this stayed visible on touch and phones
             showed the control TWICE — here and in the More sheet. Rendering
             conditionally can't lose a specificity race. */}
-        {canScreenShare && !touch && (
+        {canScreenShare && !compact && (
           <Tooltip
             content={
               shareSlotsFull
@@ -771,7 +790,7 @@ export function ControlBar({
         {/* Annotate — only while someone is actually sharing, and desktop only:
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
-        {canAnnotate && (
+        {canAnnotate && !narrowBar && (
           <Tooltip content={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
@@ -804,9 +823,11 @@ export function ControlBar({
 
         {/* Reactions (desktop inline; folded into More on touch). One button —
             it also carries raise-hand. Layout switching lives in More / top chip. */}
-        <span className="hidden pointer-fine:inline-flex">
-          <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
-        </span>
+        {!narrowBar && (
+          <span className="hidden pointer-fine:inline-flex">
+            <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
+          </span>
+        )}
 
         {/* More — bottom sheet on mobile (thumb-reachable), popover on desktop.
             Both render the same body; see moreContent above. */}
@@ -887,7 +908,7 @@ export function ControlBar({
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
-        {isHost && !touch ? (
+        {isHost && !compact ? (
           // Split control: leaving (call continues) is the primary action; ending
           // for everyone is tucked behind the caret. Styled as one danger pill.
           //

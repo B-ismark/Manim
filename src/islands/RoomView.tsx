@@ -318,6 +318,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // setE2EEEnabled actually resolves, and on failure we drop the badge and warn
   // loudly rather than swallowing the error.
   const [e2eeActive, setE2eeActive] = useState(false)
+  // Encryption was asked for (the link carries a key) and couldn't be turned on.
+  // Stays true for the whole call: a toast alone scrolled away while media went
+  // out in the clear for the rest of it.
+  const [e2eeFailed, setE2eeFailed] = useState(false)
   useEffect(() => {
     if (!e2eePassphrase) return
     let cancelled = false
@@ -329,6 +333,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       .catch((e) => {
         if (cancelled) return
         setE2eeActive(false)
+        setE2eeFailed(true)
         // This is a security-correctness failure (media flows unencrypted while the
         // user expected E2EE) — it must NOT vanish silently. Warn the user AND
         // report it so its real-world rate is measurable (E1/E2).
@@ -471,6 +476,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         <MicUnavailableBanner />
         <AudioBlockedBanner canPlayback={audio.canPlayback} onResume={() => void audio.resume()} />
         <ConnectionBanner />
+        {e2eeFailed && <NotEncryptedPill />}
         <WaitingRoomBanner active={isHost && waiting} />
         {companion ? (
           <CompanionBanner onTakeOver={() => setCompanion(false)} onTransfer={switchToThisDevice} />
@@ -589,6 +595,24 @@ function PipPlaceholder({ onBack }: { onBack: () => void }) {
  * end-to-end encryption, and two padlocks a few pixels apart meaning different
  * things is worse than either alone.
  */
+/**
+ * Standing notice that this call is NOT end-to-end encrypted although its link
+ * asked for it. Not tied to the chrome's auto-hide like the status pills: it's
+ * the one fact about the call that must stay true on screen. Capped like every
+ * wide TopStack child so it clears a tile's corner controls on touch.
+ */
+function NotEncryptedPill() {
+  return (
+    <span
+      data-testid="not-encrypted"
+      className="mn-pop pointer-events-none flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-control bg-overlay px-3 py-1.5 text-xs font-medium text-white shadow-raised backdrop-blur"
+    >
+      <span className="size-2 shrink-0 rounded-full bg-danger" aria-hidden />
+      Not end-to-end encrypted
+    </span>
+  )
+}
+
 function RoomLockedPill({ locked, visible }: { locked: boolean; visible: boolean }) {
   // Unmounted, not hidden, for the same reason as CallStatusBar: an invisible row
   // still holds its slot and its gap in TopStack.

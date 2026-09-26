@@ -7,6 +7,7 @@ import { initAuth } from '@/store/useAuthStore'
 import { initPush } from '@/store/useNotifyStore'
 import { initErrorReporting } from '@/lib/report'
 import { hideNativePip, installMediaGuards } from '@/lib/mediaGuards'
+import { markLiteGraphics } from '@/lib/device'
 import './styles/app.css'
 
 // Install global error handlers first so an early throw (init, first render) is
@@ -18,6 +19,7 @@ initAuth()
 initPush()
 installMediaGuards()
 hideNativePip()
+markLiteGraphics()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

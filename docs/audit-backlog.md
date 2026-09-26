@@ -44,9 +44,7 @@ of people (see that PR).
 - [ ] **Accessibility: the screen-reader walk.** The code-level pass is done (focus
       returns on close, Escape stays in the composer, landmarks, honest toggle
       states, announcements, switchable one-key shortcuts). What's left needs a
-      real screen reader: `docs/screen-reader-check.md` (~15 minutes). Still open in
-      code: the desktop control bar doesn't reflow at 320px (400% zoom), and on
-      touch a message's actions are reachable only by tapping the bubble. Live
+      real screen reader: `docs/screen-reader-check.md` (~15 minutes). Live
       captions: not for now (owner, Sept 2026).
 - [ ] **Real devices and bad networks.** `docs/real-device-checklist.md`: iPhone
       Safari, a low-end Android, a weak or lossy connection, on your own devices.
@@ -83,12 +81,8 @@ of people (see that PR).
 
 ## Experience
 
-- [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
-      should move into TopStack so the layering rules cover them.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
-- [ ] Long toasts still overlap prejoin's Back label on a phone while they're up
-      (part of moving toasts into TopStack, above).
 
 ## Performance
 
@@ -99,8 +93,6 @@ of people (see that PR).
 - [ ] Supabase (~40–50 KB gz) loads before the landing page renders, even for guests.
 - [ ] Opening the side panel re-packs the gallery on every animation frame.
 - [ ] The prejoin mic meter opens a second microphone capture.
-- [ ] Frosted pills over live video re-blur every frame on low-end phones.
-- [ ] The font stack names Inter but never loads it.
 
 ## Redundancy
 

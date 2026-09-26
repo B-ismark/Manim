@@ -44,9 +44,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
       onFocus={() => setPaused(true)}
       onBlur={() => setPaused(false)}
       // Capped so a centred toast clears a tile's corner controls on touch (x 16..60,
-      // see CLAUDE.md "A full-width TopStack child…"); it used to reach them. A long
-      // one still overlaps prejoin's Back label (x ~28..86) while it's up — moving
-      // toasts into TopStack is in docs/audit-backlog.md.
+      // see CLAUDE.md "A full-width TopStack child…"); it used to reach them.
       className="mn-pop pointer-events-auto flex max-w-[calc(100%-6rem)] items-center gap-2.5 rounded-control bg-raised px-3.5 py-2 text-sm text-ink shadow-pop border border-line sm:max-w-md"
     >
       <span className={cn('size-2 shrink-0 rounded-full', dotTone[toast.tone])} aria-hidden />
@@ -92,7 +90,10 @@ export function Toasts() {
   return (
     <div
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-2 px-4"
+      data-testid="toasts"
+      // Starts below whatever owns the top band (TopStack's banners, prejoin's Back
+      // row on a phone) — lib/toastClearance measures it.
+      className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top),var(--toast-top,0px))] z-[60] flex flex-col items-center gap-2 px-4"
     >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />

@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
+import { useToastClearance } from '@/lib/toastClearance'
 
 /**
  * The one top-centre overlay column.
@@ -23,19 +24,18 @@ import type { ReactNode } from 'react'
  *   50  modal surface, and the full-screen incoming-call takeover
  *   60  toasts — always the last word
  *
- * KNOWN, and deliberately not fixed here: toasts anchor at `top-4` too, so a toast
- * and a banner in this column DO print over each other (a "Guest joined" toast lands
- * squarely on PinCoachmark, which is why that hint is often half-unreadable). Toasts
- * cannot simply join this column — they sit at z-60 because they must clear modal
- * scrims, and this column is z-30, under them. Fixing it properly means the column
- * yielding to whatever toasts are live, which is a measurement, not an offset. Both
- * are transient and neither steals a tap, so it is cosmetic; the collision that was
- * NOT cosmetic — a child of this column covering a tile's 44px corner control on
- * touch — is handled in PinCoachmark, which explains the width cap.
+ * Toasts can't join this column (z-60 has to clear modal scrims; this is z-30),
+ * so they queue beneath it instead: the column reports its bottom edge through
+ * lib/toastClearance and the toast stack starts there. A child of this column
+ * covering a tile's 44px corner control on touch is a separate rule, handled in
+ * PinCoachmark, which explains the width cap.
  */
 export function TopStack({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null)
+  useToastClearance(ref)
   return (
     <div
+      ref={ref}
       data-testid="top-stack"
       className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-30 flex flex-col items-center gap-2 px-4"
     >

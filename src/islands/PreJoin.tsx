@@ -8,6 +8,7 @@ import { useAppStore, rememberPrejoin } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
+import { useToastClearance } from '@/lib/toastClearance'
 import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
 
@@ -224,6 +225,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // failure this screen exists to avoid, and it showed up as an 8% aspect error the
   // moment the box had a flexible container instead of a fixed dvh cap.
   const { ref: stageRef, size: stage } = useElementSize<HTMLDivElement>()
+  const headerRef = useRef<HTMLDivElement>(null)
+  useToastClearance(headerRef)
   const previewBox =
     stage.width > 0 && stage.height > 0
       ? stage.width / stage.height > previewAspect
@@ -272,29 +275,33 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         pad="none"
         className="flex h-full max-h-[46rem] w-full max-w-lg flex-col p-4 sm:p-6 short:p-3 sm:short:p-4"
       >
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="-ml-1 mb-2 inline-flex shrink-0 items-center gap-1 rounded-field py-1 pr-2 text-sm text-ink-muted hover:text-ink [&_svg]:size-4"
-        >
-          <ChevronLeftIcon />
-          Back
-        </button>
-        <div className="flex shrink-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-ink-subtle">Joining</p>
-            <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
+        {/* Back + title: on a phone this row is in the toasts' band, so they queue
+            under it instead of covering Back (lib/toastClearance). */}
+        <div ref={headerRef} className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="-ml-1 mb-2 inline-flex shrink-0 items-center gap-1 rounded-field py-1 pr-2 text-sm text-ink-muted hover:text-ink [&_svg]:size-4"
+          >
+            <ChevronLeftIcon />
+            Back
+          </button>
+          <div className="flex shrink-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-ink-subtle">Joining</p>
+              <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
+            </div>
+            {/* Share the invite before joining — host can pull people in from the
+                green room. The current URL already carries the invite secret + E2EE
+                key in its #fragment, so it's the full link. */}
+            <IconButton
+              label={copied ? 'Invite link copied' : 'Share invite link'}
+              icon={copied ? <CheckIcon /> : <ShareIcon />}
+              tone="neutral"
+              className="mt-0.5 shrink-0"
+              onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
+            />
           </div>
-          {/* Share the invite before joining — host can pull people in from the
-              green room. The current URL already carries the invite secret + E2EE
-              key in its #fragment, so it's the full link. */}
-          <IconButton
-            label={copied ? 'Invite link copied' : 'Share invite link'}
-            icon={copied ? <CheckIcon /> : <ShareIcon />}
-            tone="neutral"
-            className="mt-0.5 shrink-0"
-            onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
-          />
         </div>
 
         {/* The box takes the CAMERA's shape, not a device guess. This screen answers

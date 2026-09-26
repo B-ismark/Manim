@@ -8,6 +8,7 @@ import {
   DownloadIcon,
   EditIcon,
   GifIcon,
+  MoreIcon,
   PeopleIcon,
   PinIcon,
   ReactionIcon,
@@ -1076,7 +1077,19 @@ function MessageRow({
             side="top"
             align="end"
             label="Message actions"
-            trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
+            // A real button, not a bare anchor: tapping the bubble is invisible to
+            // a screen reader, so VoiceOver/TalkBack had no route to Reply, react,
+            // edit or pin at all. It stays a 1px spot at the bubble's corner (the
+            // popover still anchors there) until a keyboard focuses it.
+            trigger={
+              <button
+                type="button"
+                aria-label={`Message actions, ${item.isLocal ? 'your message' : `message from ${item.fromName}`}`}
+                className="absolute right-2 top-2 grid size-px place-items-center overflow-hidden rounded-control opacity-0 focus-visible:size-8 focus-visible:bg-surface focus-visible:opacity-100 focus-visible:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&_svg]:size-4"
+              >
+                <MoreIcon />
+              </button>
+            }
           >
             <div className="flex flex-col">
               <button
