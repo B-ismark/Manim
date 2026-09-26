@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -880,6 +880,17 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   useEffect(() => {
     if (page !== current) setPage(current)
   }, [page, current])
+  // Reaching either end disables that arrow, which drops keyboard focus to
+  // <body>. After the page changes (both arrows now have their final state),
+  // hand focus from a disabled arrow to the other one. A layout effect: the
+  // browser's focus fixup moves focus off a disabled element before the next paint.
+  const prevRef = useRef<HTMLButtonElement>(null)
+  const nextRef = useRef<HTMLButtonElement>(null)
+  useLayoutEffect(() => {
+    const a = document.activeElement
+    if (a === prevRef.current && current === 0) nextRef.current?.focus()
+    else if (a === nextRef.current && current >= pageCount - 1) prevRef.current?.focus()
+  }, [current, pageCount])
 
   const start = current * perPage
   const shown = ordered.slice(start, start + perPage)
@@ -928,6 +939,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
         <>
           <button
             type="button"
+            ref={prevRef}
             aria-label="Previous page"
             disabled={current === 0}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
@@ -937,6 +949,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
           </button>
           <button
             type="button"
+            ref={nextRef}
             aria-label="Next page"
             disabled={current >= pageCount - 1}
             onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
@@ -2026,6 +2039,7 @@ function Tile({
               // toneActive.accent — the darker PRESSED shade — so this one control
               // would have looked different from the rest when switched on.
               active={blur.mode === 'blur'}
+              pressed={blur.mode === 'blur'}
               className={cn(blur.mode !== 'blur' && 'bg-overlay text-white hover:bg-overlay')}
               onClick={() => (blur.mode === 'blur' ? blur.useNone() : blur.useBlur())}
             />

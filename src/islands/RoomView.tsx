@@ -502,6 +502,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         // focused in code); the label is what a screen reader announces on landing.
         ref={callRegionRef}
         tabIndex={-1}
+        // The page's main landmark, with the call's name as its heading, so a
+        // screen reader can jump straight here and knows which call it's in.
+        role="main"
         aria-label="In call"
         className={cn(
           'mn-fade flex min-h-0 flex-1 flex-col outline-none transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]',
@@ -515,6 +518,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         {/* While the call is in the floating PiP window, don't also render the
             stage here — it would decode every video twice. Show a placeholder
             with a way back. */}
+        <h1 className="sr-only">{prettyRoom(roomSlug)}</h1>
         {docPip.active ? <PipPlaceholder onBack={docPip.toggle} /> : <Stage />}
       </div>
 

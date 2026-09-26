@@ -374,7 +374,15 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       )}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {/* A log: new messages are read out while the panel is open (the "New
+            message" toast only fires while it's closed). */}
+        <div
+          ref={listRef}
+          onScroll={onListScroll}
+          role="log"
+          aria-label="Messages"
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        >
           <MessageList
             items={items}
             reactions={reactions}
@@ -415,7 +423,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       </div>
 
       {error && (
-        <div className="mx-3 mb-1 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger-text">
+        <div role="alert" className="mx-3 mb-1 flex items-center justify-between gap-2 rounded-field bg-sunken px-3 py-2 text-xs text-danger-text">
           <span>{error}</span>
           <button onClick={() => setError(null)} className="text-ink-muted hover:text-ink">
             Dismiss
@@ -537,6 +545,8 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                 label="Add emoji"
                 icon={<ReactionIcon />}
                 active={emojiOpen}
+                aria-haspopup="dialog"
+                aria-expanded={emojiOpen}
                 className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
                 onClick={() => setEmojiOpen(true)}
               />
@@ -578,6 +588,8 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                   label="Send a GIF"
                   icon={<GifIcon />}
                   active={gifOpen}
+                  aria-haspopup="dialog"
+                  aria-expanded={gifOpen}
                   className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
                   onClick={() => setGifOpen(true)}
                 />
@@ -952,6 +964,8 @@ function MessageRow({
               }}
               rows={1}
               autoFocus
+              // Its own Escape cancels the edit; without this the panel closed too.
+              data-own-escape
               aria-label="Edit message"
               className="max-h-40 min-h-9 w-full resize-none overflow-y-auto rounded-field bg-sunken px-2.5 py-1.5 text-base outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-sm"
             />
@@ -1061,6 +1075,7 @@ function MessageRow({
             modal
             side="top"
             align="end"
+            label="Message actions"
             trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
           >
             <div className="flex flex-col">

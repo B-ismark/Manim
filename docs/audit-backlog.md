@@ -39,13 +39,18 @@ of people (see that PR).
 
 ## Areas not yet audited
 
-- [ ] **Accessibility in real use.** Walk a whole call keyboard-only and with a
-      screen reader (VoiceOver, NVDA). Automated axe checks already run in CI. Live
+- [ ] **Accessibility: the screen-reader walk.** The code-level pass is done (focus
+      returns on close, Escape stays in the composer, landmarks, honest toggle
+      states, announcements, switchable one-key shortcuts). What's left needs a
+      real screen reader: `docs/screen-reader-check.md` (~15 minutes). Still open in
+      code: the desktop control bar doesn't reflow at 320px (400% zoom), and on
+      touch a message's actions are reachable only by tapping the bubble. Live
       captions: not for now (owner, Sept 2026).
-- [ ] **Real devices and bad networks.** Real iPhone Safari, a low-end Android, a
-      weak or lossy connection. Best done locally, on your own devices.
-- [ ] **Product analytics.** A privacy-respecting view of what's used and where
-      people drop out of the join flow, so keep/cut calls have data.
+- [ ] **Real devices and bad networks.** `docs/real-device-checklist.md`: iPhone
+      Safari, a low-end Android, a weak or lossy connection, on your own devices.
+- [ ] **Product analytics: decide.** `docs/analytics-proposal.md` recommends eight
+      anonymous counters in the Worker (no cookies, no third party). One decision:
+      anonymous counts, yes or no.
 - [ ] **Cost and scale: decide the levers.** The model is `docs/cost-and-scale.md`
       (free plan everywhere). LiveKit's 5,000 participant-minutes a month is the
       first wall, at roughly 13 three-person half-hour calls a week. Product calls

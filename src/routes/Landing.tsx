@@ -599,7 +599,7 @@ function SignIn() {
                 </Button>
               </form>
 
-              {err && <p className="text-sm text-danger-text">{err}</p>}
+              {err && <p role="alert" className="text-sm text-danger-text">{err}</p>}
 
               <p className="text-sm text-ink-muted">
                 Didn’t get it?{' '}
@@ -646,7 +646,7 @@ function SignIn() {
                   Continue with email
                 </Button>
               </form>
-              {err && <p className="text-sm text-danger-text">{err}</p>}
+              {err && <p role="alert" className="text-sm text-danger-text">{err}</p>}
               <p className="text-xs text-ink-subtle">
                 We’ll email a sign-in link and a code. No password needed.
               </p>
