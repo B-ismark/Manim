@@ -141,8 +141,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       stream.getTracks().forEach((t) => t.stop())
       setPermission('granted')
       setError(null)
-    } catch {
-      countDenied('both')
+    } catch (err) {
+      // A missing or busy device isn't the browser's permission block.
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'NotAllowedError' || name === 'SecurityError') countDenied('both')
       setPermission('denied')
       setError('Access to your camera and microphone is blocked. Allow it from the icon in your browser’s address bar.')
     } finally {

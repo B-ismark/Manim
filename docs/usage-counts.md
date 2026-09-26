@@ -16,7 +16,7 @@ Each row: `blob1` = event, `blob2` / `blob3` = its two details, `double1` = 1.
 | `left` | `lt1` `1-5` `5-15` `15-30` `30-60` `60plus` (minutes) | phone / desktop |
 | `knock_rejected` | reason (`host_denied`, `timed_out`, `locked`, `link_expired`, …) | — |
 | `permission_denied` | `camera` / `mic` / `both` | phone / desktop |
-| `join_error` | `permission` / `network` / `server` / `seat_taken` / `other` | phone / desktop |
+| `join_error` | `permission` / `network` / `server` / `other` (refusals with a reason are `knock_rejected`) | phone / desktop |
 
 ## Run a query
 
@@ -32,7 +32,9 @@ q() { curl -s "https://api.cloudflare.com/client/v4/accounts/$ACCOUNT_ID/analyti
   -H "Authorization: Bearer $TOKEN" --data "$1"; }
 ```
 
-**The join funnel, last 7 days**
+**The join funnel, last 7 days** (people opening an invite link skip the home
+page, so `prejoin` can be higher than `landing`; `phone` means a touch screen,
+tablets included)
 
 ```bash
 q "SELECT blob1 AS event, SUM(_sample_interval * double1) AS n

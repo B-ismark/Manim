@@ -43,8 +43,8 @@ waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
       push `seen_at` column and trigger (§4c), the nightly clean-up jobs (§4d), and
       the device keys for sealed rings (§4e, after §4c). Until §4e runs, rings work
       the old way.
-- [ ] After the deploy, check the served site: a file under `/assets/` answers with
-      `Cache-Control: … immutable` plus the COOP/COEP/CSP headers, and a call page
+- [ ] After the deploy, check the served site: a file under `/assets/` answers with the
+      COOP/COEP/CSP headers, and a call page
       still reports `crossOriginIsolated` true in the console.
 
 ## Areas not yet audited

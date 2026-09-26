@@ -182,8 +182,9 @@ export function Landing() {
       toast('Call names need letters or numbers', 'warning')
       return
     }
-    countUsage('new_call', surface())
-    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets(), 'new')
+    // A pasted invite link is a join, not a new call.
+    if (!parsed.secrets.secret) countUsage('new_call', surface())
+    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets(), parsed.secrets.secret ? undefined : 'new')
   }
 
   // Arriving from an expired link's "Start a new call": start one, once. The state

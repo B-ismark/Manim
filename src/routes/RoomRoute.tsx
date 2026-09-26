@@ -176,7 +176,11 @@ export function RoomRoute() {
   }, [])
   useEffect(() => {
     window.addEventListener('pagehide', countLeft)
-    return () => window.removeEventListener('pagehide', countLeft)
+    return () => {
+      window.removeEventListener('pagehide', countLeft)
+      // Leaving the call by navigating away (Back, a link home) unmounts this.
+      countLeft()
+    }
   }, [countLeft])
 
   // Mirror the join token into the store so in-room host controls can present it
@@ -273,7 +277,6 @@ export function RoomRoute() {
           e instanceof ApiError &&
           (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken' || e.code === 'removed')
         ) {
-          if (e.code === 'seat_taken') countUsage('join_error', 'seat_taken', surface())
           setError(e.message)
           setConnecting(false)
           return
@@ -287,7 +290,8 @@ export function RoomRoute() {
           continue
         }
         reportError(e, { context: 'join', room, attempt })
-        countUsage('join_error', joinErrorClass(e), surface())
+        const cls = joinErrorClass(e)
+        if (cls) countUsage('join_error', cls, surface())
         setError(friendlyJoinError(e, raw))
         setConnecting(false)
         return
@@ -438,7 +442,8 @@ export function RoomRoute() {
           }}
           onError={(e) => {
             countLeft()
-            if (!callRoom.current) countUsage('join_error', joinErrorClass(e), surface())
+            const cls = callRoom.current ? null : joinErrorClass(e)
+            if (cls) countUsage('join_error', cls, surface())
             callRoom.current = null
             reportError(e, { context: 'livekit-room', room })
             setError(friendlyJoinError(e, e.message))

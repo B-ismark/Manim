@@ -25,7 +25,9 @@ export function countUsage(e: UsageEvent, a = '', b = ''): void {
   try {
     const body = JSON.stringify({ e, a, b })
     // sendBeacon survives the page closing (the "left" count fires on pagehide).
-    if (navigator.sendBeacon?.('/api/count', new Blob([body], { type: 'application/json' }))) return
+    // A plain string goes as text/plain, which every browser's beacon accepts;
+    // the Worker parses it as JSON regardless.
+    if (navigator.sendBeacon?.('/api/count', body)) return
     void fetch('/api/count', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -37,7 +39,7 @@ export function countUsage(e: UsageEvent, a = '', b = ''): void {
   }
 }
 
-/** Minutes in a call → the stored range (mirrors server/usage.mjs durationRange). */
+/** Minutes in a call → the stored range (server/usage.mjs lists the ranges). */
 export function durationRange(ms: number): string {
   const m = ms / 60000
   if (m < 1) return 'lt1'
@@ -48,10 +50,14 @@ export function durationRange(ms: number): string {
   return '60plus'
 }
 
-/** What kind of failure stopped a join — never the message itself. */
-export function joinErrorClass(e: unknown): string {
+/**
+ * What kind of failure stopped a join — never the message itself. Null for a
+ * refusal the server gave a reason for: the Worker already counted it as
+ * `knock_rejected`, and counting it again here would blur real faults.
+ */
+export function joinErrorClass(e: unknown): string | null {
   if (e instanceof ApiError) {
-    if (e.code === 'seat_taken') return 'seat_taken'
+    if (e.code) return null
     if (e.status >= 500) return 'server'
     // No readable answer from our server at all: the request didn't get through.
     return e.fromServer ? 'other' : 'network'

@@ -281,8 +281,9 @@ export async function getMe(accessToken?: string, account = ''): Promise<MeStatu
     })
     if (!res.ok) return { signedIn: false, betaGate: false, allowed: true }
     const me = (await res.json()) as MeStatus
-    // Only a real answer about the account asked for is worth keeping.
-    if (me.signedIn === Boolean(accessToken)) {
+    // Only a real answer about the account asked for is worth keeping, and never
+    // a refusal: someone just added to the allowlist shouldn't wait it out.
+    if (me.signedIn === Boolean(accessToken) && me.allowed) {
       try {
         sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), me }))
       } catch {

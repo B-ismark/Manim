@@ -34,7 +34,8 @@ export const EVENTS = {
     ],
   ],
   permission_denied: [['camera', 'mic', 'both'], SURFACE],
-  join_error: [['permission', 'network', 'server', 'seat_taken', 'other'], SURFACE],
+  // Only failures without a server reason (those are knock_rejected).
+  join_error: [['permission', 'network', 'server', 'other'], SURFACE],
 }
 
 /** The event as it may be stored, or null if anything about it is off-list. */

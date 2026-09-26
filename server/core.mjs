@@ -754,7 +754,9 @@ export async function handleElectHost(env, body, token) {
 
   const byTenure = (a, b) =>
     Number(a.joinedAt || 0) - Number(b.joinedAt || 0) ||
-    String(a.identity).localeCompare(String(b.identity))
+    // Plain code-unit order, not locale order: clients compute the same pick
+    // (useSessionControl) to decide who asks first.
+    (String(a.identity) < String(b.identity) ? -1 : String(a.identity) > String(b.identity) ? 1 : 0)
   const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
   const presentCoHosts = participants.filter((p) => coHosts.includes(p.identity)).sort(byTenure)
   const successor = (presentCoHosts[0] || [...participants].sort(byTenure)[0]).identity

@@ -19,10 +19,11 @@ on:
 
 # A new push to a pull request makes the run for the previous one pointless:
 # cancel it rather than let the ~20-minute browser suite finish for nothing.
-# Runs on main are left alone. (No paths-ignore for docs: a check that never
+# Every other run gets its own group, so nothing on main is ever cancelled or
+# skipped. (No paths-ignore for docs: a check that never
 # reports would leave a pull request waiting on it.)
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

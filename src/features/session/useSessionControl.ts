@@ -137,8 +137,11 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     // effect and cancels them. It used to be one request from every person.
     const present = participants.filter((p) => coHosts.includes(p.identity))
     const pool = present.length ? present : participants
-    const tenure = (p: (typeof participants)[number]) => p.joinedAt?.getTime() ?? Infinity
-    const first = [...pool].sort((a, b) => tenure(a) - tenure(b) || a.identity.localeCompare(b.identity))[0]
+    // Same order as the server's pick (handleElectHost), missing times first.
+    const tenure = (p: (typeof participants)[number]) => Math.floor((p.joinedAt?.getTime() ?? 0) / 1000)
+    const first = [...pool].sort(
+      (a, b) => tenure(a) - tenure(b) || (a.identity < b.identity ? -1 : a.identity > b.identity ? 1 : 0),
+    )[0]
     const wait = first?.identity === localParticipant.identity ? 0 : 15_000
     let retry: ReturnType<typeof setTimeout> | undefined
     const ask = setTimeout(() => {
