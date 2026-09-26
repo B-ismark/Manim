@@ -210,7 +210,7 @@ export function Privacy() {
         <P>
           Account data (profile, photo, contacts, notification subscriptions) is kept while your
           account exists. You can delete your account from Settings → Delete account. That removes
-          your profile, photo, contacts, notification subscriptions and device keys straight away, and clears
+          your profile, photo, contacts, notification subscriptions, device keys and recent calls straight away, and clears
           your data from that browser. Some copies outlast it for a while: call invitations in our
           database (up to 3 days), our email and crash-report providers' logs (for as long as they
           keep them), and, if you were given early access, your email on our access list until we

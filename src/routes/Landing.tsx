@@ -15,6 +15,7 @@ import { toast } from '@/store/useToastStore'
 import { getMe } from '@/lib/orchestrator'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
+import { pullRecents, removeRecent } from '@/features/calls/recentSync'
 import { distinctRoomNames, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
@@ -377,7 +378,15 @@ function RecentMeetings({
   onJoin: (room: string, secrets: RoomSecrets) => void
 }) {
   const allRooms = useRecentRoomsStore((s) => s.rooms)
-  const remove = useRecentRoomsStore((s) => s.remove)
+  const removeLocal = useRecentRoomsStore((s) => s.remove)
+  const remove = (slug: string) => {
+    removeLocal(slug)
+    void removeRecent(slug)
+  }
+  // Fold in the calls made on this account's other devices (throttled).
+  useEffect(() => {
+    void pullRecents()
+  }, [])
   // Drop any room that's live on another device — it's already offered above as a
   // "Join" (active), so listing it here too as "Rejoin" (stale) is just a duplicate.
   const rooms = allRooms.filter((r) => !hideSlugs.has(r.slug))

@@ -75,8 +75,8 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
   },
   {
     what: 'Recent rooms and their links',
-    where: 'Your browser (local storage), for 30 days',
-    why: 'So you can rejoin a call from the home screen. Signing out clears them.',
+    where: 'Your browser (local storage), for 30 days. If you sign in, also your account (Supabase), with each call’s name and when you were last in it; its link keys are locked to your signed-in browsers, so our database can’t read them',
+    why: 'So you can rejoin a call from the home screen of any device you’re signed in on. Signing out clears this browser’s copy; removing a call from the list removes it everywhere, and calls not rejoined for 30 days are deleted.',
   },
   {
     what: 'Email, display name, profile photo',

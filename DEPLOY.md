@@ -594,6 +594,39 @@ select cron.schedule(
 );
 ```
 
+4f. **Recent calls on every device** (run once — added 2026-09, after §4e). The
+    home screen's "Recent calls" list used to live only in the browser that made
+    the call, so calls from your phone never showed on your laptop. A signed-in
+    account now also keeps the list here: the room name, its display name and when
+    you were last in it. The join secret and E2EE key are sealed to your
+    registered devices (§4e), so this table holds ciphertext for them, never the
+    keys. Until this is run the list stays per-browser, exactly as before.
+
+```sql
+create table if not exists recent_calls (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  slug text not null check (length(slug) between 1 and 128),
+  name text not null default '' check (length(name) <= 200),
+  -- sealed1:… from lib/sealedSecrets, one entry per device (at most 10).
+  sealed text check (sealed is null or length(sealed) <= 16000),
+  e2ee boolean not null default false,
+  last_at timestamptz not null default now(),
+  primary key (user_id, slug)
+);
+alter table recent_calls enable row level security;
+create policy "own recents read"   on recent_calls for select using (auth.uid() = user_id);
+create policy "own recents insert" on recent_calls for insert with check (auth.uid() = user_id);
+create policy "own recents update" on recent_calls for update using (auth.uid() = user_id);
+create policy "own recents delete" on recent_calls for delete using (auth.uid() = user_id);
+
+-- Same 30 days the list keeps locally.
+select cron.schedule(
+  'expire-recent-calls',
+  '41 3 * * *',
+  $$delete from public.recent_calls where last_at < now() - interval '30 days'$$
+);
+```
+
 ## 5. LiveKit Cloud
 Already configured for dev. The Worker needs the same key/secret/URL (step 3,
 runtime). No other setup.

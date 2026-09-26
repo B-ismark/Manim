@@ -45,6 +45,7 @@ import { parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
 import { markEnd } from '@/lib/callEnd'
+import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
 import { addBreadcrumb, reportError } from '@/lib/report'
@@ -262,13 +263,16 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const recordRecent = useRecentRoomsStore((s) => s.record)
   useEffect(() => {
     if (!everConnected || !roomSlug) return
-    recordRecent({
+    const entry = {
       slug: roomSlug,
       name: prettyRoom(roomSlug),
       ts: Date.now(),
       secret: linkSecrets.secret,
       e2ee: linkSecrets.e2ee,
-    })
+    }
+    recordRecent(entry)
+    // And on the account, so your other devices list it too (keys sealed).
+    void pushRecent(entry)
   }, [everConnected, roomSlug, linkSecrets, recordRecent])
   // Desktop auto-PiP: float the app into a Document-PiP window when the tab is
   // backgrounded. Mobile PiP is manual only (a tile in More) — gesture-less
