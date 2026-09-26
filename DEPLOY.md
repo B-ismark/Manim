@@ -181,7 +181,7 @@ lookups — try again in a few minutes." Safe to re-run.
 
 ```sql
 create table if not exists lookup_attempts (
-  user_id uuid not null,
+  user_id uuid not null references auth.users (id) on delete cascade,
   ts timestamptz not null default now()
 );
 create index if not exists lookup_attempts_user_ts on lookup_attempts (user_id, ts);

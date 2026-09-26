@@ -22,7 +22,11 @@ key, and a Worker crash on returning visitors that never reached production.
 - [ ] **Deploy when no important calls are live.** Seat keys start working on deploy;
       someone already in a call who reloads afterwards has no key for their seat and
       is asked to change their name (a host rejoins as a guest). Once only.
-- [ ] Have counsel read the updated Privacy page.
+- [ ] Have counsel read the updated Privacy page. Still missing and theirs to decide:
+      who runs Manim and from which country (the "controller"), the legal basis for
+      each use, a minimum age, and the safeguards for data processed in the US.
+- [ ] Confirm Brevo is the sign-in email sender configured in Supabase (the Privacy
+      page lists it).
 
 ## Areas not yet audited
 
@@ -59,6 +63,16 @@ key, and a Worker crash on returning visitors that never reached production.
 - [ ] Merging calls sends the target room's E2EE key over the call's data channel,
       which LiveKit can read (disclosed on the Privacy page). Fixed by the
       per-recipient encryption item above.
+- [ ] Profile photos sit in a public bucket at `avatars/<account id>/avatar.webp`, and
+      the account id is visible to everyone in a call, so anyone in a call with you
+      can open your photo. Use an unguessable object name (or a private bucket with
+      signed URLs); account deletion then needs the stored name.
+- [ ] Waiting-room requests (name, device id, account id, denied ones too) stay in
+      room metadata, visible to everyone in the call, until the room closes. Prune
+      settled requests.
+- [ ] Push endpoints that return 404/410 are never deleted (`server/core.mjs`
+      push loop). Prune them.
+- [ ] Pending contact requests never expire.
 - [ ] Participants' persistent device id and account id are visible to everyone in
       every call (identity + metadata + waiting-room queue). Use a per-room hash.
 

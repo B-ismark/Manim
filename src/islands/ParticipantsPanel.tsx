@@ -116,15 +116,16 @@ export function ParticipantsPanel() {
 
   // Host authority is the server-written room hostId / coHosts (not forgeable
   // participant metadata). UI only — the server re-checks every privileged call.
-  const { isPrimaryHost, coHosts } = useMemo(() => {
+  const { isPrimaryHost, coHosts, hostId } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
       return {
         isPrimaryHost: f.hostId === localParticipant.identity,
         coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
+        hostId: typeof f.hostId === 'string' ? f.hostId : '',
       }
     } catch {
-      return { isPrimaryHost: false, coHosts: [] as string[] }
+      return { isPrimaryHost: false, coHosts: [] as string[], hostId: '' }
     }
   }, [roomMetadata, localParticipant.identity])
   // Co-hosts get the moderation UI too; only the primary host manages the roster.
@@ -231,14 +232,25 @@ export function ParticipantsPanel() {
     if (!err) addInvite(c.name)
   }
 
-  // Report flags a participant to the host over the control channel (only the
-  // host is notified). No central moderation backend — keeps it lightweight.
+  // Report flags a participant to the host over the control channel. It is
+  // addressed to the host and co-hosts only: broadcast, it reached every device in
+  // the call — the reported person's included — which is who it has to be hidden
+  // from. No central moderation backend — keeps it lightweight.
   async function reportUser(targetName: string) {
     const payload = new TextEncoder().encode(
       JSON.stringify({ type: 'report', target: targetName, by: localParticipant.name || 'Someone' }),
     )
+    const hosts = [hostId, ...coHosts].filter((id): id is string => !!id && id !== localParticipant.identity)
+    if (hosts.length === 0) {
+      toast('There’s no host in this call to report to', 'warning')
+      return
+    }
     try {
-      await localParticipant.publishData(payload, { reliable: true, topic: CONTROL_TOPIC })
+      await localParticipant.publishData(payload, {
+        reliable: true,
+        topic: CONTROL_TOPIC,
+        destinationIdentities: hosts,
+      })
     } catch {
       /* best effort */
     }

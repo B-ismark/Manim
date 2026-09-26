@@ -60,53 +60,59 @@ export function Privacy() {
       <section>
         <P>
           {APP_NAME} is a browser-based video-calling app. This policy explains what we
-          collect, why, who processes it, and how to have it deleted. We've kept it to what
-          the app actually does — there's intentionally not much.
+          collect, why, which services handle it, and how to have it deleted. It describes what
+          the app actually does. Signing in is optional: you can join and host calls without an
+          account.
         </P>
       </section>
 
       <section>
         <Heading>What we collect, and why</Heading>
-        <div className="mt-3 overflow-hidden rounded-tile border border-line">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-sunken text-xs uppercase tracking-wide text-ink-subtle">
-              <tr>
-                <th scope="col" className="px-3 py-2 font-medium">Data</th>
-                <th scope="col" className="px-3 py-2 font-medium">Where</th>
-                <th scope="col" className="px-3 py-2 font-medium">Why</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-line">
-              {DATA_COLLECTED.map((row) => (
-                <tr key={row.what} className="align-top">
-                  <td className="px-3 py-2.5 font-medium">{row.what}</td>
-                  <td className="px-3 py-2.5 text-ink-muted">{row.where}</td>
-                  <td className="px-3 py-2.5 text-ink-muted">{row.why}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {/* Stacked, not a table: three columns of honest-length sentences became a
+            tall, word-per-line strip at phone width. */}
+        <dl className="mt-3 divide-y divide-line overflow-hidden rounded-tile border border-line">
+          {DATA_COLLECTED.map((row) => (
+            <div key={row.what} className="flex flex-col gap-1 px-3 py-2.5 text-sm leading-relaxed">
+              <dt className="font-medium text-ink">{row.what}</dt>
+              <dd className="text-ink-muted">
+                <span className="text-ink">Where: </span>
+                {row.where}
+              </dd>
+              <dd className="text-ink-muted">
+                <span className="text-ink">Why: </span>
+                {row.why}
+              </dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
       <section>
         <Heading>What we don't do</Heading>
         <ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm leading-relaxed text-ink-muted">
           <li>
-            <span className="text-ink">We don't record your calls.</span> Audio and video are
-            transported live between participants and are not stored anywhere by {APP_NAME}.
+            <span className="text-ink">We don't record your calls.</span> Audio and video pass
+            live through LiveKit's servers and are not stored anywhere by {APP_NAME}. Other people
+            in a call could still record it on their own devices.
           </li>
           <li>
-            <span className="text-ink">Audio and video can be end-to-end encrypted.</span> When
-            you start a new meeting, its encryption key travels in the invite link. We don't keep
-            it, but it does pass through our providers in three cases: when you ring a contact, and
-            when your own signed-in devices sync which call you're in (both through Supabase), and
-            when a host merges one call into another (through the call's own message channel, which
-            LiveKit can read).
-            Email invites leave the key out. Chat, files and drawings are encrypted in transit but
-            are not end-to-end encrypted.
+            <span className="text-ink">Audio and video can be end-to-end encrypted.</span> Calls
+            you start with New meeting or by calling a contact are. The key is part of the invite
+            link, so anyone with the full link can join and see and hear the call: share it only
+            with people you mean to invite. The key reaches our providers in three cases. When you
+            ring a contact, it goes through Supabase and stays in our database for up to 3 days.
+            When your own signed-in devices show which call you're in, it passes through Supabase
+            without being stored. When a host merges two calls, it is sent over the call's message
+            channel, which LiveKit can read. Email invites leave the key out. Chat, files, drawings
+            and reactions are encrypted on their way to LiveKit but not end-to-end, so LiveKit's
+            servers can read them. A call opened without a key isn't end-to-end encrypted; the
+            padlock in the call shows which applies.
           </li>
-          <li>Push notifications carry no message content — only "someone is calling".</li>
+          <li>
+            Background notifications say only that someone is calling. If {APP_NAME} is open in
+            another tab, the notification shows the caller's name and the room.
+          </li>
+          <li>We don't make automated decisions about you or build profiles.</li>
           <li>We don't use tracking or advertising cookies, and we don't sell your data.</li>
         </ul>
       </section>
@@ -114,8 +120,11 @@ export function Privacy() {
       <section>
         <Heading>In a call, others can see</Heading>
         <P>
-          Everyone in a call sees your display name and a short device identifier, and receives
-          your chat messages, files and drawings. By default, people who join later can also see
+          Everyone in a call sees your display name (if you signed in by email and never set one,
+          that's the part of your email before the @) and a random device id. If you're signed
+          in, they also receive your account number, which can be used to view your profile photo.
+          They receive your chat messages, files and drawings. If the host uses a waiting room,
+          people in the call can see the names of everyone who asked to join. By default, people who join later can also see
           earlier chat messages, because the people still in the call pass them on. A host can turn
           that off from More → Chat history; the chat panel always says which applies. GIFs posted
           in chat load from Giphy or Tenor for everyone in the call.
@@ -125,21 +134,22 @@ export function Privacy() {
       <section>
         <Heading>Local storage (no cookie banner)</Heading>
         <P>
-          {APP_NAME} stores what it needs to work in your browser's local storage: your display
-          name, a device id, your notification choice, your device and effect preferences, and your
-          recent rooms with their invite links. Nothing is used to track you across sites, so
-          there's no consent banner. Signing out removes your sign-in, name, device id and recent
-          rooms from this browser. Other tabs that are still open, and your browser's history, keep
+          {APP_NAME} stores what it needs to work in your browser's local storage: your sign-in,
+          display name, device and guest ids, your notification choice, your theme, sound, device
+          and effect preferences, and your recent rooms with their invite links and saved keys. It
+          doesn't use cookies, and nothing is used to track you across sites, so there's no consent
+          banner. Signing out removes your sign-in, name, ids, notification subscription, recent
+          rooms and saved keys from this browser, and keeps your theme and device preferences. Other tabs that are still open, and your browser's history, keep
           what they already have, so on a shared computer close them and clear the history too.
           Clearing your browser storage removes everything.
         </P>
       </section>
 
       <section>
-        <Heading>Who processes your data</Heading>
+        <Heading>Services we use</Heading>
         <P>
-          We rely on a small set of service providers (sub-processors) to run {APP_NAME}. Where
-          your data is processed depends on these providers' regions:
+          These services handle some of your data so {APP_NAME} can work. Several are based in the
+          United States, so your data may be processed outside your country:
         </P>
         <ul className="mt-3 flex flex-col gap-1.5 text-sm leading-relaxed text-ink-muted">
           {SUBPROCESSORS.map((s) => (
@@ -153,10 +163,14 @@ export function Privacy() {
       <section>
         <Heading>Retention &amp; deletion</Heading>
         <P>
-          Account data (profile, contacts, push subscriptions) is kept while your account exists.
-          You can delete your account from Settings → Delete account; this removes your profile,
-          photo, contacts, and push subscriptions, and clears your data from that browser. Call media is never retained, since it isn't recorded.
-          To request deletion or ask a privacy question, email <MailLink />.
+          Account data (profile, photo, contacts, notification subscriptions) is kept while your
+          account exists. You can delete your account from Settings → Delete account. That removes
+          your profile, photo, contacts and notification subscriptions straight away, and clears
+          your data from that browser. Some copies outlast it for a while: call invitations in our
+          database (up to 3 days), our email and crash-report providers' logs (for as long as they
+          keep them), and, if you were given early access, your email on our access list until we
+          remove it. Email <MailLink /> to have those removed too. Call audio and video are never
+          kept, since calls aren't recorded.
         </P>
       </section>
 
@@ -165,14 +179,34 @@ export function Privacy() {
         <P>
           When you enter another person's email to call or invite them, {APP_NAME} uses it to look
           up their account or send them a one-off invitation email. We don't add them to a mailing
-          list or store the address against your account.
+          list or store the address against your account. Resend, which sends the email, keeps a
+          delivery record of it, and the email shows your name and the room name.
+        </P>
+      </section>
+
+      <section>
+        <Heading>Your rights</Heading>
+        <P>
+          You can ask for a copy of the data we hold about you, have it corrected or deleted, ask
+          us to stop or limit using it, or take back a choice you made, such as notifications.
+          Email <MailLink /> and we'll reply within a month. If you're unhappy with the answer,
+          you can complain to your local data protection authority.
+        </P>
+      </section>
+
+      <section>
+        <Heading>Changes to this policy</Heading>
+        <P>
+          When what {APP_NAME} does with your data changes, we update this page and the date at
+          the top.
         </P>
       </section>
 
       <section>
         <Heading>Contact</Heading>
         <P>
-          Questions, deletion requests, or abuse reports: <MailLink />.
+          Questions, deletion requests, or abuse reports: <MailLink />. The Report button in a call
+          alerts that call's host only; to report abuse to us, email us.
         </P>
       </section>
     </LegalPage>
