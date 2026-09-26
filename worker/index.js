@@ -12,6 +12,7 @@ import {
   handleMe,
   handleKnock,
   handleKnockStatus,
+  handleRoomStatus,
   handlePending,
   handleAdmit,
   handleEndRoom,
@@ -63,6 +64,18 @@ async function handleApi(request, env, url) {
       // Why people don't get in (anonymous; usage.mjs keeps only listed codes).
       if (r.body?.code) count(env, 'knock_rejected', r.body.code)
       return json(r)
+    }
+    if (path === 'room-status' && method === 'POST') {
+      // The join screen polls this while you get ready, so it has its own budget
+      // rather than eating the knock limit. Unauthenticated like knock, and says
+      // nothing without the invite link (handleRoomStatus).
+      const limiter = env.STATUS_RATELIMIT
+      if (limiter && typeof limiter.limit === 'function') {
+        const ip = request.headers.get('cf-connecting-ip') || 'anon'
+        const { success } = await limiter.limit({ key: `status:${ip}` })
+        if (!success) return json({ status: 200, body: { state: 'unknown' } })
+      }
+      return json(await handleRoomStatus(env, await bodyOf()))
     }
     if (path === 'knock-status') {
       const r = await handleKnockStatus(env, query)

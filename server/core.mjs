@@ -645,6 +645,59 @@ export async function handleKnock(env, body) {
   return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
 }
 
+/**
+ * Who's in the call, for the join screen, before you knock. Read-only: it never
+ * creates a room, claims host, queues anyone or stamps link activity.
+ *
+ * It says only what someone holding the invite link could find out by joining:
+ * how many people are in, whether a host is among them, and whether the door is
+ * a waiting room, locked, or full. Never names or identities.
+ *
+ * Without the link it learns nothing: a room with a join-secret answers
+ * `unknown` to a wrong or missing secret, the same answer an empty or
+ * never-created room gives, so it can't be used to find out which rooms exist.
+ * Bare typed-name rooms have no secret, and anyone can knock on them anyway.
+ */
+export async function handleRoomStatus(env, body) {
+  const { roomService } = services(env)
+  const { room, secret, name, deviceId } = body ?? {}
+  const unknown = { status: 200, body: { state: 'unknown' } }
+  if (typeof room !== 'string' || !room || room.length > MAX_ROOM_LEN) return unknown
+  if (secret != null && typeof secret !== 'string') return unknown
+  if (!roomService) return unknown
+  let flags
+  let participants
+  try {
+    ;[flags, participants] = await Promise.all([getRoomFlags(roomService, room), listParticipants(roomService, room)])
+  } catch {
+    return unknown
+  }
+  if (flags.secretHash) {
+    if (!secret || secretEpoch(secret) !== linkEpoch(env)) return unknown
+    if ((await sha256Hex(secret)) !== flags.secretHash) return unknown
+  }
+  // Your own seat (a tab left open, the device you're rejoining from) isn't
+  // someone waiting for you.
+  const me = typeof name === 'string' && name ? `${name}#${typeof deviceId === 'string' && deviceId ? deviceId : 'web'}` : ''
+  const others = participants.filter((p) => p.identity !== me)
+  if (others.length === 0) return { status: 200, body: { state: 'empty' } }
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  const hostHere = others.some((p) => p.identity === flags.hostId || coHosts.includes(p.identity))
+  return {
+    status: 200,
+    body: {
+      state: 'live',
+      count: others.length,
+      hostHere,
+      // A hint for the copy only (grants nothing): you'd be walking back into your own call.
+      youAreHost: Boolean(me) && me === flags.hostId,
+      waiting: flags.waiting === true,
+      locked: flags.locked === true,
+      full: participants.length >= roomCap(env),
+    },
+  }
+}
+
 export async function handleKnockStatus(env, query) {
   const { roomService, apiSecret } = services(env)
   if (!roomService) return { status: 200, body: { status: 'expired' } }

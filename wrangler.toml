@@ -91,6 +91,14 @@ type = "ratelimit"
 namespace_id = "1004"
 simple = { limit = 30, period = 60 }
 
+# The join screen's "who's here" poll (/api/room-status): about six a minute
+# per person getting ready, so its own budget instead of the knock limit.
+[[unsafe.bindings]]
+name = "STATUS_RATELIMIT"
+type = "ratelimit"
+namespace_id = "1005"
+simple = { limit = 30, period = 60 }
+
 # Where those counts go: Workers Analytics Engine (free; created on first write,
 # kept three months). No cookies, no ids — see docs/analytics-proposal.md.
 [[analytics_engine_datasets]]

@@ -15,6 +15,7 @@ import { countUsage, surface } from '@/lib/usage'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useKeyboardInset } from '@/lib/keyboardInset'
 import { OtherDeviceInlineOffer } from '@/islands/OtherDeviceCallBanner'
+import { readinessLine, useRoomReadiness } from '@/features/calls/useRoomReadiness'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
  *  … 16:9 (laptop); anything outside is a bogus or freak mode, and letting it through
@@ -31,6 +32,8 @@ export interface PreJoinProps {
   onJoin: () => void | Promise<void>
   /** True when the invite link carries an E2EE key (#e) — the call is encrypted. */
   encrypted?: boolean
+  /** The invite link's join secret (#k), so the screen may ask who's inside. */
+  secret?: string
 }
 
 /**
@@ -45,13 +48,38 @@ export function PreJoin(props: PreJoinProps) {
   return <PreJoinScreen key={coarse ? 'touch' : 'fine'} {...props} coarse={coarse} />
 }
 
-function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps & { coarse: boolean }) {
+function PreJoinScreen({ room, onJoin, encrypted = false, secret, coarse }: PreJoinProps & { coarse: boolean }) {
   const navigate = useNavigate()
   const { copied, share } = useShareLink()
   const displayName = useAppStore((s) => s.displayName)
   const setDisplayName = useAppStore((s) => s.setDisplayName)
   const prejoin = useAppStore((s) => s.prejoin)
   const setPrejoin = useAppStore((s) => s.setPrejoin)
+  const deviceId = useAppStore((s) => s.deviceId)
+  // Who's already in, so nobody walks into an empty or locked room unawares.
+  const readiness = readinessLine(useRoomReadiness(room, secret, displayName, deviceId))
+  // Right above Join, where you decide (Meet puts "No one else is here" there
+  // too): the one fact that changes whether you tap it now.
+  const readinessRow = (
+    <p
+      role="status"
+      data-testid="room-readiness"
+      className={cn(
+        'flex min-h-5 min-w-0 items-center justify-center gap-1.5 text-center text-sm',
+        readiness?.tone === 'warn' ? 'font-medium text-danger-text' : 'text-ink-muted',
+      )}
+    >
+      {readiness && (
+        <>
+          <span
+            aria-hidden
+            className={cn('size-2 shrink-0 rounded-full', readiness.tone === 'live' ? 'bg-success' : readiness.tone === 'warn' ? 'bg-danger' : 'bg-ink-subtle/50')}
+          />
+          <span className="truncate">{readiness.text}</span>
+        </>
+      )}
+    </p>
+  )
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
@@ -523,6 +551,7 @@ function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps
         <div className="flex shrink-0 flex-col gap-2.5 px-4 pt-4 landscape:col-start-2 landscape:row-start-2 landscape:justify-center landscape:overflow-y-auto landscape:pt-1">
           {error && <p className="text-sm text-danger-text">{error}</p>}
           <OtherDeviceInlineOffer excludeRoom={room} />
+          {readinessRow}
           {nameField}
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now
@@ -639,6 +668,7 @@ function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps
           </div>
 
           <OtherDeviceInlineOffer excludeRoom={room} />
+          {readinessRow}
           {/* Row 2 — who you are, then the way in. */}
           {nameField}
 

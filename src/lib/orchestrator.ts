@@ -79,6 +79,36 @@ export function knock(req: JoinRequest): Promise<KnockResponse> {
   return postJson<KnockResponse>('/api/knock', req)
 }
 
+/** Who's in a call before you knock (server handleRoomStatus). Never names. */
+export type RoomStatus =
+  | { state: 'unknown' }
+  | { state: 'empty' }
+  | {
+      state: 'live'
+      count: number
+      hostHere: boolean
+      youAreHost: boolean
+      waiting: boolean
+      locked: boolean
+      full: boolean
+    }
+
+/** Best effort: any failure reads as `unknown`, and the join screen just says "Joining". */
+export async function roomStatus(req: { room: string; secret?: string; name?: string; deviceId?: string }): Promise<RoomStatus> {
+  try {
+    const res = await fetch('/api/room-status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) return { state: 'unknown' }
+    const body = (await res.json()) as RoomStatus
+    return body && typeof body.state === 'string' ? body : { state: 'unknown' }
+  } catch {
+    return { state: 'unknown' }
+  }
+}
+
 export interface KnockStatus {
   status: 'pending' | 'approved' | 'denied' | 'expired'
   token?: string

@@ -502,7 +502,7 @@ export function RoomRoute() {
 
   return (
     <div className="relative">
-      <PreJoin room={room} onJoin={handleJoin} encrypted={Boolean(e2ee)} />
+      <PreJoin room={room} onJoin={handleJoin} encrypted={Boolean(e2ee)} secret={secret || undefined} />
       {deviceChoice && (
         <AlreadyOnDevicePrompt
           onJoinAnyway={joinAsCompanion}
