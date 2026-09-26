@@ -49,7 +49,7 @@ import { useBlockStore } from '@/store/useBlockStore'
 import { useInviteStore } from '@/store/useInviteStore'
 import { toast } from '@/store/useToastStore'
 import { useShareLink } from '@/lib/useShareLink'
-import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
+import { useMyOtherSeats } from '@/lib/sameAccount'
 import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
 import { countSettled } from '@/lib/settle'
 import { displayNameOf } from '@/lib/participantName'
@@ -68,7 +68,8 @@ function displayName(p: Participant): string {
 export function ParticipantsPanel() {
   const participants = useParticipants()
   const { localParticipant } = useLocalParticipant()
-  const myUserId = useMyUserId()
+  // Your other devices, by the server's signature (metadata alone can be edited).
+  const otherSeats = useMyOtherSeats()
   const room = useRoomContext()
   const { copied, copy } = useShareLink()
   const [callMsg, setCallMsg] = useState<string | null>(null)
@@ -349,7 +350,7 @@ export function ParticipantsPanel() {
             participant={p}
             ambiguous={dupNames.has(displayName(p).toLowerCase())}
             isLocal={p.identity === localParticipant.identity}
-            myOtherDevice={isMyOtherDevice(p, myUserId)}
+            myOtherDevice={!p.isLocal && !!p.sid && otherSeats.has(p.sid)}
             canModerate={isHost && p.identity !== localParticipant.identity}
             canManageCoHost={isPrimaryHost && p.identity !== localParticipant.identity}
             isCoHost={coHosts.includes(p.identity)}

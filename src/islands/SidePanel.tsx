@@ -29,7 +29,7 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
   // A phone keeps the call in view beside the panel (lib/chatCompanion).
   const companion = useChatCompanion()
   const dock =
-    companion.mode === 'strip'
+    companion.mode === 'top'
       ? { top: companion.sheetTop }
       : companion.mode === 'side'
         ? { width: companion.panelW }

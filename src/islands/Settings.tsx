@@ -79,7 +79,7 @@ function SettingsPopover() {
   )
 }
 
-function SettingsContent() {
+export function SettingsContent() {
   const soundOn = useSoundStore((s) => s.enabled)
   const toggleSound = useSoundStore((s) => s.toggle)
   const touch = useIsTouch()

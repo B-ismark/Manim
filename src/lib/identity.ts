@@ -22,11 +22,3 @@ export function useMyUserId(): string {
   return useMemo(() => userIdOf(localParticipant), [localParticipant])
 }
 
-/**
- * True when `p` is a *different* live session belonging to the same signed-in
- * user as `myUserId` — i.e. your own other device in this call. Guests are
- * device-bound (no shared userId), so this only matches a real shared account.
- */
-export function isMyOtherDevice(p: Participant, myUserId: string): boolean {
-  return !p.isLocal && Boolean(myUserId) && userIdOf(p) === myUserId
-}

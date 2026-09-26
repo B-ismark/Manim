@@ -2,6 +2,7 @@ import { useConnectionQualityIndicator } from '@livekit/components-react'
 import { ConnectionQuality as Quality } from 'livekit-client'
 import type { Participant } from 'livekit-client'
 import { cn } from '@/lib/cn'
+import { useReturnGrace } from '@/lib/foreground'
 
 interface QualityMeta {
   filled: number
@@ -39,9 +40,12 @@ export function ConnectionQuality({ participant, className, degradedOnly }: Conn
   const { quality } = useConnectionQualityIndicator({ participant })
   const meta = META[quality] ?? META[Quality.Unknown]
   const degraded = quality === Quality.Poor || quality === Quality.Lost
+  // Back from another app, the first readings describe the frozen page, not the
+  // line (lib/foreground): a warning-only indicator waits them out.
+  const returning = useReturnGrace()
 
   // Healthy (or not-yet-known) connection in degraded-only mode → render nothing.
-  if (degradedOnly && !degraded) return null
+  if (degradedOnly && (!degraded || returning)) return null
 
   return (
     <span

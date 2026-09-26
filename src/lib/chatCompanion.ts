@@ -14,8 +14,14 @@ import { useRoomStore } from '@/store/useRoomStore'
  * does this — the panel takes the room the conversation needs and the stage turns
  * into a companion view in the room that's left:
  *
- * - `strip` (upright): the sheet stops short of the top, and the stage becomes one
- *   row of people above it, `STRIP_H` tall, speaker first, swiped sideways.
+ * - `top` (upright): the sheet takes the bottom HALF, and the top half shows whoever
+ *   is talking, in their true shape (a tall phone camera stands with the next two
+ *   people beside it; a wide laptop camera fills the width). It used to be a 180px
+ *   row of thumbnails over a sheet that took the rest, and the owner's note was
+ *   that chat "takes too much vertical space": a chat is glanced at between
+ *   sentences, the call is what you're in. When the keyboard is up the sheet keeps
+ *   its room for typing and the speaker shrinks above it, down to a floor, and
+ *   only then gives way.
  * - `side` (a phone on its side): the panel runs full height down the right, the
  *   same width for Chat, People and More so it never jumps, and the stage shows
  *   whoever is talking in the space on the left.
@@ -29,15 +35,18 @@ import { useRoomStore } from '@/store/useRoomStore'
  * components working out "where does the sheet start" separately would disagree
  * by a pixel on the first odd phone.
  */
-export const STRIP_H = 180
-/** Space between the strip and the sheet, and the strip's inset. */
-export const STRIP_GAP = 8
-/** Below this much chat under the strip (the keyboard's up), the strip gives way. */
+/** Upright, the sheet starts this far down the screen. */
+export const SHEET_TOP_FRACTION = 0.5
+/** Space between the speaker and the sheet, and the speaker's inset. */
+export const STAGE_GAP = 8
+/** Chat needs at least this much above the keyboard to be usable. */
 const MIN_CHAT_H = 300
+/** Below this, a speaker tile is too small to be worth the room. */
+const MIN_STAGE_H = 140
 
 export type CompanionLayout =
   | { mode: 'none' }
-  | { mode: 'strip'; stripTop: number; sheetTop: number; stripShown: boolean }
+  | { mode: 'top'; stageTop: number; stageH: number; sheetTop: number; stageShown: boolean }
   | { mode: 'side'; panelW: number }
 
 function useViewport(): { w: number; h: number } {
@@ -78,9 +87,11 @@ export function useChatCompanion(): CompanionLayout {
   if (rail && (open || more)) return { mode: 'side', panelW: sidePanelWidth(w) }
   if (!open || rail || tablet) return { mode: 'none' }
   // Whatever TopStack still shows (a Muted pill, a reconnect banner) keeps its row;
-  // the strip starts under it.
-  const stripTop = rows > 0 ? Math.max(16, safeTop) + rows + STRIP_GAP : Math.max(12, safeTop)
-  const withStrip = stripTop + STRIP_H + STRIP_GAP
-  const stripShown = h - kb - withStrip >= MIN_CHAT_H
-  return { mode: 'strip', stripTop, sheetTop: stripShown ? withStrip : stripTop, stripShown }
+  // the speaker starts under it.
+  const stageTop = rows > 0 ? Math.max(16, safeTop) + rows + STAGE_GAP : Math.max(12, safeTop)
+  // Half the screen, or less when the keyboard needs the room for chat.
+  const sheetTop = Math.min(Math.round(h * SHEET_TOP_FRACTION), h - kb - MIN_CHAT_H)
+  const stageH = sheetTop - stageTop - STAGE_GAP
+  const stageShown = stageH >= MIN_STAGE_H
+  return { mode: 'top', stageTop, stageH, sheetTop: stageShown ? sheetTop : stageTop, stageShown }
 }

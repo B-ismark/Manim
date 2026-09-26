@@ -13,6 +13,7 @@ import { sounds } from '@/lib/sounds'
 import { displayNameOf } from '@/lib/participantName'
 import { toast, useToastStore } from '@/store/useToastStore'
 import { useChatHistoryOn } from '@/features/chat/chatHistory'
+import { useMyOtherSeats } from '@/lib/sameAccount'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
@@ -95,6 +96,9 @@ export interface TextItem {
   fromIdentity: string
   fromName: string
   isLocal: boolean
+  /** Sent by you on ANOTHER device in this call (verified, lib/sameAccount).
+   *  Drawn as yours; editing stays with the device that sent it (`isLocal`). */
+  fromOtherSeat?: boolean
   text: string
   replyTo?: ReplyRef
   /** True once the author has edited this message. */
@@ -116,6 +120,11 @@ export interface FileItem {
   fromIdentity: string
   fromName: string
   isLocal: boolean
+  /** Sent by you on ANOTHER device in this call (verified, lib/sameAccount).
+   *  Drawn as yours; editing stays with the device that sent it (`isLocal`). */
+  fromOtherSeat?: boolean
+  /** The sending connection's SID, captured on arrival (see lib/sameAccount). */
+  fromSid?: string
   fileName: string
   mimeType: string
   size?: number
@@ -231,6 +240,7 @@ export function useChatMessages() {
         id,
         timestamp: info.timestamp,
         fromIdentity: identity,
+        fromSid: sender?.sid,
         fromName: displayNameOf(identity, sender?.name),
         isLocal: false,
         fileName: info.name,
@@ -267,6 +277,8 @@ export function useChatMessages() {
   }, [])
 
   const myIdentity = localParticipant.identity
+  // Your other devices in this call (by connection SID): their messages read as yours.
+  const otherSeats = useMyOtherSeats()
   // Own display name, hoisted above the reaction/typing broadcasts that both send
   // it. `myNameRef` is what the data-channel handlers read — they're registered
   // once, so a closure over the value would replay a stale name after a rename.
@@ -303,13 +315,15 @@ export function useChatMessages() {
       const edited = edits[id]
       authors[id] = m.from?.identity ?? ''
       liveIds.add(id)
+      const isLocal = m.from?.identity === myIdentity
       return {
+        fromOtherSeat: !isLocal && !!m.from?.sid && otherSeats.has(m.from.sid),
         kind: 'text',
         id,
         timestamp: m.timestamp,
         fromIdentity: m.from?.identity ?? '',
         fromName: displayNameOf(m.from?.identity ?? '', m.from?.name),
-        isLocal: m.from?.identity === myIdentity,
+        isLocal,
         text: edited ?? decoded.text,
         replyTo: decoded.replyTo,
         edited: edited !== undefined,
@@ -324,16 +338,22 @@ export function useChatMessages() {
         return {
           ...h,
           isLocal: h.fromIdentity === myIdentity,
+          fromOtherSeat: false,
           text: edited ?? h.text,
           edited: edited !== undefined || h.edited,
         }
       })
     for (const f of files) authors[f.id] = f.fromIdentity
     authorRef.current = authors
-    const all = [...hist, ...text, ...files].sort((a, b) => a.timestamp - b.timestamp)
+    // Replayed history never reads as yours: its author is whatever the replaying
+    // peer claimed (TextItem.replayed), so only live messages, checked by the
+    // sending connection's SID, can be from your other device.
+    const own = files.map((f) => (f.fromSid && otherSeats.has(f.fromSid) ? { ...f, fromOtherSeat: true } : f))
+    const all = [...hist, ...text, ...own]
+      .sort((a, b) => a.timestamp - b.timestamp)
     replayRef.current = all.filter((i): i is TextItem => i.kind === 'text').slice(-HISTORY_LIMIT)
     return all
-  }, [chatMessages, files, myIdentity, edits, history])
+  }, [chatMessages, files, myIdentity, edits, history, otherSeats])
 
   const sendEditRef = useRef<((data: object) => void) | null>(null)
   const { send: sendEdit } = useDataTopic(EDIT_TOPIC, (msg) => {
@@ -728,7 +748,7 @@ export function useChatMessages() {
   const notifiedIds = useRef<Set<string>>(new Set())
   useEffect(() => {
     const fresh = items.filter(
-      (i) => !i.isLocal && !(i.kind === 'text' && i.replayed) && !notifiedIds.current.has(i.id),
+      (i) => !i.isLocal && !i.fromOtherSeat && !(i.kind === 'text' && i.replayed) && !notifiedIds.current.has(i.id),
     )
     if (fresh.length === 0) return
     for (const i of fresh) notifiedIds.current.add(i.id)

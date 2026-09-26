@@ -9,6 +9,7 @@ import { LockIcon, MicOffIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { MUTED_PILL_H, useChromeHidden, useRail } from '@/lib/chromeBands'
 import { cn } from '@/lib/cn'
+import { returnGraceLeft, useReturnGrace } from '@/lib/foreground'
 
 export interface CallStatusBarProps {
   /** True only when E2EE is ACTUALLY active (room.setE2EEEnabled resolved), not
@@ -99,15 +100,20 @@ function useConnectionWarning(quality: Quality): { warn: boolean; lost: boolean 
     // One hold per continuous degraded spell: Poor→Lost→Poor doesn't restart it,
     // because `degraded` never went false.
     if (!held && timer.current === undefined) {
+      // Just back from another app: the first readings describe the time the
+      // page was frozen, not the line (lib/foreground), so wait them out too.
       timer.current = window.setTimeout(() => {
         timer.current = undefined
         setHeld(true)
-      }, DEGRADED_HOLD_MS)
+      }, Math.max(DEGRADED_HOLD_MS, returnGraceLeft()))
     }
     return clear
   }, [degraded, held])
 
-  return { warn: held || lost, lost }
+  // A hold that ran out while the page was in the background still describes the
+  // time away; stay quiet for the return grace. `lost` is real state, never held.
+  const returning = useReturnGrace()
+  return { warn: (held && !returning) || lost, lost }
 }
 
 /**

@@ -192,7 +192,7 @@ test.describe('Mobile fit (no page scroll)', () => {
    * close the picker, wait again, and the bar hides normally — a fix that simply
    * pinned the chrome forever would pass the first half and fail here.
    */
-  test('an open audio tray keeps the control island on screen (no orphaned menu)', async ({ page }) => {
+  test('an open reactions picker keeps the control island on screen (no orphaned menu)', async ({ page }) => {
     const vp = page.viewportSize()!
     await join(page, uniqueRoom(), 'Solo')
     await revealChrome(page)
@@ -203,30 +203,25 @@ test.describe('Mobile fit (no page scroll)', () => {
       return !!box && box.y < vp.height - 4
     }
 
-    const trigger = page.getByRole('button', { name: /Audio (output|settings)/ })
+    // The bar's only popover on a phone now that the audio tray moved into More.
+    const trigger = page.getByRole('button', { name: /^Reactions and raise hand/ })
     await trigger.tap()
-    const tray = page.getByRole('group', { name: 'Audio settings' })
-    await expect(tray).toBeVisible()
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    const picker = page.getByRole('dialog').getByRole('button', { name: 'Raise hand' })
+    await expect(picker).toBeVisible()
 
-    // Past the 4s auto-hide with room to spare. The tray is part of the island
-    // now, so this checks the island doesn't take the tray off screen with it —
-    // the tray can't be *separated* from its anchor by construction any more.
+    // Past the 4s auto-hide with room to spare: an open layer holds the chrome
+    // (RoomView overlayOpen), so the picker can't be left floating off its anchor.
     await page.waitForTimeout(6000)
     expect(await inThumbZone(), 'the island stayed in the thumb zone').toBe(true)
-    await expect(tray).toBeVisible()
+    await expect(picker).toBeVisible()
 
-    // Close it the way a phone user does — tap the trigger again. (Not Escape:
-    // mobile is pure touch, and not an outside tap either, which would ALSO hit
-    // the stage's tap-to-toggle and hide the bar for the wrong reason.)
+    // Close it the way a phone user does — tap the trigger again.
     await trigger.tap()
-    await expect(tray).toBeHidden()
+    await expect(picker).toBeHidden()
 
-    // Auto-hide must come back — the island is pinned by what's open, not
-    // permanently. The tap above also restarts the countdown, so this waits from
-    // there.
+    // Auto-hide must come back — pinned by what's open, not permanently.
     await page.waitForTimeout(6000)
-    expect(await inThumbZone(), 'the auto-hide resumed once the tray closed').toBe(false)
+    expect(await inThumbZone(), 'the auto-hide resumed once the picker closed').toBe(false)
   })
 
   /**
@@ -732,12 +727,12 @@ test.describe('Mobile fit (no page scroll)', () => {
 
   /**
    * Chat on a phone keeps the call in view (lib/chatCompanion). Upright the sheet
-   * stops short of the top and the stage becomes a row of people above it;
+   * takes the bottom half and the speaker fills the top half above it;
    * sideways the panel runs down the right and the speaker has the left. The bars
    * step aside either way — out of the accessibility tree, not just faded — and
    * come back when the chat closes.
    */
-  test('chat keeps the call in view: a strip above it upright, the speaker beside it sideways', async ({
+  test('chat keeps the call in view: the speaker above it upright, beside it sideways', async ({
     page,
     browser,
   }) => {
@@ -746,16 +741,18 @@ test.describe('Mobile fit (no page scroll)', () => {
     const peer = await newParticipant(browser, room, 'Guest')
     try {
       await openChat(page)
-      const strip = page.getByRole('group', { name: 'People in the call' })
-      await expect(strip).toBeVisible()
-      await expect(strip.getByRole('group', { name: /Guest/ })).toBeVisible()
+      const stage = page.locator('[data-chat-companion="top"]')
+      await expect(stage).toBeVisible()
+      await expect(stage.getByRole('group', { name: /Guest/ })).toBeVisible()
       const up = await page.evaluate(() => {
-        const s = document.querySelector('[data-chat-companion="strip"]')!.getBoundingClientRect()
+        const s = document.querySelector('[data-chat-companion="top"]')!.getBoundingClientRect()
         const d = document.querySelector('[role="dialog"][data-dock]')!.getBoundingClientRect()
-        return { stripTop: s.top, stripBottom: s.bottom, sheetTop: d.top, sheetBottom: d.bottom, vh: innerHeight }
+        return { stageTop: s.top, stageBottom: s.bottom, sheetTop: d.top, sheetBottom: d.bottom, vh: innerHeight }
       })
-      expect(up.stripTop, 'the strip is on screen').toBeGreaterThanOrEqual(0)
-      expect(up.stripBottom, 'the strip is not under the sheet').toBeLessThanOrEqual(up.sheetTop)
+      expect(up.stageTop, 'the speaker is on screen').toBeGreaterThanOrEqual(0)
+      expect(up.stageBottom, 'the speaker is not under the sheet').toBeLessThanOrEqual(up.sheetTop)
+      expect(up.sheetTop, 'the chat takes about half').toBeGreaterThanOrEqual(up.vh * 0.4)
+      expect(up.sheetTop, 'the chat takes about half').toBeLessThanOrEqual(up.vh * 0.55)
       expect(up.sheetBottom).toBeLessThanOrEqual(up.vh + 1)
       const barInert = () =>
         page.evaluate(() => !!document.querySelector('[aria-label="Call controls"]')?.closest('[inert]'))
@@ -840,17 +837,10 @@ test.describe('Mobile fit (no page scroll)', () => {
     await expect(page.getByRole('button', { name: 'Audio options' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: 'Camera options' })).toHaveCount(0)
 
-    // …and the devices behind them are still reachable on touch.
-    const trigger = page.getByRole('button', { name: /Audio (output|settings)/ })
-    await trigger.tap()
-    const tray = page.getByRole('group', { name: 'Audio settings' })
-    await expect(tray).toBeVisible()
-    await expect(tray.getByText('Microphone', { exact: true })).toBeVisible()
-    await trigger.tap()
-    await expect(tray).toBeHidden()
-
+    // …and the devices behind them are still reachable on touch, one row into More.
     await openMore(page)
-    await expect(page.getByRole('button', { name: 'Audio & video' })).toBeVisible()
+    await page.getByRole('button', { name: /^Audio & video/ }).tap()
+    await expect(page.getByText('Microphone', { exact: true })).toBeVisible()
     await closePanel(page)
   })
 
@@ -1107,10 +1097,10 @@ test.describe('Mobile fit (no page scroll)', () => {
         'aria-pressed',
         'false',
       )
-      // The Effects surface is a Dialog, not a Sheet — its own "Close" button, not
-      // closePanel's "Close panel". A modal dialog aria-hides the stage, so the
-      // tile control below is unreachable until this is actually shut.
-      await page.getByRole('button', { name: 'Close', exact: true }).tap()
+      // On a phone Effects is a page inside the More sheet. The sheet is modal and
+      // aria-hides the stage, so the tile control below is unreachable until it's
+      // actually shut.
+      await closePanel(page)
       await expect(page.getByRole('dialog')).toBeHidden()
 
       // …and the tile still offers blur, so the round trip left nothing stuck.

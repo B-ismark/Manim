@@ -39,7 +39,7 @@ export function EffectsDialog({
  * high-quality toggle when blur is active. (Image replacement was removed — it
  * kept breaking the live feed; blur is the reliable effect.)
  */
-function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
+export function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
   const {
     supported,
     busy,
