@@ -175,7 +175,10 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   store — read the header of `AnnotationEngine.ts` before touching it.
 - **Overlay layering is centralised.** Top banners/pills are children of
   `TopStack` (one column, priority order) — never a new `fixed` + hand-picked
-  z-index; the layer scale is documented in `TopStack.tsx`. ControlBar holds ONE
+  z-index; the layer scale is documented in `TopStack.tsx`. Toasts can't be TopStack
+  rows (z-60 must clear modal scrims), so they queue BELOW it: anything that owns
+  the top edge registers with `useToastClearance` (TopStack, prejoin's header, the
+  incoming-call banner) and the toast column starts under it via `--toast-top`. ControlBar holds ONE
   `modal` value, so two dialogs can't be open at once. The touch chrome also refuses to
   auto-hide while ANY Radix layer is open (`overlayOpen()` in `RoomView` — it asks the
   DOM, so a new control can't forget to opt in), and the audio picker is a tray *inside*

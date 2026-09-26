@@ -32,10 +32,11 @@ of people (see that PR).
       be verified. With a domain: verify it in Resend and point `RESEND_FROM` at it,
       and move the Supabase sign-in sender (Brevo, currently a Gmail address, which
       can land in spam) onto it too. Until then guests get the mail-app fallback.
-- [ ] Set `VAPID_SUBJECT` as a Worker **Secret** (`mailto:` your address). It left
-      `wrangler.toml` because the repo is public; unset, push uses the repo URL.
-- [ ] Update the Sentry advanced scrubbing rule to the one in DEPLOY.md §3c (it now
-      also catches a token in a query string).
+- [ ] `VAPID_SUBJECT` must be a Worker **Secret**, not a plain variable (Sept 2026 it
+      was added as a variable, which the next deploy from `wrangler.toml` wipes).
+- [ ] Confirm crash reports arrive: the DSN and scrubbing rule are set (Sept 2026);
+      run DEPLOY.md §3c step 6 in a browser without an ad blocker (they block
+      Sentry's loader, which is also why some visitors will never report).
 - [ ] Run the new SQL (Sept 2026 batch): the `avatar read own` policy (§3a), the
       push `seen_at` column and trigger (§4c), and the nightly clean-up jobs (§4d).
 
@@ -60,20 +61,16 @@ of people (see that PR).
 
 ## Security
 
-- [ ] **End-to-end encryption, properly.** The key still passes through Supabase
-      when ringing a contact (`features/calls/calls.ts`) and in cross-device
-      presence (`features/calls/usePresence.ts`). Encrypt it per recipient. Also
-      move to livekit-client's `encryption` option so chat, files and drawings are
-      end-to-end encrypted too (`lib/livekit.ts` uses the legacy `e2ee`).
+- [ ] **The E2EE key through Supabase.** It still passes through Supabase when
+      ringing a contact (`features/calls/calls.ts`) and in cross-device presence
+      (`features/calls/usePresence.ts`). Encrypt it per recipient device.
+      (Chat, files, drawings and reactions are end-to-end encrypted on an
+      encrypted call since Sept 2026, and so is a merge's key.)
 - [ ] **Forgeable chat state.** Pins and history replay relay other people's
       messages, so the author and text are whatever the relayer says. Needs signed
       messages to fix properly. (Report notices now name the verified sender.)
-- [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set
-      `VITE_SENTRY_DSN` in the Cloudflare build and keep Session Replay and
-      tracing off in Sentry's Loader Script settings (steps in DEPLOY.md).
-- [ ] Merging calls sends the target room's E2EE key over the call's data channel,
-      which LiveKit can read (disclosed on the Privacy page). Fixed by the
-      per-recipient encryption item above.
+- [ ] Merging an UNENCRYPTED call into an encrypted one still sends the target's
+      key over a channel LiveKit can read (disclosed on the Privacy page).
 - [ ] Participants' account id is visible to everyone in every call (participant
       metadata), which links you across calls. It feeds photos and the
       same-account-on-another-device check, so a per-room value needs those to
