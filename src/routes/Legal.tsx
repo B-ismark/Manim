@@ -130,12 +130,13 @@ export function Privacy() {
             <span className="text-ink">Calls can be end-to-end encrypted.</span> Calls
             you start with New meeting or by calling a contact are. The key is part of the invite
             link, so anyone with the full link can join and see and hear the call: share it only
-            with people you mean to invite. The key reaches our providers in three cases. When you
-            ring a contact, it goes through Supabase and stays in our database for up to 3 days.
-            When your own signed-in devices show which call you’re in, it passes through Supabase
-            without being stored. When a host merges two calls, it is sent over the call’s message
-            channel, which is end-to-end encrypted on an encrypted call and readable by LiveKit on
-            one that isn’t. Email invites leave the key out. On an encrypted call, chat, files,
+            with people you mean to invite. When you ring a contact, or your own signed-in devices
+            show which call you’re in, the key goes through Supabase locked to that person’s (or
+            your) signed-in devices, so Supabase can’t read it; the ring stays in our database for
+            up to 3 days. If none of their devices has signed in since this was added, the key goes
+            unlocked instead so the call still reaches them. When a host merges two calls, the key
+            is sent over the call’s message channel, which is end-to-end encrypted on an encrypted
+            call and readable by LiveKit on one that isn’t. Email invites leave the key out. On an encrypted call, chat, files,
             drawings and reactions are end-to-end encrypted too; names, raised hands and who is in
             the call are not. A call opened without a key isn’t end-to-end encrypted; the padlock
             in the call shows which applies.
@@ -197,7 +198,7 @@ export function Privacy() {
         <P>
           Account data (profile, photo, contacts, notification subscriptions) is kept while your
           account exists. You can delete your account from Settings → Delete account. That removes
-          your profile, photo, contacts and notification subscriptions straight away, and clears
+          your profile, photo, contacts, notification subscriptions and device keys straight away, and clears
           your data from that browser. Some copies outlast it for a while: call invitations in our
           database (up to 3 days), our email and crash-report providers' logs (for as long as they
           keep them), and, if you were given early access, your email on our access list until we

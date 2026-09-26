@@ -13,18 +13,35 @@ import { useAppStore } from '@/store/useAppStore'
  */
 
 let registeredFor: string | null = null
+let registration: Promise<void> = Promise.resolve()
 
 /** Publish this browser's public key for the signed-in account. Once per session. */
-export async function registerDeviceKey(sb: SupabaseClient, userId: string): Promise<void> {
+export function registerDeviceKey(sb: SupabaseClient, userId: string): Promise<void> {
   const deviceId = useAppStore.getState().deviceId
   const tag = `${userId}:${deviceId}`
-  if (registeredFor === tag) return
-  const key = await getDeviceKey()
-  if (!key) return
-  const { error } = await sb
-    .from('device_keys')
-    .upsert({ user_id: userId, device_id: deviceId, public_key: key.publicJwk }, { onConflict: 'user_id,device_id' })
-  if (!error) registeredFor = tag
+  if (registeredFor === tag) return registration
+  registeredFor = tag
+  registration = (async () => {
+    const key = await getDeviceKey()
+    const { error } = key
+      ? await sb
+          .from('device_keys')
+          .upsert({ user_id: userId, device_id: deviceId, public_key: key.publicJwk }, { onConflict: 'user_id,device_id' })
+      : { error: true }
+    if (error && registeredFor === tag) registeredFor = null
+  })().catch(() => {
+    if (registeredFor === tag) registeredFor = null
+  })
+  return registration
+}
+
+/**
+ * Settles once this browser's key is published (or publishing gave up). Presence
+ * waits on it: a device that shows up before its key does gets sealed out of the
+ * other device's re-seal.
+ */
+export function deviceKeyRegistered(): Promise<void> {
+  return registration
 }
 
 /** Remove this browser's published key (before sign-out, while the session is valid). */

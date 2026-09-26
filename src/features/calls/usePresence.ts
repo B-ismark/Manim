@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useAppStore } from '@/store/useAppStore'
 import type { RoomSecrets } from '@/lib/roomLink'
+import { deviceKeyRegistered, openSecrets, secretsFor } from '@/features/calls/deviceKeys'
 
 export interface DeviceMeeting extends RoomSecrets {
   room: string
@@ -33,14 +34,35 @@ export function usePublishMeetingPresence(room: string, secrets: RoomSecrets = {
       // Private: Realtime RLS restricts presence:<id> to the owner, so only THIS
       // user's other devices can see it (no cross-user online-harvest). The join
       // secret / E2EE key ride along so the other device can rebuild the full
-      // invite link and pass the server's join-secret gate — safe because the
-      // channel is owner-only.
+      // invite link and pass the server's join-secret gate — sealed below, so
+      // not even the relay can read them.
       config: { presence: { key: deviceId }, private: true },
     })
+    // The secrets are sealed to this account's OTHER registered devices, so the
+    // relay never holds the call's key. A device that signs in mid-call has a key
+    // the last seal didn't include, so a new device appearing re-seals.
+    let live = true
+    let subscribed = false
+    // Coalesced: subscribing replays a join for every device already there.
+    let queued: ReturnType<typeof setTimeout> | undefined
+    const publish = () => {
+      clearTimeout(queued)
+      queued = setTimeout(async () => {
+        const sent = await secretsFor(sb, userId, { secret, e2ee }, deviceId)
+        if (live && subscribed) void channel.track({ room, deviceId, ...sent })
+      }, 250)
+    }
+    channel.on('presence', { event: 'join' }, ({ key }) => {
+      if (key !== deviceId) publish()
+    })
     channel.subscribe((status) => {
-      if (status === 'SUBSCRIBED') void channel.track({ room, deviceId, secret, e2ee })
+      if (status !== 'SUBSCRIBED') return
+      subscribed = true
+      publish()
     })
     return () => {
+      live = false
+      clearTimeout(queued)
       void sb.removeChannel(channel)
     }
   }, [userId, signedIn, deviceId, room, secret, e2ee])
@@ -65,6 +87,8 @@ export function useOtherDeviceMeetings(): DeviceMeeting[] {
     const channel = sb.channel(presenceChannelName(userId), {
       config: { presence: { key: deviceId }, private: true },
     })
+    let live = true
+    let generation = 0
     const sync = () => {
       const state = channel.presenceState<{
         room?: string
@@ -80,14 +104,25 @@ export function useOtherDeviceMeetings(): DeviceMeeting[] {
         }
       }
       // De-dupe by room (same call open on two other devices → one entry).
-      setMeetings(rooms.filter((m, i) => rooms.findIndex((x) => x.room === m.room) === i))
+      const unique = rooms.filter((m, i) => rooms.findIndex((x) => x.room === m.room) === i)
+      // Open what was sealed for this device; the newest sync wins.
+      const mine = ++generation
+      void Promise.all(unique.map(async (m) => ({ room: m.room, deviceId: m.deviceId, ...(await openSecrets(m)) }))).then((open) => {
+        if (live && mine === generation) setMeetings(open)
+      })
     }
     channel.on('presence', { event: 'sync' }, sync)
-    channel.subscribe((status) => {
-      // Present but advertising no room of our own (we're idle here).
-      if (status === 'SUBSCRIBED') void channel.track({ deviceId })
+    // Join only once this device's key is published: our arrival is what makes a
+    // device in a call re-seal its secrets, and it can only include keys it finds.
+    void deviceKeyRegistered().then(() => {
+      if (!live) return
+      channel.subscribe((status) => {
+        // Present but advertising no room of our own (we're idle here).
+        if (status === 'SUBSCRIBED') void channel.track({ deviceId })
+      })
     })
     return () => {
+      live = false
       void sb.removeChannel(channel)
     }
   }, [userId, signedIn, deviceId])

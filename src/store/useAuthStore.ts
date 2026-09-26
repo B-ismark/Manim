@@ -7,6 +7,8 @@ import { toast } from '@/store/useToastStore'
 import { squareDownscale } from '@/lib/image'
 import { disablePush } from '@/lib/push'
 import { forgetAuthSession, forgetPersonalData } from '@/lib/localData'
+import { forgetDeviceKey } from '@/lib/deviceKey'
+import { registerDeviceKey, unregisterDeviceKey } from '@/features/calls/deviceKeys'
 
 /** Public Storage bucket holding user avatars (see DEPLOY.md §4a). */
 const AVATAR_BUCKET = 'avatars'
@@ -107,9 +109,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // session still exists — after sign-out this browser would keep ringing for
     // an account nobody here is signed into.
     await disablePush()
+    const sb = await getSupabase()
+    // Same for this browser's sealing key: nobody should keep sealing call keys to
+    // a device that's no longer signed in.
+    const { signedIn, userId } = get()
+    if (sb && signedIn) await unregisterDeviceKey(sb, userId).catch(() => {})
+    await forgetDeviceKey().catch(() => {})
     // Offline or mid-outage this fails and keeps the session; leaveThisBrowser
     // drops it regardless.
-    const sb = await getSupabase()
     if (sb) await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
@@ -127,6 +134,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { error } = await sb.rpc('delete_account')
     if (error) throw new Error('Couldn’t delete your account — try again')
     // The user no longer exists — clear the (now invalid) session and drop to guest.
+    // (Their device_keys rows went with the cascade; the private key is local.)
+    await forgetDeviceKey().catch(() => {})
     await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
@@ -273,6 +282,8 @@ function applySession(session: Session | null) {
     const known = localStorage.getItem(PROFILE_UID_KEY)
     const differentUser = known !== null && known !== uid
     localStorage.setItem(PROFILE_UID_KEY, uid)
+    // Before signedIn flips, so presence (which waits on it) sees this call.
+    if (supabase) void registerDeviceKey(supabase, uid)
     useAuthStore.setState({ userId: uid, email: session.user.email ?? null, signedIn: true })
     if (differentUser) {
       useAuthStore.setState({ avatarUrl: avatarFromSession(session) || null })

@@ -89,6 +89,11 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
     why: 'To show your contacts and let you call them. Anyone who knows your email can find out you have an account and send you a request; they see your name and photo while it’s pending. Once you accept, you each see the other’s email, name and photo.',
   },
   {
+    what: 'A public key for each signed-in browser',
+    where: 'Your account (Supabase); the matching private key never leaves the browser',
+    why: 'So a call’s key can be locked to your devices when someone rings you. Signing out removes it, and one unused for 90 days is deleted.',
+  },
+  {
     what: 'Notification subscription',
     where: 'Your account (Supabase), if you enable notifications',
     why: 'To ring your device when someone calls while the tab is closed. Notifications carry no message content.',

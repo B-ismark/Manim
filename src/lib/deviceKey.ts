@@ -39,8 +39,9 @@ let cached: Promise<Stored | null> | null = null
 export function getDeviceKey(): Promise<Stored | null> {
   cached ??= (async () => {
     if (typeof indexedDB === 'undefined') return null
+    let db: IDBDatabase | undefined
     try {
-      const db = await open()
+      db = await open()
       const have = (await tx(db, 'readonly', (s) => s.get(ID))) as Stored | undefined
       if (have?.privateKey && have.publicJwk) return have
       const fresh = await newDeviceKeyPair()
@@ -48,6 +49,9 @@ export function getDeviceKey(): Promise<Stored | null> {
       return fresh
     } catch {
       return null
+    } finally {
+      // An open connection would block forgetDeviceKey's deleteDatabase.
+      db?.close()
     }
   })()
   const p = cached
