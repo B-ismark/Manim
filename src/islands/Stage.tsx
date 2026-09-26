@@ -39,7 +39,7 @@ import { useBlockStore } from '@/store/useBlockStore'
 import { useShareLink } from '@/lib/useShareLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
 import { useChromeHidden, useIslandBand, useRail, useRailBand, useTopBand } from '@/lib/chromeBands'
-import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
+import { useIsMyOtherDevice } from '@/lib/sameAccount'
 import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
@@ -2025,7 +2025,6 @@ function Tile({
   const room = useRoomContext()
   const { metadata: roomMetadata } = useRoomInfo()
   const roomToken = useAppStore((s) => s.roomToken)
-  const myUserId = useMyUserId()
 
   // Am I allowed to moderate? (primary host or co-host — same rule the server
   // re-checks.) Drives the per-tile mute affordance on *other* people's tiles.
@@ -2048,7 +2047,7 @@ function Tile({
       toast(`Couldn’t mute ${name} — try again`, 'danger')
     }
   }
-  const myOtherDevice = isMyOtherDevice(p, myUserId)
+  const myOtherDevice = useIsMyOtherDevice(p)
   const isScreen = trackRef.source === Track.Source.ScreenShare
   // For the local participant we are never "subscribed" to our own track, so
   // gate only on presence + mute; remote tiles still require a subscription.

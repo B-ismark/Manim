@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { useRoomContext } from '@livekit/components-react'
 import { RoomEvent, type Participant, type Room } from 'livekit-client'
 
@@ -67,38 +67,73 @@ export async function isSameAccount(room: string, me: Participant, p: Participan
   }
 }
 
+/**
+ * One verification loop per room, shared by every caller (each tile, the People
+ * list and chat all ask), so a room of twenty tiles still checks each seat once.
+ */
+export interface SeatWatch {
+  seats: ReadonlySet<string>
+  subs: Set<() => void>
+  stop: () => void
+}
+const watches = new WeakMap<Room, SeatWatch>()
+const NONE: ReadonlySet<string> = new Set()
+
+export function watchOtherSeats(room: Room): SeatWatch {
+  const existing = watches.get(room)
+  if (existing) return existing
+  const known = new Set<string>()
+  let alive = true
+  const w: SeatWatch = { seats: NONE, subs: new Set(), stop: () => {} }
+  const check = () => {
+    const me = room.localParticipant
+    for (const p of room.remoteParticipants.values()) {
+      const sid = p.sid
+      if (!sid || known.has(sid)) continue
+      void isSameAccount(room.name, me, p).then((yes) => {
+        if (!alive || !yes || known.has(sid) || p.sid !== sid) return
+        known.add(sid)
+        w.seats = new Set(known)
+        for (const f of w.subs) f()
+      })
+    }
+  }
+  room
+    .on(RoomEvent.Connected, check)
+    .on(RoomEvent.ParticipantConnected, check)
+    .on(RoomEvent.ParticipantMetadataChanged, check)
+  w.stop = () => {
+    alive = false
+    room
+      .off(RoomEvent.Connected, check)
+      .off(RoomEvent.ParticipantConnected, check)
+      .off(RoomEvent.ParticipantMetadataChanged, check)
+    watches.delete(room)
+  }
+  watches.set(room, w)
+  check()
+  return w
+}
+
 /** SIDs of connections in this call that are your own other devices (verified). */
 export function useMyOtherSeats(): ReadonlySet<string> {
   const room = useRoomContext()
-  const [seats, setSeats] = useState<ReadonlySet<string>>(() => new Set())
-  useEffect(() => {
-    let alive = true
-    const known = new Set<string>()
-    const check = (r: Room) => {
-      const me = r.localParticipant
-      for (const p of r.remoteParticipants.values()) {
-        const sid = p.sid
-        if (!sid || known.has(sid)) continue
-        void isSameAccount(r.name, me, p).then((yes) => {
-          if (!alive || !yes || known.has(sid) || p.sid !== sid) return
-          known.add(sid)
-          setSeats(new Set(known))
-        })
+  const subscribe = useCallback(
+    (onChange: () => void) => {
+      const w = watchOtherSeats(room)
+      w.subs.add(onChange)
+      return () => {
+        w.subs.delete(onChange)
+        if (w.subs.size === 0) w.stop()
       }
-    }
-    const run = () => check(room)
-    run()
-    room
-      .on(RoomEvent.Connected, run)
-      .on(RoomEvent.ParticipantConnected, run)
-      .on(RoomEvent.ParticipantMetadataChanged, run)
-    return () => {
-      alive = false
-      room
-        .off(RoomEvent.Connected, run)
-        .off(RoomEvent.ParticipantConnected, run)
-        .off(RoomEvent.ParticipantMetadataChanged, run)
-    }
-  }, [room])
-  return seats
+    },
+    [room],
+  )
+  return useSyncExternalStore(subscribe, () => watches.get(room)?.seats ?? NONE)
+}
+
+/** Is `p` one of your own other devices, by the server's signature? */
+export function useIsMyOtherDevice(p: Participant): boolean {
+  const seats = useMyOtherSeats()
+  return !p.isLocal && !!p.sid && seats.has(p.sid)
 }

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import type { Participant } from 'livekit-client'
 // @ts-expect-error: plain JS server module
 import { accountClaim } from '../../server/account.mjs'
-import { isSameAccount } from './sameAccount'
+import { isSameAccount, watchOtherSeats } from './sameAccount'
+import type { Room } from 'livekit-client'
 
 const SECRET = 'livekit-api-secret'
 const ROOM = 'swift-falcon'
@@ -51,5 +52,38 @@ describe('isSameAccount', () => {
     const me = await seat('Ada#laptop', '')
     const other = await seat('Ada#phone', '')
     expect(await isSameAccount(ROOM, me, other)).toBe(false)
+  })
+})
+
+describe('watchOtherSeats', () => {
+  it('trusts a connection, not a name: a stranger reusing your left device’s identity is not you', async () => {
+    const me = await seat('Ada#laptop', 'u-ada')
+    const phone = Object.assign(await seat('Ada#phone', 'u-ada'), { sid: 'PA_phone' })
+    const handlers = new Map<string, () => void>()
+    const room = {
+      name: ROOM,
+      localParticipant: me,
+      remoteParticipants: new Map([[phone.identity, phone]]),
+      on(ev: string, f: () => void) {
+        handlers.set(ev, f)
+        return room
+      },
+      off() {
+        return room
+      },
+    }
+    const w = watchOtherSeats(room as unknown as Room)
+    await expect.poll(() => w.seats.has('PA_phone')).toBe(true)
+
+    // The phone leaves; Eve knocks with the same name#device and gets her own token.
+    room.remoteParticipants.delete(phone.identity)
+    const eve = Object.assign(await seat('Ada#phone', 'u-eve'), { sid: 'PA_eve' })
+    room.remoteParticipants.set(eve.identity, eve)
+    handlers.get('participantConnected')!()
+    await new Promise((r) => setTimeout(r, 50))
+    expect(w.seats.has('PA_eve')).toBe(false)
+    // What the phone said while it was here stays yours.
+    expect(w.seats.has('PA_phone')).toBe(true)
+    w.stop()
   })
 })
