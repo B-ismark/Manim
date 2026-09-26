@@ -31,8 +31,8 @@ function Loader() {
 
 const TIPS = [
   'Securing your connection…',
-  'Warming up the camera…',
-  'Finding the best route…',
+  'Getting things ready…',
+  'Connecting…',
   'Almost there…',
 ]
 

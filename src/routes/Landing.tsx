@@ -4,7 +4,7 @@ import { Button, Dialog, Island, Popover, Avatar } from '@/components/primitives
 import { GoogleIcon, CameraIcon, CloseIcon } from '@/components/icons'
 import { SettingsLauncher } from '@/islands/Settings'
 import { ContactsLauncher } from '@/islands/Contacts'
-import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
+import { SetupStatusButton, SetupBanner, showSetup } from '@/islands/SetupStatus'
 import { SiteFooter } from '@/islands/SiteFooter'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -16,7 +16,7 @@ import { getMe } from '@/lib/orchestrator'
 import { supabase } from '@/lib/supabase'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
-import { prettyRoom, toSlug } from '@/lib/roomName'
+import { distinctRoomNames, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
 
@@ -38,6 +38,22 @@ function randomRoom(): string {
   let suffix = ''
   for (let i = 0; i < 13; i++) suffix += CODE_ALPHABET[bytes[i + 2] % CODE_ALPHABET.length]
   return `${pick(a, 0)}-${pick(b, 1)}-${suffix}`
+}
+
+
+/**
+ * What a failed sign-in step says. Supabase's own text is written for developers
+ * ("Token has expired or is invalid", "For security purposes, you can only request
+ * this after 42 seconds"), so only the one case a person can act on — sending too
+ * many emails — gets its own line; everything else gets the step's fallback.
+ */
+function signInError(ex: unknown, fallback: string): string {
+  const m = ex instanceof Error ? ex.message : ''
+  if (/rate limit|security purposes|too many/i.test(m)) {
+    return 'Too many sign-in emails — wait a minute and try again.'
+  }
+  if (/not configured/i.test(m)) return 'Sign-in isn’t available right now.'
+  return fallback
 }
 
 export function Landing() {
@@ -117,7 +133,7 @@ export function Landing() {
     const { slug, secrets } = parseTyped(room)
     if (!slug) {
       // Everything stripped (e.g. "???") — say why instead of a silent no-op.
-      if (room.trim()) toast('Meeting names need letters or numbers', 'warning')
+      if (room.trim()) toast('Call names need letters or numbers', 'warning')
       return
     }
     goTo(slug, secrets)
@@ -146,8 +162,8 @@ export function Landing() {
     if (gated && !allowed && !parsed.secrets.secret) {
       toast(
         signedIn
-          ? 'Your account isn’t approved to start meetings yet.'
-          : 'Sign in with an approved account to start a meeting',
+          ? 'Your account isn’t approved to start calls yet'
+          : 'Sign in with an approved account to start a call',
         'warning',
       )
       return
@@ -157,7 +173,7 @@ export function Landing() {
       // Typed only symbols. Minting a random room here would silently discard
       // what they wrote and drop them into a differently-named call — say why
       // instead, matching onJoin.
-      toast('Meeting names need letters or numbers', 'warning')
+      toast('Call names need letters or numbers', 'warning')
       return
     }
     goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
@@ -171,7 +187,9 @@ export function Landing() {
     // the moment toSlug learned about non-Latin names.
     const slug = toSlug(roomName) || randomRoom()
     const secrets = newRoomSecrets()
-    void ringUser(c.email, slug, myName || 'Someone', secrets)
+    void ringUser(c.email, slug, myName || 'Someone', secrets).then((err) => {
+      if (err) toast(err.replace(/\.$/, ''), 'danger')
+    })
     // Shows an "Invited · waiting" row in the in-call People panel; it clears when
     // they join (their display name matches), so it doubles as a waiting indicator.
     addInvite(c.name)
@@ -189,7 +207,7 @@ export function Landing() {
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
           {signedIn && <ContactsLauncher onCall={callContact} />}
-          <SetupStatusButton />
+          {showSetup() && <SetupStatusButton />}
           <SettingsLauncher />
         </div>
       </header>
@@ -221,8 +239,8 @@ export function Landing() {
                 <p className="text-sm font-medium">Manim is in private beta</p>
                 <p className="mt-0.5 text-xs text-ink-muted">
                   {signedIn
-                    ? 'Your account isn’t approved to start meetings yet. You can still join any call you’re invited to.'
-                    : 'Sign in with an approved account to start a meeting — or open an invite link to join one.'}
+                    ? 'Your account isn’t approved to start calls yet. You can still join any call you’re invited to.'
+                    : 'Sign in with an approved account to start a call — or open an invite link to join one.'}
                 </p>
               </div>
             </div>
@@ -249,7 +267,7 @@ export function Landing() {
               the card, which is how Whereby and Jitsi order the same pair. */}
           <form onSubmit={onJoin} className="flex flex-col gap-3 short:gap-2">
             <label htmlFor="room" className="text-sm font-medium">
-              Meeting name or code
+              Call name or invite link
             </label>
             <div className="flex gap-2">
               {/* text-base on mobile keeps the font ≥16px so iOS doesn't zoom on focus. */}
@@ -307,16 +325,17 @@ function OtherDeviceMeetings({
   onJoin: (room: string, secrets: RoomSecrets) => void
 }) {
   if (meetings.length === 0) return null
+  const names = distinctRoomNames(meetings.map((m) => m.room))
   return (
     <Island pad="none" className="w-full p-3">
       <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">On your other devices</p>
       <ul className="flex flex-col gap-1.5">
-        {meetings.map((m) => (
+        {meetings.map((m, i) => (
           <li key={m.room} className="flex items-center gap-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent-text [&_svg]:size-4">
               <CameraIcon />
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{prettyRoom(m.room)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{names[i]}</span>
             <Button variant="accent" size="sm" onClick={() => onJoin(m.room, { secret: m.secret, e2ee: m.e2ee })}>
               Join
             </Button>
@@ -342,16 +361,17 @@ function RecentMeetings({
   // "Join" (active), so listing it here too as "Rejoin" (stale) is just a duplicate.
   const rooms = allRooms.filter((r) => !hideSlugs.has(r.slug))
   if (rooms.length === 0) return null
+  const names = distinctRoomNames(rooms.map((r) => r.slug))
   return (
     <Island pad="none" className="w-full p-3">
       <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">Recent calls</p>
       <ul className="flex flex-col gap-1.5">
-        {rooms.map((r) => (
+        {rooms.map((r, i) => (
           <li key={r.slug} className="flex items-center gap-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-control bg-sunken text-ink-muted [&_svg]:size-4">
               <CameraIcon />
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.name}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{names[i]}</span>
             {/* Secondary, deliberately — `neutral`, not `accent`.
                 The recents list is the one place on this page that repeats a button
                 per ROW, so an accent fill here doesn't read as "the important
@@ -376,7 +396,7 @@ function RecentMeetings({
             </Button>
             <button
               type="button"
-              aria-label={`Remove ${r.name} from recents`}
+              aria-label={`Remove ${names[i]} from recents`}
               onClick={() => remove(r.slug)}
               className="grid size-9 shrink-0 place-items-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink [&_svg]:size-3.5"
             >
@@ -466,7 +486,7 @@ function SignIn() {
     try {
       await signInWithGoogle()
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Google sign-in failed')
+      setErr(signInError(ex, 'Couldn’t sign in with Google — try again.'))
     }
   }
 
@@ -478,7 +498,7 @@ function SignIn() {
       setSent(true)
       setCooldown(60)
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Sign-in failed')
+      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again.'))
     }
   }
 
@@ -490,7 +510,7 @@ function SignIn() {
       await signInWithEmail(value.trim())
       setCooldown(60)
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Could not resend')
+      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again.'))
     }
   }
 
@@ -503,7 +523,7 @@ function SignIn() {
     try {
       await verifyEmailOtp(value.trim(), code.trim())
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : "That code didn't work — check it and try again.")
+      setErr(signInError(ex, 'That code didn’t work — check it or send a new one.'))
     } finally {
       setVerifying(false)
     }
@@ -554,7 +574,7 @@ function SignIn() {
                   Enter the code we sent to <span className="font-medium text-ink">{value}</span>.
                 </>
               ) : (
-                'Sync your calls and contacts across devices.'
+                'Keep your name, photo and contacts on every device.'
               )}
             </p>
           </div>
@@ -582,7 +602,7 @@ function SignIn() {
               {err && <p className="text-sm text-danger-text">{err}</p>}
 
               <p className="text-sm text-ink-muted">
-                Didn't get it?{' '}
+                Didn’t get it?{' '}
                 <button
                   type="button"
                   onClick={() => void resend()}
@@ -628,7 +648,7 @@ function SignIn() {
               </form>
               {err && <p className="text-sm text-danger-text">{err}</p>}
               <p className="text-xs text-ink-subtle">
-                We'll email a sign-in link and a code. No password needed.
+                We’ll email a sign-in link and a code. No password needed.
               </p>
             </div>
           )}

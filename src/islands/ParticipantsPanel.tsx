@@ -138,7 +138,7 @@ export function ParticipantsPanel() {
     try {
       await setRoomFlags({ room: room.name, token: roomToken, coHosts: next })
     } catch {
-      /* surfaced via thrown error elsewhere */
+      toast(on ? 'Couldn’t make them a co-host — try again' : 'Couldn’t remove them as co-host — try again', 'danger')
     }
   }
 
@@ -153,15 +153,15 @@ export function ParticipantsPanel() {
       await moderate({ room: room.name, token: roomToken, target: target.identity, action: 'remove' })
       toast(`Removed ${target.name}`, 'neutral')
     } catch {
-      /* surfaced elsewhere */
+      toast(`Couldn’t remove ${target.name} — try again`, 'danger')
     }
   }
 
   function mailtoHref(to: string): string {
     const { href, hadKey } = linkWithoutKey(window.location.href)
-    const subject = encodeURIComponent("You're invited to a Manim call")
+    const subject = encodeURIComponent("You’re invited to a Manim call")
     const note = hadKey
-      ? "\n\nThis call is end-to-end encrypted, so the encryption key isn't in this email. I'll send you the full link separately."
+      ? "\n\nThis call is end-to-end encrypted, so the encryption key isn’t in this email. I’ll send you the full link separately."
       : ''
     const body = encodeURIComponent(`Join my call:\n\n${href}${note}`)
     return `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`
@@ -200,7 +200,7 @@ export function ParticipantsPanel() {
       fallbackToMailto(to)
       return false
     } catch {
-      toast("Couldn't auto-send the invite — use the mail link below", 'warning')
+      // The panel says so inline, next to the mail link it offers instead.
       fallbackToMailto(to)
       return false
     }
@@ -295,7 +295,7 @@ export function ParticipantsPanel() {
     toast(
       kind === 'mic'
         ? `Muted ${n} ${n === 1 ? 'microphone' : 'microphones'}`
-        : `Stopped ${n} ${n === 1 ? 'camera' : 'cameras'}`,
+        : `Turned off ${n} ${n === 1 ? 'camera' : 'cameras'}`,
       'neutral',
     )
   }
@@ -388,7 +388,7 @@ export function ParticipantsPanel() {
             <MicOffIcon /> Mute all
           </Button>
           <Button variant="neutral" size="sm" block onClick={() => muteAll(Track.Source.Camera, 'camera')}>
-            <CameraOffIcon /> Stop video
+            <CameraOffIcon /> Turn off cameras
           </Button>
         </div>
       )}
@@ -397,7 +397,7 @@ export function ParticipantsPanel() {
         open={removeTarget !== null}
         onOpenChange={(o) => !o && setRemoveTarget(null)}
         title={`Remove ${removeTarget?.name ?? ''}?`}
-        description="They'll be disconnected from the call. They can rejoin unless you lock the room."
+        description="They’ll be disconnected from the call. They can rejoin unless you lock the call."
       >
         <div className="flex justify-end gap-2">
           <Button variant="neutral" onClick={() => setRemoveTarget(null)}>
@@ -462,7 +462,7 @@ function ParticipantRow({
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid, source: 'microphone' })
       toast(`Muted ${name}`, 'neutral')
     } catch {
-      /* surfaced elsewhere; ignore here */
+      toast(`Couldn’t mute ${name} — try again`, 'danger')
     }
   }
 
@@ -471,9 +471,9 @@ function ParticipantRow({
     if (!trackSid || !token) return
     try {
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid, source: 'camera' })
-      toast(`Turned off ${name}'s video`, 'neutral')
+      toast(`Turned off ${name}’s camera`, 'neutral')
     } catch {
-      /* ignore */
+      toast(`Couldn’t turn off ${name}’s camera — try again`, 'danger')
     }
   }
 

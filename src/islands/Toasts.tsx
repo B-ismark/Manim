@@ -50,7 +50,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
     >
       <span className={cn('size-2 shrink-0 rounded-full', dotTone[toast.tone])} aria-hidden />
       {/* Wrap, never truncate or clamp: the clipped tail was usually the part that
-          mattered ("…is NOT end-to-end encrypted"). */}
+          mattered ("…isn’t end-to-end encrypted"). */}
       <span className="min-w-0" dir="auto">
         {toast.text}
       </span>

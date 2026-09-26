@@ -249,7 +249,7 @@ export async function revealChrome(page: Page) {
  * slipped away again costs one quick retry rather than the whole budget.
  *
  * `until` is what makes retrying safe on a control that TOGGLES — "Share screen"
- * becomes "Stop screen share", and a blind second press would undo the first. It
+ * becomes "Stop sharing", and a blind second press would undo the first. It
  * is checked before pressing, so an attempt that delivered its tap and then threw
  * on the way out is recognised as done instead of reversed. Every caller here has
  * such a signal; if a future one doesn't, give it one rather than dropping the
@@ -610,7 +610,7 @@ export async function startScreenShare(page: Page): Promise<void> {
   await pressChrome(
     page,
     page.getByRole('button', { name: /^Share screen$/i }),
-    page.getByRole('button', { name: /^Stop screen share$/i }),
+    page.getByRole('button', { name: /^Stop sharing$/i }),
     30_000,
   )
 }

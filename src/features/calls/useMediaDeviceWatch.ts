@@ -12,8 +12,8 @@ import { setMicFault } from '@/store/useAudioStore'
 /** What to announce for a mic we couldn't get back — each names a different fix. */
 const FAULT_MESSAGE: Record<'no-device' | 'blocked' | 'acquire-failed', string> = {
   'no-device': 'Your microphone disconnected and no other microphone is available',
-  blocked: 'Microphone access is blocked in your browser settings',
-  'acquire-failed': "Your microphone disconnected and couldn't be reconnected",
+  blocked: 'Microphone access is blocked — allow it from your browser’s address bar',
+  'acquire-failed': 'Your microphone disconnected and couldn’t be reconnected',
 }
 
 /**

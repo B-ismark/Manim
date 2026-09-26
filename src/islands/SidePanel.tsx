@@ -24,7 +24,7 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
     <Sheet
       open={panel !== null}
       onOpenChange={(o) => !o && setPanel(null)}
-      title={value === 'chat' ? 'Chat' : 'Participants'}
+      title={value === 'chat' ? 'Chat' : 'People'}
       flush
       hideTitle
       modal={coarse}

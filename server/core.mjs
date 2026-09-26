@@ -11,6 +11,7 @@ import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'live
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
 import { withoutE2eeKey } from './invite.mjs'
+import { roomTitle } from './preview.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -312,20 +313,20 @@ export async function handleMe(env, body) {
 export async function handleKnock(env, body) {
   const { apiKey, apiSecret, roomService } = services(env)
   const { room, name, deviceId, host, accessToken, secret, seat, hasKey } = body ?? {}
-  if (!room || !name) return { status: 400, body: { error: 'room and name are required' } }
-  if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
+  if (!room || !name) return { status: 400, body: { error: 'Enter your name to join.' } }
+  if (!apiKey || !apiSecret) return { status: 500, body: { error: 'Calls aren’t available right now. Try again later.' } }
   // Bound what lands in the identity and in room metadata (the waiting-room queue
   // stores names, and LiveKit caps metadata size — a few huge names would make
   // every later knock's metadata write fail). `#` would make the identity's
   // name#device split ambiguous.
   if (typeof room !== 'string' || room.length > MAX_ROOM_LEN || typeof name !== 'string') {
-    return { status: 400, body: { error: 'Invalid room or name' } }
+    return { status: 400, body: { error: 'This call link isn’t valid. Check it and try again.' } }
   }
   if (name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim()) {
-    return { status: 400, body: { error: 'Please use a shorter name without special characters.' } }
+    return { status: 400, body: { error: 'Use a shorter name, without # or other special characters.' } }
   }
   if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64 || /[#\u0000-\u001f\u007f]/.test(deviceId))) {
-    return { status: 400, body: { error: 'Invalid device' } }
+    return { status: 400, body: { error: 'Couldn’t join from this browser. Try a different browser.' } }
   }
 
   const identity = `${name}#${deviceId || 'web'}`
@@ -344,7 +345,7 @@ export async function handleKnock(env, body) {
     return {
       status: 410,
       body: {
-        error: 'This meeting link is no longer valid. Start a new meeting to keep talking.',
+        error: 'This call link is no longer valid. Start a new call to keep talking.',
         code: 'link_expired',
       },
     }
@@ -430,7 +431,7 @@ export async function handleKnock(env, body) {
     return {
       status: 403,
       body: {
-        error: 'This beta is invite-only — only approved hosts can start a call. Ask to be added to the allowlist.',
+        error: 'Only approved accounts can start calls during the beta. You can still join calls you’re invited to.',
         code: 'not_in_beta',
       },
     }
@@ -442,7 +443,7 @@ export async function handleKnock(env, body) {
   if (!isHost && !alreadyIn && participants.length >= roomCap(env)) {
     return {
       status: 403,
-      body: { error: 'This room is full (beta limit reached). Try again later.', code: 'room_full' },
+      body: { error: 'This call is full. Try again later.', code: 'room_full' },
     }
   }
 
@@ -463,7 +464,7 @@ export async function handleKnock(env, body) {
       return {
         status: 410,
         body: {
-          error: 'This meeting link has expired. Start a new meeting to keep talking.',
+          error: 'This call link has expired. Start a new call to keep talking.',
           code: 'link_expired',
         },
       }
@@ -471,7 +472,7 @@ export async function handleKnock(env, body) {
   }
 
   if (!isHost && !alreadyIn && flags.locked) {
-    return { status: 403, body: { error: 'This room is locked by the host.' } }
+    return { status: 403, body: { error: 'The host has locked this call.' } }
   }
 
   // Join-secret gate. Once a room records a secretHash (set by its creator from the
@@ -492,7 +493,7 @@ export async function handleKnock(env, body) {
         status: 403,
         body: {
           error:
-            'This room needs its invite link. Open the original link again (in full) — a shortened or re-typed address drops the part that lets you in.',
+            'This link is incomplete. Open the original invite link again — shortened or retyped links don’t work.',
           code: 'need_link',
         },
       }
@@ -893,7 +894,7 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
   // The sender is who the signed token says, not a free-text field.
   const sender = String(caller).split('#')[0].slice(0, 64) || 'Someone'
   const who = escapeHtml(sender)
-  const safeRoom = room ? escapeHtml(room) : ''
+  const safeRoom = room ? escapeHtml(roomTitle(room)) : ''
   // Never mail the encryption key (server/invite.mjs). The join secret stays, so
   // the link still opens the room. The client strips it first, so whether to say
   // "encrypted" comes from the room's own flag as well as the link.
@@ -902,7 +903,7 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
   const encrypted = hadKey || (roomService ? (await getRoomFlags(roomService, room)).encrypted === true : false)
   const href = escapeHtml(mailed.href)
   const encryptedNote = encrypted
-    ? `<p>This call is end-to-end encrypted, so its encryption key isn't in this email. Ask ${who} to send you the full link to join with encryption.</p>`
+    ? `<p>This call is end-to-end encrypted, so its encryption key isn’t in this email. Ask ${who} to send you the full link to join with encryption.</p>`
     : ''
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -913,7 +914,16 @@ export async function handleEmailInvite(env, body, token, appOrigin) {
       // Plain text, not HTML — escaping here would mail "O&#39;Neil invited you".
       // Knock already refuses control characters in names, so no header tricks.
       subject: `${sender} invited you to a Manim call`,
-      html: `<p>${who} invited you to join a Manim call${safeRoom ? ` (room <b>${safeRoom}</b>)` : ''}.</p>
+      // A text part too: some clients show only that, and spam filters mark down
+      // HTML-only mail. Plain, so no escaping (as with the subject).
+      text: [
+        `${sender} invited you to a Manim call${room ? `: ${roomTitle(room)}` : ''}.`,
+        `Join the call: ${mailed.href}`,
+        ...(encrypted
+          ? [`This call is end-to-end encrypted, so its encryption key isn’t in this email. Ask ${sender} to send you the full link to join with encryption.`]
+          : []),
+      ].join('\n\n'),
+      html: `<p>${who} invited you to a Manim call${safeRoom ? `: <b>${safeRoom}</b>` : ''}.</p>
              <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>${encryptedNote}`,
     }),
   })

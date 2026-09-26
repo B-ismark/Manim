@@ -76,7 +76,7 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
   {
     what: 'Recent rooms and their links',
     where: 'Your browser (local storage), for 30 days',
-    why: 'So you can rejoin a meeting from the home screen. Signing out clears them.',
+    why: 'So you can rejoin a call from the home screen. Signing out clears them.',
   },
   {
     what: 'Email, display name, profile photo',
@@ -94,7 +94,7 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
     why: 'To ring your device when someone calls while the tab is closed. Notifications carry no message content.',
   },
   {
-    what: "Another person's email",
+    what: "Another person’s email",
     where: 'Used once, not stored against your account; invite emails go through Resend',
     why: 'When you call or invite someone by email, we look up their account or email them an invite. The email shows your name and the room name.',
   },

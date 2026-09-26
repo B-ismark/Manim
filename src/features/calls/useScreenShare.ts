@@ -172,7 +172,7 @@ export function useScreenShare(): ScreenShareControl {
       if (on && !isScreenShareEnabled && liveShareCount(room) >= MAX_CONCURRENT_SHARES) {
         addBreadcrumb('screen share blocked at capacity', { max: MAX_CONCURRENT_SHARES })
         toast(
-          `${MAX_CONCURRENT_SHARES} people are already sharing. Ask one of them to stop first.`,
+          `${MAX_CONCURRENT_SHARES} people are already sharing — ask one of them to stop first`,
           'neutral',
         )
         return
@@ -186,7 +186,7 @@ export function useScreenShare(): ScreenShareControl {
             return
           }
           reportError(err, { context: 'screen-share' })
-          toast(on ? "Couldn't start sharing your screen" : "Couldn't stop sharing", 'danger')
+          toast(on ? "Couldn’t start sharing your screen" : "Couldn’t stop sharing", 'danger')
         }
       })()
     },

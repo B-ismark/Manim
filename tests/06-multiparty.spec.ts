@@ -22,8 +22,8 @@ test.describe('Multi-party', () => {
 
     try {
       // Each side shows 2 participants on the stage chip.
-      await expect(page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({ timeout: 30_000 })
-      await expect(guest.page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({ timeout: 30_000 })
+      await expect(guest.page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({ timeout: 30_000 })
 
       // Host sends chat → guest receives.
       const hostComposer = await openChat(page)
@@ -53,7 +53,7 @@ test.describe('Multi-party', () => {
     const g2 = await newParticipant(browser, room, 'Guest-2')
     try {
       for (const p of [page, g1.page, g2.page]) {
-        await expect(p.getByRole('button', { name: /Participants \(3\)/ })).toBeVisible({
+        await expect(p.getByRole('button', { name: /People \(3\)/ })).toBeVisible({
           timeout: 40_000,
         })
       }
@@ -89,7 +89,7 @@ test.describe('Multi-party', () => {
     const g1 = await newParticipant(browser, room, 'Guest-1')
     const g2 = await newParticipant(browser, room, 'Guest-2')
     try {
-      await expect(page.getByRole('button', { name: /Participants \(3\)/ })).toBeVisible({
+      await expect(page.getByRole('button', { name: /People \(3\)/ })).toBeVisible({
         timeout: 40_000,
       })
       await page.waitForTimeout(1500)
@@ -107,7 +107,7 @@ test.describe('Multi-party', () => {
           }
         })
 
-      for (const layout of ['Grid', 'Speaker'] as const) {
+      for (const layout of ['Gallery', 'Speaker'] as const) {
         await openMore(page)
         await page.getByRole('button', { name: layout, exact: true }).click()
         await closePanel(page)
@@ -165,7 +165,7 @@ test.describe('Multi-party', () => {
     await join(page, room, 'Host')
     const guest = await newParticipant(browser, room, 'Target')
     try {
-      await expect(page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({ timeout: 30_000 })
       // Reveal the guest tile's mute affordance (hover) and click it.
       const muteBtn = page.getByRole('button', { name: /^Mute Target/ })
       // Hover the tile region to surface the control.

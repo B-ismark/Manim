@@ -20,7 +20,7 @@ export function mediaErrorMessage(err: unknown, kind: MediaKind = 'camera or mic
     case 'NotAllowedError':
     case 'PermissionDeniedError':
     case 'SecurityError':
-      return `Access to your ${kind} is blocked. Allow it from the icon in your browser's address bar.`
+      return `Access to your ${kind} is blocked. Allow it from the icon in your browser’s address bar.`
     case 'NotFoundError':
     case 'DevicesNotFoundError':
     case 'OverconstrainedError':
@@ -30,7 +30,7 @@ export function mediaErrorMessage(err: unknown, kind: MediaKind = 'camera or mic
     case 'AbortError':
       return `Your ${kind} is in use by another app. Close it there, then try again.`
     case 'DeviceUnsupportedError':
-      return `This browser can't use your ${kind} here.`
+      return `This browser can’t use your ${kind} here.`
     default:
       return null
   }

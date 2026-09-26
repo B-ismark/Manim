@@ -25,9 +25,9 @@ import { useIsTouch } from '@/lib/useIsTouch'
  */
 
 const FAULT_DETAIL: Record<MicFault['reason'], (lost: string) => string> = {
-  'no-device': (lost) => `${lost} disconnected. No other mic responded.`,
-  blocked: () => 'Microphone access is blocked in your browser settings.',
-  'acquire-failed': (lost) => `${lost} disconnected and wouldn't reconnect.`,
+  'no-device': (lost) => `${lost} disconnected. No other microphone is available.`,
+  blocked: () => 'Microphone access is blocked. Allow it from your browser’s address bar.',
+  'acquire-failed': (lost) => `${lost} disconnected and wouldn’t reconnect.`,
 }
 
 /**
@@ -63,10 +63,11 @@ export function MicUnavailableBanner() {
       elevation="raised"
       pad="sm"
       bordered
-      className="pointer-events-auto flex max-w-[min(30rem,92vw)] items-center gap-3"
+      className="pointer-events-auto flex max-w-[min(30rem,92vw)] flex-wrap items-center gap-3"
     >
       <span className="size-2 shrink-0 animate-pulse rounded-full bg-danger" aria-hidden />
-      <p className="min-w-0 text-sm text-ink">
+      {/* Wraps: at phone width the buttons drop under the text, not over it. */}
+      <p className="min-w-40 flex-1 text-sm text-ink">
         Microphone unavailable
         <span className="block text-xs text-ink-subtle">{FAULT_DETAIL[fault.reason](fault.lost)}</span>
       </p>
@@ -82,7 +83,7 @@ export function MicUnavailableBanner() {
             align="end"
             trigger={
               <Button size="sm" variant="ghost">
-                Choose mic
+                Choose microphone
               </Button>
             }
           >

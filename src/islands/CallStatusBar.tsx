@@ -130,7 +130,7 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
     // Positioned by TopStack — see the layer scale there.
     <div className="mn-pop flex min-h-11 items-center gap-2 rounded-control bg-overlay px-3 text-xs font-medium text-white backdrop-blur">
       {encrypted && <LockIcon className="size-3.5" aria-label="End-to-end encrypted" />}
-      <span className="tabular-nums" aria-label="Call duration">
+      <span role="timer" className="tabular-nums" aria-label="Call duration">
         {elapsed}
       </span>
       {warn && (

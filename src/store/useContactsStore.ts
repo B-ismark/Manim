@@ -63,7 +63,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     set({ loading: true, error: null })
     const { data, error } = await sb.rpc('list_contacts')
     if (error) {
-      set({ loading: false, error: 'Could not load contacts.' })
+      set({ loading: false, error: 'Couldn’t load contacts.' })
       return
     }
     const rows: ContactRow[] = (data ?? []).map(
@@ -99,10 +99,10 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
     // Atomic server-side add: inserts a request, or accepts a reverse one if it
     // already exists — race-safe, unlike the old check-then-insert on stale rows.
     const { data: status, error } = await sb.rpc('add_contact', { addressee_id: otherId })
-    if (error) return 'Could not send the request.'
+    if (error) return 'Couldn’t send the request.'
     const result = String(status)
     const message: Record<string, string> = {
-      self: "That's you.",
+      self: "That’s you.",
       already: 'Already in your contacts.',
       pending: 'Request already sent.',
     }
@@ -129,7 +129,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
       .update({ status: 'accepted' })
       .match({ requester: otherId, addressee: myId, status: 'pending' })
     if (error) {
-      set({ rows: before, error: 'Could not accept the request.' })
+      set({ rows: before, error: 'Couldn’t accept the request.' })
       await get().refresh()
     }
   },
@@ -148,7 +148,7 @@ export const useContactsStore = create<ContactsState>((set, get) => ({
         `and(requester.eq.${myId},addressee.eq.${otherId}),and(requester.eq.${otherId},addressee.eq.${myId})`,
       )
     if (error) {
-      set({ rows: before, error: 'Could not remove the contact.' })
+      set({ rows: before, error: 'Couldn’t remove the contact.' })
       await get().refresh()
     }
   },

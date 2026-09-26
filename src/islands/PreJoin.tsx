@@ -108,7 +108,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       setError(null)
     } catch {
       setPermission('denied')
-      setError('Camera and microphone access was blocked. Enable it in your browser settings.')
+      setError('Access to your camera and microphone is blocked. Allow it from the icon in your browser’s address bar.')
     } finally {
       setPriming(false)
     }
@@ -157,7 +157,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         setPermission('granted')
       } catch (e) {
         if (cancelled) return
-        setError(mediaErrorMessage(e, 'camera') ?? "Couldn't start your camera.")
+        setError(mediaErrorMessage(e, 'camera') ?? "Couldn’t start your camera.")
         // A camera that can't start now won't start at connect either, and with the
         // toggle left on the call would try (and warn) again. Switch it off so Join
         // means "join without video"; the toggle is right there to retry. Blocked
@@ -327,7 +327,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         {showPriming && (
           <div className="mt-3 shrink-0 rounded-field bg-sunken p-3 text-center">
             <p className="text-sm text-ink">
-              We'll ask for camera and microphone access so others can see and hear you.
+              We’ll ask for camera and microphone access so others can see and hear you.
             </p>
             <Button variant="accent" className="mt-2" disabled={priming} onClick={requestAccess}>
               {priming ? 'Requesting…' : 'Allow camera & microphone'}

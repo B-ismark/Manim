@@ -58,7 +58,7 @@ function BackgroundEffects({ controls }: { controls: BackgroundBlurControls }) {
   if (!supported) {
     return (
       <p className="px-2.5 py-2 text-xs text-ink-subtle">
-        Background effects aren't supported on this browser.
+        Background effects aren’t supported on this browser.
       </p>
     )
   }

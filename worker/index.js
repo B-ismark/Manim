@@ -86,7 +86,7 @@ async function handleApi(request, env, url) {
     if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
     return new Response('Not found', { status: 404 })
   } catch {
-    return json({ status: 500, body: { error: 'server error' } })
+    return json({ status: 500, body: { error: 'Something went wrong on our side. Try again in a moment.' } })
   }
 }
 
@@ -151,5 +151,19 @@ export default {
       return new Response(html, { status: res.status, statusText: res.statusText, headers })
     }
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
+  },
+
+  // Keep the free Supabase project awake. Free projects pause after a week with no
+  // activity, and with BETA_GATE on a paused project fails every host's sign-in
+  // check, so no one can start a call until someone restores it by hand. Twice a
+  // week (wrangler.toml [triggers]) is well inside that window. One cheap read:
+  // RLS returns nothing to the anon key, but it's a real database request.
+  async scheduled(_event, env, ctx) {
+    if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) return
+    ctx.waitUntil(
+      fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id&limit=1`, {
+        headers: { apikey: env.SUPABASE_ANON_KEY, authorization: `Bearer ${env.SUPABASE_ANON_KEY}` },
+      }).catch(() => {}),
+    )
   },
 }

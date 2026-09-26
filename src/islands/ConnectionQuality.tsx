@@ -12,8 +12,11 @@ interface QualityMeta {
 const META: Record<Quality, QualityMeta> = {
   [Quality.Excellent]: { filled: 3, label: 'Excellent connection', color: 'bg-success' },
   [Quality.Good]: { filled: 2, label: 'Good connection', color: 'bg-success' },
-  [Quality.Poor]: { filled: 1, label: 'Poor connection', color: 'bg-warning' },
-  [Quality.Lost]: { filled: 0, label: 'Connection lost', color: 'bg-danger' },
+  [Quality.Poor]: { filled: 1, label: 'Weak connection', color: 'bg-warning' },
+  // Quality is a bandwidth heuristic: `Lost` is a packet-loss spike, not a dropped
+  // connection, so neither degraded level may say more than "weak" (see CLAUDE.md);
+  // the bars carry the difference.
+  [Quality.Lost]: { filled: 0, label: 'Weak connection', color: 'bg-danger' },
   [Quality.Unknown]: { filled: 0, label: 'Connection unknown', color: 'bg-ink-subtle' },
 }
 

@@ -6,6 +6,6 @@ describe('lookupError', () => {
     expect(lookupError({ message: 'rate_limited' })).toMatch(/try again in a few minutes/)
   })
   it('keeps the generic message otherwise', () => {
-    expect(lookupError({ message: 'network' })).toBe('Could not look up that user.')
+    expect(lookupError({ message: 'network' })).toBe('Couldn’t look up that person.')
   })
 })

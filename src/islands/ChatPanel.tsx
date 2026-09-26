@@ -226,7 +226,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       // …but if the transport rejected it (e.g. mid-reconnect), put the message
       // back (the original, not the encoded form) and say so — don't lose it.
       setDraft(original)
-      setError("Couldn't send — check your connection and try again.")
+      setError("Couldn’t send — check your connection and try again.")
     }
   }
 
@@ -451,7 +451,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           <ul
             id="mention-listbox"
             role="listbox"
-            aria-label="Mention a participant"
+            aria-label="Mention someone"
             className="absolute inset-x-3 bottom-full z-10 mb-2 max-h-48 overflow-y-auto rounded-field border border-line bg-surface py-1 shadow-pop no-scrollbar"
           >
             {suggestions.map((t, i) => (
@@ -1242,7 +1242,7 @@ function ReactorBreakdown({
 }) {
   const entries = reactions ? Object.entries(reactions).filter(([, by]) => by.length > 0) : []
   if (entries.length === 0) {
-    return <p className="px-1 py-2 text-sm text-ink-muted">No reactions yet.</p>
+    return <p className="px-1 py-2 text-sm text-ink-muted">No reactions yet</p>
   }
   return (
     <ul className="flex flex-col gap-3">

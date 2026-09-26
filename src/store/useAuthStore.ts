@@ -112,7 +112,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   deleteAccount: async () => {
     const sb = supabase
     const { signedIn, userId } = get()
-    if (!sb || !signedIn) throw new Error('Sign in to delete your account.')
+    if (!sb || !signedIn) throw new Error('Sign in to delete your account')
     // The photo is a public object keyed by user id and isn't covered by the
     // account's cascade, so it outlived the account. Best-effort, before the row goes.
     await sb.storage.from(AVATAR_BUCKET).remove([`${userId}/avatar.webp`]).catch(() => {})
@@ -120,7 +120,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // The DB function deletes the caller's own auth.users row (auth.uid()); the
     // on-delete-cascade FKs take profiles/contacts/push_subscriptions with it.
     const { error } = await sb.rpc('delete_account')
-    if (error) throw new Error('Could not delete your account. Please contact support.')
+    if (error) throw new Error('Couldn’t delete your account — try again')
     // The user no longer exists — clear the (now invalid) session and drop to guest.
     await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
@@ -129,7 +129,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   uploadAvatar: async (file) => {
     const sb = supabase
     const { signedIn, userId } = get()
-    if (!sb || !signedIn) throw new Error('Sign in to add a photo.')
+    if (!sb || !signedIn) throw new Error('Sign in to add a photo')
 
     // Shrink + square-crop in the browser so we store a few-KB webp, not the
     // original multi-MB photo. Fixed filename → one object per user (upsert).
@@ -138,7 +138,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { error: upErr } = await sb.storage
       .from(AVATAR_BUCKET)
       .upload(path, blob, { upsert: true, contentType: 'image/webp' })
-    if (upErr) throw new Error('Upload failed. Check the avatars bucket exists (see DEPLOY.md).')
+    if (upErr) throw new Error('Couldn’t upload your photo — try again')
 
     // Cache-bust so the new image shows immediately (same path, public CDN URL).
     const base = sb.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl
@@ -314,9 +314,11 @@ function reportAuthErrorFromUrl(): void {
   // actionable hint rather than the raw provider string.
   const code = query.get('error_code') || hash.get('error_code') || ''
   toast(
+    // Only fixed strings: the URL is attacker-controllable, and the provider's
+    // text is written for developers.
     /otp|expired|invalid|access_denied/i.test(`${code} ${msg}`)
-      ? 'That sign-in link didn’t work — open it in the same browser you started from, or request a new one.'
-      : msg,
+      ? 'That sign-in link didn’t work — open it in the browser you started in, or request a new one'
+      : 'Couldn’t sign you in — request a new link',
     'danger',
   )
   for (const k of ['error', 'error_code', 'error_description']) {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { prettyRoom, toSlug } from './roomName'
+import { distinctRoomNames, prettyRoom, toSlug } from './roomName'
 
 describe('prettyRoom', () => {
   it('turns a hyphenated slug into Title Case display', () => {
@@ -12,6 +12,10 @@ describe('prettyRoom', () => {
 
   it('leaves numeric segments of generated codes intact', () => {
     expect(prettyRoom('calm-otter-417')).toBe('Calm Otter 417')
+  })
+  it('drops the random code a new meeting appends, as the link preview does', () => {
+    expect(prettyRoom('swift-falcon-kq7mz3xhp2rtd')).toBe('Swift Falcon')
+    expect(prettyRoom('kq7mz3xhp2rtd')).toBe('Kq7mz3xhp2rtd')
   })
 
   it('collapses repeated separators', () => {
@@ -83,5 +87,13 @@ describe('toSlug', () => {
 
   it('round-trips through prettyRoom for a typed name', () => {
     expect(prettyRoom(toSlug('World Cup'))).toBe('World Cup')
+  })
+})
+
+describe('distinctRoomNames', () => {
+  it('keeps a short code only where two generated rooms would read the same', () => {
+    expect(
+      distinctRoomNames(['swift-falcon-kq7mz3xhp2rtd', 'swift-falcon-abcdefghjkmnp', 'calm-otter-kq7mz3xhp2rtd', 'team-standup']),
+    ).toEqual(['Swift Falcon · kq7m', 'Swift Falcon · abcd', 'Calm Otter', 'Team Standup'])
   })
 })
