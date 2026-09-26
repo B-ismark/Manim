@@ -600,9 +600,12 @@ select cron.schedule(
 4g. **Rings say who really called** (run once — added 2026-09, after §4e). The
     ring's caller name is typed by the caller, so any contact could ring you as
     someone else. This version of `ring()` also stamps the caller's account id
-    (`auth.uid()`, which the caller can't choose), and the app shows the name YOU
-    saved for that contact. Until this is run the app shows the typed name, as
-    before. Same signature as §4b, so no app change has to wait for it.
+    (`auth.uid()`, which the caller can't choose), and the app shows that
+    contact's account name AND email from your contacts list (a profile name is
+    theirs to pick; the email isn't). It also drops the old 3-argument `ring()`,
+    which carries no `from` and would let a caller skip the stamp. Until this is
+    run the app shows the typed name, as before. Same signature as §4b, so no app
+    change has to wait for it.
 
 ```sql
 create or replace function ring(target_id uuid, room text, from_name text, join_secret text, e2ee_key text)
@@ -623,6 +626,8 @@ begin
 end $$;
 revoke all on function ring(uuid, text, text, text, text) from public;
 grant execute on function ring(uuid, text, text, text, text) to authenticated;
+-- The 3-argument ring() from §4 predates secrets and carries no `from`.
+drop function if exists ring(uuid, text, text);
 ```
 
 4f. **Recent calls on every device** (run once — added 2026-09, after §4e). The

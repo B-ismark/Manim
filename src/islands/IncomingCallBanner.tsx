@@ -58,6 +58,8 @@ export function IncomingCallBanner() {
           <Avatar name={incoming.fromName} size="xl" />
           <div>
             <p className="text-xl font-semibold">{incoming.fromName}</p>
+            {/* A profile name is the caller's to choose; the account email isn't. */}
+            {incoming.fromEmail && <p className="text-sm text-ink-muted">{incoming.fromEmail}</p>}
             <p className="mt-1 text-sm text-ink-muted">
               is calling · {prettyRoom(incoming.room)} · {mmss}
             </p>
@@ -101,6 +103,7 @@ export function IncomingCallBanner() {
         <div className="min-w-0">
           <p className="truncate text-sm font-medium">{incoming.fromName} is calling</p>
           <p className="text-xs text-ink-muted">
+            {incoming.fromEmail ? `${incoming.fromEmail} · ` : ''}
             {prettyRoom(incoming.room)} · {mmss}
           </p>
         </div>

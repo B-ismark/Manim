@@ -4,6 +4,8 @@ import type { RoomSecrets } from '@/lib/roomLink'
 export interface IncomingCall extends RoomSecrets {
   room: string
   fromName: string
+  /** The caller's account email, when the ring says who really sent it. */
+  fromEmail?: string
 }
 
 /**
