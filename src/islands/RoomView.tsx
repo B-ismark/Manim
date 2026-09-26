@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useParams } from 'react-router-dom'
 import { RoomAudioRenderer, useRoomContext, useConnectionState, useParticipants } from '@livekit/components-react'
 import { ConnectionState, RoomEvent } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
@@ -41,9 +41,10 @@ import { useAudioSession } from '@/features/calls/useAudioSession'
 import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
-import { parseRoomHash, roomTo } from '@/lib/roomLink'
+import { parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
+import { markEnd } from '@/lib/callEnd'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
 import { addBreadcrumb, reportError } from '@/lib/report'
@@ -193,7 +194,10 @@ function useSoloAutoLeave(onLeave: () => void) {
         }),
       SOLO_TIMEOUT_MS - 60_000,
     )
-    const end = window.setTimeout(onLeave, SOLO_TIMEOUT_MS)
+    const end = window.setTimeout(() => {
+      markEnd('alone')
+      onLeave()
+    }, SOLO_TIMEOUT_MS)
     return () => {
       window.clearTimeout(warn)
       window.clearTimeout(end)
@@ -393,26 +397,13 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
   const toggleOwnShareShown = useRoomStore((s) => s.toggleOwnShareShown)
-  // Leave via the control bar is instant by design (a sound choice on desktop), but
-  // on a thumb-zone mobile bar a fat-finger drops you and rejoin can mean re-knocking
-  // the waiting room. Pair the explicit Leave button with an undo toast that rejoins
-  // the same room (autojoin → no second prejoin). End-for-everyone, host-end, handoff
-  // and the solo-auto-leave keep the plain doLeave — those aren't accidental.
-  const navigate = useNavigate()
+  // Leave via the control bar is instant by design (a sound choice on desktop),
+  // and a fat-finger on a thumb-zone mobile bar is survivable: the end-of-call
+  // screen that follows (RoomRoute) offers Rejoin, with the link's secrets.
   const leaveWithUndo = useCallback(() => {
-    const slug = room.name
+    markEnd('left')
     void doLeave()
-    toast('You left the call', 'neutral', {
-      duration: 8000,
-      action: {
-        label: 'Rejoin',
-        // WITH the link secrets. Rejoining to a bare `/r/<slug>` dropped the join
-        // secret, so undoing an accidental leave failed the server's link gate and
-        // told you the room needed an invite link you were holding a second ago.
-        onClick: () => navigate(roomTo(slug, linkSecrets), { state: { autojoin: true } }),
-      },
-    })
-  }, [doLeave, navigate, room.name, linkSecrets])
+  }, [doLeave])
   // Mic/camera/hang-up buttons in native PiP + OS media controls.
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.

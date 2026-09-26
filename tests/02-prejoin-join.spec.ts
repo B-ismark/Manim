@@ -82,6 +82,10 @@ test.describe('PreJoin + join', () => {
     await expect(page.getByRole('button', { name: 'Open chat' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Leave call' })).toBeVisible()
     await page.getByRole('button', { name: 'Leave call' }).click()
+    // The end-of-call screen says what happened and offers Rejoin; Go home leaves.
+    await expect(page.getByRole('heading', { name: 'You left the call' })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('button', { name: 'Rejoin' })).toBeVisible()
+    await page.getByRole('button', { name: 'Go home' }).click()
     await expect(page).toHaveURL(/\/$/, { timeout: 20_000 })
     expect(appErrors(sink), `unexpected app errors: ${appErrors(sink).join('\n')}`).toEqual([])
   })

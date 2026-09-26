@@ -91,8 +91,6 @@ of people (see that PR).
 
 ## Experience
 
-- [ ] **"Call ended" screen** with the reason (host ended, removed, connection lost,
-      everyone left) plus Rejoin and Home. Today people land on the home page.
 - [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
       should move into TopStack so the layering rules cover them.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
@@ -135,7 +133,7 @@ of people (see that PR).
 ## Product ideas
 
 - Device pickers on prejoin, with the speaker test using the chosen output.
-- A proper end-of-call moment (reason, Rejoin, copy link, one-tap rating).
+- The end-of-call screen could add copy link and a one-tap rating.
 - Room readiness before joining ("Host hasn't joined yet", "3 people in the call").
 - A lobby that isn't a dead end (live preview, editable name, note to the host).
 - Honest connection states (offline detection, reconnect timer, Keep trying/Leave).

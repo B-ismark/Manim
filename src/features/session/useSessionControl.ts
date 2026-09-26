@@ -11,6 +11,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
+import { markEnd } from '@/lib/callEnd'
 import { userIdOf } from '@/lib/identity'
 import { displayNameOf } from '@/lib/participantName'
 import { sounds } from '@/lib/sounds'
@@ -188,6 +189,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     if (data.type === 'end') {
       if (senderId !== hostId) return // only the room host can end for everyone
       sounds.end()
+      markEnd('ended')
       void doLeave()
     } else if (data.type === 'merge' && data.room) {
       if (senderId !== hostId) return // only the host can move everyone
@@ -221,6 +223,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     // mid-reconnect (who'd miss the broadcast) is disconnected and can't rejoin.
     // Without this the host leaves and a reconnecting participant is stranded
     // alone in a call that "ended" for everyone else.
+    markEnd('endedByYou')
     if (roomToken) {
       try {
         await endRoom(room.name, roomToken)
