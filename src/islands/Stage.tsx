@@ -2021,7 +2021,8 @@ function Tile({
                 size={coarse ? 'md' : 'sm'}
                 label={action.label}
                 icon={action.icon}
-                active={action.active}
+                // Deliberately no `active` fill: these corner actions have always
+                // looked the same on and off over video (the label says which).
                 tone="overlay"
                 onClick={action.onClick}
               />
@@ -2034,7 +2035,8 @@ function Tile({
                 size="sm"
                 label={pinned ? `Unpin ${name}` : `Pin ${name}`}
                 icon={<PinIcon />}
-                active={pinned}
+                // No `active` fill, as before the overlay tone: the label says
+                // Pin / Unpin, and the tile itself shows it's pinned.
                 tone="overlay"
                 onClick={() => togglePin(p.identity)}
               />

@@ -3,8 +3,8 @@
 Report only — no code changed. Method: full static walkthrough of every route,
 island, primitive, and style token (`src/routes`, `src/islands`, `src/components/primitives`,
 `src/styles/app.css`, `src/features/session|calls`), traced end-to-end through the
-primary user flows against the contracts in [STYLE.md](../STYLE.md) and
-[Architecture-Plan.md](../Architecture-Plan.md).
+primary user flows against the contracts in [STYLE.md](../../STYLE.md) and
+[Architecture-Plan.md](../../Architecture-Plan.md).
 
 ## Summary
 - **High: 1**

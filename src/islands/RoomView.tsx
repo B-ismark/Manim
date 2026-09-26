@@ -107,10 +107,15 @@ function useStageChrome() {
     // stage tap, so a picker opened at t=3.9s had 100ms to live. While a layer is
     // up this re-arms (a 4s no-op poll) rather than hiding; the first tick after
     // it closes hides normally.
-    const arm = () => {
+    // A layer seen open on one tick earns a full fresh countdown once it closes:
+    // the More sheet and the end-call menu render outside the island, so closing
+    // them isn't an island touch, and without this the bar could slide away a
+    // moment after the sheet did.
+    const arm = (layerWasOpen = false) => {
       window.clearTimeout(hideTimer.current)
       hideTimer.current = window.setTimeout(() => {
-        if (overlayOpen()) return arm()
+        if (overlayOpen()) return arm(true)
+        if (layerWasOpen) return arm()
         setVisible(false)
       }, CHROME_HIDE_MS)
     }

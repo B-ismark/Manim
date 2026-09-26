@@ -31,6 +31,10 @@ export function CallAnnouncer() {
     updateOnlyOn: [
       RoomEvent.TrackPublished,
       RoomEvent.TrackUnpublished,
+      // The remote events above don't fire for YOUR tracks, so your own share
+      // starting and stopping would go unannounced without these.
+      RoomEvent.LocalTrackPublished,
+      RoomEvent.LocalTrackUnpublished,
       RoomEvent.TrackMuted,
       RoomEvent.TrackUnmuted,
       RoomEvent.ParticipantAttributesChanged,
