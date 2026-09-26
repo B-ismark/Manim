@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { RoomEvent } from 'livekit-client'
 import { useNavigate } from 'react-router-dom'
 import {
   useLocalParticipant,
@@ -51,7 +52,8 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const room = useRoomContext()
   const navigate = useNavigate()
   const { localParticipant } = useLocalParticipant()
-  const participants = useParticipants()
+  // Identities and account ids (metadata) only; not every speaking change.
+  const participants = useParticipants({ updateOnlyOn: [RoomEvent.ParticipantMetadataChanged] })
   const { metadata: roomMetadata } = useRoomInfo()
   const deviceId = useAppStore((s) => s.deviceId)
   const roomToken = useAppStore((s) => s.roomToken)

@@ -25,7 +25,18 @@ function nameOf(p: Participant): string {
  */
 export function CallAnnouncer() {
   const room = useRoomContext()
-  const participants = useParticipants()
+  // What the announcements read: shares starting and stopping, raised hands and
+  // names. Not speaking or quality changes, which fire many times a second.
+  const participants = useParticipants({
+    updateOnlyOn: [
+      RoomEvent.TrackPublished,
+      RoomEvent.TrackUnpublished,
+      RoomEvent.TrackMuted,
+      RoomEvent.TrackUnmuted,
+      RoomEvent.ParticipantAttributesChanged,
+      RoomEvent.ParticipantNameChanged,
+    ],
+  })
   const { localParticipant, isMicrophoneEnabled, isScreenShareEnabled } = useLocalParticipant()
   const connection = useConnectionState()
   const announce = useAnnounce()

@@ -5,7 +5,7 @@
   opt-in is governed by the same Settings toggle as foreground notifications
   (useNotifyStore). Degrades to a no-op when push isn't configured/supported.
 */
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined
 
@@ -44,7 +44,9 @@ async function registerSW(): Promise<ServiceWorkerRegistration | null> {
  * useNotifyStore.enable — requests it on the user's gesture first).
  */
 export async function enablePush(): Promise<void> {
-  if (!pushSupported() || !supabase) return
+  if (!pushSupported()) return
+  const supabase = await getSupabase()
+  if (!supabase) return
   const reg = await registerSW()
   if (!reg) return
   let sub = await reg.pushManager.getSubscription()
@@ -72,6 +74,7 @@ export async function disablePush(): Promise<void> {
     const reg = await navigator.serviceWorker.getRegistration()
     const sub = await reg?.pushManager.getSubscription()
     if (!sub) return
+    const supabase = await getSupabase()
     if (supabase) await supabase.from('push_subscriptions').delete().eq('endpoint', sub.endpoint)
     await sub.unsubscribe()
   } catch {

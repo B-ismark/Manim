@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -120,7 +120,12 @@ function useCapacityWidth(measured: number): number {
   return measured + (panelOpen ? dockedStageInset(vw) : 0)
 }
 
-export function Stage() {
+/**
+ * Memoised: Stage takes no props, so the only things that should redraw it are its
+ * own subscriptions (tracks, layout, speaking). RoomView re-renders on chat,
+ * reactions, the chrome's show/hide and more — none of which the stage shows.
+ */
+export const Stage = memo(function Stage() {
   const layout = useRoomStore((s) => s.layout)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const demotedShares = useRoomStore((s) => s.demotedShares)
@@ -273,7 +278,7 @@ export function Stage() {
   }
 
   return <SpeakerStage visible={visible} />
-}
+})
 
 /**
  * Status pill shown to YOU while you're sharing your screen — the in-app counterpart

@@ -181,7 +181,10 @@ const SOLO_TIMEOUT_MS = 5 * 60 * 1000
  * be thrown out). The timers reset the moment anyone else is present.
  */
 function useSoloAutoLeave(onLeave: () => void) {
-  const participants = useParticipants()
+  // Head-count only, so joins and leaves: the default also fires on every
+  // speaking, quality and mute change, and this is the component the whole call
+  // screen hangs off.
+  const participants = useParticipants({ updateOnlyOn: [] })
   const alone = participants.length <= 1
   const [stayed, setStayed] = useState(0)
   useEffect(() => {

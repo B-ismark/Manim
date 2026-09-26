@@ -60,7 +60,7 @@ export const annotateEnabled = import.meta.env.VITE_ANNOTATE !== 'false'
  */
 export function useAnnotate(featuredShareId: string | null) {
   const { localParticipant } = useLocalParticipant()
-  const participants = useParticipants()
+  const participants = useParticipants({ updateOnlyOn: [] }) // identities only
 
   // Which share ink is currently aimed at, as the 32-bit form that goes on the wire.
   // Held in a ref because the engine flushes from its own frame loop, outside React's

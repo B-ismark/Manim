@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase, supabase } from '@/lib/supabase'
 import { lookupError } from '@/lib/lookupError'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCallStore, type IncomingCall } from '@/store/useCallStore'
@@ -26,6 +26,7 @@ export async function ringUser(
    *  gate and get the E2EE key. Requires the 5-arg `ring` RPC (see DEPLOY.md §4b). */
   secrets: RoomSecrets = {},
 ): Promise<string | null> {
+  const supabase = await getSupabase()
   if (!supabase) return 'Calling isn’t available right now.'
   // Resolve via a SECURITY DEFINER RPC (single exact-match lookup) rather than a
   // table select — the profiles table is not publicly readable, to prevent email

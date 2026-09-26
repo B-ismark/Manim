@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Session } from '@supabase/supabase-js'
 import { avatarObjects } from '@/lib/avatarObjects'
-import { supabase } from '@/lib/supabase'
+import { supabase, getSupabase, authEnabled } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/store/useToastStore'
 import { squareDownscale } from '@/lib/image'
@@ -67,8 +67,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signedIn: false,
   avatarUrl: null,
   signInWithEmail: async (email) => {
-    if (!supabase) throw new Error('Sign-in is not configured.')
-    const { error } = await supabase.auth.signInWithOtp({
+    const sb = await getSupabase()
+    if (!sb) throw new Error('Sign-in is not configured.')
+    const { error } = await sb.auth.signInWithOtp({
       // Return to the EXACT page sign-in started from (e.g. /r/standup), not the
       // bare origin — otherwise a user who signs in mid-join lands on / and has to
       // re-navigate. The room's #fragment (its join secret and E2EE key) stays
@@ -81,19 +82,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (error) throw error
   },
   verifyEmailOtp: async (email, token) => {
-    if (!supabase) throw new Error('Sign-in is not configured.')
+    const sb = await getSupabase()
+    if (!sb) throw new Error('Sign-in is not configured.')
     // type 'email' covers the OTP token from a signInWithOtp email. On success the
     // onAuthStateChange listener (initAuth) applies the session — no extra wiring.
-    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: 'email' })
+    const { error } = await sb.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: 'email' })
     if (error) throw error
   },
   signInWithGoogle: async () => {
-    if (!supabase) throw new Error('Sign-in is not configured.')
+    const sb = await getSupabase()
+    if (!sb) throw new Error('Sign-in is not configured.')
     // Redirects to Google, then back to the page sign-in started from, where
     // onAuthStateChange (initAuth) picks up the session. Requires the Google
     // provider enabled in the Supabase dashboard (OAuth client id/secret) — see
     // DEPLOY.md. (The exact return URL must be in Supabase's allow-list.)
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: returnUrl() },
     })
@@ -106,7 +109,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     await disablePush()
     // Offline or mid-outage this fails and keeps the session; leaveThisBrowser
     // drops it regardless.
-    if (supabase) await supabase.auth.signOut().catch(() => {})
+    const sb = await getSupabase()
+    if (sb) await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
 
@@ -342,8 +346,11 @@ function reportAuthErrorFromUrl(): void {
 
 /** Call once at startup: hydrate session + subscribe to auth changes. */
 export function initAuth(): void {
-  if (!supabase) return
+  if (!authEnabled) return
   reportAuthErrorFromUrl()
-  void supabase.auth.getSession().then(({ data }) => applySession(data.session))
-  supabase.auth.onAuthStateChange((_event, session) => applySession(session))
+  void getSupabase().then((sb) => {
+    if (!sb) return
+    void sb.auth.getSession().then(({ data }) => applySession(data.session))
+    sb.auth.onAuthStateChange((_event, session) => applySession(session))
+  })
 }

@@ -13,7 +13,7 @@ import { cn } from '@/lib/cn'
  * button stays so fullscreen is always escapable. Works on both pointer types.
  */
 export function StageTopBar({ visible }: { visible: boolean }) {
-  const participants = useParticipants()
+  const participants = useParticipants({ updateOnlyOn: [] }) // a count: joins and leaves
   const panel = useRoomStore((s) => s.panel)
   const setPanel = useRoomStore((s) => s.setPanel)
   const { isFullscreen, exitFullscreen } = useFullscreen()

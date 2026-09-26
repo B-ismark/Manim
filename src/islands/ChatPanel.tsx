@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { RoomEvent } from 'livekit-client'
 import { useParticipants } from '@livekit/components-react'
 import { Avatar, Button, IconButton, Popover, Sheet, Tooltip } from '@/components/primitives'
 import {
@@ -118,7 +119,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   const prevLen = useRef(0)
 
   // Everyone else in the call is taggable. Memoized so the picker filter is cheap.
-  const participants = useParticipants()
+  const participants = useParticipants({ updateOnlyOn: [RoomEvent.ParticipantNameChanged] })
   const mentionTargets = useMemo<MentionTarget[]>(
     () =>
       participants

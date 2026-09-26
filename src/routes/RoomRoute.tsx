@@ -10,7 +10,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
 import { rememberSeat, seatFor } from '@/lib/seatKeys'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { parseRoomHash, roomHash } from '@/lib/roomLink'
 import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roomKeys'
 import { toast } from '@/store/useToastStore'
@@ -207,7 +207,7 @@ export function RoomRoute() {
       try {
         // Send the Supabase session token (if signed in), NOT a client-asserted
         // userId — the server derives the trusted account id from it. Absent → guest.
-        const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
+        const accessToken = (await (await getSupabase())?.auth.getSession())?.data.session?.access_token
         const device = await roomDeviceId(deviceId, room)
         const seat = seatFor(room, `${displayName}#${device}`)
         const res = await knock({ room, name: displayName, deviceId: device, accessToken, secret, seat, hasKey: Boolean(e2ee) })
