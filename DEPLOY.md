@@ -96,7 +96,7 @@ Two more gotchas:
 The app loads Sentry through its **Loader Script** only when `VITE_SENTRY_DSN` is
 set, and strips every room link's `#fragment` (join secret + E2EE key) from each
 report before it leaves the browser (`src/lib/report.ts`). The Worker's CSP
-already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
+already allows the script hosts the loader needs (`js.sentry-cdn.com`, or `js-de.sentry-cdn.com` for an EU project,
 `browser.sentry-cdn.com`); reports go to `*.ingest.sentry.io`, inside `connect-src`.
 
 1. **sentry.io → Create project → Platform: Browser JavaScript** (not Next.js —
@@ -125,7 +125,7 @@ already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
    a DSN is public by design). Then push to `main` (or retry the latest build) so
    the bundle is rebuilt with it.
 6. **Verify on the deployed site**, not the build: DevTools → Network shows
-   `js.sentry-cdn.com/<key>.min.js` loading with no CSP error in the Console. Run
+   `js.sentry-cdn.com/<key>.min.js` (`js-de.` for an EU project) loading with no CSP error in the Console. Run
    `window.Sentry.captureMessage('manim sentry check')` in the Console on a room
    page opened from an encrypted link, confirm the event reaches Sentry, and open
    it to check the URLs carry no `#k=` / `#e=`.

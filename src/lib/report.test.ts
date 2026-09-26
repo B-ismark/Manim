@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { stripFragments } from './report'
+import { stripFragments, sentryLoaderUrl } from './report'
 
 describe('stripFragments', () => {
   it('drops room secrets from every URL in a report, however deep', () => {
@@ -59,5 +59,17 @@ describe('stripFragments', () => {
       c: '/docs#section',
       d: null,
     })
+  })
+})
+
+describe('sentryLoaderUrl', () => {
+  it('loads an EU project from the EU CDN, and anything else from the default one', () => {
+    expect(sentryLoaderUrl('https://abc123@o1.ingest.de.sentry.io/42')).toBe('https://js-de.sentry-cdn.com/abc123.min.js')
+    expect(sentryLoaderUrl('https://abc123@o1.ingest.us.sentry.io/42')).toBe('https://js.sentry-cdn.com/abc123.min.js')
+    expect(sentryLoaderUrl('https://abc123@o1.ingest.sentry.io/42')).toBe('https://js.sentry-cdn.com/abc123.min.js')
+  })
+  it('skips a DSN it cannot read', () => {
+    expect(sentryLoaderUrl('not a url')).toBeNull()
+    expect(sentryLoaderUrl('https://o1.ingest.de.sentry.io/42')).toBeNull()
   })
 })

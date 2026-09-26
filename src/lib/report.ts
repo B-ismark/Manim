@@ -22,6 +22,7 @@ interface SentryLike {
   init?: (options: {
     dsn: string
     beforeSend?: (event: unknown) => unknown
+    beforeSendTransaction?: (event: unknown) => unknown
     beforeBreadcrumb?: (crumb: unknown) => unknown
   }) => void
   onLoad?: (cb: () => void) => void
@@ -100,24 +101,48 @@ export function reportError(error: unknown, context?: Context): void {
  * there; setting the env var in the Cloudflare build is the entire "wire Sentry"
  * step — no code change, because every call site already routes through here.
  */
+/**
+ * The Loader Script URL for a DSN, or null for a malformed one. The loader lives
+ * on the project's DATA REGION's CDN: an EU project (`o….ingest.de.sentry.io`) is
+ * served from `js-de.sentry-cdn.com`, and the US host answers an EU key with
+ * "The Sentry loader you are trying to use isn't working anymore" — which is how
+ * this was found, on a DE project, with reporting silently off.
+ */
+export function sentryLoaderUrl(dsn: string): string | null {
+  let url: URL
+  try {
+    url = new URL(dsn)
+  } catch {
+    return null // malformed DSN — skip rather than throw at startup
+  }
+  if (!url.username) return null
+  const region = /\.ingest\.([a-z]{2})\.sentry\.io$/.exec(url.hostname)?.[1]
+  const host = region && region !== 'us' ? `js-${region}.sentry-cdn.com` : 'js.sentry-cdn.com'
+  return `https://${host}/${url.username}.min.js`
+}
+
 function initSentry(): void {
   const dsn = import.meta.env.VITE_SENTRY_DSN
   if (!dsn || typeof document === 'undefined') return
-  let publicKey = ''
-  try {
-    publicKey = new URL(dsn).username
-  } catch {
-    return // malformed DSN — skip rather than throw at startup
-  }
-  if (!publicKey) return
+  const src = sentryLoaderUrl(dsn)
+  if (!src) return
 
   const script = document.createElement('script')
-  script.src = `https://js.sentry-cdn.com/${publicKey}.min.js`
+  script.src = src
   script.crossOrigin = 'anonymous'
   script.addEventListener('load', () => {
     const s = sentry()
     // The loader exposes onLoad; configure the SDK once it's actually present.
-    s?.onLoad?.(() => s.init?.({ dsn, beforeSend: stripFragments, beforeBreadcrumb: stripFragments }))
+    // beforeSendTransaction too: a project with tracing on in its loader settings
+    // sends a transaction per page load, and those carry the page URL as well.
+    s?.onLoad?.(() =>
+      s.init?.({
+        dsn,
+        beforeSend: stripFragments,
+        beforeSendTransaction: stripFragments,
+        beforeBreadcrumb: stripFragments,
+      }),
+    )
   })
   document.head.appendChild(script)
 }
