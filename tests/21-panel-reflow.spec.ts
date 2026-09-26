@@ -249,6 +249,6 @@ test.describe('Side panel reflow', () => {
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeHidden({
       timeout: 20_000,
     })
-    await expect(page).toHaveURL(/\/$/)
+    await expect(page.getByRole('heading', { name: 'You left the call' })).toBeVisible()
   })
 })

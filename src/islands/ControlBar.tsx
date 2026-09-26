@@ -248,6 +248,9 @@ export function ControlBar({
           await document.exitPictureInPicture()
           setPipActive(false)
         } else if (target) {
+          // Every feed has the browser's own PiP turned off (lib/mediaGuards);
+          // this is the app opening it on purpose.
+          target.disablePictureInPicture = false
           await target.requestPictureInPicture()
           setPipActive(true)
         } else {

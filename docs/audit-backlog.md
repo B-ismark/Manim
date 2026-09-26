@@ -65,12 +65,9 @@ of people (see that PR).
       presence (`features/calls/usePresence.ts`). Encrypt it per recipient. Also
       move to livekit-client's `encryption` option so chat, files and drawings are
       end-to-end encrypted too (`lib/livekit.ts` uses the legacy `e2ee`).
-- [ ] **"Remove from call" isn't permanent.** A removed person can knock straight
-      back in. Keep a per-room removed list on the server, checked at knock.
-- [ ] **Host election grace period.** A host who drops for seconds can lose the room
-      for good (`handleElectHost`). Wait ~60s before electing.
-- [ ] **Forgeable chat state.** Pins, history replay and "report" notices take the
-      sender's name from the message. Attribute to the verified sender.
+- [ ] **Forgeable chat state.** Pins and history replay relay other people's
+      messages, so the author and text are whatever the relayer says. Needs signed
+      messages to fix properly. (Report notices now name the verified sender.)
 - [ ] Hardening: narrow CSP `script-src` from all of jsDelivr to the MediaPipe path;
       rate-limit `/api/push`.
 - [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set
@@ -94,24 +91,14 @@ of people (see that PR).
 
 ## Experience
 
-- [ ] **"Call ended" screen** with the reason (host ended, removed, connection lost,
-      everyone left) plus Rejoin and Home. Today people land on the home page.
-- [ ] **Solo auto-leave**: add "Keep call open", or ask "Still there?".
 - [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
       should move into TopStack so the layering rules cover them.
-- [ ] Room URLs are case-sensitive (`/r/Team` vs `/r/team`). Redirect to lowercase.
-- [ ] "Start a new call" on the expired-link screen only goes home.
-- [ ] Join is disabled with no hint when the name is empty.
-- [ ] Prejoin mic/camera choices aren't remembered between visits.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
-- [ ] Firefox's own PiP button appears on hover over tiles.
 - [ ] Turning a camera back ON after another app took it fails silently: a muted
       track re-acquires via `unmute()` → `restart()`, which never raises LiveKit's
       `MediaDevicesError` (`useMediaDeviceWatch`), so no message and an unhandled
       rejection. Catch at the toggle call sites or wrap `setCameraEnabled`.
-- [ ] Re-granting camera access in browser settings needs a reload
-      (listen for `PermissionStatus` changes).
 - [ ] Long toasts still overlap prejoin's Back label on a phone while they're up
       (part of moving toasts into TopStack, above).
 
@@ -143,7 +130,7 @@ of people (see that PR).
 ## Product ideas
 
 - Device pickers on prejoin, with the speaker test using the chosen output.
-- A proper end-of-call moment (reason, Rejoin, copy link, one-tap rating).
+- The end-of-call screen could add copy link and a one-tap rating.
 - Room readiness before joining ("Host hasn't joined yet", "3 people in the call").
 - A lobby that isn't a dead end (live preview, editable name, note to the host).
 - Honest connection states (offline detection, reconnect timer, Keep trying/Leave).

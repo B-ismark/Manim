@@ -4,7 +4,7 @@ import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
-import { useAppStore } from '@/store/useAppStore'
+import { useAppStore, rememberPrejoin } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
@@ -78,21 +78,36 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
           perms.query({ name: 'microphone' as PermissionName }),
         ])
         if (cancelled) return
-        const states = [cam.state, mic.state]
-        setPermission(
-          states.includes('denied')
-            ? 'denied'
-            : states.includes('prompt')
-              ? 'prompt'
-              : 'granted',
-        )
+        const update = () => {
+          const states = [cam.state, mic.state]
+          const next = states.includes('denied') ? 'denied' : states.includes('prompt') ? 'prompt' : 'granted'
+          // Re-allowed in the browser's settings while this screen was open: the
+          // "blocked" message no longer applies, and the preview starts again
+          // without a reload.
+          if (next === 'granted' && last === 'denied') {
+            setError(null)
+            setPreviewNonce((n) => n + 1)
+          }
+          last = next
+          setPermission(next)
+        }
+        let last = ''
+        update()
+        cam.onchange = update
+        mic.onchange = update
+        unwatch = () => {
+          cam.onchange = null
+          mic.onchange = null
+        }
       } catch {
         /* unsupported permission name — leave unknown */
       }
     }
+    let unwatch = () => {}
     void probe()
     return () => {
       cancelled = true
+      unwatch()
     }
   }, [])
 
@@ -352,7 +367,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
               tone={prejoin.micEnabled ? 'neutral' : 'danger'}
               active={!prejoin.micEnabled}
-              onClick={() => setPrejoin({ micEnabled: !prejoin.micEnabled })}
+              onClick={() => {
+                setPrejoin({ micEnabled: !prejoin.micEnabled })
+                rememberPrejoin({ micEnabled: !prejoin.micEnabled })
+              }}
             />
             <IconButton
               label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
@@ -360,7 +378,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
               active={!prejoin.cameraEnabled}
               disabled={prejoin.lowBandwidth}
-              onClick={() => setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })}
+              onClick={() => {
+                setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
+                rememberPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
+              }}
             />
             {permission !== 'prompt' && permission !== 'denied' && (
               <MicSpeakerTest micEnabled={prejoin.micEnabled} />
@@ -378,7 +399,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
                 join()
               }
             }}
-            placeholder="Your name"
+            // The only thing Join needs; says so while the button is disabled.
+            placeholder="Enter your name to join"
             maxLength={MAX_NAME_LEN}
             dir="auto"
             aria-label="Your name"

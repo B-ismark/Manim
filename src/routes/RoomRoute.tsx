@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Island, Button } from '@/components/primitives'
 import { LockIcon } from '@/components/icons'
+import { takeEnd, type EndReason } from '@/lib/callEnd'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
@@ -101,6 +102,17 @@ export function RoomRoute() {
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Room names are lowercase (toSlug), so a hand-typed /r/Team opened a different,
+  // empty room from /r/team. Go to the real one, keeping the link's secrets.
+  const lowerRoom = room.normalize('NFC').toLowerCase()
+  useEffect(() => {
+    if (room === lowerRoom) return
+    navigate(
+      { pathname: `/r/${encodeURIComponent(lowerRoom)}`, search: location.search, hash: location.hash },
+      { replace: true, state: location.state },
+    )
+  }, [room, lowerRoom, navigate, location.search, location.hash, location.state])
+
   const displayName = useAppStore((s) => s.displayName)
   const deviceId = useAppStore((s) => s.deviceId)
   const prejoin = useAppStore((s) => s.prejoin)
@@ -142,6 +154,16 @@ export function RoomRoute() {
   }, [secret, e2ee, fromLink, location.hash, location.pathname, location.search, location.state, navigate])
 
   const [token, setToken] = useState<string | null>(null)
+  // The end-of-call screen, for the call that just ended here. Keyed by room so a
+  // move to another call (merge, answering a ring) never shows it: the route has
+  // already changed when the old call disconnects.
+  const [ended, setEnded] = useState<{ room: string; reason: EndReason } | null>(null)
+  const roomNow = useRef(room)
+  roomNow.current = room
+  // Set once the call CONNECTS, not when a token arrives: a connect that fails
+  // also reports a disconnect first, and must show its real error, not "You were
+  // disconnected".
+  const callRoom = useRef<string | null>(null)
 
   // Mirror the join token into the store so in-room host controls can present it
   // as the Bearer credential to the orchestrator (admit / moderate / roomflags).
@@ -234,7 +256,7 @@ export function RoomRoute() {
         // (invite-only / room full) verbatim rather than the generic join error.
         if (
           e instanceof ApiError &&
-          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken')
+          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken' || e.code === 'removed')
         ) {
           setError(e.message)
           setConnecting(false)
@@ -339,13 +361,18 @@ export function RoomRoute() {
     }
   }, [room, autojoin, displayName, handleJoin])
 
-  function leave() {
+  function leave(reason?: EndReason) {
+    const why = takeEnd(reason ?? 'left')
+    const was = callRoom.current
+    callRoom.current = null
     setToken(null)
     setConnecting(false)
     setWaitingId(null)
     setDeviceChoice(null)
     setCompanion(false)
-    navigate('/')
+    // Called twice per ending (LiveKit's disconnect, then the app's own onLeave);
+    // the first one decides.
+    if (was && was === roomNow.current) setEnded({ room: was, reason: why })
   }
 
   // Proven flow: once we hold a token, LiveKitRoom mounts and RoomView shows its
@@ -366,7 +393,11 @@ export function RoomRoute() {
           lowBandwidth={prejoin.lowBandwidth}
           e2ee={e2ee}
           onLeave={leave}
+          onConnected={() => {
+            callRoom.current = roomNow.current
+          }}
           onError={(e) => {
+            callRoom.current = null
             reportError(e, { context: 'livekit-room', room })
             setError(friendlyJoinError(e, e.message))
             setToken(null)
@@ -377,8 +408,23 @@ export function RoomRoute() {
     )
   }
 
+  if (ended && ended.room === room) {
+    return (
+      <CallEnded
+        room={room}
+        reason={ended.reason}
+        onRejoin={() => {
+          setEnded(null)
+          void handleJoin()
+        }}
+        onHome={() => navigate('/')}
+      />
+    )
+  }
+
   if (expired) {
-    return <ExpiredLink room={room} onHome={() => navigate('/')} />
+    // "Start a new call" means that: the home page mints one on arrival.
+    return <ExpiredLink room={room} onHome={() => navigate('/', { state: { newCall: true } })} />
   }
 
   // Opening the full link afterwards brings the key, and this screen steps aside.
@@ -387,7 +433,15 @@ export function RoomRoute() {
   }
 
   if (waitingId) {
-    return <WaitingRoom room={room} onCancel={leave} />
+    return (
+      <WaitingRoom
+        room={room}
+        onCancel={() => {
+          leave()
+          navigate('/')
+        }}
+      />
+    )
   }
 
   if (connecting && !error) {
@@ -427,6 +481,59 @@ export function RoomRoute() {
  * happened and what to do: start a new meeting (the old slug stays retired) and ask
  * whoever shared it for a current link.
  */
+const ENDED_COPY: Record<EndReason, { title: string; body: string; rejoin: boolean }> = {
+  left: { title: 'You left the call', body: 'Rejoin if that was a mistake.', rejoin: true },
+  ended: { title: 'The host ended the call', body: 'It’s over for everyone.', rejoin: false },
+  endedByYou: { title: 'You ended the call for everyone', body: 'Everyone was disconnected.', rejoin: false },
+  removed: { title: 'The host removed you from this call', body: 'You can’t rejoin it from this browser.', rejoin: false },
+  moved: { title: 'You moved this call to another device', body: 'It’s still going there.', rejoin: false },
+  alone: {
+    title: 'The call ended',
+    body: 'No one else was here for five minutes, so it ended to save your data and battery.',
+    rejoin: true,
+  },
+  dropped: { title: 'You were disconnected', body: 'Check your connection, then rejoin.', rejoin: true },
+}
+
+/**
+ * The end of a call: what happened, in words, and the one or two things you can do
+ * next (Meet and Teams do the same). It used to drop you on the home page with
+ * no explanation, or at best an 8-second Rejoin toast.
+ */
+function CallEnded({
+  room,
+  reason,
+  onRejoin,
+  onHome,
+}: {
+  room: string
+  reason: EndReason
+  onRejoin: () => void
+  onHome: () => void
+}) {
+  const copy = ENDED_COPY[reason]
+  return (
+    <main className="grid min-h-dvh place-items-center p-4">
+      <Island pad="lg" className="w-full max-w-sm text-center">
+        <h1 className="text-lg font-semibold">{copy.title}</h1>
+        <p className="mt-1 text-sm text-ink-muted">
+          <span className="font-medium text-ink">{prettyRoom(room)}</span> · {copy.body}
+        </p>
+        <div className="mt-5 flex flex-col gap-2">
+          {copy.rejoin && (
+            <Button variant="accent" block onClick={onRejoin}>
+              Rejoin
+            </Button>
+          )}
+          <Button variant={copy.rejoin ? 'neutral' : 'accent'} block onClick={onHome}>
+            Go home
+          </Button>
+        </div>
+      </Island>
+    </main>
+  )
+}
+
 function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
   return (
     <main className="grid min-h-dvh place-items-center p-4">

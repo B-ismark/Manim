@@ -33,11 +33,14 @@ test.describe('Session — end for everyone', () => {
       await page.getByRole('button', { name: 'End for everyone' }).click()
 
       // Guest receives the end signal and is taken out of the call: in-call chrome
-      // disappears and they land back on the home screen (room-name field).
+      // disappears and the end-of-call screen says why, with no Rejoin.
       await expect(guest.page.getByRole('button', { name: /microphone/i }).first()).toBeHidden({
         timeout: 30_000,
       })
-      await expect(guest.page.getByPlaceholder('e.g. team-standup')).toBeVisible({ timeout: 15_000 })
+      await expect(guest.page.getByRole('heading', { name: 'The host ended the call' })).toBeVisible({ timeout: 15_000 })
+      await expect(guest.page.getByRole('button', { name: 'Rejoin' })).toHaveCount(0)
+      // And the host is told what they did.
+      await expect(page.getByRole('heading', { name: 'You ended the call for everyone' })).toBeVisible({ timeout: 15_000 })
     } finally {
       await closeContext(guest.context)
     }
@@ -71,7 +74,8 @@ test.describe('Session — end for everyone', () => {
       await expect(guest.page.getByRole('button', { name: /microphone/i }).first()).toBeHidden({
         timeout: 45_000,
       })
-      await expect(guest.page.getByPlaceholder('e.g. team-standup')).toBeVisible({ timeout: 15_000 })
+      // Whichever way the reconnect resolved, they're on the end-of-call screen.
+      await expect(guest.page.getByRole('button', { name: 'Go home' })).toBeVisible({ timeout: 15_000 })
     } finally {
       await closeContext(guest.context)
     }
