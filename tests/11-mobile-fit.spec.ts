@@ -40,6 +40,61 @@ test.describe('Mobile fit (no page scroll)', () => {
     expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
   })
 
+  /**
+   * The preview is the point of this screen, and on a phone it used to be what
+   * got squeezed: every other row claimed its height first, so a short phone got
+   * a sliver and a phone on its side got 0px. It now has a floor — and the mic and
+   * camera toggles live inside it, so they are always reachable over it.
+   */
+  /**
+   * Alone in a call, rotated: the self card stacked over the invite was taller
+   * than a ~375px screen, and `justify-center` split the overflow, so the top half
+   * of your own video sat above the viewport.
+   */
+  test('alone in a call on its side: your video stays whole on screen', async ({ page }) => {
+    await join(page, uniqueRoom(), 'Solo')
+    const vp = page.viewportSize()!
+    await page.setViewportSize({ width: vp.height, height: vp.width })
+    await page.waitForTimeout(800)
+    const box = await page.evaluate(() => {
+      const v = Array.from(document.querySelectorAll('video')).sort(
+        (a, b) => b.clientWidth * b.clientHeight - a.clientWidth * a.clientHeight,
+      )[0]
+      const r = v?.getBoundingClientRect()
+      return r ? { top: r.top, bottom: r.bottom, h: r.height } : null
+    })
+    expect(box, 'your video is on the stage').not.toBeNull()
+    expect(box!.top, 'top edge on screen').toBeGreaterThanOrEqual(0)
+    expect(box!.bottom, 'bottom edge on screen').toBeLessThanOrEqual(vp.width)
+    expect(box!.h, 'still a real size').toBeGreaterThan(vp.width * 0.4)
+    await expect(page.getByRole('button', { name: /Copy invite link/ })).toBeInViewport()
+    await page.setViewportSize(vp)
+  })
+
+  test('prejoin keeps a big preview upright and on its side', async ({ page }) => {
+    await page.goto(`/r/${uniqueRoom()}`)
+    await expect(page.getByRole('button', { name: 'Join now' })).toBeVisible({ timeout: 20_000 })
+    const preview = page.getByTestId('prejoin-preview')
+    await page.waitForFunction(
+      () => ((document.querySelector('[data-testid="prejoin-preview"]') as HTMLVideoElement | null)?.videoWidth ?? 0) > 0,
+      { timeout: 20_000 },
+    )
+    const vp = page.viewportSize()!
+    for (const size of [vp, { width: vp.height, height: vp.width }]) {
+      await page.setViewportSize(size)
+      await page.waitForTimeout(500)
+      const box = (await preview.boundingBox())!
+      const area = (box.width * box.height) / (size.width * size.height)
+      expect(area, `${size.width}x${size.height}: preview share of the screen`).toBeGreaterThan(0.2)
+      expect(box.y, 'preview starts on screen').toBeGreaterThanOrEqual(0)
+      expect(box.y + box.height, 'preview ends on screen').toBeLessThanOrEqual(size.height)
+      await expect(page.getByRole('button', { name: 'Join now' })).toBeInViewport()
+      await expect(page.getByRole('button', { name: /microphone/i })).toBeInViewport()
+      expect(await pageOverflow(page)).toBeLessThanOrEqual(2)
+    }
+    await page.setViewportSize(vp)
+  })
+
   test('in-call (solo) fits', async ({ page }) => {
     await join(page, uniqueRoom(), 'Solo')
     await page.waitForTimeout(1500)
