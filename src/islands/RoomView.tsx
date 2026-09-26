@@ -35,6 +35,7 @@ import { Button } from '@/components/primitives'
 import { HandIcon, LockIcon, PipIcon } from '@/components/icons'
 import { useMediaDeviceWatch } from '@/features/calls/useMediaDeviceWatch'
 import { useCameraInterruption } from '@/features/calls/useCameraInterruption'
+import { useAwayCamera } from '@/features/calls/useAwayCamera'
 import { useShareSurfaceWatch } from '@/features/calls/useScreenShare'
 import { useDeviceAutoswitch } from '@/features/calls/useDeviceAutoswitch'
 import { useAudioSession } from '@/features/calls/useAudioSession'
@@ -318,6 +319,9 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // above: that one reports a camera that died, this one re-acquires one that was
   // merely interrupted.
   useCameraInterruption()
+  // On a phone, camera off while you're in another app, back on when you return:
+  // the others see your name, not a frozen frame.
+  useAwayCamera()
   // Track WHAT the local share is capturing (window / tab / whole monitor). Mounted
   // once here rather than inside useScreenShare, which several components call —
   // three copies would attach the same listeners three times.
