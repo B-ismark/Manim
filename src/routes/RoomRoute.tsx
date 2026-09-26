@@ -101,6 +101,17 @@ export function RoomRoute() {
   const navigate = useNavigate()
   const location = useLocation()
 
+  // Room names are lowercase (toSlug), so a hand-typed /r/Team opened a different,
+  // empty room from /r/team. Go to the real one, keeping the link's secrets.
+  const lowerRoom = room.toLowerCase()
+  useEffect(() => {
+    if (room === lowerRoom) return
+    navigate(
+      { pathname: `/r/${encodeURIComponent(lowerRoom)}`, search: location.search, hash: location.hash },
+      { replace: true },
+    )
+  }, [room, lowerRoom, navigate, location.search, location.hash])
+
   const displayName = useAppStore((s) => s.displayName)
   const deviceId = useAppStore((s) => s.deviceId)
   const prejoin = useAppStore((s) => s.prejoin)

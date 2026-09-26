@@ -4,7 +4,7 @@ import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
-import { useAppStore } from '@/store/useAppStore'
+import { useAppStore, rememberPrejoin } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
@@ -352,7 +352,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
               tone={prejoin.micEnabled ? 'neutral' : 'danger'}
               active={!prejoin.micEnabled}
-              onClick={() => setPrejoin({ micEnabled: !prejoin.micEnabled })}
+              onClick={() => {
+                setPrejoin({ micEnabled: !prejoin.micEnabled })
+                rememberPrejoin({ micEnabled: !prejoin.micEnabled })
+              }}
             />
             <IconButton
               label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
@@ -360,7 +363,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
               active={!prejoin.cameraEnabled}
               disabled={prejoin.lowBandwidth}
-              onClick={() => setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })}
+              onClick={() => {
+                setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
+                rememberPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
+              }}
             />
             {permission !== 'prompt' && permission !== 'denied' && (
               <MicSpeakerTest micEnabled={prejoin.micEnabled} />
@@ -378,7 +384,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
                 join()
               }
             }}
-            placeholder="Your name"
+            // The only thing Join needs; says so while the button is disabled.
+            placeholder="Enter your name to join"
             maxLength={MAX_NAME_LEN}
             dir="auto"
             aria-label="Your name"

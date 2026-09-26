@@ -47,13 +47,35 @@ interface AppState {
   setRoomToken: (token: string | null) => void
 }
 
+const PREJOIN_KEY = 'manim-prejoin'
+
+/** Your last mic/camera choice on the prejoin screen, so a camera-off person
+ *  isn't greeted by their camera every time. Only a deliberate toggle is saved
+ *  (`rememberPrejoin`); the camera switching off because it failed is not. */
+function loadPrejoinChoice(): { micEnabled: boolean; cameraEnabled: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(PREJOIN_KEY) || '{}')
+    return { micEnabled: v.micEnabled !== false, cameraEnabled: v.cameraEnabled !== false }
+  } catch {
+    return { micEnabled: true, cameraEnabled: true }
+  }
+}
+
+export function rememberPrejoin(patch: { micEnabled?: boolean; cameraEnabled?: boolean }): void {
+  try {
+    const next = { ...loadPrejoinChoice(), ...patch }
+    localStorage.setItem(PREJOIN_KEY, JSON.stringify(next))
+  } catch {
+    /* private mode — the choice just isn't remembered */
+  }
+}
+
 export const useAppStore = create<AppState>((set) => ({
   displayName: loadName(),
   deviceId: loadDeviceId(),
   roomToken: null,
   prejoin: {
-    micEnabled: true,
-    cameraEnabled: true,
+    ...loadPrejoinChoice(),
     lowBandwidth: false,
   },
   setDisplayName: (raw, persist = true) => {

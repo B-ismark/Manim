@@ -96,10 +96,7 @@ of people (see that PR).
 - [ ] **Solo auto-leave**: add "Keep call open", or ask "Still there?".
 - [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
       should move into TopStack so the layering rules cover them.
-- [ ] Room URLs are case-sensitive (`/r/Team` vs `/r/team`). Redirect to lowercase.
 - [ ] "Start a new call" on the expired-link screen only goes home.
-- [ ] Join is disabled with no hint when the name is empty.
-- [ ] Prejoin mic/camera choices aren't remembered between visits.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
 - [ ] Firefox's own PiP button appears on hover over tiles.

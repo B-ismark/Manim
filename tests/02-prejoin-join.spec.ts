@@ -97,4 +97,17 @@ test.describe('PreJoin + join', () => {
       timeout: 45_000,
     })
   })
+
+  test('a camera-off choice is remembered; a mixed-case link opens the real room', async ({ page }) => {
+    const room = uniqueRoom()
+    await page.goto(`/r/${room}`)
+    await page.getByRole('button', { name: 'Turn off camera' }).click()
+    await expect(page.getByRole('button', { name: 'Turn on camera' })).toBeVisible()
+
+    // Room names are lowercase; /r/Team used to open a different, empty room.
+    await page.goto(`/r/${room.toUpperCase()}#k=abc`)
+    await expect(page).toHaveURL(new RegExp(`/r/${room}#k=abc$`))
+    // And the camera stays off, as chosen.
+    await expect(page.getByRole('button', { name: 'Turn on camera' })).toBeVisible({ timeout: 20_000 })
+  })
 })
