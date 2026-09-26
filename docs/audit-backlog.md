@@ -93,7 +93,6 @@ of people (see that PR).
 
 - [ ] **"Call ended" screen** with the reason (host ended, removed, connection lost,
       everyone left) plus Rejoin and Home. Today people land on the home page.
-- [ ] **Solo auto-leave**: add "Keep call open", or ask "Still there?".
 - [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
       should move into TopStack so the layering rules cover them.
 - [ ] "Start a new call" on the expired-link screen only goes home.

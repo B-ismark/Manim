@@ -175,16 +175,22 @@ const SidePanel = lazy(() => import('@/islands/SidePanel').then((m) => ({ defaul
 const SOLO_TIMEOUT_MS = 5 * 60 * 1000
 /**
  * Auto-leave when you've been the only one in the room for a long time — stops a
- * forgotten call running forever. A warning toast fires a minute before. The
- * timers reset the moment anyone else is present.
+ * forgotten call running forever. A warning toast fires a minute before, with a
+ * Stay button that restarts the clock (someone waiting for a late guest shouldn't
+ * be thrown out). The timers reset the moment anyone else is present.
  */
 function useSoloAutoLeave(onLeave: () => void) {
   const participants = useParticipants()
   const alone = participants.length <= 1
+  const [stayed, setStayed] = useState(0)
   useEffect(() => {
     if (!alone) return
     const warn = window.setTimeout(
-      () => toast('You’re the only one here — the call will end soon', 'neutral'),
+      () =>
+        toast('You’re the only one here — the call will end in a minute', 'neutral', {
+          action: { label: 'Stay', onClick: () => setStayed((n) => n + 1) },
+          duration: 60_000,
+        }),
       SOLO_TIMEOUT_MS - 60_000,
     )
     const end = window.setTimeout(onLeave, SOLO_TIMEOUT_MS)
@@ -192,7 +198,7 @@ function useSoloAutoLeave(onLeave: () => void) {
       window.clearTimeout(warn)
       window.clearTimeout(end)
     }
-  }, [alone, onLeave])
+  }, [alone, onLeave, stayed])
 }
 
 /**
