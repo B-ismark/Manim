@@ -10,7 +10,7 @@ const ROOM = 'swift-falcon'
 
 async function seat(identity: string, userId: string, extra: Record<string, unknown> = {}) {
   const claim = await accountClaim(SECRET, ROOM, identity, userId)
-  return { identity, metadata: JSON.stringify({ host: false, userId, ...claim, ...extra }) } as unknown as Participant
+  return { identity, metadata: JSON.stringify({ host: false, ...claim, ...extra }) } as unknown as Participant
 }
 
 describe('isSameAccount', () => {
@@ -20,10 +20,13 @@ describe('isSameAccount', () => {
     expect(await isSameAccount(ROOM, me, phone)).toBe(true)
   })
 
-  it('refuses someone who rewrote their userId to yours', async () => {
+  it('refuses someone who copied your pseudonym into their own seat', async () => {
     const me = await seat('Ada#laptop', 'u-ada')
     const eve = await seat('Eve#x', 'u-eve')
-    const forged = { identity: eve.identity, metadata: JSON.stringify({ ...JSON.parse(eve.metadata!), userId: 'u-ada' }) } as unknown as Participant
+    const forged = {
+      identity: eve.identity,
+      metadata: JSON.stringify({ ...JSON.parse(eve.metadata!), acct: JSON.parse(me.metadata!).acct }),
+    } as unknown as Participant
     expect(await isSameAccount(ROOM, me, forged)).toBe(false)
   })
 
@@ -38,12 +41,12 @@ describe('isSameAccount', () => {
     const me = await seat('Ada#laptop', 'u-ada')
     const elsewhere = {
       identity: 'Ada#phone',
-      metadata: JSON.stringify({ userId: 'u-ada', ...(await accountClaim(SECRET, 'other-room', 'Ada#phone', 'u-ada')) }),
+      metadata: JSON.stringify(await accountClaim(SECRET, 'other-room', 'Ada#phone', 'u-ada')),
     } as unknown as Participant
     expect(await isSameAccount(ROOM, me, elsewhere)).toBe(false)
     const rogue = {
       identity: 'Ada#phone',
-      metadata: JSON.stringify({ userId: 'u-ada', ...(await accountClaim('not-the-secret', ROOM, 'Ada#phone', 'u-ada')) }),
+      metadata: JSON.stringify(await accountClaim('not-the-secret', ROOM, 'Ada#phone', 'u-ada')),
     } as unknown as Participant
     expect(await isSameAccount(ROOM, me, rogue)).toBe(false)
   })
@@ -52,6 +55,19 @@ describe('isSameAccount', () => {
     const me = await seat('Ada#laptop', '')
     const other = await seat('Ada#phone', '')
     expect(await isSameAccount(ROOM, me, other)).toBe(false)
+  })
+})
+
+describe('what other people can read', () => {
+  it('a seat never carries the account id, and its stand-in changes from call to call', async () => {
+    const here = await seat('Ada#laptop', 'u-ada-7f3c')
+    expect(here.metadata).not.toContain('u-ada-7f3c')
+    const acct = JSON.parse(here.metadata!).acct
+    expect(acct).toBeTruthy()
+    const phone = JSON.parse((await seat('Ada#phone', 'u-ada-7f3c')).metadata!).acct
+    expect(phone).toBe(acct)
+    const elsewhere = await accountClaim(SECRET, 'other-room', 'Ada#laptop', 'u-ada-7f3c')
+    expect(elsewhere.acct).not.toBe(acct)
   })
 })
 

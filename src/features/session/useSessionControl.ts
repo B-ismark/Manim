@@ -188,7 +188,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   )
 
   // The same signed-in user is present on another device, by the server's
-  // signature (lib/sameAccount): a userId in metadata alone can be written by
+  // signature (lib/sameAccount): an `acct` in metadata alone can be written by
   // anyone, and would put a stranger's "switch to this device" banner in front
   // of you. Guests carry no claim, so this only fires for a real shared account.
   const otherSeats = useMyOtherSeats()

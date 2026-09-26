@@ -11,7 +11,7 @@ import { AccessToken, DataPacket_Kind, RoomServiceClient, TokenVerifier, TrackSo
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seal, unseal } from './sealed.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
-import { accountClaim } from './account.mjs'
+import { accountClaim, accountPseudonym } from './account.mjs'
 import { withoutE2eeKey } from './invite.mjs'
 import { removedEntry, withRemoved, wasRemoved } from './removed.mjs'
 import { roomTitle } from './preview.mjs'
@@ -113,9 +113,10 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
     identity,
     name,
     ttl: '15m',
-    // ak/as: the account claim (server/account.mjs) that lets your other devices
-    // in this call recognise this seat as yours.
-    metadata: JSON.stringify({ host: isHost, userId: userId || '', ...(await accountClaim(apiSecret, room, identity, userId)) }),
+    // acct/ak/as: the account claim (server/account.mjs) that lets your other
+    // devices in this call recognise this seat as yours. Never the account id
+    // itself: everyone in the call can read this.
+    metadata: JSON.stringify({ host: isHost, ...(await accountClaim(apiSecret, room, identity, userId)) }),
   })
   at.addGrant({
     room,
@@ -220,7 +221,7 @@ async function verifyCaller(env, token, room) {
   }
 }
 
-// Like verifyCaller, but also returns the userId baked into the SIGNED token
+// Like verifyCaller, but also returns the account pseudonym baked into the SIGNED token
 // metadata (set by the server at mint — immutable, unlike the live participant
 // metadata a client can rewrite via canUpdateOwnMetadata). Used to authorize the
 // device-handoff against an unforgeable account id.
@@ -233,13 +234,13 @@ async function verifyCallerClaims(env, token, room) {
     if (room && claims?.video?.room && claims.video.room !== room) return null
     const identity = claims?.sub || null
     if (!identity) return null
-    let userId = ''
+    let acct = ''
     try {
-      userId = JSON.parse(claims.metadata || '{}').userId || ''
+      acct = JSON.parse(claims.metadata || '{}').acct || ''
     } catch {
       /* no/invalid metadata */
     }
-    return { identity, userId }
+    return { identity, acct }
   } catch {
     return null
   }
@@ -405,12 +406,13 @@ export async function handleKnock(env, body) {
   // fires for a real shared account.) Surfaced to the client so prejoin can offer
   // "join anyway (companion, muted)" vs "transfer to this device". Authority is the
   // server-derived `userId`, never client-claimed, so it can't be spoofed.
+  const acct = await accountPseudonym(apiSecret, room, userId)
   const alsoOnDevice =
-    Boolean(userId) &&
+    Boolean(acct) &&
     participants.some((p) => {
       if (p.identity === identity) return false
       try {
-        return JSON.parse(p.metadata || '{}').userId === userId
+        return JSON.parse(p.metadata || '{}').acct === acct
       } catch {
         return false
       }
@@ -885,21 +887,21 @@ export async function handleHandoff(env, body, token) {
   const caller = await verifyCallerClaims(env, token, room)
   if (!caller) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
   // Guests have no account id and are device-bound: nothing to hand off.
-  if (!caller.userId) return { status: 200, body: { ok: true, dropped: 0 } }
+  if (!caller.acct) return { status: 200, body: { ok: true, dropped: 0 } }
 
   const participants = await listParticipants(roomService, room)
   let dropped = 0
   await Promise.all(
     participants.map(async (p) => {
       if (p.identity === caller.identity) return
-      let pUserId = ''
+      let pAcct = ''
       try {
-        pUserId = JSON.parse(p.metadata || '{}').userId || ''
+        pAcct = JSON.parse(p.metadata || '{}').acct || ''
       } catch {
         /* no metadata */
       }
       const device = String(p.identity).split('#').slice(1).join('#')
-      if (pUserId && pUserId === caller.userId && device !== keepDevice) {
+      if (pAcct && pAcct === caller.acct && device !== keepDevice) {
         try {
           // Tell that device it moved BEFORE removing it: LiveKit reports any
           // removal as "removed", and the end-of-call screen would say the host

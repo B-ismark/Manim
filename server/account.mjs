@@ -15,6 +15,13 @@
  * from ITS OWN metadata (its own token, which nobody else can change) and checks
  * the other seat's signature with it. A copied signature fails, because it names
  * the identity it was minted for.
+ *
+ * What rides in metadata is never the account id itself. Everyone in a call can
+ * read everyone's metadata, and a raw Supabase user id is a stable handle that
+ * follows a person from call to call (and is the key for their rings and device
+ * keys). So the seat carries `acct`: an HMAC of (room, userId) under the same
+ * secret. It's the same for all your devices in THIS call, different in every
+ * other call, and says nothing about who you are. The claim signs `acct`.
  */
 
 const te = new TextEncoder()
@@ -44,22 +51,40 @@ function b64url(bytes) {
 }
 
 /** What is signed. The client builds the same string (lib/sameAccount). */
-export function claimMessage(room, identity, userId) {
-  return `acct1\n${room}\n${identity}\n${userId}`
+export function claimMessage(room, identity, acct) {
+  return `acct2\n${room}\n${identity}\n${acct}`
+}
+
+const macs = new Map()
+/**
+ * This account's stand-in for this room: 128 bits of HMAC, so seats of one
+ * account match each other here and nowhere else. '' for a guest.
+ */
+export async function accountPseudonym(secret, room, userId) {
+  if (!secret || !userId) return ''
+  let mac = macs.get(secret)
+  if (!mac) {
+    mac = crypto.subtle.importKey('raw', te.encode(String(secret)), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+    macs.set(secret, mac)
+  }
+  const tag = new Uint8Array(await crypto.subtle.sign('HMAC', await mac, te.encode(`manim acct pseud v1\n${room}\n${userId}`)))
+  return b64url(tag.slice(0, 16))
 }
 
 /**
- * `{ ak, as }` for a token's metadata: the server's public key and the signature
- * for this seat. Empty for a guest (no account, nothing to tie together) or when
+ * `{ acct, ak, as }` for a token's metadata: this account's pseudonym for the
+ * room, the server's public key, and the signature for this seat. Empty for a guest (no account, nothing to tie together) or when
  * the runtime can't do Ed25519 (the client then simply keeps devices apart).
  */
 export async function accountClaim(secret, room, identity, userId) {
   if (!secret || !userId) return {}
+  const acct = await accountPseudonym(secret, room, userId)
   try {
     const { priv, publicKey } = await signingKey(secret)
-    const sig = new Uint8Array(await crypto.subtle.sign('Ed25519', priv, te.encode(claimMessage(room, identity, userId))))
-    return { ak: publicKey, as: b64url(sig) }
+    const sig = new Uint8Array(await crypto.subtle.sign('Ed25519', priv, te.encode(claimMessage(room, identity, acct))))
+    return { acct, ak: publicKey, as: b64url(sig) }
   } catch {
-    return {}
+    // No Ed25519: the pseudonym still lets the SERVER match your devices.
+    return { acct }
   }
 }

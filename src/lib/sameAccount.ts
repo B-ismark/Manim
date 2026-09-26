@@ -6,8 +6,8 @@ import { RoomEvent, type Participant, type Room } from 'livekit-client'
  * Which other seats in this call are YOU, on another device?
  *
  * Checked, not assumed: participant metadata can be rewritten by its owner, so
- * a matching `userId` alone proves nothing. The server signs (room, identity,
- * userId) at mint (server/account.mjs); the public key is read from OUR OWN
+ * a matching `acct` alone proves nothing. The server signs (room, identity,
+ * acct) at mint (server/account.mjs); the public key is read from OUR OWN
  * metadata, which came from our own token. See that file for the whole argument.
  *
  * Seats are keyed by participant SID, never by identity. An identity is just a
@@ -17,10 +17,11 @@ import { RoomEvent, type Participant, type Room } from 'livekit-client'
  * later takes the same identity gets a fresh SID that fails the check.
  */
 
-const CLAIM_V = 'acct1'
+const CLAIM_V = 'acct2'
 
 interface Meta {
-  userId?: string
+  /** This account's pseudonym for this room (never the account id itself). */
+  acct?: string
   ak?: string
   as?: string
 }
@@ -56,11 +57,11 @@ function publicKey(ak: string) {
 export async function isSameAccount(room: string, me: Participant, p: Participant): Promise<boolean> {
   const mine = metaOf(me)
   const theirs = metaOf(p)
-  if (!mine.userId || !mine.ak || theirs.userId !== mine.userId || !theirs.as) return false
+  if (!mine.acct || !mine.ak || theirs.acct !== mine.acct || !theirs.as) return false
   const key = await publicKey(mine.ak)
   if (!key) return false
   try {
-    const msg = new TextEncoder().encode(`${CLAIM_V}\n${room}\n${p.identity}\n${theirs.userId}`)
+    const msg = new TextEncoder().encode(`${CLAIM_V}\n${room}\n${p.identity}\n${theirs.acct}`)
     return await crypto.subtle.verify('Ed25519', key, fromB64url(theirs.as), msg)
   } catch {
     return false
