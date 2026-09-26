@@ -228,7 +228,7 @@ export function Privacy() {
         <Heading>Your rights</Heading>
         <P>
           You can ask for a copy of the data we hold about you, have it corrected or deleted, ask
-          us to stop or limit using it, or take back a choice you made, such as notifications.
+          us to stop or limit using it, or take back a choice you made, such as notifications.{' '}
           <ContactUs start /> and we'll reply within a month. If you're unhappy with the answer,
           you can complain to your local data protection authority.
         </P>
