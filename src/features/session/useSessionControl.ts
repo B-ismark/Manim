@@ -16,6 +16,9 @@ import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
 import { reportError } from '@/lib/report'
 
+/** How long the host may be gone before someone else is made host. */
+const HOST_GRACE_MS = 45_000
+
 /** Control-plane signalling topic (end / merge / handoff / report). */
 export const CONTROL_TOPIC = 'mn.control'
 
@@ -87,20 +90,32 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     wasCoHost.current = nowCo
   }, [coHosts, localParticipant.identity, isPrimaryHost])
 
-  // Host succession (#15). When the recorded host is no longer in the live roster
-  // (they left for good), trigger a server-side election so the seat doesn't point
-  // at a ghost and the co-host roster stops being frozen. The server picks the
-  // successor deterministically, so every client calling at once is safe — but we
-  // still guard to one call per absence and announce "host left" just once.
+  // Host succession (#15). When the recorded host is no longer in the live roster,
+  // trigger a server-side election so the seat doesn't point at a ghost and the
+  // co-host roster stops being frozen. The server picks the successor
+  // deterministically, so every client calling at once is safe — but we still
+  // guard to one call per absence and announce "host left" just once.
+  //
+  // After a grace period, not at once: a host whose connection drops for a few
+  // seconds (a train tunnel, wifi → cellular, a reload) comes back with a new
+  // session, and electing immediately handed their room to someone else for good.
+  // If they're back within the grace, nothing happens and nobody is told.
   const hostPresent = Boolean(hostId) && participants.some((p) => p.identity === hostId)
   const elected = useRef(false)
   const announcedHostLeft = useRef(false)
+  const [graceOver, setGraceOver] = useState(false)
   useEffect(() => {
     if (!hostId || hostPresent) {
       elected.current = false
       announcedHostLeft.current = false
+      setGraceOver(false)
       return
     }
+    const t = setTimeout(() => setGraceOver(true), HOST_GRACE_MS)
+    return () => clearTimeout(t)
+  }, [hostPresent, hostId])
+  useEffect(() => {
+    if (!graceOver || !hostId || hostPresent) return
     if (!announcedHostLeft.current) {
       announcedHostLeft.current = true
       toast('The host left the call', 'neutral')
@@ -111,7 +126,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
         elected.current = false // let a later render retry if it failed
       })
     }
-  }, [hostPresent, hostId, roomToken, room.name])
+  }, [graceOver, hostPresent, hostId, roomToken, room.name])
 
   // "You're now the host" once you inherit the primary seat (skip the initial
   // value so the original host isn't toasted at join).

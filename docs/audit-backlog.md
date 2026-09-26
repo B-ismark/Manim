@@ -65,8 +65,6 @@ of people (see that PR).
       presence (`features/calls/usePresence.ts`). Encrypt it per recipient. Also
       move to livekit-client's `encryption` option so chat, files and drawings are
       end-to-end encrypted too (`lib/livekit.ts` uses the legacy `e2ee`).
-- [ ] **Host election grace period.** A host who drops for seconds can lose the room
-      for good (`handleElectHost`). Wait ~60s before electing.
 - [ ] **Forgeable chat state.** Pins, history replay and "report" notices take the
       sender's name from the message. Attribute to the verified sender.
 - [ ] Hardening: narrow CSP `script-src` from all of jsDelivr to the MediaPipe path;
