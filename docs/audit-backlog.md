@@ -26,12 +26,12 @@ of people (see that PR).
       the legal basis for each use and the safeguards for data processed in the US.
       The page deliberately names no operator (owner's choice); counsel should
       confirm that's acceptable where you operate. Minimum age is 16.
-- [ ] Confirm Brevo is the sign-in email sender configured in Supabase (the Privacy
-      page lists it). Without custom SMTP, Supabase only emails the project team.
-- [ ] **Email invites only reach you.** `RESEND_FROM` is Resend's test sender
-      (`onboarding@resend.dev`), which delivers only to the Resend account owner.
-      Verify a domain you own in Resend and point `RESEND_FROM` at it. Until then
-      guests get the mail-app fallback, which works.
+- [ ] **Email invites only reach you** (deferred, Sept 2026: needs a domain).
+      `RESEND_FROM` is Resend's test sender (`onboarding@resend.dev`), which
+      delivers only to the Resend account owner, and a `workers.dev` address can't
+      be verified. With a domain: verify it in Resend and point `RESEND_FROM` at it,
+      and move the Supabase sign-in sender (Brevo, currently a Gmail address, which
+      can land in spam) onto it too. Until then guests get the mail-app fallback.
 - [ ] Set `VAPID_SUBJECT` as a Worker **Secret** (`mailto:` your address). It left
       `wrangler.toml` because the repo is public; unset, push uses the repo URL.
 - [ ] Update the Sentry advanced scrubbing rule to the one in DEPLOY.md §3c (it now
@@ -86,26 +86,15 @@ of people (see that PR).
 
 ## Performance
 
-- [ ] **The whole call screen redraws on every speaker change**: `RoomView`,
-      `useSessionControl` and `useApplyBlocks` listen to every participant update and
-      nothing below is memoized. Narrow the listeners, move chat state down,
-      memoize ControlBar and Stage. Biggest remaining win, especially on phones.
-- [ ] Supabase (~40–50 KB gz) loads before the landing page renders, even for guests.
-- [ ] Opening the side panel re-packs the gallery on every animation frame.
-- [ ] The prejoin mic meter opens a second microphone capture.
+- [ ] The prejoin mic meter opens its own microphone capture next to the video
+      preview's. Kept on purpose for now: one combined capture would restart the
+      video (a visible flicker) every time the mic is toggled. Revisit only if a
+      real device shows the second capture failing.
 
 ## Redundancy
 
 - [ ] Noise suppression appears in three places; on touch, device choice has two
-      routes to one dialog. Check Mobbin before collapsing.
-- [ ] Two fullscreen implementations (`Stage.tsx` vs `lib/useFullscreen.ts`); a bug
-      has already come from them drifting.
-- [ ] Two copy-link hooks; two device pickers that disagree about a success toast;
-      three near-identical toggle rows; seven copies of the over-video button style;
-      five copies of the chat long-press row style.
-- [ ] Control-bar auto-hide has two mechanisms (`setChromeHold` and `overlayOpen()`).
-- [ ] Move point-in-time audits and prototypes in `docs/` and `audit/` to
-      `docs/archive/`.
+      routes to one dialog. A design call: check Mobbin before collapsing.
 
 ## Product ideas
 

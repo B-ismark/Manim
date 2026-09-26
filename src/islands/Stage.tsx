@@ -36,7 +36,7 @@ import { useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useBlurControls } from '@/features/effects/BlurContext'
 import { useBlockStore } from '@/store/useBlockStore'
-import { useCopyLink } from '@/lib/useCopyLink'
+import { useShareLink } from '@/lib/useShareLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
 import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
@@ -48,6 +48,7 @@ import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
+import { useElementFullscreen } from '@/lib/useFullscreen'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
 import { TileAction, TileActionStack } from '@/islands/TileActionStack'
@@ -1150,57 +1151,6 @@ function tileName(t: TrackReferenceOrPlaceholder): string {
   return displayNameOf(t.participant.identity, t.participant.name, '')
 }
 
-/**
- * Fullscreen a DOM ELEMENT (the shared-screen tile). Falls back to the iOS-only
- * `<video>.webkitEnterFullscreen` when element fullscreen isn't available (iOS
- * Safari only fullscreens the video element, not arbitrary containers).
- *
- * Named apart from `lib/useFullscreen`, which does the DOCUMENT. The two are
- * genuinely different jobs — one fullscreens a tile, the other the whole app — but
- * they answered to the same name in the same feature, and the collision is how
- * this copy came to be missing the prefixed change EVENT that the document one
- * documents at length: Safari fires only `webkitfullscreenchange`, so on the very
- * browsers that need the prefixed request, `isFs` never flipped and the floating
- * Exit button — the only way out on touch — never appeared.
- */
-function useElementFullscreen(ref: { current: HTMLElement | null }) {
-  const [isFs, setIsFs] = useState(false)
-  useEffect(() => {
-    const onChange = () => {
-      const active =
-        document.fullscreenElement ??
-        (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement ??
-        null
-      setIsFs(active === ref.current)
-    }
-    document.addEventListener('fullscreenchange', onChange)
-    document.addEventListener('webkitfullscreenchange', onChange)
-    return () => {
-      document.removeEventListener('fullscreenchange', onChange)
-      document.removeEventListener('webkitfullscreenchange', onChange)
-    }
-  }, [ref])
-  const enter = useCallback(() => {
-    const el = ref.current
-    if (!el) return
-    const video = el.querySelector('video') as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
-    if (el.requestFullscreen) {
-      el.requestFullscreen().catch(() => video?.webkitEnterFullscreen?.())
-    } else {
-      video?.webkitEnterFullscreen?.()
-    }
-  }, [ref])
-  const exit = useCallback(() => {
-    const d = document as Document & {
-      webkitFullscreenElement?: Element | null
-      webkitExitFullscreen?: () => Promise<void> | void
-    }
-    if (d.fullscreenElement) void d.exitFullscreen?.()
-    else if (d.webkitFullscreenElement) void d.webkitExitFullscreen?.()
-  }, [])
-  return { isFs, enter, exit }
-}
-
 /** Enter/exit-fullscreen controls overlaid on the shared-screen big tile. On desktop
  *  Esc also exits (native); on touch there's no Esc, so the floating Exit button is the
  *  way out. Enter sits top-left (clear of the top-right action + bottom name pill). */
@@ -1217,7 +1167,7 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
           size="md"
           label="Exit full screen"
           icon={<ExitFullscreenIcon />}
-          className="bg-overlay text-white hover:bg-overlay"
+          tone="overlay"
           onClick={exit}
         />
       </div>
@@ -1229,7 +1179,7 @@ function FullscreenControls({ targetRef }: { targetRef: { current: HTMLElement |
         size="sm"
         label="View shared screen full screen"
         icon={<FullscreenIcon />}
-        className="bg-overlay text-white hover:bg-overlay"
+        tone="overlay"
         onClick={enter}
       />
     </TileAction>
@@ -1266,7 +1216,8 @@ function AnnotateControl({ canAnnotate }: { canAnnotate: boolean }) {
         label={active ? 'Stop drawing on the shared screen' : 'Draw on the shared screen'}
         icon={<AnnotateIcon />}
         active={active}
-        className={cn('shadow-pop', !active && 'bg-overlay text-white hover:bg-overlay')}
+        tone="overlay"
+        className="shadow-pop"
         onClick={toggle}
       />
     </TileAction>
@@ -1568,7 +1519,7 @@ function FocusTile({ trackRef }: { trackRef: TrackReferenceOrPlaceholder }) {
 
 /** Alone in the call: show your own camera (like Teams/Meet) + an invite hint. */
 function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
-  const { copied, copy } = useCopyLink()
+  const { copied, copy } = useShareLink()
   const coarse = useIsTouch()
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28">
@@ -2026,7 +1977,7 @@ function Tile({
             size="md"
             label="Flip camera"
             icon={<FlipCameraIcon />}
-            className="bg-overlay text-white hover:bg-overlay"
+            tone="overlay"
             onClick={() => void flipCamera()}
           />
           {/* Hidden where the platform can't build the processor at all, the same
@@ -2039,13 +1990,13 @@ function Tile({
               size="md"
               label={blur.mode === 'blur' ? 'Turn off background blur' : 'Blur my background'}
               icon={<EffectsIcon />}
-              // `neutral` + `active`, which is how every other toggle in the app
-              // renders its on-state (accent fill). `tone="accent"` would resolve to
-              // toneActive.accent — the darker PRESSED shade — so this one control
-              // would have looked different from the rest when switched on.
+              // `overlay` + `active`: the over-video fill when off, and the same
+              // accent on-state as every other toggle when on. `tone="accent"` would
+              // resolve to toneActive.accent — the darker PRESSED shade — so this one
+              // control would have looked different from the rest when switched on.
               active={blur.mode === 'blur'}
               pressed={blur.mode === 'blur'}
-              className={cn(blur.mode !== 'blur' && 'bg-overlay text-white hover:bg-overlay')}
+              tone="overlay"
               onClick={() => (blur.mode === 'blur' ? blur.useNone() : blur.useBlur())}
             />
           )}
@@ -2071,7 +2022,7 @@ function Tile({
                 label={action.label}
                 icon={action.icon}
                 active={action.active}
-                className="bg-overlay text-white hover:bg-overlay"
+                tone="overlay"
                 onClick={action.onClick}
               />
             </div>
@@ -2084,7 +2035,7 @@ function Tile({
                 label={pinned ? `Unpin ${name}` : `Pin ${name}`}
                 icon={<PinIcon />}
                 active={pinned}
-                className="bg-overlay text-white hover:bg-overlay"
+                tone="overlay"
                 onClick={() => togglePin(p.identity)}
               />
             </div>

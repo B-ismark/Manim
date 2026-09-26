@@ -68,7 +68,11 @@ const CHROME_HIDE_MS = 4000
  * cannot be forgotten.
  */
 function overlayOpen(): boolean {
-  return !!document.querySelector('[role="dialog"], [role="menu"]')
+  // `data-chrome-hold` is for the one layer that isn't a Radix one: the audio tray
+  // lives INSIDE the island. It used to be the reason a second mechanism existed
+  // (a setChromeHold callback the control bar had to remember to call); marking
+  // the element puts it under the same single check.
+  return !!document.querySelector('[role="dialog"], [role="menu"], [data-chrome-hold]')
 }
 
 /**
@@ -93,13 +97,10 @@ function useStageChrome() {
   const mobile = useMemo(() => isTouch(), [])
   const [visible, setVisible] = useState(true)
   const hideTimer = useRef<number | undefined>(undefined)
-  const held = useRef(false)
   const down = useRef<{ x: number; y: number; t: number } | null>(null)
 
   const scheduleHide = useCallback(() => {
-    // Don't auto-hide while a menu is open (held) — the control bar must stay
-    // put or the open popover loses its anchor.
-    if (!mobile || held.current) return
+    if (!mobile) return
     // Re-check at the moment of hiding, not only when the timer was armed. A menu
     // opened DURING the countdown is the orphan case, and the countdown is usually
     // already running by then: the island arms its timer on mount and on every
@@ -120,21 +121,6 @@ function useStageChrome() {
     setVisible(true)
     scheduleHide()
   }, [scheduleHide])
-
-  // Pin the chrome open (e.g. while the More menu is showing); release resumes
-  // the auto-hide countdown.
-  const setHold = useCallback(
-    (hold: boolean) => {
-      held.current = hold
-      if (hold) {
-        window.clearTimeout(hideTimer.current)
-        setVisible(true)
-      } else {
-        scheduleHide()
-      }
-    },
-    [scheduleHide],
-  )
 
   useEffect(() => {
     if (mobile) scheduleHide()
@@ -165,7 +151,7 @@ function useStageChrome() {
     [mobile, scheduleHide],
   )
 
-  return { chromeVisible: visible, show, setChromeHold: setHold, stageHandlers: { onPointerDown, onPointerUp } }
+  return { chromeVisible: visible, show, stageHandlers: { onPointerDown, onPointerUp } }
 }
 
 // The chat/participants panel is only needed once opened — defer its chunk.
@@ -400,7 +386,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     void import('@/islands/SidePanel')
   }, [])
-  const { chromeVisible, show: keepChromeUp, setChromeHold, stageHandlers } = useStageChrome()
+  const { chromeVisible, show: keepChromeUp, stageHandlers } = useStageChrome()
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
@@ -530,7 +516,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       <ControlBar
         chromeVisible={chromeVisible}
-        onMenuOpenChange={setChromeHold}
         onInteract={keepChromeUp}
         onLeave={leaveWithUndo}
         onEndForEveryone={endForEveryone}

@@ -98,7 +98,7 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
             size="sm"
             label="Back to window"
             icon={<ExitFullscreenIcon />}
-            className="bg-overlay text-white hover:bg-overlay"
+            tone="overlay"
             onClick={onClose}
           />
         </div>

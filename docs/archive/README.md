@@ -14,6 +14,13 @@ work. Treat them as history; if you want the state of the code, read the code.
 | [findings-visual.md](findings-visual.md) | 2026-06-17 | Visual pass. |
 | [E2E-FINDINGS.md](E2E-FINDINGS.md) | 2026-06-16 | The original end-to-end sweep + browser-capacity ceiling (~8 headless Chromium per machine — still the reason scale testing uses `lk load-test`). |
 | [MOBILE-UX-PROGRESS.md](MOBILE-UX-PROGRESS.md) | — | Mobile touch-UX workstream log. All items shipped. |
+| [findings-uiux-flow.md](findings-uiux-flow.md) | — | UI/UX flow findings (was `audit/`). |
+| [mobile-control-island-audit.md](mobile-control-island-audit.md) | — | Mobile control-island audit, with its prototypes below. |
+| `*-prototypes.html`, [mobile-stage-resolved.html](mobile-stage-resolved.html) | — | Design prototypes for the device picker, video layout, prejoin feed and the resolved mobile stage. Open in a browser. |
+| [share-annotate-flow-audit.html](share-annotate-flow-audit.html), [share-annotate-prejoin-plan.html](share-annotate-prejoin-plan.html) | — | Share + annotate flow audit and plan. Shipped. |
+
+Still in `docs/` because code cites them as the reason for a current decision:
+`panel-reflow-findings.md` and `prototypes/panel-reflow-rig.html` (lib/panelDock).
 
 ## Status as of 2026-08-04
 

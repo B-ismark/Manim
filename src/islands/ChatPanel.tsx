@@ -38,6 +38,10 @@ import { useChatHistoryOn } from '@/features/chat/chatHistory'
 import { displayNameOf } from '@/lib/participantName'
 import { cn } from '@/lib/cn'
 
+/** A row in the touch message-actions menu (one style, five rows). */
+const MENU_ROW =
+  'flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted'
+
 /** A live mention candidate the composer can tag. */
 interface MentionMatch {
   /** Index of the '@' that opened the query. */
@@ -1117,7 +1121,7 @@ function MessageRow({
             <div className="flex flex-col">
               <button
                 type="button"
-                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                className={MENU_ROW}
                 onClick={() => {
                   setActionsOpen(false)
                   onReply()
@@ -1128,7 +1132,7 @@ function MessageRow({
               </button>
               <button
                 type="button"
-                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                className={MENU_ROW}
                 onClick={() => {
                   setActionsOpen(false)
                   setReactOpen(true)
@@ -1143,7 +1147,7 @@ function MessageRow({
               {hasReactions && (
                 <button
                   type="button"
-                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  className={MENU_ROW}
                   onClick={() => {
                     setActionsOpen(false)
                     setWhoOpen(true)
@@ -1156,7 +1160,7 @@ function MessageRow({
               {onEdit && (
                 <button
                   type="button"
-                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  className={MENU_ROW}
                   onClick={() => {
                     afterMenu.current = () => rowRef.current?.querySelector('textarea')?.focus()
                     setActionsOpen(false)
@@ -1169,7 +1173,7 @@ function MessageRow({
               )}
               <button
                 type="button"
-                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                className={MENU_ROW}
                 onClick={() => {
                   setActionsOpen(false)
                   onTogglePin()
