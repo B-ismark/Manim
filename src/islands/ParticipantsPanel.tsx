@@ -52,12 +52,15 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
 import { countSettled } from '@/lib/settle'
+import { displayNameOf } from '@/lib/participantName'
 import { ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
+import { linkWithoutKey, parseRoomHash } from '@/lib/roomLink'
+import { resolveRoomSecrets } from '@/lib/roomKeys'
 
 function displayName(p: Participant): string {
-  return p.name || p.identity.split('#')[0] || 'Guest'
+  return displayNameOf(p.identity, p.name)
 }
 
 /** Roster with live state (speaking / mic / hand / connection) and per-row actions. */
@@ -113,15 +116,16 @@ export function ParticipantsPanel() {
 
   // Host authority is the server-written room hostId / coHosts (not forgeable
   // participant metadata). UI only — the server re-checks every privileged call.
-  const { isPrimaryHost, coHosts } = useMemo(() => {
+  const { isPrimaryHost, coHosts, hostId } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
       return {
         isPrimaryHost: f.hostId === localParticipant.identity,
         coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
+        hostId: typeof f.hostId === 'string' ? f.hostId : '',
       }
     } catch {
-      return { isPrimaryHost: false, coHosts: [] as string[] }
+      return { isPrimaryHost: false, coHosts: [] as string[], hostId: '' }
     }
   }, [roomMetadata, localParticipant.identity])
   // Co-hosts get the moderation UI too; only the primary host manages the roster.
@@ -154,8 +158,12 @@ export function ParticipantsPanel() {
   }
 
   function mailtoHref(to: string): string {
+    const { href, hadKey } = linkWithoutKey(window.location.href)
     const subject = encodeURIComponent("You're invited to a Manim call")
-    const body = encodeURIComponent(`Join my call:\n\n${window.location.href}`)
+    const note = hadKey
+      ? "\n\nThis call is end-to-end encrypted, so the encryption key isn't in this email. I'll send you the full link separately."
+      : ''
+    const body = encodeURIComponent(`Join my call:\n\n${href}${note}`)
     return `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`
   }
 
@@ -177,9 +185,15 @@ export function ParticipantsPanel() {
     try {
       // Try a real email first; fall back to the mail client if the server has
       // no provider configured or the provider rejects the recipient.
-      const sent = await sendEmailInvite(to, room.name, window.location.href, who, roomToken ?? undefined)
+      const { href, hadKey: encrypted } = linkWithoutKey(window.location.href)
+      const sent = await sendEmailInvite(to, room.name, href, who, roomToken ?? undefined)
       if (sent) {
-        setCallMsg(`Invite emailed to ${to}`)
+        // The key stays out of the email, so say what the guest still needs.
+        setCallMsg(
+          encrypted
+            ? `Invite emailed to ${to}. This call is encrypted, so also send them the full link.`
+            : `Invite emailed to ${to}`,
+        )
         addInvite(to)
         return true
       }
@@ -192,10 +206,14 @@ export function ParticipantsPanel() {
     }
   }
 
+  // A ring carries the room's secrets, as Landing's does: without them the person
+  // you ring is stopped at the door (need_link, or need_key in an encrypted call).
+  const ringSecrets = () => resolveRoomSecrets(room.name, parseRoomHash(window.location.hash))
+
   async function ring(to: string): Promise<boolean> {
     if (!to) return false
     setCallMsg('Ringing…')
-    const err = await ringUser(to, room.name, localParticipant.name || 'Someone')
+    const err = await ringUser(to, room.name, localParticipant.name || 'Someone', ringSecrets())
     setCallMsg(err ?? `Ringing ${to}…`)
     if (err) return false
     addInvite(to)
@@ -207,21 +225,38 @@ export function ParticipantsPanel() {
     setContactsOpen(false)
     if (!c.email) return
     setCallMsg('Ringing…')
-    const err = await ringUser(c.email, room.name, localParticipant.name || 'Someone')
+    const err = await ringUser(c.email, room.name, localParticipant.name || 'Someone', ringSecrets())
     setCallMsg(err ?? `Ringing ${c.name}…`)
     // Label by name (not email) so the "Invited · waiting" row clears when they
     // join (the ghost matches against participant display names).
     if (!err) addInvite(c.name)
   }
 
-  // Report flags a participant to the host over the control channel (only the
-  // host is notified). No central moderation backend — keeps it lightweight.
-  async function reportUser(targetName: string) {
+  // Report flags a participant to the host over the control channel. It is
+  // addressed to the host and co-hosts only: broadcast, it reached every device in
+  // the call — the reported person's included — which is who it has to be hidden
+  // from. No central moderation backend — keeps it lightweight.
+  async function reportUser(targetIdentity: string, targetName: string) {
     const payload = new TextEncoder().encode(
       JSON.stringify({ type: 'report', target: targetName, by: localParticipant.name || 'Someone' }),
     )
+    // Only hosts who are actually here (metadata can still name one who left, and a
+    // report addressed to nobody would say "reported" anyway), never the person
+    // being reported (a co-host can be), never yourself.
+    const present = new Set(participants.map((p) => p.identity))
+    const hosts = [...new Set([hostId, ...coHosts])].filter(
+      (id) => !!id && id !== localParticipant.identity && id !== targetIdentity && present.has(id),
+    )
+    if (hosts.length === 0) {
+      toast('There’s no host in this call to report to', 'warning')
+      return
+    }
     try {
-      await localParticipant.publishData(payload, { reliable: true, topic: CONTROL_TOPIC })
+      await localParticipant.publishData(payload, {
+        reliable: true,
+        topic: CONTROL_TOPIC,
+        destinationIdentities: hosts,
+      })
     } catch {
       /* best effort */
     }
@@ -403,7 +438,7 @@ function ParticipantRow({
   onRequestRemove: (identity: string, name: string) => void
   room: string
   token: string | null
-  onReport: (targetName: string) => void
+  onReport: (targetIdentity: string, targetName: string) => void
 }) {
   const speaking = useIsSpeaking(participant)
   const micRef = { participant, source: Track.Source.Microphone } as TrackReferenceOrPlaceholder
@@ -459,7 +494,7 @@ function ParticipantRow({
       </div>
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
+        <p dir="auto" className="truncate text-sm font-medium">
           {name}
           {ambiguous && !isLocal && (
             <span className="text-ink-subtle"> ·{participant.identity.split('#')[1]?.slice(0, 4) ?? ''}</span>
@@ -513,7 +548,7 @@ function ParticipantRow({
             <DropdownItem icon={<BanIcon />} onSelect={() => toggleBlock(participant.identity)}>
               {blocked ? 'Unblock' : 'Block for me'}
             </DropdownItem>
-            <DropdownItem icon={<FlagIcon />} onSelect={() => onReport(name)}>
+            <DropdownItem icon={<FlagIcon />} onSelect={() => onReport(participant.identity, name)}>
               Report
             </DropdownItem>
           </>

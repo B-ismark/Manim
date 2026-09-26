@@ -3,8 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
+    <meta name="theme-color" content="#6d5cf0" />
     <title>Manim — Video Calls</title>
     <meta
       name="description"
@@ -16,6 +18,15 @@
       content="Start or join an encrypted browser video call in seconds. No install required."
     />
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Manim" />
+    <!-- Relative here; the Worker makes it absolute for the host it's served on
+         (server/preview.mjs), since several unfurlers ignore relative images. -->
+    <meta property="og:image" content="/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Manim: you're invited to a video call" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="/og.jpg" />
   </head>
   <body>
     <div id="root"></div>

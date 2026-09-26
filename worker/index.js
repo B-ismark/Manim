@@ -22,6 +22,7 @@ import {
   handleEmailInvite,
   handlePushRing,
 } from '../server/core.mjs'
+import { rewriteHead, roomFromPath } from '../server/preview.mjs'
 
 const json = (r) =>
   new Response(JSON.stringify(r.body), {
@@ -78,7 +79,9 @@ async function handleApi(request, env, url) {
           return json({ status: 429, body: { error: 'Too many invites — try again in a minute.' } })
         }
       }
-      return json(await handleEmailInvite(env, await bodyOf(), bearer(request)))
+      // The app's own origin, from the URL this request actually hit — never a
+      // client header — so an invite can only ever link back here.
+      return json(await handleEmailInvite(env, await bodyOf(), bearer(request), url.origin))
     }
     if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
     return new Response('Not found', { status: 404 })
@@ -106,7 +109,10 @@ export default {
     // connect/img/style are kept permissive enough not to break LiveKit (wss),
     // Supabase (https+wss), Giphy, or Tailwind's injected styles; the strict bits
     // (frame-ancestors, object-src, base-uri) block clickjacking + base-tag/object
-    // injection. script-src allows the MediaPipe CDN + wasm (blur) only.
+    // injection. script-src allows the MediaPipe CDN + wasm (blur), and Sentry's
+    // loader (js.sentry-cdn.com) plus the SDK bundle it pulls in
+    // (browser.sentry-cdn.com) for crash reports when VITE_SENTRY_DSN is set; the
+    // reports themselves go to *.ingest.sentry.io, already inside connect-src.
     // NOTE: verify against the DEPLOYED artifact — tune if a console CSP violation
     // appears (this worker path doesn't run under the local vite dev server).
     headers.set(
@@ -121,7 +127,7 @@ export default {
         "media-src 'self' blob:",
         "font-src 'self' data:",
         "style-src 'self' 'unsafe-inline'",
-        "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net",
+        "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://js.sentry-cdn.com https://browser.sentry-cdn.com",
         "worker-src 'self' blob:",
         "connect-src 'self' https: wss:",
       ].join('; '),
@@ -129,6 +135,21 @@ export default {
     headers.set('X-Content-Type-Options', 'nosniff')
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+    if (roomFromPath(url.pathname)) headers.set('X-Robots-Tag', 'noindex, nofollow')
+    // Link previews: the one HTML document gets a head written for the URL it's
+    // served at (per-room title, absolute image) — see server/preview.mjs. Only a
+    // 200 has a body to rewrite: a revalidation 304 must pass through untouched
+    // (a Response with a body and a null-body status throws, which would fail
+    // every returning visitor's page load).
+    if (
+      request.method === 'GET' &&
+      res.status === 200 &&
+      (res.headers.get('content-type') || '').includes('text/html')
+    ) {
+      headers.delete('content-length')
+      const html = rewriteHead(await res.text(), { origin: url.origin, pathname: url.pathname })
+      return new Response(html, { status: res.status, statusText: res.statusText, headers })
+    }
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers })
   },
 }

@@ -43,12 +43,20 @@ export interface JoinRequest {
    *  room records its hash; absent for open (typed-name) rooms. */
   secret?: string
   host?: boolean
+  /** This browser's key for the seat it's knocking as (lib/seatKeys). Required
+   *  by the server to reclaim host or step back into a seat it already holds. */
+  seat?: string
+  /** Whether this browser holds the room's E2EE key. An encrypted room turns away
+   *  a knock without it (`need_key`) rather than let it join unable to see or hear. */
+  hasKey?: boolean
 }
 
 export interface KnockResponse {
   /** Present when admitted immediately (host, existing participant, or no waiting room). */
   token?: string
   identity?: string
+  /** Seat key for `identity` — keep it (lib/seatKeys) to rejoin as this seat. */
+  seat?: string
   host?: boolean
   /** True when the SAME signed-in account is already in the room on another device.
    *  Lets prejoin offer "join anyway (companion, muted)" vs "transfer to this device". */
@@ -56,6 +64,8 @@ export interface KnockResponse {
   /** Present when the waiting room queued the request for host approval. */
   pending?: boolean
   requestId?: string
+  /** Proof this client made the queued request; knock-status needs it. */
+  claim?: string
 }
 
 /** Request to join. May return a token directly or a pending knock. */
@@ -67,13 +77,27 @@ export interface KnockStatus {
   status: 'pending' | 'approved' | 'denied' | 'expired'
   token?: string
   identity?: string
+  seat?: string
 }
 
-/** Poll the host's decision on a queued knock. */
-export async function knockStatus(room: string, requestId: string): Promise<KnockStatus> {
-  const res = await fetch(`/api/knock-status?room=${encodeURIComponent(room)}&requestId=${requestId}`)
+/**
+ * Poll the host's decision on a queued knock. `claim` came back with the knock.
+ * Resolves `null` for a poll that simply didn't get through (offline, a 5xx, a
+ * dropped connection) — the caller keeps waiting. Only the server saying so ends
+ * the wait: mapping every failed fetch to `expired` turned one network blip into
+ * "your request timed out" for a guest the host was about to let in.
+ */
+export async function knockStatus(room: string, requestId: string, claim: string): Promise<KnockStatus | null> {
+  const q = new URLSearchParams({ room, requestId, claim })
+  let res: Response
+  try {
+    res = await fetch(`/api/knock-status?${q}`)
+  } catch {
+    return null
+  }
+  if (res.status >= 500) return null
   if (!res.ok) return { status: 'expired' }
-  return (await res.json()) as KnockStatus
+  return (await res.json().catch(() => null)) as KnockStatus | null
 }
 
 export interface PendingKnocker {
@@ -127,8 +151,12 @@ export interface RoomFlagsRequest {
   waiting?: boolean
   /** Restrict drawing on a shared screen to hosts/co-hosts. Default (false) = everyone. */
   annotateHostOnly?: boolean
+  /** Show earlier chat to people who join later. Absent (default) = on. */
+  chatHistory?: boolean
   /** Co-host identities. Only the primary host may change this (server-enforced). */
   coHosts?: string[]
+  /** Mark the room end-to-end encrypted (never the key). One way: it can't be unset. */
+  encrypted?: true
 }
 
 /** Host: set room flags (lock / waiting room / annotation policy / co-hosts). */

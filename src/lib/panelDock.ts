@@ -26,9 +26,12 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
  * only ever as safe as the bar is narrow, and the bar grows as controls are
  * added. Taking the panel out of the bar's band removes the collision instead of
  * sizing around it. (An earlier pass put this threshold at `lg`, from a bar
- * measured at 560px in the prototype; the real bar is 614px, because the
- * prototype's mock was missing the Audio output button. useSettleGuard exists
- * precisely because that kind of drift is not detectable from the geometry.)
+ * measured at 560px in the prototype; the real bar then measured 614px, because
+ * the prototype's mock was missing a control the real bar had. The 614 / 75 /
+ * 155px figures here are from that bar; its desktop Audio output button has
+ * since been removed, so today's bar is narrower and those offsets are upper
+ * bounds. useSettleGuard exists precisely because that kind of drift is not
+ * detectable from the geometry.)
  *
  * The width below MUST match Sheet's `responsive` sideClass, and the breakpoint
  * must match where Sheet stops clearing the bar — the same layout decided in two

@@ -1,8 +1,9 @@
-import { useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import { LiveKitRoom } from '@livekit/components-react'
 import { RoomView } from '@/islands/RoomView'
 import { AnnouncerProvider } from '@/features/a11y/AnnouncerContext'
 import { roomOptions } from '@/lib/livekit'
+import { mediaErrorMessage } from '@/lib/mediaErrors'
 
 /**
  * The whole in-call subtree (LiveKitRoom provider + RoomView). Split into its own
@@ -34,6 +35,18 @@ export default function CallRoom({
 }: CallRoomProps) {
   // Build once per (bandwidth, passphrase) so the E2EE worker isn't recreated.
   const options = useMemo(() => roomOptions(lowBandwidth, e2ee), [lowBandwidth, e2ee])
+  // LiveKitRoom reports a failed initial mic/camera publish through onError, the
+  // same callback as a failed connect (lib/mediaErrors). Only the latter ends the
+  // join; a device that won't start leaves you in the call without it. Saying why
+  // is useMediaDeviceWatch's job: LiveKit raises MediaDevicesError for the same
+  // failure first, so a toast here too would double it.
+  // Held in a ref so the handler is stable — LiveKitRoom re-binds its room
+  // listeners whenever this prop's identity changes.
+  const onErrorRef = useRef(onError)
+  onErrorRef.current = onError
+  const handleError = useCallback((e: Error) => {
+    if (!mediaErrorMessage(e)) onErrorRef.current(e)
+  }, [])
   return (
     <LiveKitRoom
       serverUrl={serverUrl}
@@ -43,7 +56,7 @@ export default function CallRoom({
       video={cameraEnabled && !lowBandwidth}
       options={options}
       onDisconnected={onLeave}
-      onError={onError}
+      onError={handleError}
       className="relative flex h-dvh flex-col overflow-hidden"
     >
       {/* Shared announcer for the call subtree — RoomView + its hooks (device-loss

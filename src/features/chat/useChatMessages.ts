@@ -1,10 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useChat, useDataChannel, useLocalParticipant, useRoomContext } from '@livekit/components-react'
+import {
+  useChat,
+  useConnectionState,
+  useLocalParticipant,
+  useRoomContext,
+} from '@livekit/components-react'
+import { useDataTopic } from '@/lib/useDataTopic'
 import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
 import { sounds } from '@/lib/sounds'
+import { displayNameOf } from '@/lib/participantName'
 import { toast } from '@/store/useToastStore'
+import { useChatHistoryOn } from '@/features/chat/chatHistory'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
 const FILE_TOPIC = 'mn.file'
@@ -119,8 +127,27 @@ export interface FileItem {
 
 export type ChatItem = TextItem | FileItem
 
-function displayName(identity: string, name?: string): string {
-  return name || identity.split('#')[0] || 'Guest'
+/**
+ * Ask the room for something ONCE, `delay` ms after it first reaches Connected.
+ * These hooks mount while the room is still Connecting and `publish` drops
+ * anything sent before Connected, so a mount-time timer was lost on any connect
+ * slower than its delay. (It used to limp through only because the channel's
+ * `send` changed identity every render and kept re-arming it — see
+ * lib/useDataTopic.) Once, not on every reconnect: a resumed session still holds
+ * its state, and each ask makes every peer answer the whole room.
+ */
+function useAskOnceConnected(connection: ConnectionState, ask: () => void, delay: number): void {
+  const asked = useRef(false)
+  const askRef = useRef(ask)
+  askRef.current = ask
+  useEffect(() => {
+    if (asked.current || connection !== ConnectionState.Connected) return
+    const t = window.setTimeout(() => {
+      asked.current = true
+      askRef.current()
+    }, delay)
+    return () => window.clearTimeout(t)
+  }, [connection, delay])
 }
 
 /**
@@ -130,18 +157,17 @@ function displayName(identity: string, name?: string): string {
  */
 export function useChatMessages() {
   const room = useRoomContext()
+  const connection = useConnectionState(room)
   const { localParticipant } = useLocalParticipant()
   const { chatMessages, send: sendChatText, isSending } = useChat()
   const [files, setFiles] = useState<FileItem[]>([])
 
   // Guarded data-channel publish. The chat hooks mount during the Connecting
   // phase (RoomView runs its hooks before the connected gate renders the call),
-  // so the join-time sync-request timers below can fire before the transport is
-  // up — and LiveKit's publishData throws ("Cannot read properties of undefined
-  // (reading 'next')") when the engine isn't ready. Gate every broadcast on the
-  // connected state and swallow any transient failure: the periodic sync-requests
-  // and live resends recover, so a dropped not-ready publish is harmless and must
-  // never surface as an unhandled error.
+  // and publishing before the transport is up throws. Gate every broadcast on the
+  // connected state and swallow any transient failure (mid-reconnect): it must
+  // never surface as an unhandled error. The join-time asks wait for Connected
+  // themselves (useAskOnceConnected), so this gate doesn't swallow them.
   const publish = useCallback(
     (
       send: (payload: Uint8Array, options: { reliable: boolean; topic: string }) => unknown,
@@ -176,7 +202,7 @@ export function useChatMessages() {
         id,
         timestamp: info.timestamp,
         fromIdentity: identity,
-        fromName: displayName(identity, sender?.name),
+        fromName: displayNameOf(identity, sender?.name),
         isLocal: false,
         fileName: info.name,
         mimeType: info.mimeType,
@@ -215,7 +241,7 @@ export function useChatMessages() {
   // Own display name, hoisted above the reaction/typing broadcasts that both send
   // it. `myNameRef` is what the data-channel handlers read — they're registered
   // once, so a closure over the value would replay a stale name after a rename.
-  const myName = displayName(localParticipant.identity, localParticipant.name)
+  const myName = displayNameOf(localParticipant.identity, localParticipant.name)
   const myNameRef = useRef(myName)
   myNameRef.current = myName
 
@@ -253,7 +279,7 @@ export function useChatMessages() {
         id,
         timestamp: m.timestamp,
         fromIdentity: m.from?.identity ?? '',
-        fromName: displayName(m.from?.identity ?? '', m.from?.name),
+        fromName: displayNameOf(m.from?.identity ?? '', m.from?.name),
         isLocal: m.from?.identity === myIdentity,
         text: edited ?? decoded.text,
         replyTo: decoded.replyTo,
@@ -281,7 +307,7 @@ export function useChatMessages() {
   }, [chatMessages, files, myIdentity, edits, history])
 
   const sendEditRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendEdit } = useDataChannel(EDIT_TOPIC, (msg) => {
+  const { send: sendEdit } = useDataTopic(EDIT_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
@@ -309,10 +335,7 @@ export function useChatMessages() {
   const broadcastEdit = useCallback((data: object) => publish(sendEdit, EDIT_TOPIC, data), [publish, sendEdit])
   sendEditRef.current = broadcastEdit
 
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastEdit({ kind: 'sync-request' }), 800)
-    return () => window.clearTimeout(t)
-  }, [broadcastEdit])
+  useAskOnceConnected(connection, () => broadcastEdit({ kind: 'sync-request' }), 800)
 
   /** Author edits the body of their own text message (reply quote is preserved). */
   const editMessage = useCallback(
@@ -342,11 +365,17 @@ export function useChatMessages() {
     edited?: boolean
   }
   const sendHistoryRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendHistory } = useDataChannel(HISTORY_TOPIC, (msg) => {
+  // The host's "chat history" setting (features/chat/chatHistory), read at call
+  // time: off means we neither answer a replay request nor accept a replay.
+  const historyOn = useChatHistoryOn()
+  const historyOnRef = useRef(historyOn)
+  historyOnRef.current = historyOn
+  const { send: sendHistory } = useDataTopic(HISTORY_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'request' }
         | { kind: 'history'; items: HistoryWireItem[] }
+      if (!historyOnRef.current) return
       if (d.kind === 'request') {
         if (replayRef.current.length === 0) return
         const items: HistoryWireItem[] = replayRef.current.map((it) => ({
@@ -402,11 +431,8 @@ export function useChatMessages() {
   )
   sendHistoryRef.current = broadcastHistory
 
-  // Request a replay shortly after join (let the data channel settle first).
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastHistory({ kind: 'request' }), 900)
-    return () => window.clearTimeout(t)
-  }, [broadcastHistory])
+  // Request a replay once we're connected (the data channel settles first).
+  useAskOnceConnected(connection, () => broadcastHistory({ kind: 'request' }), 900)
 
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
@@ -416,16 +442,20 @@ export function useChatMessages() {
   pinnedRef.current = pinned
 
   const sendPinRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendPin } = useDataChannel(PIN_TOPIC, (msg) => {
+  const { send: sendPin } = useDataTopic(PIN_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
-        | (PinnedMessage & { kind?: 'pin'; pinned: boolean })
+        | (PinnedMessage & { kind?: 'pin'; pinned: boolean; replay?: boolean })
       // A late joiner asked for the current pins — replay mine so they catch up.
+      // Replayed pins are earlier messages too, so the host's Chat history setting
+      // covers them on both sides, like the history replay itself.
       if ('kind' in d && d.kind === 'sync-request') {
-        for (const p of pinnedRef.current) sendPinRef.current?.({ kind: 'pin', ...p, pinned: true })
+        if (!historyOnRef.current) return
+        for (const p of pinnedRef.current) sendPinRef.current?.({ kind: 'pin', ...p, pinned: true, replay: true })
         return
       }
+      if ('replay' in d && d.replay && !historyOnRef.current) return
       setPinned((prev) => {
         if (!d.pinned) return prev.filter((p) => p.id !== d.id)
         if (prev.some((p) => p.id === d.id)) return prev
@@ -442,10 +472,7 @@ export function useChatMessages() {
   // On entry, ask peers to replay their pins so the pinned bar isn't empty for
   // someone who joined after the pins were set. (Small delay lets the data
   // channel settle after connect.)
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastPin({ kind: 'sync-request' }), 800)
-    return () => window.clearTimeout(t)
-  }, [broadcastPin])
+  useAskOnceConnected(connection, () => broadcastPin({ kind: 'sync-request' }), 800)
 
   const togglePin = useCallback(
     (item: ChatItem) => {
@@ -482,7 +509,7 @@ export function useChatMessages() {
   const [reactorNames, setReactorNames] = useState<ReactorNames>({})
   const rememberReactor = useCallback((identity: string, name?: string) => {
     if (!identity) return
-    const resolved = displayName(identity, name)
+    const resolved = displayNameOf(identity, name)
     setReactorNames((prev) => (prev[identity] === resolved ? prev : { ...prev, [identity]: resolved }))
   }, [])
 
@@ -500,7 +527,7 @@ export function useChatMessages() {
   }
 
   const sendReactionRef = useRef<((data: object) => void) | null>(null)
-  const { send: sendReactionMsg } = useDataChannel(REACTION_TOPIC, (msg) => {
+  const { send: sendReactionMsg } = useDataTopic(REACTION_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as
         | { kind: 'sync-request' }
@@ -544,10 +571,7 @@ export function useChatMessages() {
   sendReactionRef.current = broadcastReaction
 
   // Ask peers to replay their reactions on entry (same late-join handshake as pins).
-  useEffect(() => {
-    const t = window.setTimeout(() => broadcastReaction({ kind: 'sync-request' }), 800)
-    return () => window.clearTimeout(t)
-  }, [broadcastReaction])
+  useAskOnceConnected(connection, () => broadcastReaction({ kind: 'sync-request' }), 800)
 
   const toggleReaction = useCallback(
     (messageId: string, emoji: string) => {
@@ -562,9 +586,17 @@ export function useChatMessages() {
   // Typing indicator: ephemeral pings broadcast while composing, others render
   // "… is typing". Each ping carries a fresh timestamp; entries self-expire after
   // TYPING_TTL_MS so a typer who closes their tab doesn't get stuck "typing".
-  const [typing, setTyping] = useState<Record<string, { name: string; at: number }>>({})
+  //
+  // The timestamps live in a REF, not state: a typer re-pings every ~1.5s, and
+  // this hook's state re-renders RoomView — the whole call tree — so stamping
+  // `at` into state cost one full-tree render per typer per ping for a value
+  // nothing renders. State holds only what IS rendered (who, under what name),
+  // and changes only when someone starts, stops, or renames. The expiry tick
+  // reads the ref, so a typer still drops TYPING_TTL_MS after their last ping.
+  const [typing, setTyping] = useState<Record<string, string>>({})
+  const typingAtRef = useRef<Record<string, number>>({})
 
-  const { send: sendTypingMsg } = useDataChannel(TYPING_TOPIC, (msg) => {
+  const { send: sendTypingMsg } = useDataTopic(TYPING_TOPIC, (msg) => {
     try {
       const d = JSON.parse(new TextDecoder().decode(msg.payload)) as {
         identity: string
@@ -575,15 +607,19 @@ export function useChatMessages() {
       // identity — otherwise a peer could spoof "X is typing" for someone else.
       const from = msg.from?.identity
       if (!from || from === myIdentity) return
-      setTyping((prev) => {
-        if (!d.typing) {
-          if (!prev[from]) return prev
+      if (!d.typing) {
+        delete typingAtRef.current[from]
+        setTyping((prev) => {
+          if (!(from in prev)) return prev
           const next = { ...prev }
           delete next[from]
           return next
-        }
-        return { ...prev, [from]: { name: d.name, at: Date.now() } }
-      })
+        })
+        return
+      }
+      typingAtRef.current[from] = Date.now()
+      // Returning `prev` when nothing visible changed bails out of the render.
+      setTyping((prev) => (prev[from] === d.name ? prev : { ...prev, [from]: d.name }))
     } catch {
       /* malformed — ignore */
     }
@@ -592,13 +628,21 @@ export function useChatMessages() {
   // Drop stale typers (no fresh ping within the TTL) on a slow tick.
   useEffect(() => {
     const id = window.setInterval(() => {
+      const now = Date.now()
+      const stale: string[] = []
+      for (const [id2, at] of Object.entries(typingAtRef.current)) {
+        if (now - at >= TYPING_TTL_MS) stale.push(id2)
+      }
+      if (!stale.length) return
+      for (const id2 of stale) delete typingAtRef.current[id2]
       setTyping((prev) => {
-        const now = Date.now()
         let changed = false
-        const next: typeof prev = {}
-        for (const [id2, v] of Object.entries(prev)) {
-          if (now - v.at < TYPING_TTL_MS) next[id2] = v
-          else changed = true
+        const next = { ...prev }
+        for (const id2 of stale) {
+          if (id2 in next) {
+            delete next[id2]
+            changed = true
+          }
         }
         return changed ? next : prev
       })
@@ -638,7 +682,7 @@ export function useChatMessages() {
   }, [broadcastTyping])
 
   const typingNames = useMemo(
-    () => Object.values(typing).map((v) => v.name),
+    () => Object.values(typing),
     [typing],
   )
 
@@ -707,7 +751,7 @@ export function useChatMessages() {
           id: localId,
           timestamp: Date.now(),
           fromIdentity: localParticipant.identity,
-          fromName: displayName(localParticipant.identity, localParticipant.name),
+          fromName: displayNameOf(localParticipant.identity, localParticipant.name),
           isLocal: true,
           fileName: file.name,
           mimeType,

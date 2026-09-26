@@ -82,8 +82,3 @@ export function DropdownItem({ children, onSelect, icon, tone = 'neutral', disab
 export function DropdownSeparator() {
   return <RDM.Separator className="my-1 h-px bg-line" />
 }
-
-/** Non-interactive label heading a group of items. */
-export function DropdownLabel({ children }: { children: ReactNode }) {
-  return <RDM.Label className="px-2.5 py-1.5 text-xs font-medium text-ink-subtle">{children}</RDM.Label>
-}

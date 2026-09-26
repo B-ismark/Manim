@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  useDataChannel,
   useLocalParticipant,
   useParticipants,
   useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
+import { useDataTopic } from '@/lib/useDataTopic'
 import { useAppStore } from '@/store/useAppStore'
 import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
@@ -34,7 +34,11 @@ type ControlMessage =
  * to disconnect another participant. Joining a second device without switching
  * keeps both, which already works.
  */
-export function useSessionControl(onLeave: () => void) {
+/**
+ * `encryptedHere` — this client's end-to-end encryption is actually on (RoomView's
+ * e2eeActive, not merely "a key was in the link").
+ */
+export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const room = useRoomContext()
   const navigate = useNavigate()
   const { localParticipant } = useLocalParticipant()
@@ -46,17 +50,26 @@ export function useSessionControl(onLeave: () => void) {
   // Authority comes from ROOM metadata (server-written), never participant
   // metadata — participants can rewrite their own metadata (canUpdateOwnMetadata,
   // needed for raise-hand) and would otherwise self-promote to host.
-  const { hostId, locked, waiting, coHosts } = useMemo(() => {
+  const { hostId, locked, waiting, chatHistory, coHosts, markedEncrypted } = useMemo(() => {
     try {
       const f = JSON.parse(roomMetadata || '{}')
       return {
         hostId: f.hostId || '',
         locked: Boolean(f.locked),
         waiting: Boolean(f.waiting),
+        chatHistory: f.chatHistory !== false,
         coHosts: Array.isArray(f.coHosts) ? (f.coHosts as string[]) : [],
+        markedEncrypted: f.encrypted === true,
       }
     } catch {
-      return { hostId: '', locked: false, waiting: false, coHosts: [] as string[] }
+      return {
+        hostId: '',
+        locked: false,
+        waiting: false,
+        chatHistory: true,
+        coHosts: [] as string[],
+        markedEncrypted: false,
+      }
     }
   }, [roomMetadata])
 
@@ -143,7 +156,7 @@ export function useSessionControl(onLeave: () => void) {
     onLeave()
   }, [room, onLeave])
 
-  const { send } = useDataChannel(CONTROL_TOPIC, (msg) => {
+  const { send } = useDataTopic(CONTROL_TOPIC, (msg) => {
     let data: ControlMessage
     try {
       data = JSON.parse(new TextDecoder().decode(msg.payload))
@@ -254,6 +267,44 @@ export function useSessionControl(onLeave: () => void) {
     }
   }, [room.name, roomToken, waiting])
 
+  // Tell the server this call is encrypted — only THAT it is, never the key — so
+  // someone who arrives without the key (emailed invites leave it out) is told at
+  // the door to ask for the full link, instead of joining a call they can't see or
+  // hear while their own camera goes out unencrypted (server/core.mjs need_key).
+  // Only once our encryption is really on: a failed enable must not lock out
+  // guests from a call that isn't encrypted after all. Retried a few times until the
+  // mark shows up in room metadata: a failed request, or a knock's flag write that
+  // lands on top of ours, would otherwise leave the room unmarked for good.
+  const [markTry, setMarkTry] = useState(0)
+  // A fresh budget whenever the conditions change (host handed over, token renewed),
+  // so spent attempts under the old ones can't leave the room unmarked for good.
+  useEffect(() => setMarkTry(0), [isHost, roomToken])
+  useEffect(() => {
+    if (!encryptedHere || !isHost || markedEncrypted || !roomToken || markTry > 3) return
+    void setRoomFlags({ room: room.name, token: roomToken, encrypted: true }).catch((e) =>
+      reportError(e, { context: 'mark-encrypted' }),
+    )
+    const t = setTimeout(() => setMarkTry((n) => n + 1), 15_000)
+    return () => clearTimeout(t)
+  }, [encryptedHere, isHost, markedEncrypted, roomToken, room.name, markTry])
+
+  /** Host: whether people who join later see earlier chat (default on). */
+  const toggleChatHistory = useCallback(async () => {
+    if (!roomToken) return
+    try {
+      await setRoomFlags({ room: room.name, token: roomToken, chatHistory: !chatHistory })
+      toast(
+        chatHistory
+          ? 'People who join from now on won’t see earlier messages'
+          : 'People who join later will see earlier messages',
+        'neutral',
+      )
+    } catch (e) {
+      reportError(e, { context: 'toggle-chat-history' })
+      toast('Couldn’t change chat history — try again', 'danger')
+    }
+  }, [room.name, roomToken, chatHistory])
+
   return {
     isHost,
     isPrimaryHost,
@@ -261,6 +312,8 @@ export function useSessionControl(onLeave: () => void) {
     setCoHost,
     locked,
     waiting,
+    chatHistory,
+    toggleChatHistory,
     doLeave,
     endForEveryone,
     mergeInto,

@@ -8,9 +8,10 @@ import {
 import { ConnectionState, RoomEvent, Track, type Participant } from 'livekit-client'
 import { HAND_ATTR } from '@/features/reactions/useReactions'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
+import { displayNameOf } from '@/lib/participantName'
 
 function nameOf(p: Participant): string {
-  return p.name || p.identity.split('#')[0] || 'Someone'
+  return displayNameOf(p.identity, p.name, 'Someone')
 }
 
 /**

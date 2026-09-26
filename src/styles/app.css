@@ -170,6 +170,19 @@
     -webkit-font-smoothing: antialiased;
   }
 
+  /* Live feeds are not media players. lib/mediaGuards blocks the context menu
+     ("Show controls", Loop, PiP); this hides native controls however they get
+     switched on, and stops a feed being dragged out or long-press-saved. */
+  video {
+    -webkit-user-drag: none;
+    -webkit-touch-callout: none;
+    user-select: none;
+  }
+  video::-webkit-media-controls,
+  video::-webkit-media-controls-enclosure {
+    display: none !important;
+  }
+
   /* Subtle, theme-aware scrollbars — thin, rounded, low-contrast, fading into
      the surface instead of the chunky default. */
   * {
@@ -269,18 +282,25 @@
     animation: mn-flash 1.4s var(--ease-island);
   }
 
-  /* Speaking equalizer bars — a non-color cue paired with the speaking ring. */
+  /* Speaking equalizer bars — a non-color cue paired with the speaking ring.
+     Animated with transform, not height: a height keyframe re-runs layout on every
+     frame for as long as anyone talks, in every tile showing the bars, whereas
+     scaleY stays on the compositor. The bar is laid out at its FULL 11px and
+     squashed to 4/11 from the bottom, so it rests at the same 4px and peaks at the
+     same 11px, bottom-anchored as the old `items-end` growth was. */
   @keyframes mn-eq {
     0%,
     100% {
-      height: 4px;
+      transform: scaleY(calc(4 / 11));
     }
     50% {
-      height: 11px;
+      transform: scaleY(1);
     }
   }
   .mn-eq {
-    height: 4px;
+    height: 11px;
+    transform: scaleY(calc(4 / 11));
+    transform-origin: bottom;
     animation: mn-eq 0.9s var(--ease-island) infinite;
   }
 
@@ -379,6 +399,14 @@
     }
     .mn-core {
       animation: none !important;
+    }
+    /* Speaking bars: the old height animation ended on a real 4px box; match it,
+       so the resting bars sit centred in their pill rather than at the foot of an
+       11px box that is mostly empty. */
+    .mn-eq {
+      animation: none !important;
+      transform: none !important;
+      height: 4px !important;
     }
     /* Typing dots: genuinely static (not one clamped cycle) under reduced-motion. */
     .mn-typing-dot {

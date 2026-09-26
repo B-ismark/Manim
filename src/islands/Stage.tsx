@@ -40,6 +40,7 @@ import { useCopyLink } from '@/lib/useCopyLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
 import { useIslandBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
+import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
 import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
@@ -127,13 +128,33 @@ export function Stage() {
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
   const participants = useParticipants()
   const blocked = useBlockStore((s) => s.blocked)
-  const tracks = useTracks(
+  const visibleTracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
     { onlySubscribed: false },
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
+  // `.filter` hands back a NEW array every render, which made every useMemo
+  // downstream keyed on `tracks` (the gallery order, the packer's rows…) recompute
+  // on EVERY Stage render, whatever caused it. Keep the previous array while it
+  // holds the same entries in the same order. Participant and publication are live,
+  // mutable LiveKit objects, so a kept entry still reads current state at render
+  // time — but two memos downstream read mutable fields and were only ever correct
+  // because the array churned: the "videos first" sorts (`hasLiveVideo` →
+  // `publication.isMuted`) and the off-page speaker jump (`isSpeaking`). Those two
+  // fields ride in the key so those memos still refresh exactly when they must.
+  const tracksKey = visibleTracks
+    .map(
+      (t) =>
+        // sid, not just identity: a rejoin under the same name#device is a NEW
+        // participant object, and a camera-off placeholder has no trackSid to differ.
+        `${t.participant.sid}|${t.participant.identity}|${t.source}|${t.publication?.trackSid ?? ''}|` +
+        `${t.publication?.isMuted ? 1 : 0}${t.participant.isSpeaking ? 1 : 0}`,
+    )
+    .join(',')
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content, see above
+  const tracks = useMemo(() => visibleTracks, [tracksKey])
 
   const coarse = useIsTouch()
 
@@ -1108,7 +1129,7 @@ function RosterStrip({
 
 /** Display name for a tile's participant (strips the `#deviceId` identity suffix). */
 function tileName(t: TrackReferenceOrPlaceholder): string {
-  return t.participant.name || t.participant.identity.split('#')[0]
+  return displayNameOf(t.participant.identity, t.participant.name, '')
 }
 
 /**
@@ -1718,7 +1739,7 @@ function Tile({
   actions?: ReactNode
 }) {
   const p = trackRef.participant
-  const name = p.name || p.identity.split('#')[0]
+  const name = displayNameOf(p.identity, p.name, '')
   const { localParticipant } = useLocalParticipant()
   const room = useRoomContext()
   const { metadata: roomMetadata } = useRoomInfo()
@@ -1789,12 +1810,23 @@ function Tile({
   const activate = onActivate ?? (() => togglePin(p.identity))
 
   // Long-press (touch) — a second, more discoverable gesture alongside double-tap.
-  // A drag (swipe to switch layout) cancels it.
+  // Real movement cancels it (the touch gallery scrolls), but not the pixel or two
+  // a resting thumb always jitters: cancelling on ANY pointermove made the
+  // long-press nearly impossible to land on a real phone.
   const pressTimer = useRef<number | undefined>(undefined)
-  const startPress = () => {
+  const pressFrom = useRef<{ x: number; y: number } | null>(null)
+  const startPress = (e: React.PointerEvent) => {
+    pressFrom.current = { x: e.clientX, y: e.clientY }
     pressTimer.current = window.setTimeout(activate, 500)
   }
-  const cancelPress = () => window.clearTimeout(pressTimer.current)
+  const cancelPress = () => {
+    pressFrom.current = null
+    window.clearTimeout(pressTimer.current)
+  }
+  const movePress = (e: React.PointerEvent) => {
+    const from = pressFrom.current
+    if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) > 10) cancelPress()
+  }
 
   // Read the video's intrinsic aspect off the <video> element and report it to the
   // grid packer. 'resize' fires when the publisher rotates their phone mid-call, so
@@ -1804,6 +1836,13 @@ function Tile({
   // object-fit — the letterbox-vs-crop call needs the source shape too.
   const [videoAspect, setVideoAspect] = useState(0)
   const wantsAspect = Boolean(onAspect) || boxAspect !== undefined
+  // The grid passes `onAspect` as an inline closure (it binds the tile's key), so
+  // its identity changes every render. Read it through a ref: with it in the deps,
+  // every parent render tore down and re-attached the video listeners for nothing.
+  const onAspectRef = useRef(onAspect)
+  useEffect(() => {
+    onAspectRef.current = onAspect
+  })
   useEffect(() => {
     if (!wantsAspect || !hasVideo) return
     const root = tileRef.current
@@ -1814,7 +1853,7 @@ function Tile({
       if (video && video.videoWidth && video.videoHeight) {
         const ratio = video.videoWidth / video.videoHeight
         setVideoAspect(ratio)
-        onAspect?.(ratio)
+        onAspectRef.current?.(ratio)
       }
     }
     const attach = () => {
@@ -1834,7 +1873,7 @@ function Tile({
       video?.removeEventListener('resize', read)
       video?.removeEventListener('loadedmetadata', read)
     }
-  }, [onAspect, wantsAspect, hasVideo])
+  }, [wantsAspect, hasVideo])
 
   // Letterbox rather than crop when the two shapes are far apart — a laptop's
   // landscape camera in a phone's tall tile. Shares are always contained (a
@@ -1882,9 +1921,14 @@ function Tile({
       onPointerDown={startPress}
       onPointerUp={cancelPress}
       onPointerLeave={cancelPress}
-      onPointerMove={cancelPress}
+      onPointerCancel={cancelPress}
+      onPointerMove={movePress}
       className={cn(
         'group relative overflow-hidden rounded-tile bg-sunken',
+        // A tile is a gesture surface, not a document: without these a long-press
+        // selected the name pill or raised iOS's callout, and double-tap (pin) could
+        // zoom the page instead.
+        'touch-manipulation select-none [-webkit-touch-callout:none]',
         fill ? 'size-full' : 'aspect-video',
         'ring-2 transition-[box-shadow] duration-[var(--dur-fast)]',
         speaking ? 'ring-[var(--color-speaking)]' : 'ring-transparent',
@@ -2040,10 +2084,17 @@ function Tile({
           ) : (
             speaking && <SpeakingBars />
           )}
-          <span className="max-w-40 truncate">
-            {name}
-            {p.isLocal ? ' (you)' : myOtherDevice ? ' (your device)' : ''}
-            {isScreen ? ' — screen' : ''}
+          {/* The suffix sits outside the truncation: a long name used to push
+              "(you)" and "— screen" off the end, and those are the part that says
+              whose tile this is. */}
+          <span className="flex min-w-0 max-w-40">
+            <span className="truncate" dir="auto">
+              {name}
+            </span>
+            <span className="shrink-0 whitespace-pre">
+              {p.isLocal ? ' (you)' : myOtherDevice ? ' (your device)' : ''}
+              {isScreen ? ' — screen' : ''}
+            </span>
           </span>
         </span>
         <ConnectionQuality participant={p} degradedOnly className="rounded-control bg-overlay p-1" />

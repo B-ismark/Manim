@@ -76,20 +76,27 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
               ? 'The app updated in the background. Reload to get the latest version.'
               : 'An unexpected error interrupted the app. Reloading usually fixes it.'}
           </p>
-          <Button
-            variant="accent"
-            className="mt-4"
-            onClick={() => {
-              try {
-                sessionStorage.removeItem(RELOAD_FLAG)
-              } catch {
-                /* ignore */
-              }
-              window.location.assign('/')
-            }}
-          >
-            Reload
-          </Button>
+          {/* Reload means "this page again": mid-call, going to `/` threw away the
+              room you were in, and the invite link with it. Home stays as the way
+              out of a page that keeps crashing. */}
+          <div className="mt-4 flex justify-center gap-2">
+            <Button
+              variant="accent"
+              onClick={() => {
+                try {
+                  sessionStorage.removeItem(RELOAD_FLAG)
+                } catch {
+                  /* ignore */
+                }
+                window.location.reload()
+              }}
+            >
+              Reload
+            </Button>
+            <Button variant="neutral" onClick={() => window.location.assign('/')}>
+              Go home
+            </Button>
+          </div>
         </Island>
       </main>
     )

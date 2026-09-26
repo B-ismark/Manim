@@ -7,13 +7,11 @@ import { create } from 'zustand'
  */
 interface BlockState {
   blocked: string[]
-  isBlocked: (identity: string) => boolean
   toggle: (identity: string) => void
 }
 
-export const useBlockStore = create<BlockState>((set, get) => ({
+export const useBlockStore = create<BlockState>((set) => ({
   blocked: [],
-  isBlocked: (identity) => get().blocked.includes(identity),
   toggle: (identity) =>
     set((s) => ({
       blocked: s.blocked.includes(identity)

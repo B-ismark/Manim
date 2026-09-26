@@ -3,11 +3,13 @@ import {
   appErrors,
   attachErrorSink,
   closeContext,
+  closePanel,
   isTouch,
   join,
   newParticipant,
   openChat,
   openMessageActions,
+  openMore,
   replyToMessage,
   uniqueRoom,
 } from './helpers'
@@ -211,5 +213,40 @@ test.describe('Chat', () => {
     await composer.press('Enter')
     await expect(page.getByText('still alive')).toBeVisible()
     expect(appErrors(sink), appErrors(sink).join('\n')).toEqual([])
+  })
+})
+
+test.describe('Chat history setting', () => {
+  test('a late joiner sees earlier messages by default, and none once the host turns history off', async ({
+    page,
+    browser,
+  }) => {
+    const room = uniqueRoom('hist')
+    await join(page, room, 'Ada')
+    const composer = await openChat(page)
+    await expect(page.getByText('People who join later can see earlier messages.')).toBeVisible()
+    await composer.fill('said before anyone came')
+    await composer.press('Enter')
+
+    // Default on: the replay reaches a late joiner.
+    const grace = await newParticipant(browser, room, 'Grace')
+    await openChat(grace.page)
+    await expect(grace.page.getByText('said before anyone came')).toBeVisible({ timeout: 15_000 })
+    await closeContext(grace.context)
+
+    // Host turns it off from More; the next late joiner gets nothing and is told so.
+    // On a phone the chat sheet is modal and covers the bar, so close it first.
+    if (await isTouch(page)) await closePanel(page)
+    await openMore(page)
+    await page.getByRole('button', { name: 'Chat history' }).click()
+    await expect(page.getByText('People who join from now on won’t see earlier messages')).toBeVisible()
+
+    const lin = await newParticipant(browser, room, 'Lin')
+    await openChat(lin.page)
+    await expect(lin.page.getByText('People who join later won’t see earlier messages.')).toBeVisible()
+    // Give a replay every chance to arrive before asserting it didn't.
+    await lin.page.waitForTimeout(3000)
+    await expect(lin.page.getByText('said before anyone came')).toHaveCount(0)
+    await closeContext(lin.context)
   })
 })

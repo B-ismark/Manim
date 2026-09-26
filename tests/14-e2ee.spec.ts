@@ -77,4 +77,39 @@ test.describe('E2EE — encrypted call', () => {
       await closeContext(guest.context)
     }
   })
+
+  test('a guest whose link has no key is told to get the full link, not let into a call they can’t decode', async ({
+    page,
+    browser,
+  }) => {
+    const room = uniqueRoom('e2ee-nokey')
+    await join(page, room, 'Alice', '#e=testkey-e2e-door')
+    // The host marks the room once its encryption is really on (the padlock); wait
+    // until the server agrees, so the guest below meets the marked room.
+    await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
+    await expect
+      .poll(
+        async () =>
+          (await page.request.post('/api/knock', { data: { room, name: 'Probe', deviceId: 'probe', hasKey: false } }))
+            .status(),
+        { timeout: 15_000 },
+      )
+      .toBe(409)
+
+    // What an emailed invite opens: the room, without the key. A fresh context,
+    // so no remembered key either.
+    const context = await browser.newContext({ permissions: ['camera', 'microphone'] })
+    const guest = await context.newPage()
+    try {
+      await guest.goto(`/r/${room}`, { waitUntil: 'domcontentloaded' })
+      await guest.getByLabel('Your name').fill('Bob')
+      await guest.getByRole('button', { name: 'Join now' }).click()
+      await expect(guest.getByRole('heading', { name: 'This call is encrypted' })).toBeVisible({ timeout: 20_000 })
+      await expect(guest.getByRole('button', { name: /microphone/i })).toHaveCount(0)
+      // Alice is still alone: the keyless knock never became a seat.
+      await expect(page.getByRole('button', { name: /Participants \(1\)/ })).toBeVisible()
+    } finally {
+      await closeContext(context)
+    }
+  })
 })

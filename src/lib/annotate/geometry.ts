@@ -67,15 +67,3 @@ export function toUnit(p: Point, content: Rect): Point {
 export function fromUnit(u: Point, content: Rect): Point {
   return { x: content.x + u.x * content.w, y: content.y + u.y * content.h }
 }
-
-/** Is this container-relative point inside the painted video (not the bars)? */
-export function insideContent(p: Point, content: Rect): boolean {
-  return (
-    content.w > 0 &&
-    content.h > 0 &&
-    p.x >= content.x &&
-    p.x <= content.x + content.w &&
-    p.y >= content.y &&
-    p.y <= content.y + content.h
-  )
-}

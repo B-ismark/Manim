@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { cleanDisplayName } from '@/lib/displayName'
 import { persistNameToAccount } from '@/store/useAuthStore'
 
 /** Stable per-browser device id, used for multi-device identity (userId#deviceId). */
@@ -17,7 +18,7 @@ function loadDeviceId(): string {
 const NAME_KEY = 'manim-display-name'
 function loadName(): string {
   try {
-    return localStorage.getItem(NAME_KEY) ?? ''
+    return cleanDisplayName(localStorage.getItem(NAME_KEY) ?? '')
   } catch {
     return ''
   }
@@ -55,7 +56,9 @@ export const useAppStore = create<AppState>((set) => ({
     cameraEnabled: true,
     lowBandwidth: false,
   },
-  setDisplayName: (displayName, persist = true) => {
+  setDisplayName: (raw, persist = true) => {
+    // Profile names from sign-in go through here too, so this is the one gate.
+    const displayName = cleanDisplayName(raw)
     try {
       // Device fallback: keeps the name for guests + offline, and seeds the
       // account on first sign-in. Signed-in users sync it to their profile too.

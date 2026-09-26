@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+import { mediaErrorMessage } from '@/lib/mediaErrors'
+import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Link, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
@@ -6,6 +8,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
+import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
@@ -19,7 +22,8 @@ const clampAspect = (r: number) =>
 
 export interface PreJoinProps {
   room: string
-  onJoin: () => void
+  /** Resolves once the attempt settles (see `join`). */
+  onJoin: () => void | Promise<void>
   /** True when the invite link carries an E2EE key (#e) — the call is encrypted. */
   encrypted?: boolean
 }
@@ -43,6 +47,12 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // 4:3 — the most common webcam mode, and a middle ground that barely moves when
   // the true ratio lands, instead of the 16:9→4:3 lurch a landscape default gives.
   const [previewAspect, setPreviewAspect] = useState(4 / 3)
+  // Mirror like a selfie only when the camera faces you. A rear or external
+  // camera mirrored shows the world (and any text in it) backwards — the stage
+  // tile already follows this rule via `selfFacing`; the preview didn't.
+  const [previewFacesUser, setPreviewFacesUser] = useState(true)
+  // Bumped to re-acquire the preview after a join that didn't leave this screen.
+  const [previewNonce, setPreviewNonce] = useState(0)
   // 'prompt' → we can prime; 'denied' → guide to OS settings; 'granted'/unknown → nothing.
   const [permission, setPermission] = useState<'unknown' | 'prompt' | 'granted' | 'denied'>(
     'unknown',
@@ -141,11 +151,19 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         // for browsers that report nothing here (and for a mid-preview change).
         const s = stream.getVideoTracks()[0]?.getSettings()
         if (s?.width && s?.height) setPreviewAspect(clampAspect(s.width / s.height))
+        setPreviewFacesUser(s?.facingMode !== 'environment')
         // A successful preview means access is already granted — never show the
         // priming card (esp. on browsers without the Permissions API).
         setPermission('granted')
-      } catch {
-        setError('Camera permission denied or unavailable.')
+      } catch (e) {
+        if (cancelled) return
+        setError(mediaErrorMessage(e, 'camera') ?? "Couldn't start your camera.")
+        // A camera that can't start now won't start at connect either, and with the
+        // toggle left on the call would try (and warn) again. Switch it off so Join
+        // means "join without video"; the toggle is right there to retry. Blocked
+        // access is the exception: that's the priming/permission flow's job.
+        const name = (e as { name?: string } | null)?.name
+        if (name !== 'NotAllowedError' && name !== 'SecurityError') setPrejoin({ cameraEnabled: false })
       }
     }
 
@@ -159,7 +177,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       cancelled = true
       stop()
     }
-  }, [cameraOn, holdPreview])
+  }, [cameraOn, holdPreview, previewNonce])
 
   // Backstop for the aspect read in `start()`: a browser whose getSettings()
   // reports nothing useful, and a camera that renegotiates mid-preview. Bound
@@ -205,10 +223,25 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // (preview still live while the call grabs it) is what flickered/blacked the
   // first in-call frame. The unmount cleanup also stops it, but releasing here
   // gives the OS a head start.
-  const join = () => {
+  //
+  // If the attempt settles and we're STILL here (the join failed and dropped back
+  // to this screen without a remount), turn the preview back on — otherwise the
+  // error card sat over a black box, which reads as "your camera broke".
+  const mounted = useRef(true)
+  useEffect(() => {
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
+  }, [])
+  const join = async () => {
     streamRef.current?.getTracks().forEach((t) => t.stop())
     streamRef.current = null
-    onJoin()
+    try {
+      await onJoin()
+    } finally {
+      if (mounted.current) setPreviewNonce((n) => n + 1)
+    }
   }
 
   return (
@@ -274,7 +307,14 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
                 playsInline
                 // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
                 // the frame is shown whole rather than trimmed to fit.
-                className="size-full object-contain [transform:scaleX(-1)]"
+                // Not a media player: no PiP / cast buttons on a live preview
+                // (lib/mediaGuards covers the context menu for every feed).
+                disablePictureInPicture
+                disableRemotePlayback
+                className={cn(
+                  'size-full object-contain',
+                  previewFacesUser && '[transform:scaleX(-1)]',
+                )}
               />
             ) : (
               <div className="grid size-full place-items-center px-4 text-center text-sm text-ink-subtle">
@@ -339,9 +379,11 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               }
             }}
             placeholder="Your name"
+            maxLength={MAX_NAME_LEN}
+            dir="auto"
             aria-label="Your name"
             autoComplete="name"
-            className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-base outline-none sm:text-sm placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
 
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
@@ -359,7 +401,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               {encrypted && (
                 <>
                   <LockIcon />
-                  <span>Encrypted</span>
+                  {/* "Encrypted link", not "Encrypted": this screen can only vouch
+                      that the link carries a key. Encryption starts at connect,
+                      and it covers audio and video, not chat. */}
+                  <span>Encrypted link</span>
                   <span aria-hidden className="opacity-50">
                     ·
                   </span>
@@ -417,11 +462,18 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
         analyser.fftSize = 256
         ctx.createMediaStreamSource(s).connect(analyser)
         const data = new Uint8Array(analyser.frequencyBinCount)
-        const tick = () => {
-          analyser.getByteTimeDomainData(data)
-          let peak = 0
-          for (const v of data) peak = Math.max(peak, Math.abs(v - 128))
-          setLevel(Math.min(1, peak / 64))
+        // Keep the frame loop but read + commit the level at ~20Hz: a setLevel per frame
+        // re-rendered this component 60-120 times a second for a bar whose own
+        // 75ms width transition smooths anything faster than that anyway.
+        let lastCommit = 0
+        const tick = (now: number = performance.now()) => {
+          if (now - lastCommit >= 50) {
+            lastCommit = now
+            analyser.getByteTimeDomainData(data)
+            let peak = 0
+            for (const v of data) peak = Math.max(peak, Math.abs(v - 128))
+            setLevel(Math.min(1, peak / 64))
+          }
           raf = requestAnimationFrame(tick)
         }
         tick()
