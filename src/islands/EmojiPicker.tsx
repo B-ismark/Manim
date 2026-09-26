@@ -130,7 +130,7 @@ export function EmojiPicker({ onSelect }: { onSelect: (emoji: string) => void })
               aria-label={d.name}
               title={d.name}
               onClick={() => onSelect(d.e)}
-              className="flex aspect-square items-center justify-center rounded-control text-2xl leading-none hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
+              className="flex aspect-square items-center justify-center rounded-control text-2xl leading-none hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
               {d.e}
             </button>

@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { MergeIcon } from '@/components/icons'
 import { useCallStore } from '@/store/useCallStore'
@@ -26,6 +28,12 @@ export function InCallIncomingBanner({
   const incoming = useCallStore((s) => s.incoming)
   const dismiss = useCallStore((s) => s.dismiss)
   const navigate = useNavigate()
+  // A ring mid-call is time-sensitive, and the banner alone is silent.
+  const announce = useAnnounce()
+  const caller = incoming?.fromName
+  useEffect(() => {
+    if (caller) announce(`${caller} is calling`, 'assertive')
+  }, [caller, announce])
   if (!incoming) return null
 
   const room = incoming.room

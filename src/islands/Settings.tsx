@@ -4,6 +4,7 @@ import { Dialog, Toggle, Button, Avatar, Popover, IconButton } from '@/component
 import { SettingsIcon } from '@/components/icons'
 import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
 import { useSoundStore } from '@/store/useSoundStore'
+import { useShortcutStore } from '@/store/useShortcutStore'
 import { useAppStore } from '@/store/useAppStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -81,6 +82,9 @@ function SettingsPopover() {
 function SettingsContent() {
   const soundOn = useSoundStore((s) => s.enabled)
   const toggleSound = useSoundStore((s) => s.toggle)
+  const touch = useIsTouch()
+  const shortcutsOn = useShortcutStore((s) => s.enabled)
+  const setShortcutsOn = useShortcutStore((s) => s.setEnabled)
   const displayName = useAppStore((s) => s.displayName)
   const setDisplayName = useAppStore((s) => s.setDisplayName)
   const notifyOn = useNotifyStore((s) => s.enabled)
@@ -186,6 +190,15 @@ function SettingsContent() {
             label="UI sounds"
             className="w-full justify-between"
           />
+          {/* One-key shortcuts only exist with a keyboard and pointer. */}
+          {!touch && (
+            <Toggle
+              checked={shortcutsOn}
+              onCheckedChange={setShortcutsOn}
+              label="One-key shortcuts in calls (M, V, C, P, F)"
+              className="w-full justify-between"
+            />
+          )}
           {notifSupported && (
             <div>
               <Toggle

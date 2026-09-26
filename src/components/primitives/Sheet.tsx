@@ -3,6 +3,7 @@ import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { useCallback, useEffect, useRef, useState, type PointerEvent, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 import { useKeyboardInset } from '@/lib/keyboardInset'
+import { ownsEscape, useReturnFocus } from './useReturnFocus'
 
 export interface SheetProps {
   open: boolean
@@ -174,6 +175,8 @@ export function Sheet({
       ? { bottom: kb, maxHeight: `calc(100dvh - ${kb}px - 1rem)` }
       : undefined
 
+  const onCloseAutoFocus = useReturnFocus(open)
+
   return (
     <RD.Root open={open} onOpenChange={onOpenChange} modal={modal}>
       <RD.Portal>
@@ -184,6 +187,9 @@ export function Sheet({
           // Non-modal: keep the panel open when the user clicks the stage or the
           // control bar (mute / leave / etc.) — only Esc or the close button shuts it.
           onInteractOutside={modal ? undefined : (e) => e.preventDefault()}
+          onCloseAutoFocus={onCloseAutoFocus}
+          onEscapeKeyDown={(e) => ownsEscape(e.target) && e.preventDefault()}
+          aria-modal={modal ? 'true' : undefined}
           // Keyboard offset last: it must win over the dragged detent's
           // `maxHeight: 'none'`, or a dragged-open sheet ignores the clamp.
           style={{ ...draggableStyle, ...keyboardStyle }}
@@ -227,7 +233,7 @@ export function Sheet({
             )}
             <RD.Close
               aria-label="Close panel"
-              className="ml-auto rounded-control p-1.5 text-ink-muted hover:bg-sunken hover:text-ink"
+              className="ml-auto grid place-items-center rounded-control p-1.5 text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent pointer-coarse:size-11 pointer-coarse:-my-1.5"
             >
               <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />

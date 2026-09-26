@@ -30,12 +30,18 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
   icon: ReactNode
   tone?: Tone
   size?: Size
+  /** Visual "on" styling only. */
   active?: boolean
+  /** `aria-pressed`, for a toggle whose label stays the same in both states. A
+   *  control whose label flips ("Mute" / "Unmute") already says its state and must
+   *  not ALSO be pressed ("Unmute microphone, pressed"), and a menu or popover
+   *  trigger is expanded, not pressed; so this is separate from `active`. */
+  pressed?: boolean
 }
 
 /** Round, icon-only control. Backbone of the control bar and toolbars. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, icon, tone = 'neutral', size = 'md', active, className, type = 'button', ...rest },
+  { label, icon, tone = 'neutral', size = 'md', active, pressed, className, type = 'button', ...rest },
   ref,
 ) {
   return (
@@ -43,9 +49,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       ref={ref}
       type={type}
       aria-label={label}
-      // Only a real toggle is pressed or not: without `active`, a plain action
-      // ("Close panel", "Send message") was announced as "toggle button, not pressed".
-      aria-pressed={active}
+      aria-pressed={pressed}
       title={label}
       className={cn(
         'inline-flex items-center justify-center rounded-control',
