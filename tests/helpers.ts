@@ -227,8 +227,9 @@ export async function revealChrome(page: Page) {
     // stage anyway would just toggle whatever IS there.
     if (!box) return
     // The WHOLE box inside the viewport, not just its top edge: hidden is a 150%
-    // translate, so a partially-visible bar is one that is still moving.
-    if (box.y >= 0 && box.y + box.height <= vp.height) return
+    // translate, so a partially-visible bar is one that is still moving. Both axes:
+    // a phone on its side hides the bar as a rail, sliding RIGHT.
+    if (box.y >= 0 && box.y + box.height <= vp.height && box.x >= 0 && box.x + box.width <= vp.width) return
     await page.touchscreen.tap(Math.round(vp.width / 2), 4)
     await page.waitForTimeout(300)
   }
@@ -368,6 +369,8 @@ export async function selectStageView(
   await expect(async () => {
     if (wanted.test((await chip.getAttribute('aria-label')) ?? '')) return
     if (!(await page.getByRole('menu').isVisible().catch(() => false))) {
+      // The chip fades with the touch chrome (and won't take a tap while faded).
+      await revealChrome(page)
       await chip.tap({ timeout: 4000 })
     }
     await page.getByRole('menuitem', { name: view, exact: true }).tap({ timeout: 4000 })

@@ -419,8 +419,9 @@ function StageViewSwitcher({
         rail && 'top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]',
         hidden && 'pointer-events-none opacity-0',
       )}
+      // Faded, not removed from the accessibility tree: a screen-reader user can't
+      // see the bars go and must still reach it, exactly like the island.
       style={rail ? undefined : { bottom: selfCardBottom + lift }}
-      aria-hidden={hidden || undefined}
       data-no-stage-gesture
     >
       <DropdownMenu

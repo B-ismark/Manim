@@ -130,6 +130,16 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   can't be scrolled clear of it. Emulators can't report an inset, so
   `11-mobile-fit` forces one onto the `[data-safe-area-probe]` element and the island
   together; that seam is the only way this class of bug is visible in a browser test.
+  - **The bands are live, not fixed** (`lib/chromeBands`). On touch, when the chrome
+    auto-hides, `useChromeHidden` collapses both bands (`useIslandBand`, `useTopBand`)
+    to a hairline and the tiles glide into the room (`TileRows` places tiles
+    absolutely in ONE keyed list — per-row wrappers remounted a video that changed
+    row). A phone on its side (`useRail`, compact height < 480) turns the island into
+    a right-edge column: the bottom band goes, `useRailBand` reserves the right side
+    for the gallery, and the view chip moves top-left. While hidden and muted a
+    `MutedPill` stays (top-centre upright, bottom-left sideways with its own strip).
+    A test that measures against the bar must `revealChrome` first — a faded bar
+    reserves nothing, by design.
 - **A `hidden` class is INERT on any component with a base display class.** `cn()` is a
   plain joiner, so the className lands after the component's own `inline-flex`,
   Tailwind emits `.hidden` first, specificity ties and source order wins. Gate with a
