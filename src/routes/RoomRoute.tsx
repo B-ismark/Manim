@@ -389,7 +389,8 @@ export function RoomRoute() {
   }
 
   if (expired) {
-    return <ExpiredLink room={room} onHome={() => navigate('/')} />
+    // "Start a new call" means that: the home page mints one on arrival.
+    return <ExpiredLink room={room} onHome={() => navigate('/', { state: { newCall: true } })} />
   }
 
   // Opening the full link afterwards brings the key, and this screen steps aside.

@@ -95,7 +95,6 @@ of people (see that PR).
       everyone left) plus Rejoin and Home. Today people land on the home page.
 - [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
       should move into TopStack so the layering rules cover them.
-- [ ] "Start a new call" on the expired-link screen only goes home.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
 - [ ] Firefox's own PiP button appears on hover over tiles.
