@@ -1,4 +1,11 @@
-import { useCallback, useLayoutEffect, useRef } from 'react'
+import { createContext, useCallback, useLayoutEffect, useRef } from 'react'
+
+/**
+ * Where a dialog returns focus when its opener is gone. Most in-call dialogs are
+ * opened from a row of the More menu, which unmounts in the same commit, so the
+ * row can't be refocused; ControlBar provides the More button instead.
+ */
+export const ReturnFocusContext = createContext<{ current: HTMLElement | null } | undefined>(undefined)
 
 /**
  * Put focus back where it was when a Dialog or Sheet closes.

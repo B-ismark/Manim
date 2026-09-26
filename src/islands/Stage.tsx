@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -880,10 +880,17 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   useEffect(() => {
     if (page !== current) setPage(current)
   }, [page, current])
-  // Reaching either end disables that arrow, which would drop keyboard focus to
-  // <body>; hand it to the other arrow first.
+  // Reaching either end disables that arrow, which drops keyboard focus to
+  // <body>. After the page changes (both arrows now have their final state),
+  // hand focus from a disabled arrow to the other one. A layout effect: the
+  // browser's focus fixup moves focus off a disabled element before the next paint.
   const prevRef = useRef<HTMLButtonElement>(null)
   const nextRef = useRef<HTMLButtonElement>(null)
+  useLayoutEffect(() => {
+    const a = document.activeElement
+    if (a === prevRef.current && current === 0) nextRef.current?.focus()
+    else if (a === nextRef.current && current >= pageCount - 1) prevRef.current?.focus()
+  }, [current, pageCount])
 
   const start = current * perPage
   const shown = ordered.slice(start, start + perPage)
@@ -935,10 +942,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
             ref={prevRef}
             aria-label="Previous page"
             disabled={current === 0}
-            onClick={() => {
-              if (current - 1 <= 0) nextRef.current?.focus()
-              setPage((p) => Math.max(0, p - 1))
-            }}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
             className="absolute left-1 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-overlay text-white shadow-pop backdrop-blur transition-opacity hover:bg-overlay disabled:pointer-events-none disabled:opacity-0 [&_svg]:size-5"
           >
             <ChevronLeftIcon />
@@ -948,10 +952,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
             ref={nextRef}
             aria-label="Next page"
             disabled={current >= pageCount - 1}
-            onClick={() => {
-              if (current + 1 >= pageCount - 1) prevRef.current?.focus()
-              setPage((p) => Math.min(pageCount - 1, p + 1))
-            }}
+            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
             className="absolute right-1 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-overlay text-white shadow-pop backdrop-blur transition-opacity hover:bg-overlay disabled:pointer-events-none disabled:opacity-0 [&_svg]:size-5"
           >
             <ChevronRightIcon />

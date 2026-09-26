@@ -1,7 +1,7 @@
 import * as RD from '@radix-ui/react-dialog'
-import type { ReactNode } from 'react'
+import { useContext, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
-import { ownsEscape, useReturnFocus } from './useReturnFocus'
+import { ownsEscape, ReturnFocusContext, useReturnFocus } from './useReturnFocus'
 
 export interface DialogProps {
   open: boolean
@@ -28,7 +28,8 @@ export function Dialog({
   className,
   returnFocus,
 }: DialogProps) {
-  const onCloseAutoFocus = useReturnFocus(open, returnFocus)
+  const inherited = useContext(ReturnFocusContext)
+  const onCloseAutoFocus = useReturnFocus(open, returnFocus ?? inherited)
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>
       <RD.Portal>
@@ -36,6 +37,8 @@ export function Dialog({
         <RD.Content
           onCloseAutoFocus={onCloseAutoFocus}
           onEscapeKeyDown={(e) => ownsEscape(e.target) && e.preventDefault()}
+          // Radix traps focus but never says so; the call-shortcut guard reads this.
+          aria-modal="true"
           className={cn(
             'fixed left-1/2 top-1/2 z-50 flex w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 flex-col lg:w-[min(90vw,38rem)]',
             // Bound to the viewport so tall bodies (effects preview + controls)

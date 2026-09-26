@@ -189,6 +189,7 @@ export function Sheet({
           onInteractOutside={modal ? undefined : (e) => e.preventDefault()}
           onCloseAutoFocus={onCloseAutoFocus}
           onEscapeKeyDown={(e) => ownsEscape(e.target) && e.preventDefault()}
+          aria-modal={modal ? 'true' : undefined}
           // Keyboard offset last: it must win over the dragged detent's
           // `maxHeight: 'none'`, or a dragged-open sheet ignores the clamp.
           style={{ ...draggableStyle, ...keyboardStyle }}

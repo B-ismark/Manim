@@ -37,9 +37,8 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   }, [paused])
   return (
     <div
-      // A failure interrupts (alert); everything else waits its turn in the
-      // stack's polite region below.
-      role={toast.tone === 'danger' ? 'alert' : undefined}
+      // No role of its own: the stack below is the one live region. A nested
+      // alert inside it is read twice by NVDA and JAWS in Chrome.
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}

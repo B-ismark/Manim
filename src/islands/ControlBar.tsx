@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocalParticipant, useMediaDeviceSelect, useRoomContext } from '@livekit/components-react'
 import { toast } from '@/store/useToastStore'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
@@ -14,6 +14,7 @@ import {
   Toggle,
   Tooltip,
 } from '@/components/primitives'
+import { ReturnFocusContext } from '@/components/primitives/useReturnFocus'
 import {
   CameraIcon,
   CameraOffIcon,
@@ -178,6 +179,7 @@ export function ControlBar({
     [],
   )
   const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLButtonElement>(null)
   // The audio tray. Not a Radix layer, so the DOM-based auto-hide guard in
   // useStageChrome can't see it — it needs the explicit hold below or the island
   // would slide out of the thumb zone taking an open tray with it.
@@ -303,11 +305,13 @@ export function ControlBar({
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
       const el = e.target as HTMLElement | null
       if (el?.closest('input, textarea, [contenteditable="true"], select')) return
-      // Don't hijack keys while a MODAL dialog or a menu is open (e.g. the
-      // shortcuts dialog). Only modal: the docked chat/people panel is a
-      // non-modal dialog too, and matching it switched every shortcut off for as
-      // long as the panel was open.
+      // Don't hijack keys while a modal dialog or a menu is open (e.g. the
+      // shortcuts dialog), or while focus is inside a popover or the side panel.
+      // Only MODAL dialogs block globally (Dialog and a modal Sheet set
+      // aria-modal): the docked chat/people panel is a non-modal dialog too, and
+      // matching every [role=dialog] switched all shortcuts off while it was open.
       if (document.querySelector('[role="dialog"][aria-modal="true"], [role="menu"]')) return
+      if (el?.closest('[role="dialog"]')) return
       switch (e.key.toLowerCase()) {
         case 'm':
           void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
@@ -785,7 +789,7 @@ export function ControlBar({
               onClick={() => togglePanel('chat')}
             />
             {unread > 0 && panel !== 'chat' && (
-              <span className="pointer-events-none absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-control bg-accent px-1 text-[10px] font-semibold text-accent-ink">
+              <span aria-hidden className="pointer-events-none absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-control bg-accent px-1 text-[10px] font-semibold text-accent-ink">
                 {unread > 9 ? '9+' : unread}
               </span>
             )}
@@ -803,6 +807,7 @@ export function ControlBar({
         {touch ? (
           <>
             <IconButton
+              ref={moreRef}
               label="More options"
               icon={<MoreIcon />}
               tone="neutral"
@@ -822,7 +827,7 @@ export function ControlBar({
             side="top"
             align="end"
             trigger={
-              <IconButton label="More options" icon={<MoreIcon />} tone="neutral" active={moreOpen} />
+              <IconButton ref={moreRef} label="More options" icon={<MoreIcon />} tone="neutral" active={moreOpen} />
             }
           >
             <div className="max-h-[min(70vh,32rem)] w-80 max-w-[85vw] overflow-y-auto p-2 no-scrollbar">
@@ -831,6 +836,9 @@ export function ControlBar({
           </Popover>
         )}
 
+        {/* Opened from More rows that unmount as they open, so closing returns
+            focus to the More button rather than to <body>. */}
+        <ReturnFocusContext.Provider value={moreRef}>
         <SettingsDialog open={modal === 'settings'} onOpenChange={modalToggle('settings')} />
         <EffectsDialog open={modal === 'effects'} onOpenChange={modalToggle('effects')} controls={blur} />
         <Dialog
@@ -869,6 +877,7 @@ export function ControlBar({
             </Button>
           </div>
         </Dialog>
+        </ReturnFocusContext.Provider>
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
@@ -1030,7 +1039,8 @@ function ReactionButton({
       align="center"
       trigger={
         <IconButton
-          label="Reactions and raise hand"
+          // The raised hand is otherwise shown only by the fill colour.
+          label={handRaised ? 'Reactions and raise hand, your hand is raised' : 'Reactions and raise hand'}
           icon={<ReactionIcon />}
           tone={handRaised ? 'accent' : 'neutral'}
           active={open || handRaised}

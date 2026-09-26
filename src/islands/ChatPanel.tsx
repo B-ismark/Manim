@@ -374,7 +374,15 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       )}
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <div ref={listRef} onScroll={onListScroll} className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
+        {/* A log: new messages are read out while the panel is open (the "New
+            message" toast only fires while it's closed). */}
+        <div
+          ref={listRef}
+          onScroll={onListScroll}
+          role="log"
+          aria-label="Messages"
+          className="min-h-0 flex-1 overflow-y-auto px-3 py-3"
+        >
           <MessageList
             items={items}
             reactions={reactions}
@@ -537,6 +545,8 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                 label="Add emoji"
                 icon={<ReactionIcon />}
                 active={emojiOpen}
+                aria-haspopup="dialog"
+                aria-expanded={emojiOpen}
                 className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
                 onClick={() => setEmojiOpen(true)}
               />
@@ -578,6 +588,8 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
                   label="Send a GIF"
                   icon={<GifIcon />}
                   active={gifOpen}
+                  aria-haspopup="dialog"
+                  aria-expanded={gifOpen}
                   className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
                   onClick={() => setGifOpen(true)}
                 />

@@ -32,7 +32,7 @@ export function Tabs({ items, value, onValueChange, children, className }: TabsP
               'transition-colors duration-[var(--dur-fast)] outline-none',
               // An outline, not a ring: the active pill already uses `ring-*`, and
               // the base `outline-none` had left keyboard users no focus mark at all.
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent',
+              'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent',
               'text-ink-muted hover:text-ink',
               // Active pill: lifted surface + an inset ring. The ring carries the
               // contrast in dark mode, where surface↔sunken differ by ~ΔL 0.03 and
