@@ -9,7 +9,11 @@
   connect/img/style are kept permissive enough not to break LiveKit (wss),
   Supabase (https+wss), Giphy, or Tailwind's injected styles; the strict bits
   (frame-ancestors, object-src, base-uri) block clickjacking + base-tag/object
-  injection. script-src allows the MediaPipe CDN + wasm (blur), and Sentry's
+  injection. script-src allows blob: because the Krisp noise filter builds its
+  AudioWorklet module as a blob URL (a worklet is governed by script-src, not
+  worker-src — without it noise suppression fails WORKLET_NOT_SUPPORTED on the
+  deployed site only; only script already on the page can mint a blob URL). It
+  also allows the MediaPipe CDN + wasm (blur), and Sentry's
   loader (js.sentry-cdn.com) plus the SDK bundle it pulls in
   (browser.sentry-cdn.com) for crash reports when VITE_SENTRY_DSN is set; the
   reports themselves go to *.ingest.sentry.io, already inside connect-src.
@@ -26,7 +30,7 @@ export const CSP = [
   "media-src 'self' blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://browser.sentry-cdn.com",
+  "script-src 'self' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://browser.sentry-cdn.com",
   "worker-src 'self' blob:",
   "connect-src 'self' https: wss:",
 ].join('; ')
