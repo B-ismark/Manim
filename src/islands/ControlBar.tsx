@@ -973,7 +973,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ['V', 'Turn camera on / off'],
   ['C', 'Show or hide chat'],
   ['P', 'Show or hide people'],
-  ['F', 'Toggle full screen'],
+  ['F', 'Enter or exit full screen'],
   ['?', 'Show this help'],
 ]
 

@@ -17,8 +17,10 @@ export function CompanionBanner({
   onTransfer: () => void
 }) {
   return (
-    <Island elevation="raised" pad="sm" className="pointer-events-auto flex items-center gap-3">
-      <p className="text-sm text-ink">
+    <Island elevation="raised" pad="sm" className="pointer-events-auto flex flex-wrap items-center gap-3">
+      {/* Wraps: at phone width the two buttons drop under the text instead of
+          pushing the banner off-screen. */}
+      <p className="min-w-40 flex-1 text-sm text-ink">
         Second device — sound off
         <span className="block text-xs text-ink-subtle">
           You’re in this call on another device.

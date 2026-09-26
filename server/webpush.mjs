@@ -47,7 +47,10 @@ async function vapidAuthHeader(env, endpoint) {
     JSON.stringify({
       aud,
       exp: Math.floor(Date.now() / 1000) + 12 * 3600,
-      sub: env.VAPID_SUBJECT || 'mailto:admin@manim.app',
+      // Who push services contact about this sender. A Worker SECRET, not a var in
+      // wrangler.toml: the repo is public and this is usually a personal address.
+      // Unset, the project's own page stands in (the spec allows an https URL).
+      sub: env.VAPID_SUBJECT || 'https://github.com/B-ismark/Manim',
     }),
   )
   const signingInput = `${header}.${payload}`

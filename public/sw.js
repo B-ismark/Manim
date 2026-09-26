@@ -11,7 +11,7 @@ self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim(
 self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification('Incoming call', {
-      body: 'Someone is calling you on Manim — tap to open.',
+      body: 'Someone is calling you on Manim',
       tag: 'mn-incoming',
       renotify: true,
       requireInteraction: true,

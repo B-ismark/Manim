@@ -397,7 +397,7 @@ export function ParticipantsPanel() {
         open={removeTarget !== null}
         onOpenChange={(o) => !o && setRemoveTarget(null)}
         title={`Remove ${removeTarget?.name ?? ''}?`}
-        description="They’ll be disconnected from the call. They can rejoin unless you lock the room."
+        description="They’ll be disconnected from the call. They can rejoin unless you lock the call."
       >
         <div className="flex justify-end gap-2">
           <Button variant="neutral" onClick={() => setRemoveTarget(null)}>

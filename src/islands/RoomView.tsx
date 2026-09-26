@@ -348,7 +348,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       if (now - lastE2eeWarn.current < 15_000) return // throttle: errors burst per-frame
       lastE2eeWarn.current = now
       toast(
-        'Encryption mismatch — someone has an old invite link and can’t see or hear you. Send them the current one',
+        'Encryption mismatch — someone joined with a different invite link and can’t see or hear you',
         'danger',
       )
     }

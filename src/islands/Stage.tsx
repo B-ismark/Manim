@@ -595,7 +595,7 @@ function TouchStage({
    *
    * "Shared screen" un-demotes it and "Speaker"/"Gallery" demote it, because
    * `demotedShares` IS the per-viewer "I don't want this share full-bleed" flag —
-   * the same one the tile's own "Show as grid" button sets. Routing the switcher
+   * the same one the tile's own "Show in gallery" button sets. Routing the switcher
    * through it means the chip and that button can't disagree about what you asked
    * for, which two independent flags would eventually do.
    */
@@ -648,7 +648,7 @@ function TouchStage({
               onActivate={() => toggleShareDemoted(shareSid)}
               action={{
                 icon: <GridIcon />,
-                label: 'Show as grid',
+                label: 'Show in gallery',
                 onClick: () => toggleShareDemoted(shareSid),
               }}
               actions={
@@ -1486,7 +1486,7 @@ function ContentStage({
                   onActivate={() => (bigIsShare ? toggleShareDemoted(featuredSid) : setSpotlight(null))}
                   action={
                     bigIsShare
-                      ? { icon: <GridIcon />, label: 'Show as grid', onClick: () => toggleShareDemoted(featuredSid) }
+                      ? { icon: <GridIcon />, label: 'Show in gallery', onClick: () => toggleShareDemoted(featuredSid) }
                       : { icon: <ScreenShareIcon />, label: 'Back to shared screen', onClick: () => setSpotlight(null) }
                   }
                   actions={

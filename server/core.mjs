@@ -326,7 +326,7 @@ export async function handleKnock(env, body) {
     return { status: 400, body: { error: 'Use a shorter name, without # or other special characters.' } }
   }
   if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64 || /[#\u0000-\u001f\u007f]/.test(deviceId))) {
-    return { status: 400, body: { error: 'Couldn’t join from this browser. Reload the page and try again.' } }
+    return { status: 400, body: { error: 'Couldn’t join from this browser. Try a different browser.' } }
   }
 
   const identity = `${name}#${deviceId || 'web'}`

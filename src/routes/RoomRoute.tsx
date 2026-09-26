@@ -24,7 +24,7 @@ import { addBreadcrumb, reportError } from '@/lib/report'
 function notifyAdmitted(room: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   try {
-    const n = new Notification("You’re in — tap to join", {
+    const n = new Notification("You’re in — open Manim to join", {
       body: `${prettyRoom(room)} is ready for you.`,
       tag: 'mn-admit',
     })

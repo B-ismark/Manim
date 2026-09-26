@@ -492,7 +492,7 @@ grant execute on function get_push_targets(uuid) to authenticated;
 
 **VAPID keys** — generate one keypair: `npx web-push generate-vapid-keys`.
 - Client/build var (Cloudflare → manim → Build): `VITE_VAPID_PUBLIC_KEY` = the public key.
-- Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (e.g. `mailto:you@domain.com`), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
+- Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` as a **Secret** (e.g. `mailto:you@domain.com`: push services use it to reach you about problems; a Secret because this repo is public; unset, it falls back to the repo's URL), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
 - iOS note: Web Push needs the PWA installed to the Home Screen (Add to Home Screen) — Safari only delivers push to installed web apps.
 
 ## 5. LiveKit Cloud

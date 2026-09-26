@@ -16,7 +16,7 @@ import { getMe } from '@/lib/orchestrator'
 import { supabase } from '@/lib/supabase'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
-import { prettyRoom, toSlug } from '@/lib/roomName'
+import { distinctRoomNames, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
 
@@ -50,9 +50,9 @@ function randomRoom(): string {
 function signInError(ex: unknown, fallback: string): string {
   const m = ex instanceof Error ? ex.message : ''
   if (/rate limit|security purposes|too many/i.test(m)) {
-    return 'Too many sign-in emails — wait a minute and try again'
+    return 'Too many sign-in emails — wait a minute and try again.'
   }
-  if (/not configured/i.test(m)) return 'Sign-in isn’t available right now'
+  if (/not configured/i.test(m)) return 'Sign-in isn’t available right now.'
   return fallback
 }
 
@@ -162,7 +162,7 @@ export function Landing() {
     if (gated && !allowed && !parsed.secrets.secret) {
       toast(
         signedIn
-          ? 'Your account isn’t approved to start calls yet.'
+          ? 'Your account isn’t approved to start calls yet'
           : 'Sign in with an approved account to start a call',
         'warning',
       )
@@ -325,16 +325,17 @@ function OtherDeviceMeetings({
   onJoin: (room: string, secrets: RoomSecrets) => void
 }) {
   if (meetings.length === 0) return null
+  const names = distinctRoomNames(meetings.map((m) => m.room))
   return (
     <Island pad="none" className="w-full p-3">
       <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">On your other devices</p>
       <ul className="flex flex-col gap-1.5">
-        {meetings.map((m) => (
+        {meetings.map((m, i) => (
           <li key={m.room} className="flex items-center gap-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-control bg-accent-soft text-accent-text [&_svg]:size-4">
               <CameraIcon />
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{prettyRoom(m.room)}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{names[i]}</span>
             <Button variant="accent" size="sm" onClick={() => onJoin(m.room, { secret: m.secret, e2ee: m.e2ee })}>
               Join
             </Button>
@@ -360,16 +361,17 @@ function RecentMeetings({
   // "Join" (active), so listing it here too as "Rejoin" (stale) is just a duplicate.
   const rooms = allRooms.filter((r) => !hideSlugs.has(r.slug))
   if (rooms.length === 0) return null
+  const names = distinctRoomNames(rooms.map((r) => r.slug))
   return (
     <Island pad="none" className="w-full p-3">
       <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">Recent calls</p>
       <ul className="flex flex-col gap-1.5">
-        {rooms.map((r) => (
+        {rooms.map((r, i) => (
           <li key={r.slug} className="flex items-center gap-2">
             <span className="grid size-8 shrink-0 place-items-center rounded-control bg-sunken text-ink-muted [&_svg]:size-4">
               <CameraIcon />
             </span>
-            <span className="min-w-0 flex-1 truncate text-sm font-medium">{r.name}</span>
+            <span className="min-w-0 flex-1 truncate text-sm font-medium">{names[i]}</span>
             {/* Secondary, deliberately — `neutral`, not `accent`.
                 The recents list is the one place on this page that repeats a button
                 per ROW, so an accent fill here doesn't read as "the important
@@ -394,7 +396,7 @@ function RecentMeetings({
             </Button>
             <button
               type="button"
-              aria-label={`Remove ${r.name} from recents`}
+              aria-label={`Remove ${names[i]} from recents`}
               onClick={() => remove(r.slug)}
               className="grid size-9 shrink-0 place-items-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink [&_svg]:size-3.5"
             >
@@ -484,7 +486,7 @@ function SignIn() {
     try {
       await signInWithGoogle()
     } catch (ex) {
-      setErr(signInError(ex, 'Couldn’t sign in with Google — try again'))
+      setErr(signInError(ex, 'Couldn’t sign in with Google — try again.'))
     }
   }
 
@@ -496,7 +498,7 @@ function SignIn() {
       setSent(true)
       setCooldown(60)
     } catch (ex) {
-      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again'))
+      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again.'))
     }
   }
 
@@ -508,7 +510,7 @@ function SignIn() {
       await signInWithEmail(value.trim())
       setCooldown(60)
     } catch (ex) {
-      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again'))
+      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again.'))
     }
   }
 
@@ -521,7 +523,7 @@ function SignIn() {
     try {
       await verifyEmailOtp(value.trim(), code.trim())
     } catch (ex) {
-      setErr(signInError(ex, 'That code didn’t work — check it or send a new one'))
+      setErr(signInError(ex, 'That code didn’t work — check it or send a new one.'))
     } finally {
       setVerifying(false)
     }

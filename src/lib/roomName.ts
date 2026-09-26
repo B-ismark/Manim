@@ -59,3 +59,20 @@ export function prettyRoom(slug: string): string {
 
 /** The CSPRNG suffix Landing's randomRoom() appends: 13 chars, no 0/o/1/l/i. */
 const GENERATED_CODE = /^[a-hjkmnp-z2-9]{13}$/
+
+/**
+ * Display names for a LIST of rooms. Dropping the code leaves only 64 two-word
+ * names, so two generated rooms in one list can read the same; those keep the
+ * first four characters of their code ("Swift Falcon · kq7m") so the rows, and
+ * their "Remove … from recents" labels, can still be told apart.
+ */
+export function distinctRoomNames(slugs: string[]): string[] {
+  const names = slugs.map(prettyRoom)
+  const seen = new Map<string, number>()
+  for (const n of names) seen.set(n, (seen.get(n) ?? 0) + 1)
+  return names.map((n, i) => {
+    if ((seen.get(n) ?? 0) < 2) return n
+    const code = slugs[i].split(/[-_]+/).pop() ?? ''
+    return GENERATED_CODE.test(code) ? `${n} · ${code.slice(0, 4)}` : n
+  })
+}
