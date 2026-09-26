@@ -35,3 +35,27 @@ export function installMediaGuards(doc: Document = document): () => void {
     doc.removeEventListener('dragstart', block, true)
   }
 }
+
+/**
+ * Turn off the browser's own picture-in-picture button on every feed. Firefox
+ * paints one on hover over any playing `<video>`, and like the menu's "Picture in
+ * picture" it skips the app's mini player (which picks a remote feed on purpose).
+ * The app's own fallback clears the flag on the one video it opens
+ * (ControlBar's mini player). Watches for videos added later, which is all of them.
+ */
+export function hideNativePip(doc: Document = document): () => void {
+  const mark = (root: ParentNode) => {
+    for (const v of root.querySelectorAll('video')) v.disablePictureInPicture = true
+  }
+  mark(doc)
+  const obs = new MutationObserver((records) => {
+    for (const r of records) {
+      for (const n of r.addedNodes) {
+        if (n instanceof HTMLVideoElement) n.disablePictureInPicture = true
+        else if (n instanceof Element) mark(n)
+      }
+    }
+  })
+  obs.observe(doc.documentElement, { childList: true, subtree: true })
+  return () => obs.disconnect()
+}

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button, Dialog, Island, Popover, Avatar } from '@/components/primitives'
 import { GoogleIcon, CameraIcon, CloseIcon } from '@/components/icons'
 import { SettingsLauncher } from '@/islands/Settings'
@@ -178,6 +178,18 @@ export function Landing() {
     }
     goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
   }
+
+  // Arriving from an expired link's "Start a new call": start one, once. The state
+  // is cleared first so Back or a reload doesn't mint another.
+  const location = useLocation()
+  const startedFromState = useRef(false)
+  useEffect(() => {
+    if (startedFromState.current || !(location.state as { newCall?: boolean } | null)?.newCall) return
+    startedFromState.current = true
+    navigate('/', { replace: true, state: null })
+    void newMeeting()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state])
 
   // Call a contact: mint a fresh secured room, ring them into it (the ring carries
   // the secrets so they can pass the join gate), register a "waiting" hint, join.

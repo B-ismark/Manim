@@ -82,6 +82,10 @@ test.describe('PreJoin + join', () => {
     await expect(page.getByRole('button', { name: 'Open chat' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Leave call' })).toBeVisible()
     await page.getByRole('button', { name: 'Leave call' }).click()
+    // The end-of-call screen says what happened and offers Rejoin; Go home leaves.
+    await expect(page.getByRole('heading', { name: 'You left the call' })).toBeVisible({ timeout: 20_000 })
+    await expect(page.getByRole('button', { name: 'Rejoin' })).toBeVisible()
+    await page.getByRole('button', { name: 'Go home' }).click()
     await expect(page).toHaveURL(/\/$/, { timeout: 20_000 })
     expect(appErrors(sink), `unexpected app errors: ${appErrors(sink).join('\n')}`).toEqual([])
   })
@@ -96,5 +100,18 @@ test.describe('PreJoin + join', () => {
     await expect(page.getByRole('button', { name: /microphone/i }).first()).toBeVisible({
       timeout: 45_000,
     })
+  })
+
+  test('a camera-off choice is remembered; a mixed-case link opens the real room', async ({ page }) => {
+    const room = uniqueRoom()
+    await page.goto(`/r/${room}`)
+    await page.getByRole('button', { name: 'Turn off camera' }).click()
+    await expect(page.getByRole('button', { name: 'Turn on camera' })).toBeVisible()
+
+    // Room names are lowercase; /r/Team used to open a different, empty room.
+    await page.goto(`/r/${room.toUpperCase()}#k=abc`)
+    await expect(page).toHaveURL(new RegExp(`/r/${room}#k=abc$`))
+    // And the camera stays off, as chosen.
+    await expect(page.getByRole('button', { name: 'Turn on camera' })).toBeVisible({ timeout: 20_000 })
   })
 })

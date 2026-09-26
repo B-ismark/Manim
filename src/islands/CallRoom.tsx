@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useRef } from 'react'
 import { LiveKitRoom } from '@livekit/components-react'
+import { DisconnectReason } from 'livekit-client'
+import type { EndReason } from '@/lib/callEnd'
 import { RoomView } from '@/islands/RoomView'
 import { AnnouncerProvider } from '@/features/a11y/AnnouncerContext'
 import { roomOptions } from '@/lib/livekit'
@@ -19,8 +21,19 @@ export interface CallRoomProps {
   cameraEnabled: boolean
   lowBandwidth: boolean
   e2ee?: string
-  onLeave: () => void
+  /** `reason` is LiveKit's, mapped; absent when the app itself left. */
+  onLeave: (reason?: EndReason) => void
+  /** The room actually connected: only a call that did has an end-of-call screen. */
+  onConnected?: () => void
   onError: (error: Error) => void
+}
+
+/** What LiveKit's disconnect reason means to the person in the call. */
+function endReasonOf(r?: DisconnectReason): EndReason {
+  if (r === DisconnectReason.PARTICIPANT_REMOVED) return 'removed'
+  if (r === DisconnectReason.ROOM_DELETED) return 'ended'
+  if (r === DisconnectReason.CLIENT_INITIATED) return 'left'
+  return 'dropped'
 }
 
 export default function CallRoom({
@@ -31,6 +44,7 @@ export default function CallRoom({
   lowBandwidth,
   e2ee,
   onLeave,
+  onConnected,
   onError,
 }: CallRoomProps) {
   // Build once per (bandwidth, passphrase) so the E2EE worker isn't recreated.
@@ -55,7 +69,8 @@ export default function CallRoom({
       audio={micEnabled}
       video={cameraEnabled && !lowBandwidth}
       options={options}
-      onDisconnected={onLeave}
+      onConnected={onConnected}
+      onDisconnected={(r) => onLeave(endReasonOf(r))}
       onError={handleError}
       className="relative flex h-dvh flex-col overflow-hidden"
     >

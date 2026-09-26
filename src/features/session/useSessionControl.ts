@@ -11,10 +11,15 @@ import { useAppStore } from '@/store/useAppStore'
 import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
+import { markEnd } from '@/lib/callEnd'
 import { userIdOf } from '@/lib/identity'
+import { displayNameOf } from '@/lib/participantName'
 import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
 import { reportError } from '@/lib/report'
+
+/** How long the host may be gone before someone else is made host. */
+const HOST_GRACE_MS = 45_000
 
 /** Control-plane signalling topic (end / merge / handoff / report). */
 export const CONTROL_TOPIC = 'mn.control'
@@ -23,6 +28,8 @@ type ControlMessage =
   | { type: 'end' }
   | { type: 'merge'; room: string; k?: string; e?: string }
   | { type: 'report'; target: string; by: string }
+  /** Server-sent (handoff): this device's session is being moved elsewhere. */
+  | { type: 'moved' }
 
 /**
  * Session control plane over the LiveKit data channel:
@@ -87,31 +94,49 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     wasCoHost.current = nowCo
   }, [coHosts, localParticipant.identity, isPrimaryHost])
 
-  // Host succession (#15). When the recorded host is no longer in the live roster
-  // (they left for good), trigger a server-side election so the seat doesn't point
-  // at a ghost and the co-host roster stops being frozen. The server picks the
-  // successor deterministically, so every client calling at once is safe — but we
-  // still guard to one call per absence and announce "host left" just once.
+  // Host succession (#15). When the recorded host is no longer in the live roster,
+  // trigger a server-side election so the seat doesn't point at a ghost and the
+  // co-host roster stops being frozen. The server picks the successor
+  // deterministically, so every client calling at once is safe — but we still
+  // guard to one call per absence and announce "host left" just once.
+  //
+  // After a grace period, not at once: a host whose connection drops for a few
+  // seconds (a train tunnel, wifi → cellular, a reload) comes back with a new
+  // session, and electing immediately handed their room to someone else for good.
+  // If they're back within the grace, nothing happens and nobody is told.
   const hostPresent = Boolean(hostId) && participants.some((p) => p.identity === hostId)
   const elected = useRef(false)
   const announcedHostLeft = useRef(false)
+  const [graceOver, setGraceOver] = useState(false)
+  const [electTry, setElectTry] = useState(0)
   useEffect(() => {
+    // Every change of the recorded host starts over — including one absent host
+    // replaced by another, which must get its own grace and its own election.
+    elected.current = false
+    setGraceOver(false)
     if (!hostId || hostPresent) {
-      elected.current = false
       announcedHostLeft.current = false
       return
     }
+    const t = setTimeout(() => setGraceOver(true), HOST_GRACE_MS)
+    return () => clearTimeout(t)
+  }, [hostPresent, hostId])
+  useEffect(() => {
+    if (!graceOver || !hostId || hostPresent) return
     if (!announcedHostLeft.current) {
       announcedHostLeft.current = true
       toast('The host left the call', 'neutral')
     }
-    if (!elected.current && roomToken) {
-      elected.current = true
-      void electHost(room.name, roomToken).catch(() => {
-        elected.current = false // let a later render retry if it failed
-      })
-    }
-  }, [hostPresent, hostId, roomToken, room.name])
+    if (elected.current || !roomToken) return
+    elected.current = true
+    let retry: ReturnType<typeof setTimeout> | undefined
+    void electHost(room.name, roomToken).catch(() => {
+      // Nothing else re-runs this effect, so schedule the retry ourselves.
+      elected.current = false
+      retry = setTimeout(() => setElectTry((n) => n + 1), 10_000)
+    })
+    return () => clearTimeout(retry)
+  }, [graceOver, hostPresent, hostId, roomToken, room.name, electTry])
 
   // "You're now the host" once you inherit the primary seat (skip the initial
   // value so the original host isn't toasted at join).
@@ -172,6 +197,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     if (data.type === 'end') {
       if (senderId !== hostId) return // only the room host can end for everyone
       sounds.end()
+      markEnd('ended')
       void doLeave()
     } else if (data.type === 'merge' && data.room) {
       if (senderId !== hostId) return // only the host can move everyone
@@ -181,9 +207,14 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       toast(`The host moved everyone to ${prettyRoom(data.room)}`, 'neutral')
       // Carry the target room's secrets so everyone passes its join-secret gate.
       navigate(roomTo(data.room, { secret: data.k, e2ee: data.e }), { state: { autojoin: true } })
-    } else if (data.type === 'report' && isHost) {
-      // Only the host is notified of a report.
-      toast(`${data.by} reported ${data.target}`, 'danger')
+    } else if (data.type === 'moved' && !msg.from) {
+      // Only the server can send this (no participant has an empty identity); the
+      // removal that follows would otherwise read as "the host removed you".
+      markEnd('moved')
+    } else if (data.type === 'report' && isHost && msg.from) {
+      // Only the host is notified of a report. Named from the SENDER, not the
+      // payload's `by`, which anyone could fill with someone else's name.
+      toast(`${displayNameOf(msg.from.identity, msg.from.name)} reported ${data.target}`, 'danger')
     }
   })
 
@@ -204,6 +235,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     // mid-reconnect (who'd miss the broadcast) is disconnected and can't rejoin.
     // Without this the host leaves and a reconnecting participant is stranded
     // alone in a call that "ended" for everyone else.
+    markEnd('endedByYou')
     if (roomToken) {
       try {
         await endRoom(room.name, roomToken)
