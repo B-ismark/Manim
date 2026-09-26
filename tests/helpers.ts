@@ -33,9 +33,14 @@ export function attachErrorSink(page: Page): ErrorSink {
  * the URL, so there is nothing narrower to match on. It cannot hide a broken call
  * either — the media and signal paths fail as ERR_CONNECTION_* or as SDK errors, and
  * the specs that care assert on participants and the encryption badge besides.
+ *
+ * `ERR_CERT_AUTHORITY_INVALID` is the same beacon behind a TLS-intercepting proxy:
+ * the proxy opens the tunnel but presents its own certificate, which the test
+ * browser doesn't trust. The app's own endpoints are localhost (or a dev server) in
+ * every run that could hit this, so it can only be that third-party request.
  */
 const ENV_NOISE_RE =
-  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called|ERR_TUNNEL_CONNECTION_FAILED/i
+  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called|ERR_TUNNEL_CONNECTION_FAILED|ERR_CERT_AUTHORITY_INVALID/i
 
 /** Transient connection / media-pipeline errors that LiveKit emits during normal
  *  teardown (leave) and on the unhappy paths we DON'T assert in a given spec. These
