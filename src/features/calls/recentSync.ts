@@ -54,16 +54,19 @@ async function seal(devices: DeviceKey[], secrets: RoomSecrets): Promise<string 
 export async function pushRecent(room: RecentRoom): Promise<void> {
   const r = ready()
   if (!r) return
+  if (room.slug.length > 128) return // the table's limit; such a slug is never typed
   try {
     const hasSecrets = Boolean(room.secret || room.e2ee)
     const sealed = hasSecrets ? await seal(await devicesOf(r.sb, r.userId), room) : null
-    // Secrets but no device to seal them to: sync the name only, never the keys.
+    // Secrets but nothing to seal them to (no device on file, or the lookup
+    // failed): sync the name only, and leave any earlier seal in place rather
+    // than overwrite good ciphertext with nothing. Never the keys in the clear.
     const { error } = await r.sb.from(TABLE).upsert(
       {
         user_id: r.userId,
         slug: room.slug,
-        name: room.name,
-        sealed,
+        name: room.name.slice(0, 200),
+        ...(sealed || !hasSecrets ? { sealed } : {}),
         e2ee: Boolean(room.e2ee),
         last_at: new Date(room.ts).toISOString(),
       },
@@ -95,7 +98,7 @@ interface Row {
 }
 
 /**
- * Merge the account's list into this device's. Throttled; `force` after sign-in.
+ * Merge the account's list into this device's. Throttled (`force` skips it).
  * Local secrets are kept when the remote copy can't be opened here, and the newer
  * timestamp wins either way.
  */

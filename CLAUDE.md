@@ -78,6 +78,8 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
     bottom; anything parked down there ends up half underneath it (it did, for months).
   - Gallery tile density comes from viewport WIDTH at a 132px legibility floor
     (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
+    A phone on its SIDE is the exception: there one 3:4 tile is taller than the whole
+    stage, so columns are added (down to the same floor) until a row fits.
   - There is deliberately **no user-facing density control.** More → View carried
     gallery-size chips (Auto / 4 / 9 / 16); every value they produced was clamped to
     the same fit-to-viewport answer `gridCapacity` computes, so they either did

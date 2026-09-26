@@ -614,12 +614,17 @@ create table if not exists recent_calls (
   primary key (user_id, slug)
 );
 alter table recent_calls enable row level security;
+drop policy if exists "own recents read"   on recent_calls;
+drop policy if exists "own recents insert" on recent_calls;
+drop policy if exists "own recents update" on recent_calls;
+drop policy if exists "own recents delete" on recent_calls;
 create policy "own recents read"   on recent_calls for select using (auth.uid() = user_id);
 create policy "own recents insert" on recent_calls for insert with check (auth.uid() = user_id);
 create policy "own recents update" on recent_calls for update using (auth.uid() = user_id);
 create policy "own recents delete" on recent_calls for delete using (auth.uid() = user_id);
 
 -- Same 30 days the list keeps locally.
+-- (cron.schedule replaces a job of the same name, so re-running is safe.)
 select cron.schedule(
   'expire-recent-calls',
   '41 3 * * *',

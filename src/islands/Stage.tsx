@@ -1533,11 +1533,12 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
     <div
       className={cn(
         'flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28',
+        // (`short` too: a phone, not a tablet, whose landscape has height to spare.)
         // A phone on its side is ~360px tall: a card stacked over the invite
         // overflowed it, and `justify-center` split the overflow so the top of
         // your own video went off-screen. Side by side instead, card sized by
         // the height it actually has.
-        coarse && 'landscape:flex-row landscape:gap-6 landscape:pt-4 landscape:pb-24',
+        coarse && 'landscape:short:flex-row landscape:short:gap-6 landscape:short:pt-4 landscape:short:pb-24',
       )}
     >
       {/* Touch (phones): a tall portrait card that fills the available height
@@ -1549,7 +1550,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           // Touch: a tall portrait card, but height-capped so the invite below
           // stays on-screen (flex-1 ate the whole viewport and pushed it off).
           coarse
-            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh] landscape:h-full landscape:max-h-none landscape:w-auto landscape:max-w-none'
+            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh] landscape:short:h-full landscape:short:max-h-none landscape:short:w-auto landscape:short:max-w-none'
             : 'aspect-video w-full max-w-3xl max-h-[55dvh]',
         )}
       >
@@ -1561,7 +1562,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           </div>
         )}
       </div>
-      <div className={cn('shrink-0 text-center', coarse && 'landscape:text-left')}>
+      <div className={cn('shrink-0 text-center', coarse && 'landscape:short:text-left')}>
         <p className="text-sm font-medium">You’re the only one here</p>
         <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
         <Button variant="accent" className="mt-3" onClick={copy}>
@@ -1625,6 +1626,11 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
       data-no-stage-gesture
       style={{
         bottom: selfCardBottom + lift,
+        // Width from the viewport's WIDTH alone made a 3:4 card taller than a phone
+        // on its side (expanded: 427px on a 390px screen), so its top went off the
+        // screen. Also cap it by the height actually left between the island's band
+        // (measured, safe area included) and the TopStack band above.
+        maxWidth: `min(${expanded ? '20rem' : '11rem'}, calc((100dvh - ${selfCardBottom + lift + TOPSTACK_BAND}px) * 0.75))`,
         ...style,
       }}
       {...handlers}
@@ -1646,12 +1652,8 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
         // so it reads the same on a 320px phone and a 430px one. Expanded is a look
         // at yourself; collapsed is a glance that leaves the call visible behind it.
         'aspect-[3/4] overflow-hidden rounded-tile shadow-raised ring-1 ring-white/10',
-        // Width from the viewport's WIDTH alone made a 3:4 card taller than a phone on
-        // its side (expanded: 427px on a 390px screen), so the top went off-screen.
-        // The second term caps it by the height left between the bands.
-        expanded
-          ? 'w-[min(62vw,calc((100dvh-11rem)*0.75))] max-w-[20rem]'
-          : 'w-[min(33vw,calc((100dvh-11rem)*0.75))] max-w-[11rem]',
+        // (The height cap is the inline maxWidth above.)
+        expanded ? 'w-[62vw]' : 'w-[33vw]',
       )}
     >
       {/* No `boxAspect`: this crops to fill rather than letterboxing. A phone

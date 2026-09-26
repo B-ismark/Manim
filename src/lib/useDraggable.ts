@@ -152,11 +152,20 @@ export function useDraggable(
       const b = boundsFor(el)
       setPos(cornerPosition(corner, b, b))
     }
-    window.addEventListener('resize', repark)
-    window.addEventListener('orientationchange', repark)
+    // Once now, and again after the card's own width transition has settled: its
+    // size mid-transition is the OLD one, and parking by it overshoots the edge.
+    let settle: ReturnType<typeof setTimeout> | undefined
+    const onResize = () => {
+      repark()
+      clearTimeout(settle)
+      settle = setTimeout(repark, 450)
+    }
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
     return () => {
-      window.removeEventListener('resize', repark)
-      window.removeEventListener('orientationchange', repark)
+      clearTimeout(settle)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
     }
   }, [dragged, corner, boundsFor])
 

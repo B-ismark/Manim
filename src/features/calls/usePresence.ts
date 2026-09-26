@@ -158,6 +158,7 @@ export function useDevicePresence() {
       ).then((all) => {
         if (!live || mine !== generation) return
         if (all.some((m) => m === null)) askForReseal()
+        else asks = 0 // everything opened: a later call gets its own asks
         const open = all
           .filter((m): m is DeviceMeeting => m !== null)
           .sort((a, b) => Number(Boolean(b.secret || b.e2ee)) - Number(Boolean(a.secret || a.e2ee)))
@@ -171,11 +172,17 @@ export function useDevicePresence() {
     // both in calls would otherwise answer each other's re-seal forever. A newcomer
     // sees the current state without our help; what it can't do is open a seal
     // that leaves it out, or one made for a key it has since replaced (`ask`).
-    channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+    //
+    // An UPDATE arrives as a join too, with the old meta still in
+    // `currentPresences`, so only a real arrival (nothing there before) or an
+    // explicit ask counts. A plaintext fallback is already readable by whoever is
+    // present, so answering updates would only feed a loop.
+    channel.on('presence', { event: 'join' }, ({ key, currentPresences, newPresences }) => {
       const call = useLiveCallStore.getState()
       if (key === deviceId || !call.room || (!call.secret && !call.e2ee)) return
       const asked = newPresences.some((p) => Boolean((p as { ask?: unknown }).ask))
-      if (asked || !lastSealed || !sealedFor(lastSealed, key)) announce()
+      const arrived = currentPresences.length === 0
+      if (asked || (arrived && (!lastSealed || !sealedFor(lastSealed, key)))) announce()
     })
     // Joining or leaving a call on this device changes what we advertise.
     const unwatch = useLiveCallStore.subscribe((now, before) => {

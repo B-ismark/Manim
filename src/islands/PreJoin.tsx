@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
 import { countUsage, surface } from '@/lib/usage'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { OtherDeviceInlineOffer } from '@/islands/OtherDeviceCallBanner'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
  *  … 16:9 (laptop); anything outside is a bogus or freak mode, and letting it through
@@ -35,7 +36,15 @@ export interface PreJoinProps {
  * Device check + name entry before entering. Sets expectations and lets the
  * user pick mic/cam/quality before consuming any media bandwidth.
  */
-export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
+export function PreJoin(props: PreJoinProps) {
+  // Phone and desktop render different trees; a pointer change while this screen
+  // is open (a tablet's keyboard docked, DevTools' device toggle) remounts it, so
+  // the preview and the measured box bind to the new elements.
+  const coarse = useIsTouch()
+  return <PreJoinScreen key={coarse ? 'touch' : 'fine'} {...props} coarse={coarse} />
+}
+
+function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps & { coarse: boolean }) {
   const navigate = useNavigate()
   const { copied, share } = useShareLink()
   const displayName = useAppStore((s) => s.displayName)
@@ -50,7 +59,6 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // 4:3 — the most common webcam mode, and a middle ground that barely moves when
   // the true ratio lands, instead of the 16:9→4:3 lurch a landscape default gives.
   // On a phone the front camera is portrait, so start at 3:4 there instead.
-  const coarse = useIsTouch()
   const [previewAspect, setPreviewAspect] = useState(() => (coarse ? 3 / 4 : 4 / 3))
   // Mirror like a selfie only when the camera faces you. A rear or external
   // camera mirrored shows the world (and any text in it) backwards — the stage
@@ -504,6 +512,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
 
         <div className="flex shrink-0 flex-col gap-2.5 px-4 pt-4 landscape:col-start-2 landscape:row-start-2 landscape:justify-center landscape:overflow-y-auto landscape:pt-1">
           {error && <p className="text-sm text-danger-text">{error}</p>}
+          <OtherDeviceInlineOffer excludeRoom={room} />
           {nameField}
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now
@@ -619,6 +628,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
             )}
           </div>
 
+          <OtherDeviceInlineOffer excludeRoom={room} />
           {/* Row 2 — who you are, then the way in. */}
           {nameField}
 

@@ -41,12 +41,6 @@ test.describe('Mobile fit (no page scroll)', () => {
   })
 
   /**
-   * The preview is the point of this screen, and on a phone it used to be what
-   * got squeezed: every other row claimed its height first, so a short phone got
-   * a sliver and a phone on its side got 0px. It now has a floor — and the mic and
-   * camera toggles live inside it, so they are always reachable over it.
-   */
-  /**
    * Alone in a call, rotated: the self card stacked over the invite was taller
    * than a ~375px screen, and `justify-center` split the overflow, so the top half
    * of your own video sat above the viewport.
@@ -71,6 +65,12 @@ test.describe('Mobile fit (no page scroll)', () => {
     await page.setViewportSize(vp)
   })
 
+  /**
+   * The preview is the point of this screen, and on a phone it used to be what
+   * got squeezed: every other row claimed its height first, so a short phone got
+   * a sliver and a phone on its side got 0px. It now has a floor — and the mic and
+   * camera toggles live inside it, so they are always reachable over it.
+   */
   test('prejoin keeps a big preview upright and on its side', async ({ page }) => {
     await page.goto(`/r/${uniqueRoom()}`)
     await expect(page.getByRole('button', { name: 'Join now' })).toBeVisible({ timeout: 20_000 })

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { create } from 'zustand'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { Button, Island } from '@/components/primitives'
 import { CameraIcon, CloseIcon } from '@/components/icons'
@@ -7,6 +8,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { roomTo } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
 import { useToastClearance } from '@/lib/toastClearance'
+import { cn } from '@/lib/cn'
 
 /**
  * "You're in a call on another device", wherever you are in the app.
@@ -21,6 +23,42 @@ import { useToastClearance } from '@/lib/toastClearance'
  * tab is in the background when a call appears, a system notification says so
  * too, when notifications are already allowed (this never asks).
  */
+/**
+ * Screens that show the offer INLINE instead (the prejoin: a floating banner
+ * would sit right over its Back and Share, which live in that same top band).
+ */
+const useInlineOffer = create<{ count: number }>(() => ({ count: 0 }))
+
+/** Show the other-device offer inside this screen's own layout, not as a banner. */
+export function OtherDeviceInlineOffer({ excludeRoom, className }: { excludeRoom?: string; className?: string }) {
+  useEffect(() => {
+    useInlineOffer.setState((s) => ({ count: s.count + 1 }))
+    return () => useInlineOffer.setState((s) => ({ count: s.count - 1 }))
+  }, [])
+  const meetings = useOtherDeviceMeetings()
+  const navigate = useNavigate()
+  const shown = meetings.find((m) => m.room !== excludeRoom)
+  if (!shown) return null
+  return (
+    <div
+      role="status"
+      className={cn('flex items-center gap-2.5 rounded-field bg-accent-soft px-3 py-2', className)}
+    >
+      <span className="min-w-0 flex-1 text-sm">
+        <span className="block truncate font-medium">{prettyRoom(shown.room)}</span>
+        <span className="block text-xs text-ink-muted">You’re in this call on another device</span>
+      </span>
+      <Button
+        size="sm"
+        variant="accent"
+        onClick={() => navigate(roomTo(shown.room, { secret: shown.secret, e2ee: shown.e2ee }))}
+      >
+        Join here
+      </Button>
+    </div>
+  )
+}
+
 export function OtherDeviceCallBanner() {
   const inCall = useAppStore((s) => s.roomToken !== null)
   useDevicePresence()
@@ -28,10 +66,14 @@ export function OtherDeviceCallBanner() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set())
+  const inline = useInlineOffer((s) => s.count > 0)
 
   // Tell a backgrounded tab once per room, the way a ring does.
   const told = useRef(new Set<string>())
   useEffect(() => {
+    // Not while this device is itself in a call: it may be the SAME call (both
+    // devices in it), and the call screen has its own handoff surfaces.
+    if (inCall) return
     for (const m of meetings) {
       if (told.current.has(m.room)) continue
       told.current.add(m.room)
@@ -49,11 +91,11 @@ export function OtherDeviceCallBanner() {
         /* notifications unavailable in this context */
       }
     }
-  }, [meetings])
+  }, [meetings, inCall])
 
   const here = pathname.startsWith('/r/') ? decodeURIComponent(pathname.slice(3)) : null
   const shown =
-    inCall || pathname === '/'
+    inCall || inline || pathname === '/'
       ? undefined
       : meetings.find((m) => m.room !== here && !dismissed.has(m.room))
   const ref = useRef<HTMLDivElement>(null)
