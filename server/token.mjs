@@ -11,6 +11,7 @@ import {
   handleMe,
   handleKnock,
   handleKnockStatus,
+  handleKnockUpdate,
   handleRoomStatus,
   handlePending,
   handleAdmit,
@@ -38,6 +39,7 @@ app.get('/api/health', (_req, res) => send(res, handleHealth(env)))
 app.post('/api/me', async (req, res) => send(res, await handleMe(env, req.body)))
 app.post('/api/knock', async (req, res) => send(res, await handleKnock(env, req.body)))
 app.post('/api/room-status', async (req, res) => send(res, await handleRoomStatus(env, req.body)))
+app.post('/api/knock-update', async (req, res) => send(res, await handleKnockUpdate(env, req.body)))
 app.get('/api/knock-status', async (req, res) => send(res, await handleKnockStatus(env, req.query)))
 app.get('/api/pending', async (req, res) => send(res, await handlePending(env, req.query, bearer(req))))
 app.post('/api/admit', async (req, res) => send(res, await handleAdmit(env, req.body, bearer(req))))

@@ -12,6 +12,7 @@ import {
   handleMe,
   handleKnock,
   handleKnockStatus,
+  handleKnockUpdate,
   handleRoomStatus,
   handlePending,
   handleAdmit,
@@ -76,6 +77,17 @@ async function handleApi(request, env, url) {
         if (!success) return json({ status: 200, body: { state: 'unknown' } })
       }
       return json(await handleRoomStatus(env, await bodyOf()))
+    }
+    if (path === 'knock-update' && method === 'POST') {
+      // A guest in the waiting room fixing their name or leaving a note. Each
+      // one rewrites room metadata, so it shares the knock budget.
+      const limiter = env.KNOCK_RATELIMIT
+      if (limiter && typeof limiter.limit === 'function') {
+        const ip = request.headers.get('cf-connecting-ip') || 'anon'
+        const { success } = await limiter.limit({ key: `knock:${ip}` })
+        if (!success) return json({ status: 429, body: { error: 'Too many changes — wait a moment and try again.' } })
+      }
+      return json(await handleKnockUpdate(env, await bodyOf()))
     }
     if (path === 'knock-status') {
       const r = await handleKnockStatus(env, query)

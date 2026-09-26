@@ -240,6 +240,11 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   and stops after 3 min with Keep trying / Leave. LiveKit reports that final
   give-up as an ERROR when you're alone and as a disconnect otherwise; both routes
   go there. `27-reconnect` drives it with `setOffline` (works on a local server).
+- **The waiting room is not a dead end** (`islands/WaitingRoom`). The guest sees
+  their own camera (the toggle there IS the join choice), can fix the name the host
+  will admit and leave a one-line note; both go through `/api/knock-update`, gated
+  by the same claim key as knock-status and only while the request is pending, and
+  live in the sealed queue, so only a host's `WaitingRoomBanner` reads them.
 - **`ConnectionQuality` is a bandwidth heuristic, not connection state.** It reports
   `Lost` for a packet-loss spike and the value sticks until the next update. Only
   `ConnectionState` (Reconnecting / SignalReconnecting) may be called "lost" in the UI

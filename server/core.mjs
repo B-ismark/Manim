@@ -724,6 +724,43 @@ export async function handleKnockStatus(env, query) {
   return { status: 200, body: { status: entry.status } }
 }
 
+/** A note to the host from the waiting room: one line, short enough for a banner. */
+export const MAX_NOTE_LEN = 120
+
+/**
+ * A guest in the waiting room fixes their name or leaves the host a note. Only
+ * the guest who knocked can (the same claim key knock-status needs), only while
+ * the request is still pending, and under the same rules as a knock: the name
+ * ends up in the identity the host admits, so a typo can be fixed before it's
+ * in the call. The note is one short line with no control characters. Both
+ * live in the sealed queue, so only a host reads them.
+ */
+export async function handleKnockUpdate(env, body) {
+  const { roomService, apiSecret } = services(env)
+  const { room, requestId, claim, name, note } = body ?? {}
+  if (!roomService) return { status: 500, body: { error: 'not configured' } }
+  if (typeof room !== 'string' || typeof requestId !== 'string' || typeof claim !== 'string') {
+    return { status: 400, body: { error: 'bad request' } }
+  }
+  if (!(await claimKeyValid(apiSecret, room, requestId, claim))) {
+    return { status: 403, body: { error: 'Not your request' } }
+  }
+  if (name != null && (typeof name !== 'string' || name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim())) {
+    return { status: 400, body: { error: 'Use a shorter name, without # or other special characters.' } }
+  }
+  if (note != null && (typeof note !== 'string' || note.length > MAX_NOTE_LEN || /[\u0000-\u001f\u007f]/.test(note))) {
+    return { status: 400, body: { error: `Keep the note to one line of ${MAX_NOTE_LEN} characters.` } }
+  }
+  const flags = await getRoomFlags(roomService, room)
+  const queue = await readQueue(apiSecret, room, flags)
+  const entry = queue.find((e) => e.id === requestId)
+  if (!entry || entry.status !== 'pending') return { status: 409, body: { error: 'You’re no longer waiting.' } }
+  if (name != null) entry.name = name.trim()
+  if (note != null) entry.note = note.trim()
+  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue), flags)
+  return { status: 200, body: { ok: true, name: entry.name, note: entry.note || '' } }
+}
+
 export async function handlePending(env, query, token) {
   const { roomService } = services(env)
   if (!roomService) return { status: 200, body: { pending: [] } }
@@ -732,7 +769,7 @@ export async function handlePending(env, query, token) {
   if (!auth.ok) return { status: 403, body: { error: 'host only' } }
   const pending = (await readQueue(services(env).apiSecret, room, auth.flags))
     .filter((e) => e.status === 'pending')
-    .map((e) => ({ id: e.id, name: e.name }))
+    .map((e) => ({ id: e.id, name: e.name, note: e.note || '' }))
   return { status: 200, body: { pending } }
 }
 

@@ -6,6 +6,7 @@ import { roomDeviceId } from '@/lib/roomDevice'
 import { resetPeople, takeEnd, takePeople, type EndReason } from '@/lib/callEnd'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
+import { WaitingRoom } from '@/islands/WaitingRoom'
 import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
@@ -558,6 +559,8 @@ export function RoomRoute() {
     return (
       <WaitingRoom
         room={room}
+        requestId={waitingId}
+        claim={waitClaim.current}
         onCancel={() => {
           leave()
           navigate('/')
@@ -1050,57 +1053,3 @@ function AlreadyOnDevicePrompt({
   )
 }
 
-/**
- * The "waiting to be let in" lobby. On a phone the guest is likely to switch apps
- * while waiting, so offer a one-tap opt-in for an OS notification when admitted
- * (the actual notification fires from the poll above when the tab is hidden). The
- * permission request is gesture-driven (this button), which browsers honour.
- */
-function WaitingRoom({ room, onCancel }: { room: string; onCancel: () => void }) {
-  const supported = typeof Notification !== 'undefined'
-  const [perm, setPerm] = useState<NotificationPermission>(() =>
-    supported ? Notification.permission : 'denied',
-  )
-  // Elapsed wait, so a long wait reads as time passing instead of a silently
-  // stalled page (the 2s poll is invisible by design).
-  const [waited, setWaited] = useState(0)
-  useEffect(() => {
-    const id = window.setInterval(() => setWaited((s) => s + 1), 1000)
-    return () => window.clearInterval(id)
-  }, [])
-  async function arm() {
-    try {
-      setPerm(await Notification.requestPermission())
-    } catch {
-      setPerm('denied')
-    }
-  }
-  return (
-    <main className="grid min-h-dvh place-items-center p-4">
-      <Island pad="lg" className="w-full max-w-sm text-center">
-        <h1 className="text-lg font-semibold">Waiting to be let in</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          The host has been notified. You’ll join {prettyRoom(room)} as soon as they admit you.
-        </p>
-        <p className="mt-1 text-xs text-ink-subtle tabular-nums">
-          Waiting {Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}
-        </p>
-        {supported && perm === 'default' && (
-          <Button variant="neutral" className="mt-4" onClick={() => void arm()}>
-            Notify me when I’m let in
-          </Button>
-        )}
-        {supported && perm === 'granted' && (
-          <p className="mt-4 text-xs text-ink-subtle">
-            We’ll notify you the moment you’re admitted — you can switch to another app.
-          </p>
-        )}
-        <div className="mt-4">
-          <Button variant="neutral" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </Island>
-    </main>
-  )
-}

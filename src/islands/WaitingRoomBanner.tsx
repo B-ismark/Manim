@@ -27,9 +27,14 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
   const announced = useRef(new Set<string>())
   useEffect(() => {
     for (const p of pending) {
-      if (announced.current.has(p.id)) continue
+      // Keyed by what's said, so a note left after the knock is read out too.
+      const key = `${p.id}\n${p.name}\n${p.note ?? ''}`
+      if (announced.current.has(key)) continue
+      const first = !announced.current.has(p.id)
+      announced.current.add(key)
       announced.current.add(p.id)
-      announce(`${p.name} is waiting to join`)
+      if (first) announce(`${p.name} is waiting to join${p.note ? `: ${p.note}` : ''}`)
+      else if (p.note) announce(`${p.name} left a note: ${p.note}`)
     }
   }, [pending, announce])
 
@@ -49,7 +54,7 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
       // fresh array would re-render the banner (and its avatars) for nothing, so
       // keep the previous one unless who's waiting actually changed.
       setPending((prev) =>
-        prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.name === list[i].name)
+        prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.name === list[i].name && p.note === list[i].note)
           ? prev
           : list,
       )
@@ -91,7 +96,15 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
         {pending.map((p) => (
           <li key={p.id} className="flex items-center gap-2.5">
             <Avatar name={p.name} size="sm" />
-            <span dir="auto" className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
+            <span className="min-w-0 flex-1">
+              <span dir="auto" className="block truncate text-sm font-medium">{p.name}</span>
+              {/* Their note from the waiting room: who they are, why they're here. */}
+              {p.note && (
+                <span dir="auto" className="block truncate text-xs text-ink-muted" title={p.note}>
+                  “{p.note}”
+                </span>
+              )}
+            </span>
             {/* Default (40px) size: admitting/denying a person is consequential
                 enough to deserve a full touch target, not the compact sm. */}
             <Button variant="accent" aria-label={`Admit ${p.name}`} onClick={() => decide(p.id, true)}>

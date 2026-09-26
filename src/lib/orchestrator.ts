@@ -139,6 +139,25 @@ export async function knockStatus(room: string, requestId: string, claim: string
 export interface PendingKnocker {
   id: string
   name: string
+  /** A short note the guest left from the waiting room ('' if none). */
+  note?: string
+}
+
+/** Longest note a waiting guest can leave the host (server MAX_NOTE_LEN). */
+export const MAX_NOTE_LEN = 120
+
+/**
+ * From the waiting room: fix your name, or leave the host a note, while the
+ * host hasn't decided yet. `claim` is the same proof knock-status takes.
+ */
+export function updateKnock(req: {
+  room: string
+  requestId: string
+  claim: string
+  name?: string
+  note?: string
+}): Promise<{ ok: true; name: string; note: string }> {
+  return postJson('/api/knock-update', req)
 }
 
 /** Host: list people waiting to be admitted. `token` is the host's signed join token. */
