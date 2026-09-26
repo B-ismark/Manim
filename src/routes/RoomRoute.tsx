@@ -631,14 +631,15 @@ function EndedBadge({ reason }: { reason: EndReason }) {
   return <LeaveIcon />
 }
 
+/** Short, beside a clock icon: a whole sentence wrapped the summary onto two rows. */
 function timeInCall(ms: number): string | null {
   if (ms < 30_000) return null
-  if (ms < 60_000) return 'You were in for under a minute'
+  if (ms < 60_000) return 'Under a minute'
   const min = Math.round(ms / 60_000)
-  if (min < 60) return `You were in for ${min} min`
+  if (min < 60) return `${min} min`
   const h = Math.floor(min / 60)
   const m = min % 60
-  return `You were in for ${h} h${m ? ` ${m} min` : ''}`
+  return `${h} h${m ? ` ${m} min` : ''}`
 }
 
 /**
@@ -694,6 +695,7 @@ function CallEnded({
                     <circle cx="12" cy="12" r="9" />
                     <path d="M12 7v5l3 2" />
                   </svg>
+                  <span className="sr-only">Time in call: </span>
                   {time}
                 </li>
               )}
