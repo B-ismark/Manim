@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { MAX_NAME_LEN } from '@/lib/displayName'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
 import { useAppStore, rememberPrejoin } from '@/store/useAppStore'
@@ -11,6 +11,7 @@ import { useElementSize } from '@/lib/useElementSize'
 import { useToastClearance } from '@/lib/toastClearance'
 import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
+import { countUsage, surface } from '@/lib/usage'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
  *  … 16:9 (laptop); anything outside is a bogus or freak mode, and letting it through
@@ -62,6 +63,21 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
 
   const cameraOn = prejoin.cameraEnabled && !prejoin.lowBandwidth
 
+  // Anonymous usage counts (lib/usage): reaching this screen, and the browser's
+  // camera/mic block stopping someone here (once per visit).
+  const location = useLocation()
+  useEffect(() => {
+    const via = (location.state as { via?: string } | null)?.via === 'new' ? 'new' : 'link'
+    countUsage('prejoin', via, surface())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const deniedCounted = useRef(false)
+  const countDenied = (which: 'camera' | 'mic' | 'both') => {
+    if (deniedCounted.current) return
+    deniedCounted.current = true
+    countUsage('permission_denied', which, surface())
+  }
+
   // Best-effort read of the current camera/mic grant so we can show a rationale
   // *before* the OS prompt (priming) instead of a bare browser dialog. The
   // Permissions API is absent on some browsers (notably older Safari) — there we
@@ -82,6 +98,9 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         const update = () => {
           const states = [cam.state, mic.state]
           const next = states.includes('denied') ? 'denied' : states.includes('prompt') ? 'prompt' : 'granted'
+          if (next === 'denied') {
+            countDenied(cam.state === 'denied' && mic.state === 'denied' ? 'both' : cam.state === 'denied' ? 'camera' : 'mic')
+          }
           // Re-allowed in the browser's settings while this screen was open: the
           // "blocked" message no longer applies, and the preview starts again
           // without a reload.
@@ -123,6 +142,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       setPermission('granted')
       setError(null)
     } catch {
+      countDenied('both')
       setPermission('denied')
       setError('Access to your camera and microphone is blocked. Allow it from the icon in your browser’s address bar.')
     } finally {

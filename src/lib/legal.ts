@@ -37,7 +37,7 @@ export const SUBPROCESSORS: { name: string; purpose: string }[] = [
       'Carries every call through its servers: audio, video, screen share, chat, files, drawings, names and account numbers. On end-to-end-encrypted calls it can’t see or hear the audio and video or read chat, files and drawings; it still sees names, account numbers, raised hands and who is in the call.',
   },
   { name: 'Supabase', purpose: 'Accounts, profiles, photos, contacts, and ringing your devices.' },
-  { name: 'Cloudflare', purpose: 'Hosting the app, and rate limiting joins and invites.' },
+  { name: 'Cloudflare', purpose: 'Hosting the app, rate limiting joins and invites, and anonymous usage counts.' },
   { name: 'Resend', purpose: 'Sending email invites. It keeps a delivery record of each one.' },
   { name: 'Brevo (through Supabase)', purpose: 'Sending sign-in codes.' },
   {

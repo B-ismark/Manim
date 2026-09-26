@@ -18,6 +18,7 @@ import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 import { distinctRoomNames, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
+import { countUsage, surface } from '@/lib/usage'
 
 // Unambiguous base32-ish alphabet (no 0/o/1/l/i) for the random suffix.
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
@@ -96,9 +97,12 @@ export function Landing() {
   }, [signedIn])
 
   /** Navigate to a room, carrying any join-secret / E2EE key in the #fragment. */
-  function goTo(slug: string, secrets: RoomSecrets = {}) {
-    if (slug) navigate(roomTo(slug, secrets))
+  function goTo(slug: string, secrets: RoomSecrets = {}, via?: 'new') {
+    if (slug) navigate(roomTo(slug, secrets), via ? { state: { via } } : undefined)
   }
+
+  // Anonymous usage count (lib/usage): the top of the join funnel.
+  useEffect(() => countUsage('landing', surface()), [])
 
   // A typed value is usually a bare meeting name, but may be a pasted invite link
   // (which carries its own secrets in the #fragment) — handle both.
@@ -167,7 +171,10 @@ export function Landing() {
       )
       return
     }
-    if (!typed) return goTo(randomRoom(), newRoomSecrets())
+    if (!typed) {
+      countUsage('new_call', surface())
+      return goTo(randomRoom(), newRoomSecrets(), 'new')
+    }
     if (!parsed.slug) {
       // Typed only symbols. Minting a random room here would silently discard
       // what they wrote and drop them into a differently-named call — say why
@@ -175,7 +182,8 @@ export function Landing() {
       toast('Call names need letters or numbers', 'warning')
       return
     }
-    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
+    countUsage('new_call', surface())
+    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets(), 'new')
   }
 
   // Arriving from an expired link's "Start a new call": start one, once. The state
@@ -205,7 +213,8 @@ export function Landing() {
     // they join (their display name matches), so it doubles as a waiting indicator.
     addInvite(c.name)
     toast(`Ringing ${c.name}…`, 'info')
-    goTo(slug, secrets)
+    countUsage('new_call', surface())
+    goTo(slug, secrets, 'new')
   }
 
   return (

@@ -80,6 +80,21 @@ type = "ratelimit"
 namespace_id = "1003"
 simple = { limit = 10, period = 60 }
 
+# Anonymous usage counts (/api/count, server/usage.mjs). 30/60s per IP is far above
+# what one person's visit sends (a handful of events) and stops a script padding
+# the numbers.
+[[unsafe.bindings]]
+name = "COUNT_RATELIMIT"
+type = "ratelimit"
+namespace_id = "1004"
+simple = { limit = 30, period = 60 }
+
+# Where those counts go: Workers Analytics Engine (free; created on first write,
+# kept three months). No cookies, no ids — see docs/analytics-proposal.md.
+[[analytics_engine_datasets]]
+binding = "USAGE"
+dataset = "manim_usage"
+
 # Durable room-lifecycle store for invite-link expiry (server/core.mjs roomKv). A
 # link-shared room is stamped on join and retired after 30 days of no joins, so a
 # stale link can't silently recreate a fresh room under the same slug. The Worker

@@ -16,6 +16,7 @@ import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roo
 import { toast } from '@/store/useToastStore'
 import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
+import { countUsage, durationRange, joinErrorClass, surface } from '@/lib/usage'
 
 /**
  * Fire a local OS notification when the host admits a *backgrounded* guest. The
@@ -165,6 +166,18 @@ export function RoomRoute() {
   // also reports a disconnect first, and must show its real error, not "You were
   // disconnected".
   const callRoom = useRef<string | null>(null)
+  // Anonymous usage count (lib/usage): how long the call lasted, as a range. Counted
+  // once — on leaving, or on the tab closing mid-call.
+  const joinedAt = useRef(0)
+  const countLeft = useCallback(() => {
+    if (!joinedAt.current) return
+    countUsage('left', durationRange(Date.now() - joinedAt.current), surface())
+    joinedAt.current = 0
+  }, [])
+  useEffect(() => {
+    window.addEventListener('pagehide', countLeft)
+    return () => window.removeEventListener('pagehide', countLeft)
+  }, [countLeft])
 
   // Mirror the join token into the store so in-room host controls can present it
   // as the Bearer credential to the orchestrator (admit / moderate / roomflags).
@@ -260,6 +273,7 @@ export function RoomRoute() {
           e instanceof ApiError &&
           (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken' || e.code === 'removed')
         ) {
+          if (e.code === 'seat_taken') countUsage('join_error', 'seat_taken', surface())
           setError(e.message)
           setConnecting(false)
           return
@@ -273,6 +287,7 @@ export function RoomRoute() {
           continue
         }
         reportError(e, { context: 'join', room, attempt })
+        countUsage('join_error', joinErrorClass(e), surface())
         setError(friendlyJoinError(e, raw))
         setConnecting(false)
         return
@@ -366,6 +381,7 @@ export function RoomRoute() {
   }, [room, autojoin, displayName, handleJoin])
 
   function leave(reason?: EndReason) {
+    countLeft()
     const why = takeEnd(reason ?? 'left')
     const was = callRoom.current
     callRoom.current = null
@@ -399,8 +415,18 @@ export function RoomRoute() {
           onLeave={leave}
           onConnected={() => {
             callRoom.current = roomNow.current
+            if (!joinedAt.current) {
+              joinedAt.current = Date.now()
+              countUsage(
+                'joined',
+                !companion && prejoin.cameraEnabled && !prejoin.lowBandwidth ? 'cam_on' : 'cam_off',
+                prejoin.lowBandwidth ? 'low_on' : 'low_off',
+              )
+            }
           }}
           onError={(e) => {
+            countLeft()
+            if (!callRoom.current) countUsage('join_error', joinErrorClass(e), surface())
             callRoom.current = null
             reportError(e, { context: 'livekit-room', room })
             setError(friendlyJoinError(e, e.message))

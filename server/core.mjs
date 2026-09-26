@@ -500,7 +500,7 @@ export async function handleKnock(env, body) {
   }
 
   if (!isHost && !alreadyIn && flags.locked) {
-    return { status: 403, body: { error: 'The host has locked this call.' } }
+    return { status: 403, body: { error: 'The host has locked this call.', code: 'locked' } }
   }
 
   // Join-secret gate. Once a room records a secretHash (set by its creator from the
@@ -608,7 +608,10 @@ export async function handleKnock(env, body) {
       (Array.isArray(flags.coHosts) && flags.coHosts.includes(p.identity)),
   )
   if (!hostLive) {
-    return { status: 503, body: { error: 'The host isn’t here to let you in yet — try again in a moment.' } }
+    return {
+      status: 503,
+      body: { error: 'The host isn’t here to let you in yet — try again in a moment.', code: 'host_absent' },
+    }
   }
 
   const now = Date.now()

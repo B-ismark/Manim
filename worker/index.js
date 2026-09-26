@@ -23,6 +23,7 @@ import {
   handlePushRing,
 } from '../server/core.mjs'
 import { rewriteHead, roomFromPath } from '../server/preview.mjs'
+import { count } from '../server/usage.mjs'
 
 const json = (r) =>
   new Response(JSON.stringify(r.body), {
@@ -57,9 +58,32 @@ async function handleApi(request, env, url) {
           return json({ status: 429, body: { error: 'Too many attempts — wait a moment and try again.' } })
         }
       }
-      return json(await handleKnock(env, await bodyOf()))
+      const r = await handleKnock(env, await bodyOf())
+      // Why people don't get in (anonymous; usage.mjs keeps only listed codes).
+      if (r.body?.code) count(env, 'knock_rejected', r.body.code)
+      return json(r)
     }
-    if (path === 'knock-status') return json(await handleKnockStatus(env, query))
+    if (path === 'knock-status') {
+      const r = await handleKnockStatus(env, query)
+      // A guest stops polling on the first settled answer, so each is counted once.
+      if (r.status === 200 && r.body?.status === 'denied') count(env, 'knock_rejected', 'host_denied')
+      if (r.status === 200 && r.body?.status === 'expired') count(env, 'knock_rejected', 'timed_out')
+      return json(r)
+    }
+    if (path === 'count' && method === 'POST') {
+      // Anonymous usage counts (server/usage.mjs, docs/analytics-proposal.md). The
+      // body is an event name and at most two values from a fixed list — nothing
+      // else is read, and the IP is used only for this rate limit, never stored.
+      const limiter = env.COUNT_RATELIMIT
+      if (limiter && typeof limiter.limit === 'function') {
+        const ip = request.headers.get('cf-connecting-ip') || 'anon'
+        const { success } = await limiter.limit({ key: `count:${ip}` })
+        if (!success) return new Response(null, { status: 204 })
+      }
+      const b = await bodyOf()
+      count(env, String(b.e || ''), String(b.a || ''), String(b.b || ''))
+      return new Response(null, { status: 204 })
+    }
     if (path === 'pending') return json(await handlePending(env, query, bearer(request)))
     if (path === 'admit' && method === 'POST') return json(await handleAdmit(env, await bodyOf(), bearer(request)))
     if (path === 'end' && method === 'POST') return json(await handleEndRoom(env, await bodyOf(), bearer(request)))
