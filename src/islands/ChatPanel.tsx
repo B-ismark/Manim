@@ -694,7 +694,7 @@ const MessageList = memo(function MessageList({
           key={item.id}
           item={item}
           grouped={continuesGroup(items[i - 1], item)}
-          lastOfRun={!continuesGroup(item, items[i + 1])}
+          lastOfRun={!items[i + 1] || !continuesGroup(item, items[i + 1])}
           sameMinuteAsPrev={
             !!items[i - 1] && timeOf(items[i - 1].timestamp) === timeOf(item.timestamp)
           }
