@@ -65,8 +65,9 @@ of people (see that PR).
       presence (`features/calls/usePresence.ts`). Encrypt it per recipient. Also
       move to livekit-client's `encryption` option so chat, files and drawings are
       end-to-end encrypted too (`lib/livekit.ts` uses the legacy `e2ee`).
-- [ ] **Forgeable chat state.** Pins, history replay and "report" notices take the
-      sender's name from the message. Attribute to the verified sender.
+- [ ] **Forgeable chat state.** Pins and history replay relay other people's
+      messages, so the author and text are whatever the relayer says. Needs signed
+      messages to fix properly. (Report notices now name the verified sender.)
 - [ ] Hardening: narrow CSP `script-src` from all of jsDelivr to the MediaPipe path;
       rate-limit `/api/push`.
 - [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set

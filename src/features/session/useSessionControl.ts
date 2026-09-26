@@ -12,6 +12,7 @@ import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
 import { userIdOf } from '@/lib/identity'
+import { displayNameOf } from '@/lib/participantName'
 import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
 import { reportError } from '@/lib/report'
@@ -196,9 +197,10 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       toast(`The host moved everyone to ${prettyRoom(data.room)}`, 'neutral')
       // Carry the target room's secrets so everyone passes its join-secret gate.
       navigate(roomTo(data.room, { secret: data.k, e2ee: data.e }), { state: { autojoin: true } })
-    } else if (data.type === 'report' && isHost) {
-      // Only the host is notified of a report.
-      toast(`${data.by} reported ${data.target}`, 'danger')
+    } else if (data.type === 'report' && isHost && msg.from) {
+      // Only the host is notified of a report. Named from the SENDER, not the
+      // payload's `by`, which anyone could fill with someone else's name.
+      toast(`${displayNameOf(msg.from.identity, msg.from.name)} reported ${data.target}`, 'danger')
     }
   })
 
