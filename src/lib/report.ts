@@ -21,6 +21,7 @@ interface SentryLike {
   // Provided by the Sentry Loader Script — queue init until the full SDK arrives.
   init?: (options: {
     dsn: string
+    tracesSampleRate?: number
     beforeSend?: (event: unknown) => unknown
     beforeSendTransaction?: (event: unknown) => unknown
     beforeBreadcrumb?: (crumb: unknown) => unknown
@@ -133,13 +134,16 @@ function initSentry(): void {
   script.addEventListener('load', () => {
     const s = sentry()
     // The loader exposes onLoad; configure the SDK once it's actually present.
-    // beforeSendTransaction too: a project with tracing on in its loader settings
-    // sends a transaction per page load, and those carry the page URL as well.
+    // Tracing is OFF here whatever the project's loader settings say: we only
+    // want crash reports, a transaction per page load spends the quota, and it
+    // carries the page URL. Sample rate 0 stops them being made, and dropping any
+    // that slip through is the belt to that brace.
     s?.onLoad?.(() =>
       s.init?.({
         dsn,
+        tracesSampleRate: 0,
         beforeSend: stripFragments,
-        beforeSendTransaction: stripFragments,
+        beforeSendTransaction: () => null,
         beforeBreadcrumb: stripFragments,
       }),
     )

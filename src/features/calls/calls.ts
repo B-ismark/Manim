@@ -7,7 +7,11 @@ import { useNotifyStore } from '@/store/useNotifyStore'
 import { toast } from '@/store/useToastStore'
 import type { RoomSecrets } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
-import { openSecrets, secretsFor } from '@/features/calls/deviceKeys'
+import { devicesOf, openSecrets } from '@/features/calls/deviceKeys'
+import { sealFor } from '@/lib/sealedSecrets'
+import { checkDevices, type PinCheck } from '@/lib/devicePins'
+import { askKeyChange, type KeyChangeKind } from '@/store/useKeyChangeStore'
+import { useContactsStore } from '@/store/useContactsStore'
 
 export type { IncomingCall }
 
@@ -44,9 +48,33 @@ export async function ringUser(
   // non-contacts can't ring (share the invite link instead).
   // The secrets are sealed to the callee's own devices when they have any
   // registered, so the relay (Supabase Realtime) never sees the call's key.
-  const sent = await secretsFor(supabase, data as string, secrets)
+  const target = data as string
+  const name = useContactsStore.getState().rows.find((r) => r.otherId === target)?.name || email
+  let sent = secrets
+  let check: PinCheck | null = null
+  if (secrets.secret || secrets.e2ee) {
+    const devices = await devicesOf(supabase, target)
+    // Before sealing the call to their devices, compare them with the ones this
+    // browser remembers (lib/devicePins). Anything this browser hasn't trusted
+    // yet is asked about BEFORE sealing: afterwards the key is already out.
+    check = await checkDevices(useAuthStore.getState().userId, target, devices).catch(() => null)
+    const sealed = await sealFor(devices, secrets)
+    // Devices we know of, and yet nothing to seal to: the key would travel
+    // unprotected, which is exactly what hiding their devices would achieve.
+    const kind: KeyChangeKind | null = !check
+      ? null
+      : !check.first && !sealed
+        ? 'unprotected'
+        : check.changed.length
+          ? 'changed'
+          : check.added.length
+            ? 'added'
+            : null
+    if (kind && !(await askKeyChange(name, kind))) return `You didn’t ring ${name}.`
+    if (sealed) sent = { e2ee: sealed }
+  }
   const { data: result, error: ringErr } = await supabase.rpc('ring', {
-    target_id: data as string,
+    target_id: target,
     room,
     from_name: fromName,
     join_secret: sent.secret ?? null,
@@ -56,6 +84,9 @@ export async function ringUser(
   if (result === 'not_contact') {
     return 'You can only ring your contacts. Add them, or share the invite link instead.'
   }
+  if (result !== 'ok') return 'Sign in again to place calls.'
+  // Trusted from now on: only once the ring really went.
+  check?.accept()
 
   // Best-effort background Web Push so the ring reaches a backgrounded / mobile /
   // closed-tab device too (the Realtime broadcast above only lands on a live tab).
@@ -68,13 +99,38 @@ export async function ringUser(
       await fetch('/api/push', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ targetId: data as string, room, fromName, accessToken: token }),
+        body: JSON.stringify({ targetId: target, room, fromName, accessToken: token }),
       })
     } catch {
       /* push is a bonus; the in-app ring already fired */
     }
   })()
   return null
+}
+
+/**
+ * Who's calling. The ring's `from` is stamped by the server (auth.uid() in the
+ * ring function, DEPLOY.md §4g), while `fromName` is whatever the caller typed,
+ * so any contact could otherwise ring as "Mum". With `from`, the name and email
+ * are the ones on that contact's account, from your own contacts list. (A
+ * profile name is still theirs to choose, which is why the email shows too.)
+ * A server that doesn't stamp `from` yet falls back to the typed name.
+ */
+async function caller(from: unknown, typed: string | undefined): Promise<{ name: string; email?: string }> {
+  const fallback = { name: typed || 'Someone' }
+  if (typeof from !== 'string' || !from) return fallback
+  const find = () =>
+    useContactsStore.getState().rows.find((r) => r.otherId === from && r.direction === 'accepted')
+  let row = find()
+  if (!row) {
+    // Not in the list we have: look once, but never hold a ring up for long.
+    await Promise.race([
+      useContactsStore.getState().refresh().catch(() => {}),
+      new Promise((r) => setTimeout(r, 1500)),
+    ])
+    row = find()
+  }
+  return row ? { name: row.name || fallback.name, email: row.email ?? undefined } : fallback
 }
 
 /** Fire a system notification for an incoming call when the tab is backgrounded
@@ -119,16 +175,18 @@ export function useIncomingCalls() {
     let latest = 0
     channel
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
-        const p = payload as IncomingCall
+        const p = payload as IncomingCall & { from?: unknown }
         if (!p?.room) return
         const mine = ++latest
-        void openSecrets({ secret: p.secret, e2ee: p.e2ee }).then((opened) => {
-          // Stale (signed out, or a newer ring arrived first), or sealed for your
-          // other devices only: this one couldn't answer it, so it doesn't ring.
-          if (!live || mine !== latest || !opened) return
-          setIncoming({ room: p.room, fromName: p.fromName || 'Someone', ...opened })
-          notifyIncoming(p.fromName || 'Someone', p.room)
-        })
+        void Promise.all([openSecrets({ secret: p.secret, e2ee: p.e2ee }), caller(p.from, p.fromName)]).then(
+          ([opened, who]) => {
+            // Stale (signed out, or a newer ring arrived first), or sealed for your
+            // other devices only: this one couldn't answer it, so it doesn't ring.
+            if (!live || mine !== latest || !opened) return
+            setIncoming({ room: p.room, fromName: who.name, fromEmail: who.email, ...opened })
+            notifyIncoming(who.name, p.room)
+          },
+        )
       })
       .subscribe()
     return () => {

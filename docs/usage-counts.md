@@ -17,6 +17,8 @@ Each row: `blob1` = event, `blob2` / `blob3` = its two details, `double1` = 1.
 | `knock_rejected` | reason (`host_denied`, `timed_out`, `locked`, `link_expired`, …) | — |
 | `permission_denied` | `camera` / `mic` / `both` | phone / desktop |
 | `join_error` | `permission` / `network` / `server` / `other` (refusals with a reason are `knock_rejected`) | phone / desktop |
+| `rating` | `good` / `bad` ("How was the call?" on the end page) | phone / desktop |
+| `rating_issue` | `audio` / `video` / `connection` / `other` (only after `bad`) | phone / desktop |
 
 ## Run a query
 

@@ -7,6 +7,7 @@ import { IncomingCallBanner } from '@/islands/IncomingCallBanner'
 import { OtherDeviceCallBanner } from '@/islands/OtherDeviceCallBanner'
 import { ErrorBoundary, clearChunkReloadGuard } from '@/islands/ErrorBoundary'
 import { Toasts } from '@/islands/Toasts'
+import { KeyChangeDialog } from '@/islands/KeyChangeDialog'
 
 // The call route pulls in the LiveKit client (the heavy dependency). Lazy-load
 // it so the landing page ships almost none of it (lightweight goal).
@@ -28,6 +29,7 @@ export function App() {
         <Toasts />
         <IncomingCallBanner />
         <OtherDeviceCallBanner />
+        <KeyChangeDialog />
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/privacy" element={<Privacy />} />

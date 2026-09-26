@@ -232,6 +232,26 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   remembers it, and the recovered fragment is written BACK to the address bar — never
   over an auth fragment. Any new navigation to a room must carry secrets (`roomTo`),
   never a bare `/r/<slug>`.
+- **A dropped connection is never a silent end.** In the call, `ConnectionBanner`
+  shows "Reconnecting… 0:12" with Leave (and "You're offline" when the browser
+  knows). If LiveKit gives up, `RoomRoute` does NOT show the end page: a drop after
+  a real Reconnecting goes to the Reconnecting screen, which re-knocks by itself
+  (backing off, and at once on `online`), on the same clock (`lib/connectionTrouble`),
+  and stops after 3 min with Keep trying / Leave. LiveKit reports that final
+  give-up as an ERROR when you're alone and as a disconnect otherwise; both routes
+  go there. `27-reconnect` drives it with `setOffline` (works on a local server).
+- **The waiting room is not a dead end** (`islands/WaitingRoom`). The guest sees
+  their own camera (the toggle there IS the join choice), can fix the name the host
+  will admit and leave a one-line note; both go through `/api/knock-update`, gated
+  by the same claim key as knock-status and only while the request is pending, and
+  live in the sealed queue, so only a host's `WaitingRoomBanner` reads them.
+- **A ring checks who it's sealed to.** `lib/devicePins` remembers each contact's
+  device keys in this browser (per signed-in account). First ring: remember. After
+  that, anything not yet trusted is asked about BEFORE sealing (`KeyChangeDialog`,
+  app-level since Home navigates into the room while the ring goes out): a new
+  device, a known device with a new key, or known devices with nothing to seal to
+  (the key would go in the clear). Incoming rings show the contact's account name
+  and email for the server-stamped `from` (DEPLOY.md §4g), not the typed name.
 - **`ConnectionQuality` is a bandwidth heuristic, not connection state.** It reports
   `Lost` for a packet-loss spike and the value sticks until the next update. Only
   `ConnectionState` (Reconnecting / SignalReconnecting) may be called "lost" in the UI

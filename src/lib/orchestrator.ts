@@ -79,6 +79,36 @@ export function knock(req: JoinRequest): Promise<KnockResponse> {
   return postJson<KnockResponse>('/api/knock', req)
 }
 
+/** Who's in a call before you knock (server handleRoomStatus). Never names. */
+export type RoomStatus =
+  | { state: 'unknown' }
+  | { state: 'empty' }
+  | {
+      state: 'live'
+      count: number
+      hostHere: boolean
+      youAreHost: boolean
+      waiting: boolean
+      locked: boolean
+      full: boolean
+    }
+
+/** Best effort: any failure reads as `unknown`, and the join screen just says "Joining". */
+export async function roomStatus(req: { room: string; secret?: string; name?: string; deviceId?: string }): Promise<RoomStatus> {
+  try {
+    const res = await fetch('/api/room-status', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) return { state: 'unknown' }
+    const body = (await res.json()) as RoomStatus
+    return body && typeof body.state === 'string' ? body : { state: 'unknown' }
+  } catch {
+    return { state: 'unknown' }
+  }
+}
+
 export interface KnockStatus {
   status: 'pending' | 'approved' | 'denied' | 'expired'
   token?: string
@@ -109,6 +139,25 @@ export async function knockStatus(room: string, requestId: string, claim: string
 export interface PendingKnocker {
   id: string
   name: string
+  /** A short note the guest left from the waiting room ('' if none). */
+  note?: string
+}
+
+/** Longest note a waiting guest can leave the host (server MAX_NOTE_LEN). */
+export const MAX_NOTE_LEN = 120
+
+/**
+ * From the waiting room: fix your name, or leave the host a note, while the
+ * host hasn't decided yet. `claim` is the same proof knock-status takes.
+ */
+export function updateKnock(req: {
+  room: string
+  requestId: string
+  claim: string
+  name?: string
+  note?: string
+}): Promise<{ ok: true; name: string; note: string }> {
+  return postJson('/api/knock-update', req)
 }
 
 /** Host: list people waiting to be admitted. `token` is the host's signed join token. */
@@ -127,8 +176,10 @@ export function admit(
   token: string,
   requestId: string,
   approve: boolean,
+  /** The name the host saw: admitting fails if the guest has renamed since. */
+  name?: string,
 ): Promise<{ ok: boolean }> {
-  return postJson('/api/admit', { room, requestId, approve }, token)
+  return postJson('/api/admit', { room, requestId, approve, name }, token)
 }
 
 export interface ModerateRequest {

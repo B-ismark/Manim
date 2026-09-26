@@ -47,7 +47,7 @@ import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
 import { markEnd, notePerson } from '@/lib/callEnd'
 import { displayNameOf } from '@/lib/participantName'
-import { userIdOf } from '@/lib/identity'
+import { accountOf } from '@/lib/identity'
 import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
@@ -199,7 +199,7 @@ function useNotePeople() {
     // Keyed by account, not name: the identity's prefix IS the display name, so
     // two guests both called "Guest" would have been one face.
     for (const p of participants)
-      notePerson(userIdOf(p) || p.identity, displayNameOf(p.identity, p.name, ''))
+      notePerson(accountOf(p) || p.identity, displayNameOf(p.identity, p.name, ''))
   }, [participants])
 }
 
@@ -513,7 +513,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         {/* Audio that isn't working outranks a reconnect that's already in hand. */}
         <MicUnavailableBanner />
         <AudioBlockedBanner canPlayback={audio.canPlayback} onResume={() => void audio.resume()} />
-        <ConnectionBanner />
+        <ConnectionBanner onLeave={leaveWithUndo} />
         {e2eeFailed && <NotEncryptedPill />}
         <WaitingRoomBanner active={isHost && waiting} />
         {companion ? (

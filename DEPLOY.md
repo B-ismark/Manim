@@ -546,8 +546,11 @@ select cron.schedule(
     devices can open them. Until this is run, or for someone whose devices haven't
     registered yet, the app sends the secrets the old way, so ringing never breaks.
     What this protects against: anyone reading the stored rings or Realtime
-    traffic. It does NOT protect against Supabase itself acting maliciously, since
-    Supabase also serves the public keys a caller seals to.
+    traffic. On its own it does NOT protect against Supabase itself acting
+    maliciously, since Supabase also serves the public keys a caller seals to; the
+    app narrows that by remembering each contact's device keys in the caller's
+    browser (`lib/devicePins`): a new device gets a notice, and a known device whose
+    key changed stops the ring and asks first.
 
 ```sql
 -- One public key per signed-in browser. The private half stays in the browser.
@@ -592,6 +595,39 @@ select cron.schedule(
   '53 3 * * *',
   $$delete from public.device_keys where seen_at < now() - interval '90 days'$$
 );
+```
+
+4g. **Rings say who really called** (run once — added 2026-09, after §4e). The
+    ring's caller name is typed by the caller, so any contact could ring you as
+    someone else. This version of `ring()` also stamps the caller's account id
+    (`auth.uid()`, which the caller can't choose), and the app shows that
+    contact's account name AND email from your contacts list (a profile name is
+    theirs to pick; the email isn't). It also drops the old 3-argument `ring()`,
+    which carries no `from` and would let a caller skip the stamp. Until this is
+    run the app shows the typed name, as before. Same signature as §4b, so no app
+    change has to wait for it.
+
+```sql
+create or replace function ring(target_id uuid, room text, from_name text, join_secret text, e2ee_key text)
+returns text language plpgsql security definer set search_path = public, realtime as $$
+declare me uuid := auth.uid();
+begin
+  if me is null then return 'unauthenticated'; end if;
+  if not exists (
+    select 1 from contacts c where c.status = 'accepted'
+      and ((c.requester = me and c.addressee = target_id)
+        or (c.addressee = me and c.requester = target_id))
+  ) then return 'not_contact'; end if;
+  perform realtime.send(
+    jsonb_build_object('room', room, 'fromName', from_name, 'from', me,
+                       'secret', join_secret, 'e2ee', e2ee_key),
+    'ring', 'user:' || target_id::text, true);
+  return 'ok';
+end $$;
+revoke all on function ring(uuid, text, text, text, text) from public;
+grant execute on function ring(uuid, text, text, text, text) to authenticated;
+-- The 3-argument ring() from §4 predates secrets and carries no `from`.
+drop function if exists ring(uuid, text, text);
 ```
 
 4f. **Recent calls on every device** (run once — added 2026-09, after §4e). The

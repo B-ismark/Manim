@@ -44,7 +44,10 @@ export function InCallIncomingBanner({
       <Avatar name={incoming.fromName} size="sm" />
       <div className="min-w-0">
         <p className="truncate text-sm font-medium">{incoming.fromName} is calling</p>
-        <p className="text-xs text-ink-muted">{prettyRoom(room)}</p>
+        <p className="text-xs text-ink-muted">
+          {incoming.fromEmail ? `${incoming.fromEmail} · ` : ''}
+          {prettyRoom(room)}
+        </p>
       </div>
       {isHost && (
         <Button

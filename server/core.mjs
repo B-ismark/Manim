@@ -11,7 +11,7 @@ import { AccessToken, DataPacket_Kind, RoomServiceClient, TokenVerifier, TrackSo
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seal, unseal } from './sealed.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
-import { accountClaim } from './account.mjs'
+import { accountClaim, accountPseudonym } from './account.mjs'
 import { withoutE2eeKey } from './invite.mjs'
 import { removedEntry, withRemoved, wasRemoved } from './removed.mjs'
 import { roomTitle } from './preview.mjs'
@@ -113,9 +113,10 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
     identity,
     name,
     ttl: '15m',
-    // ak/as: the account claim (server/account.mjs) that lets your other devices
-    // in this call recognise this seat as yours.
-    metadata: JSON.stringify({ host: isHost, userId: userId || '', ...(await accountClaim(apiSecret, room, identity, userId)) }),
+    // acct/ak/as: the account claim (server/account.mjs) that lets your other
+    // devices in this call recognise this seat as yours. Never the account id
+    // itself: everyone in the call can read this.
+    metadata: JSON.stringify({ host: isHost, ...(await accountClaim(apiSecret, room, identity, userId)) }),
   })
   at.addGrant({
     room,
@@ -220,7 +221,7 @@ async function verifyCaller(env, token, room) {
   }
 }
 
-// Like verifyCaller, but also returns the userId baked into the SIGNED token
+// Like verifyCaller, but also returns the account pseudonym baked into the SIGNED token
 // metadata (set by the server at mint — immutable, unlike the live participant
 // metadata a client can rewrite via canUpdateOwnMetadata). Used to authorize the
 // device-handoff against an unforgeable account id.
@@ -233,13 +234,13 @@ async function verifyCallerClaims(env, token, room) {
     if (room && claims?.video?.room && claims.video.room !== room) return null
     const identity = claims?.sub || null
     if (!identity) return null
-    let userId = ''
+    let acct = ''
     try {
-      userId = JSON.parse(claims.metadata || '{}').userId || ''
+      acct = JSON.parse(claims.metadata || '{}').acct || ''
     } catch {
       /* no/invalid metadata */
     }
-    return { identity, userId }
+    return { identity, acct }
   } catch {
     return null
   }
@@ -405,12 +406,13 @@ export async function handleKnock(env, body) {
   // fires for a real shared account.) Surfaced to the client so prejoin can offer
   // "join anyway (companion, muted)" vs "transfer to this device". Authority is the
   // server-derived `userId`, never client-claimed, so it can't be spoofed.
+  const acct = await accountPseudonym(apiSecret, room, userId)
   const alsoOnDevice =
-    Boolean(userId) &&
+    Boolean(acct) &&
     participants.some((p) => {
       if (p.identity === identity) return false
       try {
-        return JSON.parse(p.metadata || '{}').userId === userId
+        return JSON.parse(p.metadata || '{}').acct === acct
       } catch {
         return false
       }
@@ -645,6 +647,60 @@ export async function handleKnock(env, body) {
   return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
 }
 
+/**
+ * Who's in the call, for the join screen, before you knock. Read-only: it never
+ * creates a room, claims host, queues anyone or stamps link activity.
+ *
+ * It says only what someone holding the invite link could find out by joining:
+ * how many people are in, whether a host is among them, and whether the door is
+ * a waiting room, locked, or full. Never names or identities.
+ *
+ * Without the link it learns nothing about who's inside: a room with a
+ * join-secret answers `unknown` to a wrong or missing secret. (That a secret
+ * room exists at all is no secret from here: knock already answers need_link
+ * for one, and link slugs are random.)
+ * Bare typed-name rooms have no secret, and anyone can knock on them anyway.
+ */
+export async function handleRoomStatus(env, body) {
+  const { roomService } = services(env)
+  const { room, secret, name, deviceId } = body ?? {}
+  const unknown = { status: 200, body: { state: 'unknown' } }
+  if (typeof room !== 'string' || !room || room.length > MAX_ROOM_LEN) return unknown
+  if (secret != null && typeof secret !== 'string') return unknown
+  if (!roomService) return unknown
+  let flags
+  let participants
+  try {
+    ;[flags, participants] = await Promise.all([getRoomFlags(roomService, room), listParticipants(roomService, room)])
+  } catch {
+    return unknown
+  }
+  if (flags.secretHash) {
+    if (!secret || secretEpoch(secret) !== linkEpoch(env)) return unknown
+    if ((await sha256Hex(secret)) !== flags.secretHash) return unknown
+  }
+  // Your own seat (a tab left open, the device you're rejoining from) isn't
+  // someone waiting for you.
+  const me = typeof name === 'string' && name ? `${name}#${typeof deviceId === 'string' && deviceId ? deviceId : 'web'}` : ''
+  const others = participants.filter((p) => p.identity !== me)
+  if (others.length === 0) return { status: 200, body: { state: 'empty' } }
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  const hostHere = others.some((p) => p.identity === flags.hostId || coHosts.includes(p.identity))
+  return {
+    status: 200,
+    body: {
+      state: 'live',
+      count: others.length,
+      hostHere,
+      // A hint for the copy only (grants nothing): you'd be walking back into your own call.
+      youAreHost: Boolean(me) && me === flags.hostId,
+      waiting: flags.waiting === true,
+      locked: flags.locked === true,
+      full: participants.length >= roomCap(env),
+    },
+  }
+}
+
 export async function handleKnockStatus(env, query) {
   const { roomService, apiSecret } = services(env)
   if (!roomService) return { status: 200, body: { status: 'expired' } }
@@ -655,7 +711,8 @@ export async function handleKnockStatus(env, query) {
     return { status: 403, body: { status: 'expired', error: 'Not your request' } }
   }
   const flags = await getRoomFlags(roomService, room)
-  const entry = (await readQueue(apiSecret, room, flags)).find((e) => e.id === requestId)
+  const queue = await readQueue(apiSecret, room, flags)
+  const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
   // A pending entry past its TTL is treated as expired — the host never actioned
   // it (left / missed the prompt), so stop the guest polling forever.
@@ -665,10 +722,91 @@ export async function handleKnockStatus(env, query) {
   if (entry.status === 'approved') {
     // An approval from before a removal doesn't outlive it.
     if (await wasRemoved(flags.removed, entry.deviceId, '')) return { status: 200, body: { status: 'denied' } }
+    // Checked again at the mint: the seat may have been taken since the knock
+    // (or the rename), and an approval must never hand out someone else's seat.
+    const identity = `${entry.name}#${entry.deviceId || 'web'}`
+    const participants = await listParticipants(roomService, room)
+    if (seatHeldBy(identity, flags, participants, queue, entry.id)) return { status: 200, body: { status: 'denied' } }
     const minted = await mintToken(env, room, entry.name, entry.deviceId, false, entry.userId)
     return { status: 200, body: { status: 'approved', ...minted } }
   }
   return { status: 200, body: { status: entry.status } }
+}
+
+/**
+ * Is `identity` somebody's seat already: the host, a co-host, someone in the
+ * call, or another request in the queue? A queued name must never become one
+ * of those, or the host would be admitting a stranger INTO that seat: its
+ * token matches hostId in ensureHost and evicts the real owner.
+ */
+function seatHeldBy(identity, flags, participants, queue, exceptId) {
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  return (
+    identity === flags.hostId ||
+    coHosts.includes(identity) ||
+    participants.some((p) => p.identity === identity) ||
+    // Another guest waiting under it. (An old approval isn't a seat: nobody
+    // is in it, and it's often this same guest back after closing the tab.)
+    queue.some((e) => e.id !== exceptId && e.status === 'pending' && `${e.name}#${e.deviceId || 'web'}` === identity)
+  )
+}
+
+/** Changes one waiting request may make: enough to fix a typo and reword a note. */
+const MAX_KNOCK_EDITS = 6
+
+/** A note to the host from the waiting room: one line, short enough for a banner. */
+export const MAX_NOTE_LEN = 120
+
+/**
+ * A guest in the waiting room fixes their name or leaves the host a note. Only
+ * the guest who knocked can (the same claim key knock-status needs), only while
+ * the request is still pending, and under the same rules as a knock: the name
+ * ends up in the identity the host admits, so a typo can be fixed before it's
+ * in the call. The note is one short line with no control characters. Both
+ * live in the sealed queue, so only a host reads them.
+ */
+export async function handleKnockUpdate(env, body) {
+  const { roomService, apiSecret } = services(env)
+  const { room, requestId, claim, name, note } = body ?? {}
+  if (!roomService) return { status: 500, body: { error: 'not configured' } }
+  if (typeof room !== 'string' || typeof requestId !== 'string' || typeof claim !== 'string') {
+    return { status: 400, body: { error: 'bad request' } }
+  }
+  if (!(await claimKeyValid(apiSecret, room, requestId, claim))) {
+    return { status: 403, body: { error: 'Not your request' } }
+  }
+  if (name != null && (typeof name !== 'string' || name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim())) {
+    return { status: 400, body: { error: 'Use a shorter name, without # or other special characters.' } }
+  }
+  if (note != null && (typeof note !== 'string' || note.length > MAX_NOTE_LEN || /[\u0000-\u001f\u007f]/.test(note))) {
+    return { status: 400, body: { error: `Keep the note to one line of ${MAX_NOTE_LEN} characters.` } }
+  }
+  const [flags, participants] = await Promise.all([getRoomFlags(roomService, room), listParticipants(roomService, room)])
+  const queue = await readQueue(apiSecret, room, flags)
+  const entry = queue.find((e) => e.id === requestId)
+  if (!entry || entry.status !== 'pending') return { status: 409, body: { error: 'You’re no longer waiting.' } }
+  const nextName = name != null ? name.trim() : entry.name
+  const nextNote = note != null ? note.trim() : entry.note || ''
+  // Nothing changed: no metadata write (each one races the host's own writes).
+  if (nextName === entry.name && nextNote === (entry.note || '')) {
+    return { status: 200, body: { ok: true, name: entry.name, note: nextNote } }
+  }
+  if ((entry.edits || 0) >= MAX_KNOCK_EDITS) {
+    return { status: 429, body: { error: 'You’ve changed this enough times. The host will see it as it is.' } }
+  }
+  if (nextName !== entry.name && seatHeldBy(`${nextName}#${entry.deviceId || 'web'}`, flags, participants, queue, entry.id)) {
+    return {
+      status: 409,
+      body: { error: 'Someone with this name is already part of this call. Try another.', code: 'seat_taken' },
+    }
+  }
+  entry.name = nextName
+  entry.note = nextNote
+  entry.edits = (entry.edits || 0) + 1
+  // Re-read just before writing (no base passed), so a host change made while
+  // this was unsealing isn't written back over.
+  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue))
+  return { status: 200, body: { ok: true, name: entry.name, note: entry.note } }
 }
 
 export async function handlePending(env, query, token) {
@@ -679,19 +817,24 @@ export async function handlePending(env, query, token) {
   if (!auth.ok) return { status: 403, body: { error: 'host only' } }
   const pending = (await readQueue(services(env).apiSecret, room, auth.flags))
     .filter((e) => e.status === 'pending')
-    .map((e) => ({ id: e.id, name: e.name }))
+    .map((e) => ({ id: e.id, name: e.name, note: e.note || '' }))
   return { status: 200, body: { pending } }
 }
 
 export async function handleAdmit(env, body, token) {
   const { roomService, apiSecret } = services(env)
-  const { room, requestId, approve } = body ?? {}
+  const { room, requestId, approve, name } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const auth = await ensureHost(env, roomService, room, token)
   if (!auth.ok) return { status: 403, body: { error: 'host only' } }
   const queue = await readQueue(apiSecret, room, auth.flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 404, body: { error: 'request not found' } }
+  // The guest can rename while waiting. Let in only the name the host was
+  // shown; a newer one comes back to the banner to be decided on again.
+  if (approve && typeof name === 'string' && name !== entry.name) {
+    return { status: 409, body: { error: 'They changed their name. Check who’s waiting again.', code: 'renamed' } }
+  }
   entry.status = approve ? 'approved' : 'denied'
   entry.settledAt = Date.now()
   // Only local crypto awaited since the flags were read, so reuse them.
@@ -795,21 +938,21 @@ export async function handleHandoff(env, body, token) {
   const caller = await verifyCallerClaims(env, token, room)
   if (!caller) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
   // Guests have no account id and are device-bound: nothing to hand off.
-  if (!caller.userId) return { status: 200, body: { ok: true, dropped: 0 } }
+  if (!caller.acct) return { status: 200, body: { ok: true, dropped: 0 } }
 
   const participants = await listParticipants(roomService, room)
   let dropped = 0
   await Promise.all(
     participants.map(async (p) => {
       if (p.identity === caller.identity) return
-      let pUserId = ''
+      let pAcct = ''
       try {
-        pUserId = JSON.parse(p.metadata || '{}').userId || ''
+        pAcct = JSON.parse(p.metadata || '{}').acct || ''
       } catch {
         /* no metadata */
       }
       const device = String(p.identity).split('#').slice(1).join('#')
-      if (pUserId && pUserId === caller.userId && device !== keepDevice) {
+      if (pAcct && pAcct === caller.acct && device !== keepDevice) {
         try {
           // Tell that device it moved BEFORE removing it: LiveKit reports any
           // removal as "removed", and the end-of-call screen would say the host

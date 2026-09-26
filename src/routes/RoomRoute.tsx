@@ -1,11 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Island, Button } from '@/components/primitives'
-import { BanIcon, LeaveIcon, LockIcon, PeopleIcon, ShareIcon } from '@/components/icons'
+import { BanIcon, CheckIcon, CopyIcon, LeaveIcon, LockIcon, PeopleIcon, ShareIcon } from '@/components/icons'
 import { roomDeviceId } from '@/lib/roomDevice'
 import { resetPeople, takeEnd, takePeople, type EndReason } from '@/lib/callEnd'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
+import { WaitingRoom } from '@/islands/WaitingRoom'
 import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
@@ -17,6 +18,7 @@ import { toast } from '@/store/useToastStore'
 import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
 import { countUsage, durationRange, joinErrorClass, surface } from '@/lib/usage'
+import { clearTrouble, formatElapsed, troubleSince, useElapsed, useOnline } from '@/lib/connectionTrouble'
 
 /**
  * Fire a local OS notification when the host admits a *backgrounded* guest. The
@@ -93,6 +95,8 @@ function isTransientJoinError(e: unknown, raw: string): boolean {
   )
 }
 
+type JoinResult = 'ok' | 'choice' | 'failed' | 'final'
+
 const JOIN_MAX_ATTEMPTS = 3
 /** Backoff before retry N (ms): ~0.8s, ~2s. */
 const JOIN_BACKOFF_MS = [800, 2000]
@@ -160,6 +164,14 @@ export function RoomRoute() {
   // move to another call (merge, answering a ring) never shows it: the route has
   // already changed when the old call disconnects.
   const [ended, setEnded] = useState<{ room: string; reason: EndReason; ms: number; people: string[] } | null>(null)
+  // The call dropped and LiveKit gave up reconnecting: the Reconnecting screen
+  // keeps trying, on the same clock the in-call banner started (lib/connectionTrouble).
+  const [lost, setLost] = useState<{ room: string; since: number } | null>(null)
+  const lostRef = useRef(false)
+  // The Reconnecting screen's loop state. Kept here, not in it: each try mounts
+  // the call, which unmounts that screen, and a failed try must pick up where
+  // the backoff and the 3-minute clock left off rather than start over.
+  const retry = useRef<RetryState>({ tries: 0, loopStart: 0, pausedAt: 0 })
   const roomNow = useRef(room)
   roomNow.current = room
   // Set once the call CONNECTS, not when a token arrives: a connect that fails
@@ -202,12 +214,15 @@ export function RoomRoute() {
   // (companion, muted) vs "transfer here" (drop the other device) before connecting.
   const [deviceChoice, setDeviceChoice] = useState<string | null>(null)
 
-  const handleJoin = useCallback(async () => {
+  // Resolves how it went, for the Reconnecting screen's retry loop: 'ok' (a token,
+  // the waiting room, or a device choice), 'failed' (worth another try) or
+  // 'final' (retrying can't help: the link is dead, you were removed, …).
+  const handleJoin = useCallback(async (): Promise<JoinResult> => {
     setError(null)
     if (!LIVEKIT_URL) {
       console.warn('No media server configured: set VITE_LIVEKIT_URL in .env, then restart the dev server.')
       setError('Calls aren’t set up here yet.')
-      return
+      return 'final'
     }
     setConnecting(true)
     // Download the in-call chunk in parallel with the knock round-trip. By the time
@@ -235,31 +250,32 @@ export function RoomRoute() {
           if (res.alsoOnDevice) {
             setDeviceChoice(res.token)
             setConnecting(false)
-          } else {
-            setToken(res.token)
+            return 'choice'
           }
+          setToken(res.token)
+          return 'ok'
         } else if (res.pending && res.requestId) {
           // Waiting room is on — wait for the host to admit us.
           waitClaim.current = res.claim ?? ''
           setWaitingId(res.requestId)
           setConnecting(false)
-        } else {
-          setError('Couldn’t join this call. Try again.')
-          setConnecting(false)
+          return 'ok'
         }
-        return
+        setError('Couldn’t join this call. Try again.')
+        setConnecting(false)
+        return 'failed'
       } catch (e) {
         // A dead invite link is definitive — no retry, no generic error toast. Show
         // the dedicated "link expired" screen that tells the user what to do next.
         if (e instanceof ApiError && e.code === 'link_expired') {
           setExpired(true)
           setConnecting(false)
-          return
+          return 'final'
         }
         if (e instanceof ApiError && e.code === 'need_key') {
           setNeedKey(true)
           setConnecting(false)
-          return
+          return 'final'
         }
         // The join-secret gate turned us away. If we got here on a REMEMBERED secret
         // it is stale (the room was recreated, or the link epoch moved), and keeping
@@ -269,17 +285,21 @@ export function RoomRoute() {
           forgetRoomSecrets(room)
           setError(e.message)
           setConnecting(false)
-          return
+          return 'final'
         }
         // Beta gate rejections are definitive — no retry. Show the server's message
         // (invite-only / room full) verbatim rather than the generic join error.
         if (
           e instanceof ApiError &&
-          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken' || e.code === 'removed')
+          (e.code === 'not_in_beta' ||
+            e.code === 'room_full' ||
+            e.code === 'seat_taken' ||
+            e.code === 'removed' ||
+            e.code === 'locked')
         ) {
           setError(e.message)
           setConnecting(false)
-          return
+          return 'final'
         }
         const raw = e instanceof Error ? e.message : String(e)
         if (isTransientJoinError(e, raw) && attempt < JOIN_MAX_ATTEMPTS) {
@@ -294,9 +314,10 @@ export function RoomRoute() {
         if (cls) countUsage('join_error', cls, surface())
         setError(friendlyJoinError(e, raw))
         setConnecting(false)
-        return
+        return 'failed'
       }
     }
+    return 'failed'
   }, [room, displayName, deviceId, secret, e2ee])
 
   // "You're already in on another device" choices (see deviceChoice). Both connect with
@@ -397,11 +418,26 @@ export function RoomRoute() {
   }, [room, autojoin, displayName, handleJoin])
 
   function leave(reason?: EndReason) {
+    const was = callRoom.current
+    // A drop that came after a real reconnect attempt isn't the end of the call
+    // yet: hold it (the time in, who was there) and go to the Reconnecting screen.
+    if (reason === 'dropped' && troubleSince() && was && was === roomNow.current) {
+      takeEnd('dropped')
+      callRoom.current = null
+      lostRef.current = true
+      setToken(null)
+      setConnecting(false)
+      retry.current = { tries: 0, loopStart: Date.now(), pausedAt: 0 }
+      setLost({ room: was, since: troubleSince() })
+      return
+    }
+    // The app's own onLeave arriving after that, or a retry whose connect didn't
+    // take: still reconnecting, nothing has ended.
+    if (lostRef.current && !was) return
     // Read before countLeft zeroes it: the end screen says how long you were in.
     const ms = joinedAt.current ? Date.now() - joinedAt.current : 0
     countLeft()
     const why = takeEnd(reason ?? 'left')
-    const was = callRoom.current
     callRoom.current = null
     setToken(null)
     setConnecting(false)
@@ -433,6 +469,11 @@ export function RoomRoute() {
           onLeave={leave}
           onConnected={() => {
             callRoom.current = roomNow.current
+            if (lostRef.current) {
+              lostRef.current = false
+              setLost(null)
+              clearTrouble()
+            }
             if (!joinedAt.current) {
               joinedAt.current = Date.now()
               resetPeople()
@@ -444,6 +485,23 @@ export function RoomRoute() {
             }
           }}
           onError={(e) => {
+            // A call that was up and then failed while reconnecting: LiveKit can
+            // report the final give-up as an error instead of a disconnect (it does
+            // when you're alone). Same thing to the person: the Reconnecting screen.
+            if (callRoom.current && troubleSince()) {
+              addBreadcrumb('reconnect gave up (error)', { message: e.message })
+              leave('dropped')
+              return
+            }
+            // A retry from the Reconnecting screen whose connect didn't take: not a
+            // join error, not the end of anything. Back to that screen, which
+            // keeps its own count and waits before the next try.
+            if (lostRef.current && !callRoom.current) {
+              addBreadcrumb('reconnect try failed', { message: e.message })
+              setToken(null)
+              setConnecting(false)
+              return
+            }
             countLeft()
             const cls = callRoom.current ? null : joinErrorClass(e)
             if (cls) countUsage('join_error', cls, surface())
@@ -458,10 +516,42 @@ export function RoomRoute() {
     )
   }
 
+  if (lost && lost.room === room) {
+    return (
+      <Reconnecting
+        room={room}
+        since={lost.since}
+        retry={retry.current}
+        attempting={connecting}
+        error={error}
+        attempt={async () => {
+          const r = await handleJoin()
+          // Your other device is in the call: that's a choice for the join screen.
+          if (r === 'choice') {
+            lostRef.current = false
+            setLost(null)
+            clearTrouble()
+          }
+          return r
+        }}
+        onLeave={() => {
+          const ms = joinedAt.current ? Date.now() - joinedAt.current : 0
+          countLeft()
+          lostRef.current = false
+          setLost(null)
+          clearTrouble()
+          setError(null)
+          setEnded({ room, reason: 'dropped', ms, people: takePeople() })
+        }}
+      />
+    )
+  }
+
   if (ended && ended.room === room) {
     return (
       <CallEnded
         room={room}
+        link={`${window.location.origin}/r/${encodeURIComponent(room)}${roomHash({ secret, e2ee })}`}
         reason={ended.reason}
         ms={ended.ms}
         people={ended.people}
@@ -488,6 +578,8 @@ export function RoomRoute() {
     return (
       <WaitingRoom
         room={room}
+        requestId={waitingId}
+        claim={waitClaim.current}
         onCancel={() => {
           leave()
           navigate('/')
@@ -502,7 +594,7 @@ export function RoomRoute() {
 
   return (
     <div className="relative">
-      <PreJoin room={room} onJoin={handleJoin} encrypted={Boolean(e2ee)} />
+      <PreJoin room={room} onJoin={async () => void (await handleJoin())} encrypted={Boolean(e2ee)} secret={secret || undefined} />
       {deviceChoice && (
         <AlreadyOnDevicePrompt
           onJoinAnyway={joinAsCompanion}
@@ -561,14 +653,15 @@ function EndedBadge({ reason }: { reason: EndReason }) {
   return <LeaveIcon />
 }
 
+/** Short, beside a clock icon: a whole sentence wrapped the summary onto two rows. */
 function timeInCall(ms: number): string | null {
   if (ms < 30_000) return null
-  if (ms < 60_000) return 'You were in for under a minute'
+  if (ms < 60_000) return 'Under a minute'
   const min = Math.round(ms / 60_000)
-  if (min < 60) return `You were in for ${min} min`
+  if (min < 60) return `${min} min`
   const h = Math.floor(min / 60)
   const m = min % 60
-  return `You were in for ${h} h${m ? ` ${m} min` : ''}`
+  return `${h} h${m ? ` ${m} min` : ''}`
 }
 
 /**
@@ -584,6 +677,7 @@ function timeInCall(ms: number): string | null {
  */
 function CallEnded({
   room,
+  link,
   reason,
   ms,
   people,
@@ -591,6 +685,8 @@ function CallEnded({
   onHome,
 }: {
   room: string
+  /** The full invite link (secrets included), for Copy link. */
+  link: string
   reason: EndReason
   ms: number
   people: string[]
@@ -621,6 +717,7 @@ function CallEnded({
                     <circle cx="12" cy="12" r="9" />
                     <path d="M12 7v5l3 2" />
                   </svg>
+                  <span className="sr-only">Time in call: </span>
                   {time}
                 </li>
               )}
@@ -639,12 +736,17 @@ function CallEnded({
               )}
             </ul>
           )}
+          {/* Only after a real call: 30 seconds is the same bar the time chip uses. */}
+          {time && reason !== 'removed' && <CallRating />}
         </section>
         <div className="mt-auto flex flex-col gap-2 pt-6 md:mt-6 md:pt-0">
           {copy.rejoin && (
-            <Button variant="accent" size="lg" block onClick={onRejoin}>
-              Rejoin
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="accent" size="lg" block onClick={onRejoin}>
+                Rejoin
+              </Button>
+              <CopyLinkButton link={link} />
+            </div>
           )}
           <Button variant={copy.rejoin ? 'neutral' : 'accent'} size="lg" block onClick={onHome}>
             Go home
@@ -653,6 +755,249 @@ function CallEnded({
         </div>
       </div>
     </main>
+  )
+}
+
+/** Waits between automatic tries: soon at first, then every 15s. */
+const RETRY_DELAYS_MS = [1_000, 3_000, 5_000, 10_000, 15_000]
+/** Stop trying on our own after this long; Keep trying starts again. */
+const AUTO_RETRY_FOR_MS = 3 * 60_000
+
+/**
+ * The call dropped and LiveKit stopped trying. Not the end-of-call page: the
+ * call is probably still going, and most drops are a train tunnel or a Wi-Fi
+ * handover. So this keeps trying by itself (and at once when the browser says
+ * it's back online), counts up from when the trouble started, and offers the two
+ * honest choices: Keep trying now, or Leave. After a few minutes it stops on its
+ * own and says so, rather than spinning forever.
+ */
+interface RetryState {
+  tries: number
+  loopStart: number
+  pausedAt: number
+}
+
+function Reconnecting({
+  room,
+  since,
+  retry,
+  attempting,
+  error,
+  attempt,
+  onLeave,
+}: {
+  room: string
+  since: number
+  /** Survives this screen unmounting while a try connects (RoomRoute owns it). */
+  retry: RetryState
+  attempting: boolean
+  error: string | null
+  attempt: () => Promise<JoinResult>
+  onLeave: () => void
+}) {
+  const elapsed = useElapsed(since)
+  const online = useOnline()
+  const [tries, setTriesState] = useState(retry.tries)
+  const [pausedAt, setPausedState] = useState(retry.pausedAt)
+  const [final, setFinal] = useState(false)
+  const setTries = (f: (n: number) => number) =>
+    setTriesState((n) => {
+      retry.tries = f(n)
+      return retry.tries
+    })
+  const setPausedAt = (t: number) => {
+    retry.pausedAt = t
+    setPausedState(t)
+  }
+  if (!retry.loopStart) retry.loopStart = Date.now()
+  const busy = useRef(false)
+  // A ref, so a parent re-render doesn't restart the wait below.
+  const attemptRef = useRef(attempt)
+  attemptRef.current = attempt
+  const run = useCallback(async () => {
+    if (busy.current) return
+    busy.current = true
+    try {
+      const r = await attemptRef.current()
+      if (r === 'final') setFinal(true)
+      else setTries((n) => n + 1)
+    } finally {
+      busy.current = false
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  // The loop: one try at a time, backing off, only while there's a network.
+  useEffect(() => {
+    if (final || pausedAt || attempting || !online) return
+    if (Date.now() - retry.loopStart > AUTO_RETRY_FOR_MS) {
+      setPausedAt(Date.now())
+      return
+    }
+    const t = window.setTimeout(run, RETRY_DELAYS_MS[Math.min(tries, RETRY_DELAYS_MS.length - 1)])
+    return () => window.clearTimeout(t)
+  }, [tries, final, pausedAt, attempting, online, run]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Back online: try now rather than waiting out the delay. Only on the change,
+  // not on mount (a remount after a failed try would skip the backoff).
+  const wasOnline = useRef(online)
+  useEffect(() => {
+    if (online && !wasOnline.current && !final && !pausedAt) void run()
+    wasOnline.current = online
+  }, [online]) // eslint-disable-line react-hooks/exhaustive-deps
+  const keepTrying = () => {
+    retry.loopStart = Date.now()
+    setPausedAt(0)
+    setFinal(false)
+    setTries(() => 0)
+    void run()
+  }
+  const title = final ? 'Couldn’t get you back in' : pausedAt ? 'Still can’t reconnect' : 'Reconnecting…'
+  const body = final
+    ? (error ?? 'This call can’t be rejoined from here.')
+    : !online
+      ? 'You’re offline. We’ll try again as soon as you’re back.'
+      : pausedAt
+        ? 'Check your Wi-Fi or mobile data, then try again.'
+        : 'Your connection dropped. The call is still going, and we’re trying to get you back in.'
+  return (
+    <main className="flex min-h-dvh flex-col items-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:justify-center">
+      <div className="flex w-full max-w-md flex-1 flex-col md:flex-none">
+        <header className="px-1 pt-4 md:pt-0">
+          <p className="text-xs font-medium text-ink-subtle">Connection lost</p>
+          <h1 className="truncate text-2xl font-semibold leading-tight">{prettyRoom(room)}</h1>
+        </header>
+        <section className="mt-5 rounded-island bg-surface p-5 shadow-raised" aria-live="polite">
+          <span className="grid size-12 place-items-center rounded-2xl bg-sunken text-ink [&_svg]:size-6">
+            <EndedBadge reason="dropped" />
+          </span>
+          <h2 className="mt-4 flex items-baseline gap-2 text-xl font-semibold">
+            {title}
+            {/* The clock is not in the live region's words: read once, not every second. */}
+            <span aria-hidden className="text-base font-medium tabular-nums text-ink-muted">
+              {formatElapsed(elapsed)}
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-ink-muted">{body}</p>
+          {!final && !pausedAt && online && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-ink-subtle">
+              <span aria-hidden className="size-2 animate-pulse rounded-full bg-warning" />
+              {attempting ? 'Trying now…' : 'Trying again in a moment'}
+            </p>
+          )}
+        </section>
+        <div className="mt-auto flex flex-col gap-2 pt-6 md:mt-6 md:pt-0">
+          {!final && (
+            <Button variant="accent" size="lg" block disabled={attempting} onClick={keepTrying}>
+              {attempting ? 'Trying…' : 'Keep trying'}
+            </Button>
+          )}
+          <Button variant={final ? 'accent' : 'neutral'} size="lg" block onClick={onLeave}>
+            Leave
+          </Button>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+/**
+ * Copy the call's link from the end page: to send to someone who missed it, or
+ * to come back later. The link carries the room's secrets, like every invite.
+ */
+function CopyLinkButton({ link }: { link: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Button
+      size="lg"
+      className="shrink-0 gap-2"
+      aria-label={copied ? 'Link copied' : 'Copy link'}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(link)
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1800)
+        } catch {
+          toast('Couldn’t copy the link', 'danger')
+        }
+      }}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? 'Copied' : 'Copy link'}
+    </Button>
+  )
+}
+
+const ISSUES = [
+  { v: 'audio', label: 'Audio' },
+  { v: 'video', label: 'Video' },
+  { v: 'connection', label: 'Connection' },
+  { v: 'other', label: 'Something else' },
+] as const
+
+/**
+ * "How was the call?" One tap: good or not. A "not" gets one more optional
+ * tap for what went wrong, from a short fixed list. It becomes an anonymous count
+ * (server/usage.mjs), never tied to the call, the people in it or you, and
+ * there's no free text to type something personal into.
+ */
+function CallRating() {
+  const [rated, setRated] = useState<'good' | 'bad' | null>(null)
+  const [issue, setIssue] = useState<string | null>(null)
+  const rate = (r: 'good' | 'bad') => {
+    setRated(r)
+    countUsage('rating', r, surface())
+  }
+  return (
+    <div className="mt-5 border-t border-line pt-4" aria-live="polite">
+      {!rated ? (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">How was the call?</p>
+          <div className="flex gap-2">
+            <RateButton label="Good" onClick={() => rate('good')}>
+              <path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3Zm0 0 4-7a2.5 2.5 0 0 1 3 3l-1 4h5.5a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 17 21H7" />
+            </RateButton>
+            <RateButton label="Not great" onClick={() => rate('bad')}>
+              <path d="M17 14V3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-3Zm0 0-4 7a2.5 2.5 0 0 1-3-3l1-4H5.5a2 2 0 0 1-2-2.4l1.5-7A2 2 0 0 1 7 3h10" />
+            </RateButton>
+          </div>
+        </div>
+      ) : rated === 'bad' && !issue ? (
+        <div>
+          <p className="text-sm font-medium">Sorry about that. What went wrong?</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {ISSUES.map((i) => (
+              <button
+                key={i.v}
+                type="button"
+                onClick={() => {
+                  setIssue(i.v)
+                  countUsage('rating_issue', i.v, surface())
+                }}
+                className="h-11 rounded-full bg-sunken px-4 text-sm font-medium hover:bg-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-ink-muted">Thanks, that helps.</p>
+      )}
+    </div>
+  )
+}
+
+function RateButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="grid size-11 place-items-center rounded-full bg-sunken text-ink hover:bg-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {children}
+      </svg>
+    </button>
   )
 }
 
@@ -748,57 +1093,3 @@ function AlreadyOnDevicePrompt({
   )
 }
 
-/**
- * The "waiting to be let in" lobby. On a phone the guest is likely to switch apps
- * while waiting, so offer a one-tap opt-in for an OS notification when admitted
- * (the actual notification fires from the poll above when the tab is hidden). The
- * permission request is gesture-driven (this button), which browsers honour.
- */
-function WaitingRoom({ room, onCancel }: { room: string; onCancel: () => void }) {
-  const supported = typeof Notification !== 'undefined'
-  const [perm, setPerm] = useState<NotificationPermission>(() =>
-    supported ? Notification.permission : 'denied',
-  )
-  // Elapsed wait, so a long wait reads as time passing instead of a silently
-  // stalled page (the 2s poll is invisible by design).
-  const [waited, setWaited] = useState(0)
-  useEffect(() => {
-    const id = window.setInterval(() => setWaited((s) => s + 1), 1000)
-    return () => window.clearInterval(id)
-  }, [])
-  async function arm() {
-    try {
-      setPerm(await Notification.requestPermission())
-    } catch {
-      setPerm('denied')
-    }
-  }
-  return (
-    <main className="grid min-h-dvh place-items-center p-4">
-      <Island pad="lg" className="w-full max-w-sm text-center">
-        <h1 className="text-lg font-semibold">Waiting to be let in</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          The host has been notified. You’ll join {prettyRoom(room)} as soon as they admit you.
-        </p>
-        <p className="mt-1 text-xs text-ink-subtle tabular-nums">
-          Waiting {Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}
-        </p>
-        {supported && perm === 'default' && (
-          <Button variant="neutral" className="mt-4" onClick={() => void arm()}>
-            Notify me when I’m let in
-          </Button>
-        )}
-        {supported && perm === 'granted' && (
-          <p className="mt-4 text-xs text-ink-subtle">
-            We’ll notify you the moment you’re admitted — you can switch to another app.
-          </p>
-        )}
-        <div className="mt-4">
-          <Button variant="neutral" onClick={onCancel}>
-            Cancel
-          </Button>
-        </div>
-      </Island>
-    </main>
-  )
-}

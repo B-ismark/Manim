@@ -1,24 +1,17 @@
-import { useMemo } from 'react'
-import { useLocalParticipant } from '@livekit/components-react'
 import type { Participant } from 'livekit-client'
 
 /**
- * The signed-in account/guest id stamped into participant metadata at join
- * (see orchestrator). Stable per user across devices — the LiveKit `identity`
- * is per-device (`name#deviceId`), so userId is what ties a person's multiple
- * simultaneous sessions together.
+ * The account this seat belongs to, as this call knows it: a per-room
+ * pseudonym the server stamps into metadata (server/account.mjs), the same for
+ * all of one person's devices here and different in every other call. Never the
+ * account id itself, and self-asserted (metadata is rewritable): fine for
+ * grouping a roster, never for trust. Trust goes through lib/sameAccount.
+ * '' for a guest.
  */
-export function userIdOf(p: Participant): string {
+export function accountOf(p: Participant): string {
   try {
-    return JSON.parse(p.metadata || '{}').userId || ''
+    return JSON.parse(p.metadata || '{}').acct || ''
   } catch {
     return ''
   }
 }
-
-/** This client's own userId, read once from the local participant's metadata. */
-export function useMyUserId(): string {
-  const { localParticipant } = useLocalParticipant()
-  return useMemo(() => userIdOf(localParticipant), [localParticipant])
-}
-
