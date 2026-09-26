@@ -65,6 +65,7 @@ import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
 import { cn } from '@/lib/cn'
 import { useShortcutStore } from '@/store/useShortcutStore'
+import { toggleDevice } from '@/lib/deviceToggle'
 
 export interface ControlBarProps {
   /** When false (mobile auto-hide), the bar slides out of the thumb zone. */
@@ -317,7 +318,7 @@ export function ControlBar({
       if (el?.closest('[role="dialog"]')) return
       switch (e.key.toLowerCase()) {
         case 'm':
-          void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+          toggleDevice('microphone', !isMicrophoneEnabled, () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))
           break
         case 'v':
           void toggleCamera()
@@ -651,7 +652,9 @@ export function ControlBar({
                   })
                   return
                 }
-                void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
+                toggleDevice('microphone', !isMicrophoneEnabled, () =>
+                  localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled),
+                )
               }}
             />
           </Tooltip>

@@ -243,8 +243,12 @@ create policy "avatar delete own" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 ```
 
-The client uploads to `avatars/<user-id>/avatar.webp` (one object per user,
-upsert), so the folder-name check pins each user to their own prefix.
+The client uploads to `avatars/<user-id>/<random>.webp`, a new random name each
+time (the old one is deleted), so the folder-name check pins each user to their own
+prefix. The name is random because the bucket is public and account ids are seen by
+everyone in a call: a fixed `avatar.webp` let anyone who had your id open your
+photo. Don't add a public `select` policy on `storage.objects` for this bucket —
+that would let anyone list the folder and undo it.
 
 ### 3b. Self-serve account deletion
 The app's **Settings → Delete account** button (privacy requirement) calls a
@@ -488,12 +492,43 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function get_push_targets(uuid) from public;
 grant execute on function get_push_targets(uuid) to authenticated;
+
+-- Added 2026-09 (run once): drop a contact's subscriptions the push service has
+-- reported gone (404/410), so dead ones stop being sent to on every ring. Same
+-- contact check as above, and it deletes only the endpoints named.
+create or replace function prune_push_targets(target_id uuid, endpoints text[])
+returns void
+language sql security definer set search_path = public as $$
+  delete from push_subscriptions s
+  where s.user_id = target_id and s.endpoint = any(endpoints) and exists (
+    select 1 from contacts c where c.status = 'accepted'
+      and ((c.requester = auth.uid() and c.addressee = target_id)
+        or (c.addressee = auth.uid() and c.requester = target_id))
+  );
+$$;
+revoke all on function prune_push_targets(uuid, text[]) from public;
+grant execute on function prune_push_targets(uuid, text[]) to authenticated;
 ```
 
 **VAPID keys** — generate one keypair: `npx web-push generate-vapid-keys`.
 - Client/build var (Cloudflare → manim → Build): `VITE_VAPID_PUBLIC_KEY` = the public key.
 - Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` as a **Secret** (e.g. `mailto:you@domain.com`: push services use it to reach you about problems; a Secret because this repo is public; unset, it falls back to the repo's URL), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
 - iOS note: Web Push needs the PWA installed to the Home Screen (Add to Home Screen) — Safari only delivers push to installed web apps.
+
+4d. **Contact requests expire** (run once — added 2026-09). A request nobody
+    answers used to sit in both people's lists forever. This drops unanswered ones
+    after 30 days, nightly, inside Supabase (`pg_cron` is on the free plan:
+    Database → Extensions → enable **pg_cron** first if the `create extension`
+    line errors).
+
+```sql
+create extension if not exists pg_cron;
+select cron.schedule(
+  'expire-contact-requests',
+  '23 3 * * *',
+  $$delete from public.contacts where status = 'pending' and created_at < now() - interval '30 days'$$
+);
+```
 
 ## 5. LiveKit Cloud
 Already configured for dev. The Worker needs the same key/secret/URL (step 3,

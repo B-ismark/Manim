@@ -9,6 +9,7 @@
 */
 import { AccessToken, DataPacket_Kind, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 import { sendPush, pushConfigured } from './webpush.mjs'
+import { seal, unseal } from './sealed.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
 import { withoutE2eeKey } from './invite.mjs'
 import { removedEntry, withRemoved, wasRemoved } from './removed.mjs'
@@ -173,6 +174,27 @@ async function getRoomFlags(roomService, room) {
 async function mergeRoomFlags(roomService, room, patch, current) {
   const base = current ?? (await getRoomFlags(roomService, room))
   await roomService.updateRoomMetadata(room, JSON.stringify({ ...base, ...patch }))
+}
+
+/** A settled (denied) waiting-room request is kept this long, so the guest's poll
+ *  can still read "denied", then dropped. Approved ones stay: rejoining needs them. */
+const DENIED_KEEP_MS = 10 * 60_000
+
+/** The waiting-room queue, unsealed (server/sealed.mjs). A plain `queue` is what
+ *  rooms created before sealing hold; it's replaced on the next write. */
+async function readQueue(apiSecret, room, flags) {
+  if (flags.queueSealed) return unseal(apiSecret, room, flags.queueSealed, [])
+  return Array.isArray(flags.queue) ? flags.queue : []
+}
+
+/** Metadata patch that stores `queue` sealed, pruned, and clears the plain copy. */
+async function queuePatch(apiSecret, room, queue, now = Date.now()) {
+  const kept = queue.filter((e) => {
+    if (e.status === 'pending') return now - (e.ts || now) < KNOCK_TTL_MS
+    if (e.status === 'denied') return now - (e.settledAt || e.ts || now) < DENIED_KEEP_MS
+    return true
+  })
+  return { queueSealed: await seal(apiSecret, room, kept.slice(-50)), queue: undefined }
 }
 
 // Resolve the caller's identity from their LiveKit JWT — the same token they hold
@@ -388,7 +410,7 @@ export async function handleKnock(env, body) {
         return false
       }
     })
-  const queue = Array.isArray(flags.queue) ? flags.queue : []
+  const queue = await readQueue(apiSecret, room, flags)
   // Already admitted this session? Someone the host let in, who then left, should
   // walk straight back in rather than re-queueing in the lobby (the "can't rejoin
   // after being allowed in" bug). Match on the stable name+device identity.
@@ -591,13 +613,13 @@ export async function handleKnock(env, body) {
 
   const now = Date.now()
   const requestId = crypto.randomUUID()
-  // Prune stale pending entries (past the TTL) BEFORE the 50-cap, so a burst of
-  // dead knocks can't evict fresh ones — the earlier-pending-evicted-as-expired
-  // bug — and the queue self-cleans. Resolved entries are kept (rejoin needs them).
-  const live = queue.filter((e) => e.status !== 'pending' || now - (e.ts || now) < KNOCK_TTL_MS)
-  live.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now })
-  await mergeRoomFlags(roomService, room, { queue: live.slice(-50) })
-  // The request id is readable by everyone in the room (it's in the queue above);
+  // queuePatch prunes stale pending and old denied entries BEFORE the 50-cap, so a
+  // burst of dead knocks can't evict fresh ones — the earlier-pending-evicted-as-
+  // expired bug — and the queue self-cleans. Approved entries are kept (rejoin needs
+  // them). The whole queue is sealed: room metadata is readable by everyone in it.
+  const next = [...queue, { id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now }]
+  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, next, now))
+  // Sealed or not, never let a request id alone be enough to collect the token:
   // the claim key is what knock-status actually honours, and only this caller has it.
   return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
 }
@@ -612,7 +634,7 @@ export async function handleKnockStatus(env, query) {
     return { status: 403, body: { status: 'expired', error: 'Not your request' } }
   }
   const flags = await getRoomFlags(roomService, room)
-  const entry = (Array.isArray(flags.queue) ? flags.queue : []).find((e) => e.id === requestId)
+  const entry = (await readQueue(apiSecret, room, flags)).find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
   // A pending entry past its TTL is treated as expired — the host never actioned
   // it (left / missed the prompt), so stop the guest polling forever.
@@ -634,24 +656,25 @@ export async function handlePending(env, query, token) {
   const { room } = query
   const auth = await ensureHost(env, roomService, room, token)
   if (!auth.ok) return { status: 403, body: { error: 'host only' } }
-  const pending = (Array.isArray(auth.flags.queue) ? auth.flags.queue : [])
+  const pending = (await readQueue(services(env).apiSecret, room, auth.flags))
     .filter((e) => e.status === 'pending')
     .map((e) => ({ id: e.id, name: e.name }))
   return { status: 200, body: { pending } }
 }
 
 export async function handleAdmit(env, body, token) {
-  const { roomService } = services(env)
+  const { roomService, apiSecret } = services(env)
   const { room, requestId, approve } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const auth = await ensureHost(env, roomService, room, token)
   if (!auth.ok) return { status: 403, body: { error: 'host only' } }
-  const queue = Array.isArray(auth.flags.queue) ? auth.flags.queue : []
+  const queue = await readQueue(apiSecret, room, auth.flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 404, body: { error: 'request not found' } }
   entry.status = approve ? 'approved' : 'denied'
-  // Nothing awaited since the flags were read, so reuse them instead of re-reading.
-  await mergeRoomFlags(roomService, room, { queue }, auth.flags)
+  entry.settledAt = Date.now()
+  // Only local crypto awaited since the flags were read, so reuse them.
+  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue), auth.flags)
   return { status: 200, body: { ok: true } }
 }
 
@@ -996,15 +1019,28 @@ export async function handlePushRing(env, body) {
   if (!Array.isArray(subs) || subs.length === 0) return { status: 200, body: { ok: true, sent: 0 } }
 
   let sent = 0
+  const gone = []
   await Promise.all(
     subs.map(async (s) => {
       try {
         const st = await sendPush(env, s.endpoint)
         if (st >= 200 && st < 300) sent++
+        // 404/410: the browser unsubscribed or the push service expired it. It will
+        // never work again, and every ring would keep paying for it.
+        else if (st === 404 || st === 410) gone.push(s.endpoint)
       } catch {
         /* one dead endpoint shouldn't fail the others */
       }
     }),
   )
+  if (gone.length) {
+    // Same authority as the read: the RPC only deletes a contact's rows, and only
+    // the endpoints named (DEPLOY.md §4, prune_push_targets). Absent = no-op.
+    await fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/prune_push_targets`, {
+      method: 'POST',
+      headers: { apikey: anon, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ target_id: targetId, endpoints: gone }),
+    }).catch(() => {})
+  }
   return { status: 200, body: { ok: true, sent } }
 }

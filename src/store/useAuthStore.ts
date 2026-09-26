@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { Session } from '@supabase/supabase-js'
+import { avatarObjects } from '@/lib/avatarObjects'
 import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/store/useToastStore'
@@ -113,9 +114,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const sb = supabase
     const { signedIn, userId } = get()
     if (!sb || !signedIn) throw new Error('Sign in to delete your account')
-    // The photo is a public object keyed by user id and isn't covered by the
-    // account's cascade, so it outlived the account. Best-effort, before the row goes.
-    await sb.storage.from(AVATAR_BUCKET).remove([`${userId}/avatar.webp`]).catch(() => {})
+    // The photo is a public object and isn't covered by the account's cascade, so
+    // it outlived the account. Best-effort, before the row goes.
+    await sb.storage.from(AVATAR_BUCKET).remove(avatarObjects(userId, get().avatarUrl)).catch(() => {})
     await disablePush()
     // The DB function deletes the caller's own auth.users row (auth.uid()); the
     // on-delete-cascade FKs take profiles/contacts/push_subscriptions with it.
@@ -132,20 +133,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!sb || !signedIn) throw new Error('Sign in to add a photo')
 
     // Shrink + square-crop in the browser so we store a few-KB webp, not the
-    // original multi-MB photo. Fixed filename → one object per user (upsert).
+    // original multi-MB photo. The bucket is public and account ids are visible to
+    // everyone in a call, so a fixed `<id>/avatar.webp` let anyone who'd been in a
+    // call with you open your photo forever. A random name is only reachable
+    // through the URL the account row hands out; each upload is a new name, which
+    // also busts the CDN cache.
     const blob = await squareDownscale(file)
-    const path = `${userId}/avatar.webp`
+    const path = `${userId}/${crypto.randomUUID()}.webp`
     const { error: upErr } = await sb.storage
       .from(AVATAR_BUCKET)
-      .upload(path, blob, { upsert: true, contentType: 'image/webp' })
+      .upload(path, blob, { upsert: false, contentType: 'image/webp' })
     if (upErr) throw new Error('Couldn’t upload your photo — try again')
 
-    // Cache-bust so the new image shows immediately (same path, public CDN URL).
-    const base = sb.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl
-    const url = `${base}?v=${Date.now()}`
-
+    const url = sb.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl
+    const previous = avatarObjects(userId, get().avatarUrl)
     await sb.from('profiles').upsert({ id: userId, avatar_url: url })
     set({ avatarUrl: url })
+    // The old photo (and the legacy fixed-name one) go once the row points away.
+    await sb.storage.from(AVATAR_BUCKET).remove(previous.filter((o) => o !== path)).catch(() => {})
   },
 
   removeAvatar: async () => {
@@ -154,7 +159,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (!sb || !signedIn) return
     // Best-effort delete of the Storage object (a provider-seeded OAuth URL has
     // none — ignore). Then null the account row so it doesn't re-seed.
-    await sb.storage.from(AVATAR_BUCKET).remove([`${userId}/avatar.webp`])
+    await sb.storage.from(AVATAR_BUCKET).remove(avatarObjects(userId, get().avatarUrl)).catch(() => {})
     await sb.from('profiles').upsert({ id: userId, avatar_url: null })
     set({ avatarUrl: null })
   },

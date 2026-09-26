@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Island, Button } from '@/components/primitives'
 import { LockIcon } from '@/components/icons'
+import { roomDeviceId } from '@/lib/roomDevice'
 import { takeEnd, type EndReason } from '@/lib/callEnd'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
@@ -207,8 +208,9 @@ export function RoomRoute() {
         // Send the Supabase session token (if signed in), NOT a client-asserted
         // userId — the server derives the trusted account id from it. Absent → guest.
         const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
-        const seat = seatFor(room, `${displayName}#${deviceId}`)
-        const res = await knock({ room, name: displayName, deviceId, accessToken, secret, seat, hasKey: Boolean(e2ee) })
+        const device = await roomDeviceId(deviceId, room)
+        const seat = seatFor(room, `${displayName}#${device}`)
+        const res = await knock({ room, name: displayName, deviceId: device, accessToken, secret, seat, hasKey: Boolean(e2ee) })
         rememberSeat(room, res.identity, res.seat)
         if (res.token) {
           // Same account already in the call on another device? Don't auto-connect —
@@ -297,7 +299,9 @@ export function RoomRoute() {
         // Drop our OTHER device(s) in this room. Server-mediated, authorized on the
         // signed token's account id (can't be forged). Fire-and-forget — the other
         // session receives the disconnect and self-exits.
-        void handoff(room, tok, deviceId).catch(() => {})
+        void roomDeviceId(deviceId, room)
+          .then((device) => handoff(room, tok, device))
+          .catch(() => {})
       }
       return null
     })

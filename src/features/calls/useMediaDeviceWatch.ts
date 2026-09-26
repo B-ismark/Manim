@@ -8,6 +8,7 @@ import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { useScreenShare } from '@/features/calls/useScreenShare'
 import { recoverMicrophone } from '@/lib/audioRecovery'
 import { setMicFault } from '@/store/useAudioStore'
+import { toggleDevice } from '@/lib/deviceToggle'
 
 /** What to announce for a mic we couldn't get back — each names a different fix. */
 const FAULT_MESSAGE: Record<'no-device' | 'blocked' | 'acquire-failed', string> = {
@@ -64,7 +65,7 @@ export function useMediaDeviceWatch() {
       announce('Your camera disconnected', 'assertive')
       toast('Your camera disconnected', 'danger', {
         duration: 8000,
-        action: { label: 'Reconnect', onClick: () => void localParticipant.setCameraEnabled(true) },
+        action: { label: 'Reconnect', onClick: () => toggleDevice('camera', true, () => localParticipant.setCameraEnabled(true)) },
       })
     }
     camMst.addEventListener('ended', onEnded)
