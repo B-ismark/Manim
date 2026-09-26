@@ -19,6 +19,7 @@ import { displayNameOf } from '@/lib/participantName'
 import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
 import { reportError } from '@/lib/report'
+import { troubleSince } from '@/lib/connectionTrouble'
 
 /** How long the host may be gone before someone else is made host. */
 const HOST_GRACE_MS = 45_000
@@ -126,6 +127,12 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   }, [hostPresent, hostId])
   useEffect(() => {
     if (!graceOver || !hostId || hostPresent) return
+    // While OUR connection is down the roster empties out, so the host only
+    // looks gone. Say nothing and elect no one; look again once we're back.
+    if (troubleSince()) {
+      const t = setTimeout(() => setElectTry((n) => n + 1), 2000)
+      return () => clearTimeout(t)
+    }
     if (!announcedHostLeft.current) {
       announcedHostLeft.current = true
       toast('The host left the call', 'neutral')
