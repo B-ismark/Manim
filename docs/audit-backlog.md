@@ -95,7 +95,6 @@ of people (see that PR).
       should move into TopStack so the layering rules cover them.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
-- [ ] Firefox's own PiP button appears on hover over tiles.
 - [ ] Turning a camera back ON after another app took it fails silently: a muted
       track re-acquires via `unmute()` → `restart()`, which never raises LiveKit's
       `MediaDevicesError` (`useMediaDeviceWatch`), so no message and an unhandled
