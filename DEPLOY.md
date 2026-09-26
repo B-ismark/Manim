@@ -109,10 +109,14 @@ already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
    newer, and switch **off Session Replay** and **Performance Monitoring
    (tracing)**. Replay records the page — names, chat, the call UI — which the
    Privacy page does not disclose and the scrubber does not cover.
-3. **Project Settings → Security & Privacy**: turn on **Data Scrubber** and
-   **Use Default Scrubbers**, and turn on **Prevent Storing of IP Addresses**.
-   Add `k`, `e` and `access_token` to **Additional Sensitive Fields** as a
-   server-side backstop.
+3. **Project Settings → Security & Privacy**: turn on **Data Scrubber**,
+   **Use Default Scrubbers** and **Prevent Storing of IP Addresses**. Leave
+   *Additional Sensitive Fields* empty: it matches any field name that CONTAINS the
+   entry, so `e` or `k` there would blank almost every field. Instead, as a
+   server-side backstop, **Advanced Data Scrubbing → Add Rule**: Method *Replace*
+   (placeholder `[room-secret]`), Data Type *Regex Matches*, Regex
+   `(?:[#&]|%23|%26)(?:k|e|access_token|refresh_token)(?:=|%3D)[^&\s"'#%]+`,
+   Source `$string`.
 4. **Project Settings → Client Keys (DSN)**: copy the DSN
    (`https://<key>@o<org>.ingest<region>.sentry.io/<project>`).
 5. **Cloudflare → the Worker → Settings → Build → Variables and secrets**: add
