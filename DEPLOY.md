@@ -115,8 +115,9 @@ already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
    entry, so `e` or `k` there would blank almost every field. Instead, as a
    server-side backstop, **Advanced Data Scrubbing → Add Rule**: Method *Replace*
    (placeholder `[room-secret]`), Data Type *Regex Matches*, Regex
-   `(?:[#&]|%23|%26)(?:k|e|access_token|refresh_token)(?:=|%3D)[^&\s"'#%]+`,
-   Source `$string`.
+   `(?:[#?&]|%23|%3F|%26)(?:k|e|[a-z_]*token)(?:=|%3D)[^&\s"'#%]+`,
+   Source `$string`. (The `?` matters: livekit-client puts the call's join token in
+   a query string, `?access_token=…`, when it checks a failed connection.)
 4. **Project Settings → Client Keys (DSN)**: copy the DSN
    (`https://<key>@o<org>.ingest<region>.sentry.io/<project>`).
 5. **Cloudflare → the Worker → Settings → Build → Variables and secrets**: add

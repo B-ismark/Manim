@@ -44,6 +44,14 @@ describe('stripFragments', () => {
     expect(stripFragments({ c: '/q?to=%2Fdocs%23section' }).c).toBe('/q?to=%2Fdocs%23section')
   })
 
+  it('redacts a token in a query string (livekit-client validates the join URL with one)', () => {
+    const url = 'https://lk.example/rtc/v1/validate?access_token=eyJ.a-b_c.d&auto_subscribe=1'
+    expect(stripFragments({ url }).url).toBe('https://lk.example/rtc/v1/validate?access_token=[redacted]&auto_subscribe=1')
+    expect(stripFragments({ m: 'GET /x?a=1&token=abc failed' }).m).toBe('GET /x?a=1&token=[redacted] failed')
+    expect(stripFragments({ q: '/q?to=%2Fr%3Faccess_token%3DJWT' }).q).toBe('/q?to=%2Fr%3Faccess_token%3D[redacted]')
+    expect(stripFragments({ t: 'the token was fine' }).t).toBe('the token was fine')
+  })
+
   it('leaves reports without secrets untouched', () => {
     expect(stripFragments({ a: 1, b: 'plain #hashtag', c: '/docs#section', d: null })).toEqual({
       a: 1,

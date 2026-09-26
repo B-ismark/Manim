@@ -276,6 +276,9 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   // mark shows up in room metadata: a failed request, or a knock's flag write that
   // lands on top of ours, would otherwise leave the room unmarked for good.
   const [markTry, setMarkTry] = useState(0)
+  // A fresh budget whenever the conditions change (host handed over, token renewed),
+  // so spent attempts under the old ones can't leave the room unmarked for good.
+  useEffect(() => setMarkTry(0), [isHost, roomToken])
   useEffect(() => {
     if (!encryptedHere || !isHost || markedEncrypted || !roomToken || markTry > 3) return
     void setRoomFlags({ room: room.name, token: roomToken, encrypted: true }).catch((e) =>

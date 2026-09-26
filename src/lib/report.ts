@@ -124,7 +124,13 @@ const SECRET_PARAM = /(?:^|[#&])(?:k|e|[a-z_]*token)=/i
 const ENCODED_FRAGMENT = /%23[^\s"'`<>()\\&]*/gi
 const ENCODED_SECRET_PARAM = /(?:^|%23|%26)(?:k|e|[a-z_]*token)%3D/i
 
+/** A token in a QUERY string. livekit-client puts the join token there
+ *  (`/rtc/validate?access_token=<JWT>`) and fetches it after a failed connect,
+ *  which a fetch breadcrumb records; a live token lets anyone into that call. */
+const QUERY_TOKEN = /((?:[?&]|%3F|%26)[a-z_]*token(?:=|%3D))[^&\s"'`<>()\\#%]+/gi
+
 function scrubText(s: string): string {
+  if (/token/i.test(s)) s = s.replace(QUERY_TOKEN, '$1[redacted]')
   if (s.includes('#')) s = s.replace(FRAGMENT, (f) => (SECRET_PARAM.test(f) ? '' : f))
   if (/%23/i.test(s)) s = s.replace(ENCODED_FRAGMENT, (f) => (ENCODED_SECRET_PARAM.test(f) ? '' : f))
   return s

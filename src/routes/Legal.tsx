@@ -246,7 +246,7 @@ export function Privacy() {
         <Heading>Contact</Heading>
         <P>
           <ContactBody topic="Questions, deletion requests and abuse reports" /> The Report button
-          in a call alerts that call's host only.
+          in a call alerts that call's host and co-hosts only.
         </P>
       </section>
     </LegalPage>

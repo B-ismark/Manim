@@ -236,11 +236,17 @@ export function ParticipantsPanel() {
   // addressed to the host and co-hosts only: broadcast, it reached every device in
   // the call — the reported person's included — which is who it has to be hidden
   // from. No central moderation backend — keeps it lightweight.
-  async function reportUser(targetName: string) {
+  async function reportUser(targetIdentity: string, targetName: string) {
     const payload = new TextEncoder().encode(
       JSON.stringify({ type: 'report', target: targetName, by: localParticipant.name || 'Someone' }),
     )
-    const hosts = [hostId, ...coHosts].filter((id): id is string => !!id && id !== localParticipant.identity)
+    // Only hosts who are actually here (metadata can still name one who left, and a
+    // report addressed to nobody would say "reported" anyway), never the person
+    // being reported (a co-host can be), never yourself.
+    const present = new Set(participants.map((p) => p.identity))
+    const hosts = [...new Set([hostId, ...coHosts])].filter(
+      (id) => !!id && id !== localParticipant.identity && id !== targetIdentity && present.has(id),
+    )
     if (hosts.length === 0) {
       toast('There’s no host in this call to report to', 'warning')
       return
@@ -432,7 +438,7 @@ function ParticipantRow({
   onRequestRemove: (identity: string, name: string) => void
   room: string
   token: string | null
-  onReport: (targetName: string) => void
+  onReport: (targetIdentity: string, targetName: string) => void
 }) {
   const speaking = useIsSpeaking(participant)
   const micRef = { participant, source: Track.Source.Microphone } as TrackReferenceOrPlaceholder
@@ -542,7 +548,7 @@ function ParticipantRow({
             <DropdownItem icon={<BanIcon />} onSelect={() => toggleBlock(participant.identity)}>
               {blocked ? 'Unblock' : 'Block for me'}
             </DropdownItem>
-            <DropdownItem icon={<FlagIcon />} onSelect={() => onReport(name)}>
+            <DropdownItem icon={<FlagIcon />} onSelect={() => onReport(participant.identity, name)}>
               Report
             </DropdownItem>
           </>
