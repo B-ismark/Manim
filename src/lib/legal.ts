@@ -34,7 +34,7 @@ export const SUBPROCESSORS: { name: string; purpose: string }[] = [
   {
     name: 'LiveKit Cloud',
     purpose:
-      'Carries every call through its servers: audio, video, screen share, chat, files, drawings, names and account numbers. On end-to-end-encrypted calls it can’t see or hear the audio and video, but it can read everything else.',
+      'Carries every call through its servers: audio, video, screen share, chat, files, drawings, names and account numbers. On end-to-end-encrypted calls it can’t see or hear the audio and video or read chat, files and drawings; it still sees names, account numbers, raised hands and who is in the call.',
   },
   { name: 'Supabase', purpose: 'Accounts, profiles, photos, contacts, and ringing your devices.' },
   { name: 'Cloudflare', purpose: 'Hosting the app, and rate limiting joins and invites.' },

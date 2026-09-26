@@ -5,6 +5,7 @@ import {
   expectChromeVisible,
   join,
   newParticipant,
+  openChat,
   uniqueRoom,
 } from './helpers'
 
@@ -110,6 +111,32 @@ test.describe('E2EE — encrypted call', () => {
       await expect(page.getByRole('button', { name: /People \(1\)/ })).toBeVisible()
     } finally {
       await closeContext(context)
+    }
+  })
+
+  test('on an encrypted call, chat is end-to-end encrypted too and still gets through', async ({
+    page,
+    browser,
+  }) => {
+    // lib/livekit uses `encryption` (media AND data channel). This guards the
+    // failure that change could cause: chat that no longer decrypts on arrival.
+    const room = uniqueRoom('e2ee-chat')
+    const hash = '#e=testkey-e2e-chat'
+    await join(page, room, 'Alice', hash)
+    const guest = await newParticipant(browser, room, 'Bob', hash)
+    try {
+      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({ timeout: 30_000 })
+      await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
+      const composer = await openChat(page)
+      await composer.fill('sealed hello')
+      await composer.press('Enter')
+      const bobComposer = await openChat(guest.page)
+      await expect(guest.page.getByText('sealed hello')).toBeVisible({ timeout: 20_000 })
+      await bobComposer.fill('sealed reply')
+      await bobComposer.press('Enter')
+      await expect(page.getByText('sealed reply')).toBeVisible({ timeout: 20_000 })
+    } finally {
+      await closeContext(guest.context)
     }
   })
 })

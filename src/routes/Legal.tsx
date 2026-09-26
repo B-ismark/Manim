@@ -127,17 +127,18 @@ export function Privacy() {
             in a call could still record it on their own devices.
           </li>
           <li>
-            <span className="text-ink">Audio and video can be end-to-end encrypted.</span> Calls
+            <span className="text-ink">Calls can be end-to-end encrypted.</span> Calls
             you start with New meeting or by calling a contact are. The key is part of the invite
             link, so anyone with the full link can join and see and hear the call: share it only
             with people you mean to invite. The key reaches our providers in three cases. When you
             ring a contact, it goes through Supabase and stays in our database for up to 3 days.
             When your own signed-in devices show which call you’re in, it passes through Supabase
             without being stored. When a host merges two calls, it is sent over the call’s message
-            channel, which LiveKit can read. Email invites leave the key out. Chat, files, drawings
-            and reactions are encrypted on their way to LiveKit but not end-to-end, so LiveKit’s
-            servers can read them. A call opened without a key isn’t end-to-end encrypted; the
-            padlock in the call shows which applies.
+            channel, which is end-to-end encrypted on an encrypted call and readable by LiveKit on
+            one that isn’t. Email invites leave the key out. On an encrypted call, chat, files,
+            drawings and reactions are end-to-end encrypted too; names, raised hands and who is in
+            the call are not. A call opened without a key isn’t end-to-end encrypted; the padlock
+            in the call shows which applies.
           </li>
           <li>
             Background notifications say only that someone is calling. If {APP_NAME} is open in
