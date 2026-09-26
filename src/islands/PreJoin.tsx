@@ -78,21 +78,36 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
           perms.query({ name: 'microphone' as PermissionName }),
         ])
         if (cancelled) return
-        const states = [cam.state, mic.state]
-        setPermission(
-          states.includes('denied')
-            ? 'denied'
-            : states.includes('prompt')
-              ? 'prompt'
-              : 'granted',
-        )
+        const update = () => {
+          const states = [cam.state, mic.state]
+          const next = states.includes('denied') ? 'denied' : states.includes('prompt') ? 'prompt' : 'granted'
+          // Re-allowed in the browser's settings while this screen was open: the
+          // "blocked" message no longer applies, and the preview starts again
+          // without a reload.
+          if (next === 'granted' && last === 'denied') {
+            setError(null)
+            setPreviewNonce((n) => n + 1)
+          }
+          last = next
+          setPermission(next)
+        }
+        let last = ''
+        update()
+        cam.onchange = update
+        mic.onchange = update
+        unwatch = () => {
+          cam.onchange = null
+          mic.onchange = null
+        }
       } catch {
         /* unsupported permission name — leave unknown */
       }
     }
+    let unwatch = () => {}
     void probe()
     return () => {
       cancelled = true
+      unwatch()
     }
   }, [])
 

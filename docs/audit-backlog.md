@@ -99,8 +99,6 @@ of people (see that PR).
       track re-acquires via `unmute()` → `restart()`, which never raises LiveKit's
       `MediaDevicesError` (`useMediaDeviceWatch`), so no message and an unhandled
       rejection. Catch at the toggle call sites or wrap `setCameraEnabled`.
-- [ ] Re-granting camera access in browser settings needs a reload
-      (listen for `PermissionStatus` changes).
 - [ ] Long toasts still overlap prejoin's Back label on a phone while they're up
       (part of moving toasts into TopStack, above).
 
