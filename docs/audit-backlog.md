@@ -23,8 +23,9 @@ key, and a Worker crash on returning visitors that never reached production.
       someone already in a call who reloads afterwards has no key for their seat and
       is asked to change their name (a host rejoins as a guest). Once only.
 - [ ] Have counsel read the updated Privacy page. Still missing and theirs to decide:
-      who runs Manim and from which country (the "controller"), the legal basis for
-      each use, a minimum age, and the safeguards for data processed in the US.
+      the legal basis for each use and the safeguards for data processed in the US.
+      The page deliberately names no operator (owner's choice); counsel should
+      confirm that's acceptable where you operate. Minimum age is 16.
 - [ ] Confirm Brevo is the sign-in email sender configured in Supabase (the Privacy
       page lists it).
 

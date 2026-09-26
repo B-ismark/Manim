@@ -99,9 +99,12 @@ report before it leaves the browser (`src/lib/report.ts`). The Worker's CSP
 already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
 `browser.sentry-cdn.com`); reports go to `*.ingest.sentry.io`, inside `connect-src`.
 
-1. **sentry.io → Create project → Browser JavaScript.** Pick the data region you
-   want (EU keeps reports in Frankfurt; the Privacy page lists Sentry as a
-   sub-processor either way).
+1. **sentry.io → Create project → Platform: Browser JavaScript** (not Next.js —
+   this is a Vite app; React also works). Under Products leave only Error
+   monitoring; don't tick Session replay, Tracing, Profiling, Logging or Metrics.
+   Name it `manim`. Skip the install instructions Sentry shows afterwards: the app
+   already has the code. Pick the data region you want (EU keeps reports in
+   Frankfurt; the Privacy page lists Sentry either way).
 2. **Project Settings → Loader Script**: keep the SDK version on the latest 8.x or
    newer, and switch **off Session Replay** and **Performance Monitoring
    (tracing)**. Replay records the page — names, chat, the call UI — which the

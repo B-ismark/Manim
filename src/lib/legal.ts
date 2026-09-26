@@ -15,6 +15,9 @@ export const APP_NAME = 'Manim'
 /** Operator contact for privacy, deletion, abuse, and security disclosure. */
 export const CONTACT_EMAIL = 'bismarkgyau@gmail.com'
 
+/** Youngest age allowed to use Manim (the GDPR default for consenting alone). */
+export const MIN_AGE = 16
+
 /** Shown on the policy/terms pages so users know how current the text is. */
 export const LAST_UPDATED = '26 September 2026'
 

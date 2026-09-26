@@ -6,6 +6,7 @@ import {
   CONTACT_EMAIL,
   DATA_COLLECTED,
   LAST_UPDATED,
+  MIN_AGE,
   SUBPROCESSORS,
 } from '@/lib/legal'
 
@@ -185,6 +186,15 @@ export function Privacy() {
       </section>
 
       <section>
+        <Heading>Children</Heading>
+        <P>
+          {APP_NAME} is for people aged {MIN_AGE} and over. We don't knowingly collect data from
+          anyone younger. If you think a child under {MIN_AGE} has given us their data, email{' '}
+          <MailLink /> and we'll delete it.
+        </P>
+      </section>
+
+      <section>
         <Heading>Your rights</Heading>
         <P>
           You can ask for a copy of the data we hold about you, have it corrected or deleted, ask
@@ -221,6 +231,11 @@ export function Terms() {
           By using {APP_NAME} you agree to these terms. If you don't agree, please don't use the
           service.
         </P>
+      </section>
+
+      <section>
+        <Heading>Who can use {APP_NAME}</Heading>
+        <P>You must be {MIN_AGE} or older to use {APP_NAME}.</P>
       </section>
 
       <section>
