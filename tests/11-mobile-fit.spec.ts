@@ -727,12 +727,12 @@ test.describe('Mobile fit (no page scroll)', () => {
 
   /**
    * Chat on a phone keeps the call in view (lib/chatCompanion). Upright the sheet
-   * stops short of the top and the stage becomes a row of people above it;
+   * takes the bottom half and the speaker fills the top half above it;
    * sideways the panel runs down the right and the speaker has the left. The bars
    * step aside either way — out of the accessibility tree, not just faded — and
    * come back when the chat closes.
    */
-  test('chat keeps the call in view: a strip above it upright, the speaker beside it sideways', async ({
+  test('chat keeps the call in view: the speaker above it upright, beside it sideways', async ({
     page,
     browser,
   }) => {
@@ -741,16 +741,18 @@ test.describe('Mobile fit (no page scroll)', () => {
     const peer = await newParticipant(browser, room, 'Guest')
     try {
       await openChat(page)
-      const strip = page.getByRole('group', { name: 'People in the call' })
-      await expect(strip).toBeVisible()
-      await expect(strip.getByRole('group', { name: /Guest/ })).toBeVisible()
+      const stage = page.locator('[data-chat-companion="top"]')
+      await expect(stage).toBeVisible()
+      await expect(stage.getByRole('group', { name: /Guest/ })).toBeVisible()
       const up = await page.evaluate(() => {
-        const s = document.querySelector('[data-chat-companion="strip"]')!.getBoundingClientRect()
+        const s = document.querySelector('[data-chat-companion="top"]')!.getBoundingClientRect()
         const d = document.querySelector('[role="dialog"][data-dock]')!.getBoundingClientRect()
-        return { stripTop: s.top, stripBottom: s.bottom, sheetTop: d.top, sheetBottom: d.bottom, vh: innerHeight }
+        return { stageTop: s.top, stageBottom: s.bottom, sheetTop: d.top, sheetBottom: d.bottom, vh: innerHeight }
       })
-      expect(up.stripTop, 'the strip is on screen').toBeGreaterThanOrEqual(0)
-      expect(up.stripBottom, 'the strip is not under the sheet').toBeLessThanOrEqual(up.sheetTop)
+      expect(up.stageTop, 'the speaker is on screen').toBeGreaterThanOrEqual(0)
+      expect(up.stageBottom, 'the speaker is not under the sheet').toBeLessThanOrEqual(up.sheetTop)
+      expect(up.sheetTop, 'the chat takes about half').toBeGreaterThanOrEqual(up.vh * 0.4)
+      expect(up.sheetTop, 'the chat takes about half').toBeLessThanOrEqual(up.vh * 0.55)
       expect(up.sheetBottom).toBeLessThanOrEqual(up.vh + 1)
       const barInert = () =>
         page.evaluate(() => !!document.querySelector('[aria-label="Call controls"]')?.closest('[inert]'))

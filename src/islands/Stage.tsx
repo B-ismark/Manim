@@ -1372,8 +1372,8 @@ function CompanionBox({
       bigH = bigW / Math.max(9 / 16, a)
       sideW = beside.length ? aw - bigW - gap : 0
     } else {
-      const room = ah - (rest > 0 ? chipH + gap : 0)
-      bigW = Math.min(aw, room * a)
+      // The "+N" chip floats on the video's corner, so the video gets the whole box.
+      bigW = Math.min(aw, ah * a)
       bigH = bigW / a
     }
   }
@@ -1421,9 +1421,9 @@ function CompanionBox({
               )}
             </>
           ) : (
-            <div className="flex flex-col items-start" style={{ gap }}>
-              <div style={{ width: bigW, height: bigH }}>{tile(primary, a)}</div>
-              {chip}
+            <div className="relative" style={{ width: bigW, height: bigH }}>
+              {tile(primary, a)}
+              {chip && <div className="absolute right-2 bottom-2 z-10 flex">{chip}</div>}
             </div>
           )}
         </div>
