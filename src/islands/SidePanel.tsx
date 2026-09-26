@@ -24,7 +24,7 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
 
   // The head count rides on the People tab, so a busy call's size is readable
   // without leaving the conversation.
-  const count = useParticipants().length
+  const count = useParticipants({ updateOnlyOn: [] }).length
 
   // A phone keeps the call in view beside the panel (lib/chatCompanion).
   const companion = useChatCompanion()

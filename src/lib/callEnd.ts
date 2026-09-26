@@ -33,8 +33,8 @@ export function resetPeople(): void {
   people.clear()
 }
 
-export function notePerson(identity: string, name: string): void {
-  const who = identity.split('#')[0]
+/** `who` is the account id where there is one, else the LiveKit identity. */
+export function notePerson(who: string, name: string): void {
   if (!people.has(who) || name) people.set(who, name || people.get(who) || '')
 }
 

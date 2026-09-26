@@ -204,6 +204,10 @@ export function ControlBar({
   const twoCol = useRailTwoCol()
   const companion = useChatCompanion()
   const companionOpen = companion.mode !== 'none'
+  // Seven 44px reaction buttons need 332px beside the X. A narrow sideways panel
+  // (an SE on its side is 367px wide) can't spare that, so there they stay in the
+  // body, as upright; squeezing them would break the 44px floor.
+  const reactionsInHeader = rail && companion.mode === 'side' && companion.panelW >= 420
   const compact = touch || narrowBar
   // A modal and the tray must not be up together — the modal would scrim the tray
   // it was opened from.
@@ -611,7 +615,7 @@ export function ControlBar({
           key={e}
           label={`React ${e}`}
           icon={<span className="text-xl">{e}</span>}
-          className="rounded-full"
+          className="shrink-0 rounded-full"
           onClick={() => {
             sendReaction(e)
             closeMore()
@@ -633,7 +637,7 @@ export function ControlBar({
   )
   const moreTouch = (
     <div className={cn('flex flex-col px-3 pb-3', rail ? 'gap-2' : 'gap-3')}>
-      {!rail && reactionRow}
+      {!reactionsInHeader && reactionRow}
       <div className="flex h-11 shrink-0 rounded-full bg-sunken p-1" role="group" aria-label="View layout">
         {(
           [
@@ -1011,10 +1015,10 @@ export function ControlBar({
               title="More"
               flush
               // Sideways it's the same right-hand panel as chat (lib/chatCompanion),
-              // with the reactions in its top row beside the X.
+              // with the reactions in its top row beside the X when they fit.
               dock={companion.mode === 'side' ? { width: companion.panelW } : undefined}
               headerContent={
-                rail ? (
+                reactionsInHeader ? (
                   reactionRow
                 ) : (
                   <span aria-hidden className="px-1 text-lg font-semibold">

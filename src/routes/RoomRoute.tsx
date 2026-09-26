@@ -563,8 +563,8 @@ function EndedBadge({ reason }: { reason: EndReason }) {
 
 function timeInCall(ms: number): string | null {
   if (ms < 30_000) return null
+  if (ms < 60_000) return 'You were in for under a minute'
   const min = Math.round(ms / 60_000)
-  if (min < 1) return 'You were in for under a minute'
   if (min < 60) return `You were in for ${min} min`
   const h = Math.floor(min / 60)
   const m = min % 60

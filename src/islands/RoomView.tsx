@@ -46,6 +46,7 @@ import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
 import { markEnd, notePerson } from '@/lib/callEnd'
 import { displayNameOf } from '@/lib/participantName'
+import { userIdOf } from '@/lib/identity'
 import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
@@ -194,7 +195,10 @@ const SOLO_TIMEOUT_MS = 5 * 60 * 1000
 function useNotePeople() {
   const participants = useParticipants({ updateOnlyOn: [] })
   useEffect(() => {
-    for (const p of participants) notePerson(p.identity, displayNameOf(p.identity, p.name, ''))
+    // Keyed by account, not name: the identity's prefix IS the display name, so
+    // two guests both called "Guest" would have been one face.
+    for (const p of participants)
+      notePerson(userIdOf(p) || p.identity, displayNameOf(p.identity, p.name, ''))
   }, [participants])
 }
 
@@ -411,6 +415,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave, e2eeActive)
   const panel = useRoomStore((s) => s.panel)
+  // A call that ends without Leave (dropped, removed, ended by the host) must not
+  // hand its open chat to the next one: on a phone that would start the rejoined
+  // call in the chat view with the bar inert.
+  useEffect(() => () => useRoomStore.getState().setPanel(null), [])
   const companion = useRoomStore((s) => s.companion)
   const setCompanion = useRoomStore((s) => s.setCompanion)
   // Warm the side-panel chunk as soon as we're in the call, so tapping chat/people
