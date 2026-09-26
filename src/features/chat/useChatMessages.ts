@@ -123,6 +123,8 @@ export interface FileItem {
   /** Sent by you on ANOTHER device in this call (verified, lib/sameAccount).
    *  Drawn as yours; editing stays with the device that sent it (`isLocal`). */
   fromOtherSeat?: boolean
+  /** The sending connection's SID, captured on arrival (see lib/sameAccount). */
+  fromSid?: string
   fileName: string
   mimeType: string
   size?: number
@@ -238,6 +240,7 @@ export function useChatMessages() {
         id,
         timestamp: info.timestamp,
         fromIdentity: identity,
+        fromSid: sender?.sid,
         fromName: displayNameOf(identity, sender?.name),
         isLocal: false,
         fileName: info.name,
@@ -274,7 +277,7 @@ export function useChatMessages() {
   }, [])
 
   const myIdentity = localParticipant.identity
-  // Your other devices in this call: their messages read as yours.
+  // Your other devices in this call (by connection SID): their messages read as yours.
   const otherSeats = useMyOtherSeats()
   // Own display name, hoisted above the reaction/typing broadcasts that both send
   // it. `myNameRef` is what the data-channel handlers read — they're registered
@@ -312,13 +315,15 @@ export function useChatMessages() {
       const edited = edits[id]
       authors[id] = m.from?.identity ?? ''
       liveIds.add(id)
+      const isLocal = m.from?.identity === myIdentity
       return {
+        fromOtherSeat: !isLocal && !!m.from?.sid && otherSeats.has(m.from.sid),
         kind: 'text',
         id,
         timestamp: m.timestamp,
         fromIdentity: m.from?.identity ?? '',
         fromName: displayNameOf(m.from?.identity ?? '', m.from?.name),
-        isLocal: m.from?.identity === myIdentity,
+        isLocal,
         text: edited ?? decoded.text,
         replyTo: decoded.replyTo,
         edited: edited !== undefined,
@@ -333,14 +338,18 @@ export function useChatMessages() {
         return {
           ...h,
           isLocal: h.fromIdentity === myIdentity,
+          fromOtherSeat: false,
           text: edited ?? h.text,
           edited: edited !== undefined || h.edited,
         }
       })
     for (const f of files) authors[f.id] = f.fromIdentity
     authorRef.current = authors
-    const all = [...hist, ...text, ...files]
-      .map((i) => (!i.isLocal && otherSeats.has(i.fromIdentity) ? { ...i, fromOtherSeat: true } : i))
+    // Replayed history never reads as yours: its author is whatever the replaying
+    // peer claimed (TextItem.replayed), so only live messages, checked by the
+    // sending connection's SID, can be from your other device.
+    const own = files.map((f) => (f.fromSid && otherSeats.has(f.fromSid) ? { ...f, fromOtherSeat: true } : f))
+    const all = [...hist, ...text, ...own]
       .sort((a, b) => a.timestamp - b.timestamp)
     replayRef.current = all.filter((i): i is TextItem => i.kind === 'text').slice(-HISTORY_LIMIT)
     return all

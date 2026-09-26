@@ -25,6 +25,8 @@ import { useIsTouch } from '@/lib/useIsTouch'
  * useCameraInterruption still covers the other case: a camera the OS suspended
  * without the page ever being hidden long enough for this to act.
  */
+const STEP_TIMEOUT_MS = 10_000
+
 export function useAwayCamera() {
   const touch = useIsTouch()
   const { localParticipant } = useLocalParticipant()
@@ -39,8 +41,12 @@ export function useAwayCamera() {
       const pub = localParticipant.getTrackPublication(Track.Source.Camera)
       return !!pub?.track && !pub.isMuted
     }
+    // A step that never settles (a permission prompt left open, say) must not
+    // hold every later hide and return behind it.
+    const bounded = (step: () => Promise<unknown>) => () =>
+      Promise.race([step(), new Promise((r) => window.setTimeout(r, STEP_TIMEOUT_MS))])
     const then = (step: () => Promise<unknown>) => {
-      chain.current = chain.current.then(step, step).catch(() => {})
+      chain.current = chain.current.then(bounded(step), bounded(step)).catch(() => {})
       return chain.current
     }
     const onChange = (e: Event) => {

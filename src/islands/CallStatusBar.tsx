@@ -9,7 +9,7 @@ import { LockIcon, MicOffIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { MUTED_PILL_H, useChromeHidden, useRail } from '@/lib/chromeBands'
 import { cn } from '@/lib/cn'
-import { returnGraceLeft } from '@/lib/foreground'
+import { returnGraceLeft, useReturnGrace } from '@/lib/foreground'
 
 export interface CallStatusBarProps {
   /** True only when E2EE is ACTUALLY active (room.setE2EEEnabled resolved), not
@@ -110,7 +110,10 @@ function useConnectionWarning(quality: Quality): { warn: boolean; lost: boolean 
     return clear
   }, [degraded, held])
 
-  return { warn: held || lost, lost }
+  // A hold that ran out while the page was in the background still describes the
+  // time away; stay quiet for the return grace. `lost` is real state, never held.
+  const returning = useReturnGrace()
+  return { warn: (held && !returning) || lost, lost }
 }
 
 /**

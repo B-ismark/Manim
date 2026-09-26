@@ -40,11 +40,6 @@ export function returnGraceLeft(now = Date.now()): number {
   return Math.max(0, returnedAt + RETURN_GRACE_MS - now)
 }
 
-/** Start listening now, so a return that happens before the first ask counts. */
-export function watchForeground(): void {
-  install()
-}
-
 /**
  * True while the page is inside its return grace. Re-renders when a return
  * starts one and again when it runs out, so a warning held back by it appears

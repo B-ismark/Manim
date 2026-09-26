@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useLocalParticipant, useMediaDeviceSelect, useRoomContext } from '@livekit/components-react'
 import { toast } from '@/store/useToastStore'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
@@ -299,10 +299,37 @@ export function ControlBar({
   const setMore = setMoreOpen
   const closeMore = () => setMore(false)
   // Which page of the phone's More sheet is showing. Every open starts at the top.
-  const [morePage, setMorePage] = useState<'main' | 'av' | 'effects' | 'settings' | 'host'>('main')
+  type MorePage = 'main' | 'av' | 'effects' | 'settings' | 'host'
+  const [morePageRaw, setMorePageRaw] = useState<MorePage>('main')
+  // Losing host while its page is open drops you back to the list.
+  const morePage: MorePage = morePageRaw === 'host' && !isHost ? 'main' : morePageRaw
+  // Which row opened the current page, so Back can hand focus back to it.
+  const moreOpener = useRef<string | null>(null)
+  const moreBody = useRef<HTMLDivElement>(null)
+  const moreMoved = useRef(false)
+  const setMorePage = (next: MorePage, opener?: string) => {
+    if (opener) moreOpener.current = opener
+    moreMoved.current = true
+    setMorePageRaw(next)
+  }
+  // Every open starts at the top (reset on open, so a closing sheet doesn't swap
+  // back to the list mid-animation).
   useEffect(() => {
-    if (!moreOpen) setMorePage('main')
+    if (moreOpen) setMorePageRaw('main')
   }, [moreOpen])
+  // A page change unmounts whatever had focus; put it somewhere a screen reader
+  // will announce: Back on a page, the row you came from on the list.
+  useLayoutEffect(() => {
+    if (!moreMoved.current) return
+    moreMoved.current = false
+    const sheet = moreBody.current?.closest<HTMLElement>('[role="dialog"]')
+    if (!sheet) return
+    const target =
+      morePage === 'main'
+        ? sheet.querySelector<HTMLElement>(`[data-more-row="${moreOpener.current ?? ''}"]`)
+        : sheet.querySelector<HTMLElement>('button[aria-label="Back"]')
+    target?.focus()
+  }, [morePage])
 
   // Desktop keyboard shortcuts (Architecture-Plan §8.6). Ignored on touch and
   // while typing / holding a modifier, so they never fight text entry or browser
@@ -706,14 +733,14 @@ export function ControlBar({
           // the old bar button was for.
           detail={routeLabel ?? undefined}
           kind="link"
-          onClick={() => setMorePage('av')}
+          onClick={() => setMorePage('av', 'Audio & video')}
         />
         <MoreRow
           icon={<EffectsIcon />}
           label="Backgrounds & effects"
           detail={blur.mode === 'blur' ? 'Blur' : 'Off'}
           kind="link"
-          onClick={() => setMorePage('effects')}
+          onClick={() => setMorePage('effects', 'Backgrounds & effects')}
         />
       </MoreGroup>
       <MoreGroup>
@@ -732,9 +759,9 @@ export function ControlBar({
       </MoreGroup>
       <MoreGroup>
         {isHost && (
-          <MoreRow icon={<LockIcon />} label="Host controls" kind="link" onClick={() => setMorePage('host')} />
+          <MoreRow icon={<LockIcon />} label="Host controls" kind="link" onClick={() => setMorePage('host', 'Host controls')} />
         )}
-        <MoreRow icon={<SettingsIcon />} label="Settings" kind="link" onClick={() => setMorePage('settings')} />
+        <MoreRow icon={<SettingsIcon />} label="Settings" kind="link" onClick={() => setMorePage('settings', 'Settings')} />
       </MoreGroup>
     </div>
   )
@@ -1036,7 +1063,12 @@ export function ControlBar({
                 )
               }
             >
-              <div key={morePage} className="mn-pop min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+              <div
+                ref={moreBody}
+                key={morePage}
+                role={morePage === 'main' ? undefined : 'group'}
+                aria-label={morePage === 'main' ? undefined : morePageNow.title}
+                className="mn-pop min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
                 {moreTouch}
               </div>
             </Sheet>
@@ -1597,6 +1629,7 @@ function MoreRow({
       onClick={onClick}
       disabled={disabled}
       aria-label={name}
+      data-more-row={label}
       aria-pressed={kind === 'switch' ? Boolean(on) : undefined}
       data-danger={danger || undefined}
       className={cn(

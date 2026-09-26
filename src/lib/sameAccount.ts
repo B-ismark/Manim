@@ -10,8 +10,11 @@ import { RoomEvent, type Participant, type Room } from 'livekit-client'
  * userId) at mint (server/account.mjs); the public key is read from OUR OWN
  * metadata, which came from our own token. See that file for the whole argument.
  *
- * A device that has left stays known for the rest of the call, so its messages
- * keep reading as yours.
+ * Seats are keyed by participant SID, never by identity. An identity is just a
+ * name#device string that anyone can knock with once the device has left; a SID
+ * is minted by the server for one connection and never reused. So a message
+ * stays yours after its device leaves (its SID was verified), and a stranger who
+ * later takes the same identity gets a fresh SID that fails the check.
  */
 
 const CLAIM_V = 'acct1'
@@ -64,7 +67,7 @@ export async function isSameAccount(room: string, me: Participant, p: Participan
   }
 }
 
-/** Identities in this call that are your own other devices (verified). */
+/** SIDs of connections in this call that are your own other devices (verified). */
 export function useMyOtherSeats(): ReadonlySet<string> {
   const room = useRoomContext()
   const [seats, setSeats] = useState<ReadonlySet<string>>(() => new Set())
@@ -74,10 +77,11 @@ export function useMyOtherSeats(): ReadonlySet<string> {
     const check = (r: Room) => {
       const me = r.localParticipant
       for (const p of r.remoteParticipants.values()) {
-        if (known.has(p.identity)) continue
+        const sid = p.sid
+        if (!sid || known.has(sid)) continue
         void isSameAccount(r.name, me, p).then((yes) => {
-          if (!alive || !yes || known.has(p.identity)) return
-          known.add(p.identity)
+          if (!alive || !yes || known.has(sid) || p.sid !== sid) return
+          known.add(sid)
           setSeats(new Set(known))
         })
       }
