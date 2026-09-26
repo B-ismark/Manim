@@ -234,7 +234,7 @@ export function RoomRoute() {
         // (invite-only / room full) verbatim rather than the generic join error.
         if (
           e instanceof ApiError &&
-          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken')
+          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken' || e.code === 'removed')
         ) {
           setError(e.message)
           setConnecting(false)

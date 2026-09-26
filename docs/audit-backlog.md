@@ -65,8 +65,6 @@ of people (see that PR).
       presence (`features/calls/usePresence.ts`). Encrypt it per recipient. Also
       move to livekit-client's `encryption` option so chat, files and drawings are
       end-to-end encrypted too (`lib/livekit.ts` uses the legacy `e2ee`).
-- [ ] **"Remove from call" isn't permanent.** A removed person can knock straight
-      back in. Keep a per-room removed list on the server, checked at knock.
 - [ ] **Host election grace period.** A host who drops for seconds can lose the room
       for good (`handleElectHost`). Wait ~60s before electing.
 - [ ] **Forgeable chat state.** Pins, history replay and "report" notices take the

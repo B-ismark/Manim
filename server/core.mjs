@@ -11,6 +11,7 @@ import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'live
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
 import { withoutE2eeKey } from './invite.mjs'
+import { removedEntry, withRemoved, wasRemoved } from './removed.mjs'
 import { roomTitle } from './preview.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
@@ -422,6 +423,11 @@ export async function handleKnock(env, body) {
   const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
   const wasApproved = approvedBefore && seatOk
 
+  // Removed by the host: stays out, whatever name they use now (server/removed.mjs).
+  if (!isHost && (await wasRemoved(flags.removed, deviceId, userId))) {
+    return { status: 403, body: { error: 'The host removed you from this call.', code: 'removed' } }
+  }
+
   // Beta allowlist gate (host-gated). Only an approved account may CREATE/hold a
   // room; their invited guests join the link without being on the list (still
   // bounded by the room cap). A non-approved account claiming host — a fresh room, a
@@ -788,6 +794,19 @@ export async function handleModerate(env, body, token) {
     return { status: 403, body: { error: 'Only the host can do that.' } }
   }
   if (action === 'remove') {
+    // Remember them first, so a fast re-knock can't slip in between (server/removed.mjs).
+    let targetUser = ''
+    try {
+      const p = await roomService.getParticipant(room, target)
+      targetUser = JSON.parse(p?.metadata || '{}').userId || ''
+    } catch {
+      /* already gone: the device key still works */
+    }
+    const entry = await removedEntry(target, targetUser)
+    if (entry) {
+      const fresh = await getRoomFlags(roomService, room)
+      await mergeRoomFlags(roomService, room, { removed: withRemoved(fresh.removed, entry) }, fresh)
+    }
     await roomService.removeParticipant(room, target)
   } else if (action === 'mute') {
     // Prefer the live sid (handles the stale-sid re-mute bug); fall back to the
