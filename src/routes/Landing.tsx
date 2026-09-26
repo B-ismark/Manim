@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Button, Dialog, Island, Popover, Avatar } from '@/components/primitives'
+import { Button, Dialog, Island, Popover, Avatar, Sheet } from '@/components/primitives'
 import { GoogleIcon, CameraIcon, CloseIcon } from '@/components/icons'
 import { SettingsLauncher } from '@/islands/Settings'
 import { ContactsLauncher } from '@/islands/Contacts'
@@ -20,6 +20,7 @@ import { distinctRoomNames, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
 import { countUsage, surface } from '@/lib/usage'
+import { useIsTouch } from '@/lib/useIsTouch'
 
 // Unambiguous base32-ish alphabet (no 0/o/1/l/i) for the random suffix.
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
@@ -59,7 +60,9 @@ function signInError(ex: unknown, fallback: string): string {
 
 export function Landing() {
   const navigate = useNavigate()
+  const touch = useIsTouch()
   const [room, setRoom] = useState('')
+  const [joinOpen, setJoinOpen] = useState(false)
   const signedIn = useAuthStore((s) => s.signedIn)
   const avatarUrl = useAuthStore((s) => s.avatarUrl)
   const myName = useAppStore((s) => s.displayName)
@@ -219,6 +222,105 @@ export function Landing() {
     goTo(slug, secrets, 'new')
   }
 
+  if (touch) {
+    // PHONES — direction B ("Thumb dock", like Meet on Android/iPhone).
+    //
+    // The desktop card at the top of an empty screen was the phone home page, and
+    // its header collided (the wordmark slid under the Setup pill). Here history
+    // is the page and the two ways in are docked at the bottom edge, where a thumb
+    // already is and where they never move: New meeting (the one primary) and
+    // Join, which opens a sheet for the name or link instead of keeping a field
+    // on screen that most visits never use.
+    return (
+      <main className="flex h-dvh flex-col bg-stage pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]">
+        <header className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
+          <h1 className="min-w-0 flex-1 truncate text-[1.75rem] font-bold leading-tight tracking-tight">
+            {signedIn && firstName ? `Hi, ${firstName}` : 'Manim'}
+          </h1>
+          {signedIn && <ContactsLauncher onCall={callContact} />}
+          {showSetup() && <SetupStatusButton />}
+          <SettingsLauncher />
+          {authEnabled && <AccountMenu />}
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+          <div className="flex flex-col gap-4">
+            <SetupBanner />
+            {betaGate && !canHost && (
+              <div className="rounded-tile border border-accent/40 bg-surface p-3">
+                <p className="text-sm font-medium">Manim is in private beta</p>
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {signedIn
+                    ? 'Your account isn’t approved to start calls yet. You can still join any call you’re invited to.'
+                    : 'Sign in with an approved account to start a call, or open an invite link to join one.'}
+                </p>
+              </div>
+            )}
+            {signedIn ? (
+              <LiveAndRecent onJoin={goTo} variant="touch" />
+            ) : (
+              <div className="rounded-tile border border-dashed border-line-strong px-5 py-6 text-center">
+                <p className="text-base font-medium">No calls yet</p>
+                <p className="mx-auto mt-1 max-w-[18rem] text-sm text-ink-muted">
+                  Start one below and share the link, or join with a name or link someone sent you.
+                </p>
+                {authEnabled && (
+                  <p className="mt-3 text-xs text-ink-subtle">Sign in to keep your calls on every device.</p>
+                )}
+              </div>
+            )}
+            <SiteFooter />
+          </div>
+        </div>
+
+        <div className="grid shrink-0 grid-cols-[1fr_auto] gap-2.5 border-t border-line bg-surface px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+          <Button variant="accent" size="lg" onClick={() => void newMeeting()}>
+            <CameraIcon />
+            New meeting
+          </Button>
+          <Button variant="neutral" size="lg" className="px-6" onClick={() => setJoinOpen(true)}>
+            Join
+          </Button>
+        </div>
+
+        <Sheet open={joinOpen} onOpenChange={setJoinOpen} title="Join a call" side="bottom">
+          <form
+            onSubmit={(e) => {
+              onJoin(e)
+            }}
+            className="flex flex-col gap-3 pb-2"
+          >
+            <label htmlFor="room" className="text-sm font-medium">
+              Call name or invite link
+            </label>
+            <input
+              id="room"
+              value={room}
+              onChange={(e) => setRoom(e.target.value)}
+              placeholder="e.g. team-standup, or paste a link"
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              enterKeyHint="go"
+              autoFocus
+              className="h-12 rounded-field bg-sunken px-4 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            />
+            <Button type="submit" variant="accent" size="lg" block disabled={!room.trim()}>
+              Join
+            </Button>
+            {/* The desktop card's "type a name, then New meeting" path, kept for
+                phones: a typed name that isn't a link can start a fresh call. */}
+            {room.trim() && !/\/r\//.test(room) && (
+              <Button type="button" variant="ghost" block onClick={() => void newMeeting()}>
+                Start a new call named “{room.trim()}”
+              </Button>
+            )}
+          </form>
+        </Sheet>
+      </main>
+    )
+  }
+
   return (
     // Top-align + scroll on phones so the keyboard can't bury the inputs
     // (centering strands them behind the keyboard); centered on desktop.
@@ -327,13 +429,63 @@ export function Landing() {
  * (live, actionable now), and is suppressed from "Recent calls" (where it'd be a
  * stale duplicate). Recents still shows everything else from this device's history.
  */
-function LiveAndRecent({ onJoin }: { onJoin: (room: string, secrets: RoomSecrets) => void }) {
+function LiveAndRecent({
+  onJoin,
+  variant = 'card',
+}: {
+  onJoin: (room: string, secrets: RoomSecrets) => void
+  variant?: 'card' | 'touch'
+}) {
   const meetings = useOtherDeviceMeetings()
   const activeSlugs = new Set(meetings.map((m) => m.room))
   return (
     <>
-      <OtherDeviceMeetings meetings={meetings} onJoin={onJoin} />
-      <RecentMeetings hideSlugs={activeSlugs} onJoin={onJoin} />
+      {variant === 'touch' ? (
+        <LiveOnOtherDevice meetings={meetings} onJoin={onJoin} />
+      ) : (
+        <OtherDeviceMeetings meetings={meetings} onJoin={onJoin} />
+      )}
+      <RecentMeetings hideSlugs={activeSlugs} onJoin={onJoin} variant={variant} />
+    </>
+  )
+}
+
+/**
+ * Phone: a call live on another device is the most time-sensitive thing on the
+ * home screen, so it leads it as a bold card with one action — not a row.
+ */
+function LiveOnOtherDevice({
+  meetings,
+  onJoin,
+}: {
+  meetings: ReturnType<typeof useOtherDeviceMeetings>
+  onJoin: (room: string, secrets: RoomSecrets) => void
+}) {
+  if (meetings.length === 0) return null
+  const names = distinctRoomNames(meetings.map((m) => m.room))
+  return (
+    <>
+      {meetings.map((m, i) => (
+        <section
+          key={m.room}
+          aria-label="Live on another device"
+          className="flex flex-col gap-3 rounded-island bg-accent p-4 text-accent-ink"
+        >
+          <p className="flex items-center gap-2 text-xs font-medium opacity-90">
+            <span aria-hidden className="size-2 rounded-full bg-current" />
+            You’re in this call on another device
+          </p>
+          <p className="truncate text-lg font-semibold">{names[i]}</p>
+          <Button
+            variant="neutral"
+            className="self-start bg-surface text-accent-text hover:bg-surface"
+            onClick={() => onJoin(m.room, { secret: m.secret, e2ee: m.e2ee })}
+          >
+            <CameraIcon />
+            Join from this phone
+          </Button>
+        </section>
+      ))}
     </>
   )
 }
@@ -373,9 +525,11 @@ function OtherDeviceMeetings({
 function RecentMeetings({
   hideSlugs,
   onJoin,
+  variant = 'card',
 }: {
   hideSlugs: Set<string>
   onJoin: (room: string, secrets: RoomSecrets) => void
+  variant?: 'card' | 'touch'
 }) {
   const allRooms = useRecentRoomsStore((s) => s.rooms)
   const removeLocal = useRecentRoomsStore((s) => s.remove)
@@ -392,6 +546,41 @@ function RecentMeetings({
   const rooms = allRooms.filter((r) => !hideSlugs.has(r.slug))
   if (rooms.length === 0) return null
   const names = distinctRoomNames(rooms.map((r) => r.slug))
+  if (variant === 'touch') {
+    // Phone: an inset-grouped list (iOS Settings / M3 list), 60px rows, the
+    // time since you were last in each call as the second line.
+    return (
+      <section aria-labelledby="recent-h" className="flex flex-col gap-2">
+        <h2 id="recent-h" className="px-1 text-xs font-semibold uppercase tracking-wide text-ink-subtle">
+          Recent
+        </h2>
+        <ul className="divide-y divide-line overflow-hidden rounded-tile border border-line bg-surface">
+          {rooms.map((r, i) => (
+            <li key={r.slug} className="flex min-h-[3.75rem] items-center gap-3 py-2 pl-3 pr-1.5">
+              <span className="grid size-10 shrink-0 place-items-center rounded-field bg-sunken text-ink-muted [&_svg]:size-5">
+                <CameraIcon />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[0.9375rem] font-medium">{names[i]}</span>
+                <span className="block text-xs text-ink-muted">{lastInText(r.ts)}</span>
+              </span>
+              <Button variant="neutral" size="sm" onClick={() => onJoin(r.slug, { secret: r.secret, e2ee: r.e2ee })}>
+                Rejoin
+              </Button>
+              <button
+                type="button"
+                aria-label={`Remove ${names[i]} from recents`}
+                onClick={() => remove(r.slug)}
+                className="grid size-11 shrink-0 place-items-center rounded-control text-ink-subtle hover:bg-sunken hover:text-ink [&_svg]:size-3.5"
+              >
+                <CloseIcon />
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
   return (
     <Island pad="none" className="w-full p-3">
       <p className="px-1 pb-1.5 text-xs font-medium text-ink-subtle">Recent calls</p>
@@ -437,6 +626,18 @@ function RecentMeetings({
       </ul>
     </Island>
   )
+}
+
+/** "Today", "Yesterday", "Tue", or a date: when you were last in a recent call. */
+function lastInText(ts: number): string {
+  const d = new Date(ts)
+  const now = new Date()
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((day(now) - day(d)) / 86_400_000)
+  if (days <= 0) return `Today · ${d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`
+  if (days === 1) return 'Yesterday'
+  if (days < 7) return d.toLocaleDateString(undefined, { weekday: 'long' })
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
 /** Email magic-link sign-in / sign-out. Signing in gives a cross-device identity. */

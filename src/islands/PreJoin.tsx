@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
 import { countUsage, surface } from '@/lib/usage'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useKeyboardInset } from '@/lib/keyboardInset'
 import { OtherDeviceInlineOffer } from '@/islands/OtherDeviceCallBanner'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
@@ -295,6 +296,10 @@ function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps
     }
   }
 
+  // The software keyboard shrinks the VISUAL viewport only, so on a phone Join
+  // sat under it while you typed your name. Lift the screen's bottom edge by the
+  // keyboard's overlap (lib/keyboardInset), the way Sheet does.
+  const keyboard = useKeyboardInset()
   const toggleMic = () => {
     setPrejoin({ micEnabled: !prejoin.micEnabled })
     rememberPrejoin({ micEnabled: !prejoin.micEnabled })
@@ -319,6 +324,7 @@ function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps
       maxLength={MAX_NAME_LEN}
       dir="auto"
       aria-label="Your name"
+      enterKeyHint="go"
       autoComplete="name"
       className={cn(
         'shrink-0 rounded-field bg-sunken text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent',
@@ -405,6 +411,7 @@ function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps
     const off = !cameraOn
     return (
       <main
+        style={keyboard ? { height: `calc(100dvh - ${keyboard}px)` } : undefined}
         className={cn(
           'flex h-dvh flex-col overflow-hidden bg-surface',
           'pt-[env(safe-area-inset-top)] pb-[max(0.75rem,env(safe-area-inset-bottom))]',
@@ -434,7 +441,10 @@ function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps
         <div
           ref={stageRef}
           className={cn(
-            'flex min-h-[15rem] flex-1 items-center justify-center px-4 pt-1',
+            // The floor gives way only while the keyboard is up: then the name and
+            // Join are what you're using, and the preview shrinks to make room.
+            'flex flex-1 items-center justify-center px-4 pt-1',
+            keyboard ? 'min-h-0' : 'min-h-[15rem]',
             'landscape:col-start-1 landscape:row-span-2 landscape:row-start-1 landscape:min-h-0 landscape:py-3 landscape:pl-3 landscape:pr-0',
           )}
         >

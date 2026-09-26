@@ -1,22 +1,37 @@
-import { test, expect } from '@playwright/test'
-import { attachErrorSink, appErrors } from './helpers'
+import { test, expect, type Page } from '@playwright/test'
+import { attachErrorSink, appErrors, isTouch } from './helpers'
+
+/**
+ * The name/link field. On a phone it lives in a sheet behind the docked Join
+ * button (Home B), so open that first; returns where its Join button is.
+ */
+async function joinField(page: Page) {
+  if (await isTouch(page)) {
+    await page.getByRole('button', { name: 'Join', exact: true }).click()
+    const sheet = page.getByRole('dialog', { name: 'Join a call' })
+    await expect(sheet).toBeVisible()
+    return { field: sheet.locator('#room'), join: sheet.getByRole('button', { name: 'Join', exact: true }) }
+  }
+  return { field: page.locator('#room'), join: page.getByRole('button', { name: 'Join', exact: true }) }
+}
 
 test.describe('Landing', () => {
   test('renders and Join is gated on a room name', async ({ page }) => {
     const sink = attachErrorSink(page)
     await page.goto('/')
     await expect(page.getByRole('heading', { name: 'Manim' })).toBeVisible()
-    const join = page.getByRole('button', { name: 'Join' })
+    const { field, join } = await joinField(page)
     await expect(join).toBeDisabled()
-    await page.locator('#room').fill('my-room')
+    await field.fill('my-room')
     await expect(join).toBeEnabled()
     expect(appErrors(sink)).toEqual([])
   })
 
   test('Join navigates to a slugified room route', async ({ page }) => {
     await page.goto('/')
-    await page.locator('#room').fill('Team Standup')
-    await page.getByRole('button', { name: 'Join' }).click()
+    const { field, join } = await joinField(page)
+    await field.fill('Team Standup')
+    await join.click()
     await expect(page).toHaveURL(/\/r\/team-standup$/)
     // Lands on prejoin.
     await expect(page.getByLabel('Your name')).toBeVisible({ timeout: 20_000 })
@@ -32,8 +47,9 @@ test.describe('Landing', () => {
 
   test('New meeting uses a typed name and still mints link secrets', async ({ page }) => {
     await page.goto('/')
-    await page.locator('#room').fill('Design Sync')
-    await page.getByRole('button', { name: 'New meeting' }).click()
+    const { field } = await joinField(page)
+    await field.fill('Design Sync')
+    await page.getByRole('button', { name: /^(New meeting|Start a new call named)/ }).first().click()
     await expect(page).toHaveURL(/\/r\/design-sync#k=[^&]+&e=.+$/)
   })
 
@@ -67,8 +83,11 @@ test('the landing brand never collides with the header controls', async ({ page 
       .map((el) => ({ label: (el.getAttribute('aria-label') || el.textContent || '?').trim(), r: rect(el) }))
       .filter((c) => c.r.width > 0 && c.r.height > 0)
     // Everything the page itself paints in the header's band, header excluded.
+    // On a phone (Home B) the title is IN the header row, beside its controls,
+    // which is exactly where a collision would happen — so it counts too; only
+    // the controls themselves are excluded.
     const subjects = [...main.querySelectorAll('h1, h1 + *, [data-brand]')]
-      .filter((el) => !header.contains(el))
+      .filter((el) => !el.closest('button, a, [role="button"]') && !el.querySelector('button, a, [role="button"]'))
       .map((el) => ({ label: (el.textContent || 'brand').trim().slice(0, 24), r: rect(el) }))
     const hit = (a: DOMRect, b: DOMRect) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
     const collisions: string[] = []
