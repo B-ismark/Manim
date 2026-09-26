@@ -115,17 +115,24 @@ export function useIncomingCalls() {
     // channel, and only the SECURITY DEFINER `ring` RPC (contact-gated) can write
     // to it — so no one can ring-spam or harvest by joining someone else's channel.
     const channel = sb.channel(`user:${userId}`, { config: { private: true, broadcast: { self: false } } })
+    let live = true
+    let latest = 0
     channel
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
         const p = payload as IncomingCall
         if (!p?.room) return
-        void openSecrets({ secret: p.secret, e2ee: p.e2ee }).then(({ secret, e2ee }) => {
-          setIncoming({ room: p.room, fromName: p.fromName || 'Someone', secret, e2ee })
+        const mine = ++latest
+        void openSecrets({ secret: p.secret, e2ee: p.e2ee }).then((opened) => {
+          // Stale (signed out, or a newer ring arrived first), or sealed for your
+          // other devices only: this one couldn't answer it, so it doesn't ring.
+          if (!live || mine !== latest || !opened) return
+          setIncoming({ room: p.room, fromName: p.fromName || 'Someone', ...opened })
           notifyIncoming(p.fromName || 'Someone', p.room)
         })
       })
       .subscribe()
     return () => {
+      live = false
       void sb.removeChannel(channel)
     }
   }, [userId, signedIn, setIncoming])

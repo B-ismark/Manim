@@ -23,15 +23,34 @@ function open(): Promise<IDBDatabase> {
     req.onupgradeneeded = () => req.result.createObjectStore(STORE)
     req.onsuccess = () => resolve(req.result)
     req.onerror = () => reject(req.error)
+    // Another tab holding the old version open: give up rather than hang.
+    req.onblocked = () => reject(new Error('device key store blocked'))
   })
 }
 
-function tx<T>(db: IDBDatabase, mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+/** Read the stored pair, or store `fresh` — in ONE transaction, so it can't race itself. */
+async function getOrCreate(db: IDBDatabase, fresh: Stored): Promise<Stored> {
   return new Promise((resolve, reject) => {
-    const req = run(db.transaction(STORE, mode).objectStore(STORE))
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    const t = db.transaction(STORE, 'readwrite')
+    const store = t.objectStore(STORE)
+    let result: Stored = fresh
+    const get = store.get(ID)
+    get.onsuccess = () => {
+      const have = get.result as Stored | undefined
+      if (have?.privateKey && have.publicJwk) result = have
+      else store.put(fresh, ID)
+    }
+    // Resolve on commit, not on the request: a put that fails at commit (quota)
+    // must not hand back a key that was never stored.
+    t.oncomplete = () => resolve(result)
+    t.onerror = t.onabort = () => reject(t.error)
   })
+}
+
+/** Serialise first-use creation across tabs where the browser can (Web Locks). */
+function exclusive<T>(run: () => Promise<T>): Promise<T> {
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined
+  return locks?.request ? (locks.request('manim-device-key', run) as Promise<T>) : run()
 }
 
 let cached: Promise<Stored | null> | null = null
@@ -41,12 +60,13 @@ export function getDeviceKey(): Promise<Stored | null> {
     if (typeof indexedDB === 'undefined') return null
     let db: IDBDatabase | undefined
     try {
-      db = await open()
-      const have = (await tx(db, 'readonly', (s) => s.get(ID))) as Stored | undefined
-      if (have?.privateKey && have.publicJwk) return have
+      // Two tabs on a first sign-in would otherwise each mint a pair, and the
+      // one the server holds could differ from the one a tab opens rings with.
       const fresh = await newDeviceKeyPair()
-      await tx(db, 'readwrite', (s) => s.put(fresh, ID))
-      return fresh
+      return await exclusive(async () => {
+        db = await open()
+        return getOrCreate(db, fresh)
+      })
     } catch {
       return null
     } finally {

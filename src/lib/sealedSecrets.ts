@@ -41,11 +41,23 @@ const ECDH = { name: 'ECDH', namedCurve: 'P-256' } as const
 const b64 = (u8: Uint8Array) => btoa(String.fromCharCode(...u8)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 const unb64 = (s: string) => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))
 
-async function aesKey(priv: CryptoKey, pub: CryptoKey, deviceId: string): Promise<CryptoKey> {
+/**
+ * The AES key for one recipient. Both public keys go into the HKDF info (the
+ * usual ECIES binding), so a sealed entry is only ever good for the exact key
+ * pair it was made for.
+ */
+async function aesKey(
+  priv: CryptoKey,
+  pub: CryptoKey,
+  deviceId: string,
+  eph: { x: string; y: string },
+  recipient: { x?: string; y?: string },
+): Promise<CryptoKey> {
   const shared = await crypto.subtle.deriveBits({ name: 'ECDH', public: pub }, priv, 256)
   const hk = await crypto.subtle.importKey('raw', shared, 'HKDF', false, ['deriveKey'])
+  const info = te.encode(`manim-sealed-v1:${deviceId}:${eph.x}.${eph.y}:${recipient.x}.${recipient.y}`)
   return crypto.subtle.deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: te.encode(`manim-sealed-v1:${deviceId}`) },
+    { name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info },
     hk,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -68,13 +80,14 @@ export async function sealFor(devices: DeviceKey[], secrets: RoomSecrets): Promi
   for (const dev of devices) {
     try {
       const eph = await crypto.subtle.generateKey(ECDH, true, ['deriveBits'])
-      const key = await aesKey(eph.privateKey, await importPublic(dev.publicJwk), dev.deviceId)
+      const epk = await crypto.subtle.exportKey('jwk', eph.publicKey)
+      const e = { x: epk.x!, y: epk.y! }
+      const key = await aesKey(eph.privateKey, await importPublic(dev.publicJwk), dev.deviceId, e, dev.publicJwk)
       const iv = crypto.getRandomValues(new Uint8Array(12))
       const ct = new Uint8Array(
         await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: te.encode(dev.deviceId) }, key, body),
       )
-      const epk = await crypto.subtle.exportKey('jwk', eph.publicKey)
-      entries.push({ d: dev.deviceId, x: epk.x!, y: epk.y!, iv: b64(iv), ct: b64(ct) })
+      entries.push({ d: dev.deviceId, ...e, iv: b64(iv), ct: b64(ct) })
     } catch {
       /* a malformed published key — skip that device, seal for the rest */
     }
@@ -84,22 +97,40 @@ export async function sealFor(devices: DeviceKey[], secrets: RoomSecrets): Promi
 }
 
 /** Open a sealed value for this device. Null when it isn't addressed to it or fails. */
-export async function openSealed(sealed: string, deviceId: string, privateKey: CryptoKey): Promise<RoomSecrets | null> {
+export async function openSealed(
+  sealed: string,
+  deviceId: string,
+  privateKey: CryptoKey,
+  publicJwk: JsonWebKey,
+): Promise<RoomSecrets | null> {
   if (!isSealed(sealed)) return null
   try {
     const entries = JSON.parse(new TextDecoder().decode(unb64(sealed.slice(SEALED_PREFIX.length)))) as Entry[]
     const mine = Array.isArray(entries) ? entries.find((e) => e && e.d === deviceId) : undefined
     if (!mine) return null
-    const key = await aesKey(privateKey, await importPublic({ x: mine.x, y: mine.y }), deviceId)
+    if (typeof mine.x !== 'string' || typeof mine.y !== 'string') return null
+    const key = await aesKey(privateKey, await importPublic({ x: mine.x, y: mine.y }), deviceId, mine, publicJwk)
     const pt = await crypto.subtle.decrypt(
       { name: 'AES-GCM', iv: unb64(mine.iv), additionalData: te.encode(deviceId) },
       key,
       unb64(mine.ct),
     )
-    const { k, e } = JSON.parse(new TextDecoder().decode(pt)) as { k: string | null; e: string | null }
-    return { secret: k ?? undefined, e2ee: e ?? undefined }
+    const { k, e } = JSON.parse(new TextDecoder().decode(pt)) as { k?: unknown; e?: unknown }
+    // Only strings are secrets; anything else a sender put there is dropped.
+    return { secret: typeof k === 'string' ? k : undefined, e2ee: typeof e === 'string' ? e : undefined }
   } catch {
     return null
+  }
+}
+
+/** Whether a sealed value carries an entry for this device (without opening it). */
+export function sealedFor(sealed: string, deviceId: string): boolean {
+  if (!isSealed(sealed)) return false
+  try {
+    const entries = JSON.parse(new TextDecoder().decode(unb64(sealed.slice(SEALED_PREFIX.length)))) as Entry[]
+    return Array.isArray(entries) && entries.some((e) => e && e.d === deviceId)
+  } catch {
+    return false
   }
 }
 

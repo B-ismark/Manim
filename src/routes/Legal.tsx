@@ -132,9 +132,11 @@ export function Privacy() {
             link, so anyone with the full link can join and see and hear the call: share it only
             with people you mean to invite. When you ring a contact, or your own signed-in devices
             show which call you’re in, the key goes through Supabase locked to that person’s (or
-            your) signed-in devices, so Supabase can’t read it; the ring stays in our database for
-            up to 3 days. If none of their devices has signed in since this was added, the key goes
-            unlocked instead so the call still reaches them. When a host merges two calls, the key
+            your) signed-in devices, so the copy kept in our database for up to 3 days can’t be read
+            from there. The locks come from Supabase too, so this guards against leaks of what’s
+            stored, not against Supabase itself. If none of their devices has signed in since this
+            was added, or we can’t look their devices up, the key goes unlocked instead so the call
+            still reaches them. When a host merges two calls, the key
             is sent over the call’s message channel, which is end-to-end encrypted on an encrypted
             call and readable by LiveKit on one that isn’t. Email invites leave the key out. On an encrypted call, chat, files,
             drawings and reactions are end-to-end encrypted too; names, raised hands and who is in

@@ -283,7 +283,7 @@ function applySession(session: Session | null) {
     const differentUser = known !== null && known !== uid
     localStorage.setItem(PROFILE_UID_KEY, uid)
     // Before signedIn flips, so presence (which waits on it) sees this call.
-    if (supabase) void registerDeviceKey(supabase, uid)
+    if (supabase) void registerDeviceKey(supabase, uid, differentUser)
     useAuthStore.setState({ userId: uid, email: session.user.email ?? null, signedIn: true })
     if (differentUser) {
       useAuthStore.setState({ avatarUrl: avatarFromSession(session) || null })

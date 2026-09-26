@@ -91,7 +91,7 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
   {
     what: 'A public key for each signed-in browser',
     where: 'Your account (Supabase); the matching private key never leaves the browser',
-    why: 'So a call’s key can be locked to your devices when someone rings you. Signing out removes it, and one unused for 90 days is deleted.',
+    why: 'So a call’s key can be locked to your devices when someone rings you. Your contacts can see how many browsers you’re signed in on and their random ids. Signing out while online removes it, and one not signed in for 90 days is deleted.',
   },
   {
     what: 'Notification subscription',

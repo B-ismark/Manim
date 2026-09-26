@@ -45,11 +45,15 @@ export function usePublishMeetingPresence(room: string, secrets: RoomSecrets = {
     let subscribed = false
     // Coalesced: subscribing replays a join for every device already there.
     let queued: ReturnType<typeof setTimeout> | undefined
+    let latest = 0
     const publish = () => {
       clearTimeout(queued)
       queued = setTimeout(async () => {
+        // Only the newest seal is tracked: an older lookup still in flight may
+        // be missing the device whose arrival started this one.
+        const mine = ++latest
         const sent = await secretsFor(sb, userId, { secret, e2ee }, deviceId)
-        if (live && subscribed) void channel.track({ room, deviceId, ...sent })
+        if (live && subscribed && mine === latest) void channel.track({ room, deviceId, ...sent })
       }, 250)
     }
     channel.on('presence', { event: 'join' }, ({ key }) => {
@@ -103,12 +107,21 @@ export function useOtherDeviceMeetings(): DeviceMeeting[] {
           if (p.room) rooms.push({ room: p.room, deviceId: p.deviceId || key, secret: p.secret, e2ee: p.e2ee })
         }
       }
-      // De-dupe by room (same call open on two other devices → one entry).
-      const unique = rooms.filter((m, i) => rooms.findIndex((x) => x.room === m.room) === i)
-      // Open what was sealed for this device; the newest sync wins.
+      // Open what was sealed for this device (the newest sync wins), THEN de-dupe
+      // by room: the same call open on two other devices is one entry, and the
+      // copy we can open beats one sealed before this device had a key.
       const mine = ++generation
-      void Promise.all(unique.map(async (m) => ({ room: m.room, deviceId: m.deviceId, ...(await openSecrets(m)) }))).then((open) => {
-        if (live && mine === generation) setMeetings(open)
+      void Promise.all(
+        rooms.map(async (m) => {
+          const opened = await openSecrets(m)
+          return opened ? { room: m.room, deviceId: m.deviceId, ...opened } : null
+        }),
+      ).then((all) => {
+        if (!live || mine !== generation) return
+        const open = all
+          .filter((m): m is DeviceMeeting => m !== null)
+          .sort((a, b) => Number(Boolean(b.secret || b.e2ee)) - Number(Boolean(a.secret || a.e2ee)))
+        setMeetings(open.filter((m, i) => open.findIndex((x) => x.room === m.room) === i))
       })
     }
     channel.on('presence', { event: 'sync' }, sync)

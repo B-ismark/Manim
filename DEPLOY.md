@@ -545,13 +545,18 @@ select cron.schedule(
     half here; a caller seals the secrets to the callee's devices so only those
     devices can open them. Until this is run, or for someone whose devices haven't
     registered yet, the app sends the secrets the old way, so ringing never breaks.
+    What this protects against: anyone reading the stored rings or Realtime
+    traffic. It does NOT protect against Supabase itself acting maliciously, since
+    Supabase also serves the public keys a caller seals to.
 
 ```sql
 -- One public key per signed-in browser. The private half stays in the browser.
 create table if not exists device_keys (
   user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
   device_id text not null check (length(device_id) between 8 and 64),
-  public_key jsonb not null,
+  -- A P-256 public key is ~200 bytes; the cap keeps anyone from making their
+  -- callers download (and run crypto over) something huge.
+  public_key jsonb not null check (pg_column_size(public_key) < 512 and public_key ? 'x' and public_key ? 'y'),
   seen_at timestamptz not null default now(),
   primary key (user_id, device_id)
 );
@@ -565,7 +570,8 @@ drop trigger if exists device_keys_seen on device_keys;
 create trigger device_keys_seen before insert or update on device_keys
   for each row execute function push_seen();
 
--- Public keys for yourself (your other devices) or an accepted contact only.
+-- Public keys for yourself (your other devices) or an accepted contact only, the
+-- 10 most recently signed-in browsers at most.
 create or replace function get_device_keys(target_id uuid)
 returns table (device_id text, public_key jsonb)
 language sql security definer set search_path = public as $$
@@ -574,9 +580,10 @@ language sql security definer set search_path = public as $$
     select 1 from contacts c where c.status = 'accepted'
       and ((c.requester = auth.uid() and c.addressee = target_id)
         or (c.addressee = auth.uid() and c.requester = target_id))
-  ));
+  ))
+  order by k.seen_at desc limit 10;
 $$;
-revoke all on function get_device_keys(uuid) from public;
+revoke all on function get_device_keys(uuid) from public, anon;
 grant execute on function get_device_keys(uuid) to authenticated;
 
 -- A browser not signed in for 90 days stops being sealed to.
