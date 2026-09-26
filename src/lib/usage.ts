@@ -15,6 +15,8 @@ export type UsageEvent =
   | 'left'
   | 'permission_denied'
   | 'join_error'
+  | 'rating'
+  | 'rating_issue'
 
 export function surface(): 'phone' | 'desktop' {
   return isTouch() ? 'phone' : 'desktop'

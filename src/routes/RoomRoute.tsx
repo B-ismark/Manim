@@ -1,7 +1,7 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Avatar, Island, Button } from '@/components/primitives'
-import { BanIcon, LeaveIcon, LockIcon, PeopleIcon, ShareIcon } from '@/components/icons'
+import { BanIcon, CheckIcon, CopyIcon, LeaveIcon, LockIcon, PeopleIcon, ShareIcon } from '@/components/icons'
 import { roomDeviceId } from '@/lib/roomDevice'
 import { resetPeople, takeEnd, takePeople, type EndReason } from '@/lib/callEnd'
 import { PreJoin } from '@/islands/PreJoin'
@@ -531,6 +531,7 @@ export function RoomRoute() {
     return (
       <CallEnded
         room={room}
+        link={`${window.location.origin}/r/${encodeURIComponent(room)}${roomHash({ secret, e2ee })}`}
         reason={ended.reason}
         ms={ended.ms}
         people={ended.people}
@@ -653,6 +654,7 @@ function timeInCall(ms: number): string | null {
  */
 function CallEnded({
   room,
+  link,
   reason,
   ms,
   people,
@@ -660,6 +662,8 @@ function CallEnded({
   onHome,
 }: {
   room: string
+  /** The full invite link (secrets included), for Copy link. */
+  link: string
   reason: EndReason
   ms: number
   people: string[]
@@ -708,12 +712,17 @@ function CallEnded({
               )}
             </ul>
           )}
+          {/* Only after a real call: 30 seconds is the same bar the time chip uses. */}
+          {time && reason !== 'removed' && <CallRating />}
         </section>
         <div className="mt-auto flex flex-col gap-2 pt-6 md:mt-6 md:pt-0">
           {copy.rejoin && (
-            <Button variant="accent" size="lg" block onClick={onRejoin}>
-              Rejoin
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="accent" size="lg" block onClick={onRejoin}>
+                Rejoin
+              </Button>
+              <CopyLinkButton link={link} />
+            </div>
           )}
           <Button variant={copy.rejoin ? 'neutral' : 'accent'} size="lg" block onClick={onHome}>
             Go home
@@ -841,6 +850,109 @@ function Reconnecting({
         </div>
       </div>
     </main>
+  )
+}
+
+/**
+ * Copy the call's link from the end page: to send to someone who missed it, or
+ * to come back later. The link carries the room's secrets, like every invite.
+ */
+function CopyLinkButton({ link }: { link: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Button
+      size="lg"
+      className="shrink-0 gap-2"
+      aria-label={copied ? 'Link copied' : 'Copy link'}
+      onClick={async () => {
+        try {
+          await navigator.clipboard.writeText(link)
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1800)
+        } catch {
+          toast('Couldn’t copy the link', 'danger')
+        }
+      }}
+    >
+      {copied ? <CheckIcon /> : <CopyIcon />}
+      {copied ? 'Copied' : 'Copy link'}
+    </Button>
+  )
+}
+
+const ISSUES = [
+  { v: 'audio', label: 'Audio' },
+  { v: 'video', label: 'Video' },
+  { v: 'connection', label: 'Connection' },
+  { v: 'other', label: 'Something else' },
+] as const
+
+/**
+ * "How was the call?" One tap: good or not. A "not" gets one more optional
+ * tap for what went wrong, from a short fixed list. It becomes an anonymous count
+ * (server/usage.mjs), never tied to the call, the people in it or you, and
+ * there's no free text to type something personal into.
+ */
+function CallRating() {
+  const [rated, setRated] = useState<'good' | 'bad' | null>(null)
+  const [issue, setIssue] = useState<string | null>(null)
+  const rate = (r: 'good' | 'bad') => {
+    setRated(r)
+    countUsage('rating', r, surface())
+  }
+  return (
+    <div className="mt-5 border-t border-line pt-4" aria-live="polite">
+      {!rated ? (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">How was the call?</p>
+          <div className="flex gap-2">
+            <RateButton label="Good" onClick={() => rate('good')}>
+              <path d="M7 10v11H4a1 1 0 0 1-1-1v-9a1 1 0 0 1 1-1h3Zm0 0 4-7a2.5 2.5 0 0 1 3 3l-1 4h5.5a2 2 0 0 1 2 2.4l-1.5 7A2 2 0 0 1 17 21H7" />
+            </RateButton>
+            <RateButton label="Not great" onClick={() => rate('bad')}>
+              <path d="M17 14V3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-3Zm0 0-4 7a2.5 2.5 0 0 1-3-3l1-4H5.5a2 2 0 0 1-2-2.4l1.5-7A2 2 0 0 1 7 3h10" />
+            </RateButton>
+          </div>
+        </div>
+      ) : rated === 'bad' && !issue ? (
+        <div>
+          <p className="text-sm font-medium">Sorry about that. What went wrong?</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {ISSUES.map((i) => (
+              <button
+                key={i.v}
+                type="button"
+                onClick={() => {
+                  setIssue(i.v)
+                  countUsage('rating_issue', i.v, surface())
+                }}
+                className="h-11 rounded-full bg-sunken px-4 text-sm font-medium hover:bg-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              >
+                {i.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm text-ink-muted">Thanks, that helps.</p>
+      )}
+    </div>
+  )
+}
+
+function RateButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="grid size-11 place-items-center rounded-full bg-sunken text-ink hover:bg-line focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+    >
+      <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {children}
+      </svg>
+    </button>
   )
 }
 

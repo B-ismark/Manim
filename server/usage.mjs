@@ -36,6 +36,10 @@ export const EVENTS = {
   permission_denied: [['camera', 'mic', 'both'], SURFACE],
   // Only failures without a server reason (those are knock_rejected).
   join_error: [['permission', 'network', 'server', 'other'], SURFACE],
+  // "How was the call?" on the end page: one tap, then (for a bad one) at most one
+  // more from a fixed list. Not tied to the call, the person or anything they said.
+  rating: [['good', 'bad'], SURFACE],
+  rating_issue: [['audio', 'video', 'connection', 'other'], SURFACE],
 }
 
 /** The event as it may be stored, or null if anything about it is off-list. */
