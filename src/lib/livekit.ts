@@ -6,6 +6,7 @@ import {
 } from 'livekit-client'
 import E2EEWorker from 'livekit-client/e2ee-worker?worker'
 import { isMobile } from '@/lib/device'
+import { setDataTagKey } from '@/lib/dataTag'
 
 /**
  * Room options tuned for high perceptual quality with graceful degradation:
@@ -141,6 +142,8 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   if (e2eePassphrase) {
     const keyProvider = new ExternalE2EEKeyProvider()
     void keyProvider.setKey(e2eePassphrase)
+    // The data channel's own proof of origin (lib/dataTag), from the same secret.
+    setDataTagKey(keyProvider, e2eePassphrase)
     // `encryption`, not the deprecated `e2ee`: the same media encryption, plus the
     // data channel. With `e2ee` only audio and video were end-to-end encrypted;
     // chat, reactions, files, drawings and the room key a host hands over when

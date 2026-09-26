@@ -58,6 +58,7 @@ import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
 import { linkWithoutKey, parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
+import { publishTagged } from '@/lib/useDataTopic'
 
 function displayName(p: Participant): string {
   return displayNameOf(p.identity, p.name)
@@ -252,9 +253,8 @@ export function ParticipantsPanel() {
       return
     }
     try {
-      await localParticipant.publishData(payload, {
+      await publishTagged(room, CONTROL_TOPIC, payload, {
         reliable: true,
-        topic: CONTROL_TOPIC,
         destinationIdentities: hosts,
       })
     } catch {

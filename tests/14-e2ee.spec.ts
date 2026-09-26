@@ -139,4 +139,30 @@ test.describe('E2EE — encrypted call', () => {
       await closeContext(guest.context)
     }
   })
+
+  /**
+   * Everything BESIDES plain chat rides custom data topics (history, pins, edits,
+   * reactions, host controls, ink), and on an encrypted call all of it was being
+   * dropped: livekit-client flags every decrypted packet as sent in the clear, and
+   * the "drop clear packets on an E2EE call" rule believed it (lib/dataTag). The
+   * test above passes regardless, because chat text goes a different way. History
+   * is the one a person notices — rejoin and the conversation is gone.
+   */
+  test('a late joiner on an encrypted call still gets the earlier messages', async ({ page, browser }) => {
+    const room = uniqueRoom('e2ee-hist')
+    const hash = '#e=testkey-e2e-history'
+    await join(page, room, 'Alice', hash)
+    await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
+    const composer = await openChat(page)
+    await composer.fill('said before bob came')
+    await composer.press('Enter')
+
+    const guest = await newParticipant(browser, room, 'Bob', hash)
+    try {
+      await openChat(guest.page)
+      await expect(guest.page.getByText('said before bob came')).toBeVisible({ timeout: 20_000 })
+    } finally {
+      await closeContext(guest.context)
+    }
+  })
 })

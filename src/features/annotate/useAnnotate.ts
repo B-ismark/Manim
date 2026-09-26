@@ -5,9 +5,9 @@ import {
   useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
-import { RoomEvent, type RemoteParticipant, Encryption_Type } from 'livekit-client'
+import { RoomEvent, type RemoteParticipant } from 'livekit-client'
 import { AnnotationEngine } from './AnnotationEngine'
-import { acceptData } from '@/lib/useDataTopic'
+import { makeReceiver, publishTagged } from '@/lib/useDataTopic'
 import { decode, encode, targetHash, type StrokePacket } from '@/lib/annotate/wire'
 import { colorIndexFor } from '@/lib/annotate/palette'
 import { displayNameOf } from '@/lib/participantName'
@@ -140,16 +140,9 @@ export function useAnnotate(featuredShareId: string | null) {
 
   useEffect(() => {
     if (!room) return
-    const onData = (
-      payload: Uint8Array,
-      participant?: RemoteParticipant,
-      _kind?: unknown,
-      topic?: string,
-      encryptionType?: Encryption_Type,
-    ) => {
-      if (topic !== ANNOTATE_TOPIC || !acceptData(room, participant, encryptionType)) return
-      onPacket.current(payload, participant)
-    }
+    const onData = makeReceiver(room, ANNOTATE_TOPIC, (payload, participant) =>
+      onPacket.current(payload, participant),
+    )
     room.on(RoomEvent.DataReceived, onData)
     return () => {
       room.off(RoomEvent.DataReceived, onData)
@@ -160,8 +153,8 @@ export function useAnnotate(featuredShareId: string | null) {
     sendRef.current = (bytes) => {
       // Lossy: ink wants freshness over completeness, and because strokes fade a
       // dropped packet is off the screen in a couple of seconds anyway.
-      void room?.localParticipant
-        .publishData(bytes, { reliable: false, topic: ANNOTATE_TOPIC })
+      if (!room) return
+      publishTagged(room, ANNOTATE_TOPIC, bytes, { reliable: false })
         .catch(() => {
           /* best-effort by design */
         })

@@ -6,7 +6,7 @@ import {
   useRoomContext,
 } from '@livekit/components-react'
 import { useDataTopic } from '@/lib/useDataTopic'
-import { ConnectionState, type ByteStreamHandler } from 'livekit-client'
+import { ConnectionState, RoomEvent, type ByteStreamHandler, type Room } from 'livekit-client'
 import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
 import { sounds } from '@/lib/sounds'
@@ -136,18 +136,44 @@ export type ChatItem = TextItem | FileItem
  * lib/useDataTopic.) Once, not on every reconnect: a resumed session still holds
  * its state, and each ask makes every peer answer the whole room.
  */
-function useAskOnceConnected(connection: ConnectionState, ask: () => void, delay: number): void {
+/** Whether this call wants its data channel encrypted (the link carried a key). */
+function wantsEncryption(room: Room): boolean {
+  return Boolean((room.options as { encryption?: unknown }).encryption)
+}
+
+/**
+ * Connected, and — in an encrypted call — encrypting. Until `setE2EEEnabled`
+ * resolves, livekit-client sends data packets IN THE CLEAR, and every peer drops
+ * a clear packet in an encrypted call (lib/useDataTopic's acceptData). The
+ * join-time asks fire ~1s after connecting, which on a rejoin is before E2EE is
+ * up, so history, pins, reactions and edits never came back — and the requests
+ * crossed the SFU readable.
+ */
+function useDataReady(room: Room, connection: ConnectionState): boolean {
+  const [e2ee, setE2ee] = useState(room.isE2EEEnabled)
+  useEffect(() => {
+    const on = () => setE2ee(room.isE2EEEnabled)
+    on()
+    room.on(RoomEvent.ParticipantEncryptionStatusChanged, on)
+    return () => {
+      room.off(RoomEvent.ParticipantEncryptionStatusChanged, on)
+    }
+  }, [room])
+  return connection === ConnectionState.Connected && (!wantsEncryption(room) || e2ee)
+}
+
+function useAskOnceConnected(ready: boolean, ask: () => void, delay: number): void {
   const asked = useRef(false)
   const askRef = useRef(ask)
   askRef.current = ask
   useEffect(() => {
-    if (asked.current || connection !== ConnectionState.Connected) return
+    if (asked.current || !ready) return
     const t = window.setTimeout(() => {
       asked.current = true
       askRef.current()
     }, delay)
     return () => window.clearTimeout(t)
-  }, [connection, delay])
+  }, [ready, delay])
 }
 
 /**
@@ -158,6 +184,7 @@ function useAskOnceConnected(connection: ConnectionState, ask: () => void, delay
 export function useChatMessages() {
   const room = useRoomContext()
   const connection = useConnectionState(room)
+  const dataReady = useDataReady(room, connection)
   const { localParticipant } = useLocalParticipant()
   const { chatMessages, send: sendChatText, isSending } = useChat()
   const [files, setFiles] = useState<FileItem[]>([])
@@ -176,6 +203,8 @@ export function useChatMessages() {
       reliable = true,
     ) => {
       if (room.state !== ConnectionState.Connected) return
+      // Never in the clear on an encrypted call: peers would drop it anyway.
+      if (wantsEncryption(room) && !room.isE2EEEnabled) return
       try {
         const r = send(new TextEncoder().encode(JSON.stringify(data)), { reliable, topic })
         if (r && typeof (r as Promise<unknown>).then === 'function') (r as Promise<unknown>).catch(() => {})
@@ -335,7 +364,7 @@ export function useChatMessages() {
   const broadcastEdit = useCallback((data: object) => publish(sendEdit, EDIT_TOPIC, data), [publish, sendEdit])
   sendEditRef.current = broadcastEdit
 
-  useAskOnceConnected(connection, () => broadcastEdit({ kind: 'sync-request' }), 800)
+  useAskOnceConnected(dataReady, () => broadcastEdit({ kind: 'sync-request' }), 800)
 
   /** Author edits the body of their own text message (reply quote is preserved). */
   const editMessage = useCallback(
@@ -432,7 +461,7 @@ export function useChatMessages() {
   sendHistoryRef.current = broadcastHistory
 
   // Request a replay once we're connected (the data channel settles first).
-  useAskOnceConnected(connection, () => broadcastHistory({ kind: 'request' }), 900)
+  useAskOnceConnected(dataReady, () => broadcastHistory({ kind: 'request' }), 900)
 
   // Shared pins (Slack model): broadcast pin/unpin over the data channel so the
   // pinned bar matches for everyone. Ephemeral, like the rest of chat.
@@ -472,7 +501,7 @@ export function useChatMessages() {
   // On entry, ask peers to replay their pins so the pinned bar isn't empty for
   // someone who joined after the pins were set. (Small delay lets the data
   // channel settle after connect.)
-  useAskOnceConnected(connection, () => broadcastPin({ kind: 'sync-request' }), 800)
+  useAskOnceConnected(dataReady, () => broadcastPin({ kind: 'sync-request' }), 800)
 
   const togglePin = useCallback(
     (item: ChatItem) => {
@@ -571,7 +600,7 @@ export function useChatMessages() {
   sendReactionRef.current = broadcastReaction
 
   // Ask peers to replay their reactions on entry (same late-join handshake as pins).
-  useAskOnceConnected(connection, () => broadcastReaction({ kind: 'sync-request' }), 800)
+  useAskOnceConnected(dataReady, () => broadcastReaction({ kind: 'sync-request' }), 800)
 
   const toggleReaction = useCallback(
     (messageId: string, emoji: string) => {
