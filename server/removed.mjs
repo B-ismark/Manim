@@ -3,11 +3,12 @@
  *
  * Removing someone used to disconnect them and nothing more: they could knock
  * straight back in with the same link. The room now remembers them, checked at
- * knock. Two keys, because either alone is easy to shed:
- *  - the device id (the part of the identity after `#`), which covers guests and
- *    survives a name change;
- *  - the server-derived account id, which survives a different browser.
- * Someone determined can still clear site data AND join as a guest; locking the
+ * knock, by device id (the part of the identity after `#`), which covers guests
+ * and survives a name change. The core passes no account id: the only one at
+ * hand when removing is the target's live participant metadata, which the client
+ * can rewrite, so trusting it would let someone get another person's account
+ * banned. (The helpers still accept one, for a server-recorded id later.)
+ * Someone determined can still clear site data or switch browsers; locking the
  * call covers that. Keys are hashed before they go into room metadata, which
  * every participant can read.
  */

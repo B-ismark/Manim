@@ -28,6 +28,8 @@ type ControlMessage =
   | { type: 'end' }
   | { type: 'merge'; room: string; k?: string; e?: string }
   | { type: 'report'; target: string; by: string }
+  /** Server-sent (handoff): this device's session is being moved elsewhere. */
+  | { type: 'moved' }
 
 /**
  * Session control plane over the LiveKit data channel:
@@ -106,11 +108,14 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const elected = useRef(false)
   const announcedHostLeft = useRef(false)
   const [graceOver, setGraceOver] = useState(false)
+  const [electTry, setElectTry] = useState(0)
   useEffect(() => {
+    // Every change of the recorded host starts over — including one absent host
+    // replaced by another, which must get its own grace and its own election.
+    elected.current = false
+    setGraceOver(false)
     if (!hostId || hostPresent) {
-      elected.current = false
       announcedHostLeft.current = false
-      setGraceOver(false)
       return
     }
     const t = setTimeout(() => setGraceOver(true), HOST_GRACE_MS)
@@ -122,13 +127,16 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       announcedHostLeft.current = true
       toast('The host left the call', 'neutral')
     }
-    if (!elected.current && roomToken) {
-      elected.current = true
-      void electHost(room.name, roomToken).catch(() => {
-        elected.current = false // let a later render retry if it failed
-      })
-    }
-  }, [graceOver, hostPresent, hostId, roomToken, room.name])
+    if (elected.current || !roomToken) return
+    elected.current = true
+    let retry: ReturnType<typeof setTimeout> | undefined
+    void electHost(room.name, roomToken).catch(() => {
+      // Nothing else re-runs this effect, so schedule the retry ourselves.
+      elected.current = false
+      retry = setTimeout(() => setElectTry((n) => n + 1), 10_000)
+    })
+    return () => clearTimeout(retry)
+  }, [graceOver, hostPresent, hostId, roomToken, room.name, electTry])
 
   // "You're now the host" once you inherit the primary seat (skip the initial
   // value so the original host isn't toasted at join).
@@ -199,6 +207,10 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       toast(`The host moved everyone to ${prettyRoom(data.room)}`, 'neutral')
       // Carry the target room's secrets so everyone passes its join-secret gate.
       navigate(roomTo(data.room, { secret: data.k, e2ee: data.e }), { state: { autojoin: true } })
+    } else if (data.type === 'moved' && !msg.from) {
+      // Only the server can send this (no participant has an empty identity); the
+      // removal that follows would otherwise read as "the host removed you".
+      markEnd('moved')
     } else if (data.type === 'report' && isHost && msg.from) {
       // Only the host is notified of a report. Named from the SENDER, not the
       // payload's `by`, which anyone could fill with someone else's name.

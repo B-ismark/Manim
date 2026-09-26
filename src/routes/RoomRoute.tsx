@@ -104,14 +104,14 @@ export function RoomRoute() {
 
   // Room names are lowercase (toSlug), so a hand-typed /r/Team opened a different,
   // empty room from /r/team. Go to the real one, keeping the link's secrets.
-  const lowerRoom = room.toLowerCase()
+  const lowerRoom = room.normalize('NFC').toLowerCase()
   useEffect(() => {
     if (room === lowerRoom) return
     navigate(
       { pathname: `/r/${encodeURIComponent(lowerRoom)}`, search: location.search, hash: location.hash },
-      { replace: true },
+      { replace: true, state: location.state },
     )
-  }, [room, lowerRoom, navigate, location.search, location.hash])
+  }, [room, lowerRoom, navigate, location.search, location.hash, location.state])
 
   const displayName = useAppStore((s) => s.displayName)
   const deviceId = useAppStore((s) => s.deviceId)
@@ -160,10 +160,10 @@ export function RoomRoute() {
   const [ended, setEnded] = useState<{ room: string; reason: EndReason } | null>(null)
   const roomNow = useRef(room)
   roomNow.current = room
+  // Set once the call CONNECTS, not when a token arrives: a connect that fails
+  // also reports a disconnect first, and must show its real error, not "You were
+  // disconnected".
   const callRoom = useRef<string | null>(null)
-  useEffect(() => {
-    if (token) callRoom.current = roomNow.current
-  }, [token])
 
   // Mirror the join token into the store so in-room host controls can present it
   // as the Bearer credential to the orchestrator (admit / moderate / roomflags).
@@ -393,7 +393,11 @@ export function RoomRoute() {
           lowBandwidth={prejoin.lowBandwidth}
           e2ee={e2ee}
           onLeave={leave}
+          onConnected={() => {
+            callRoom.current = roomNow.current
+          }}
           onError={(e) => {
+            callRoom.current = null
             reportError(e, { context: 'livekit-room', room })
             setError(friendlyJoinError(e, e.message))
             setToken(null)
@@ -429,7 +433,15 @@ export function RoomRoute() {
   }
 
   if (waitingId) {
-    return <WaitingRoom room={room} onCancel={leave} />
+    return (
+      <WaitingRoom
+        room={room}
+        onCancel={() => {
+          leave()
+          navigate('/')
+        }}
+      />
+    )
   }
 
   if (connecting && !error) {
@@ -473,7 +485,8 @@ const ENDED_COPY: Record<EndReason, { title: string; body: string; rejoin: boole
   left: { title: 'You left the call', body: 'Rejoin if that was a mistake.', rejoin: true },
   ended: { title: 'The host ended the call', body: 'It’s over for everyone.', rejoin: false },
   endedByYou: { title: 'You ended the call for everyone', body: 'Everyone was disconnected.', rejoin: false },
-  removed: { title: 'The host removed you from this call', body: 'You can’t rejoin it.', rejoin: false },
+  removed: { title: 'The host removed you from this call', body: 'You can’t rejoin it from this browser.', rejoin: false },
+  moved: { title: 'You moved this call to another device', body: 'It’s still going there.', rejoin: false },
   alone: {
     title: 'The call ended',
     body: 'No one else was here for five minutes, so it ended to save your data and battery.',

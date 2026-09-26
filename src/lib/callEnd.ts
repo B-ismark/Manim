@@ -6,7 +6,7 @@
  * and RoomRoute takes that reason when the disconnect arrives. Anything unmarked
  * falls back to what LiveKit reports (removed, room deleted, or a drop).
  */
-export type EndReason = 'left' | 'ended' | 'endedByYou' | 'removed' | 'alone' | 'dropped'
+export type EndReason = 'left' | 'ended' | 'endedByYou' | 'removed' | 'moved' | 'alone' | 'dropped'
 
 let pending: EndReason | null = null
 

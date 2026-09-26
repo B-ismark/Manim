@@ -23,6 +23,8 @@ export interface CallRoomProps {
   e2ee?: string
   /** `reason` is LiveKit's, mapped; absent when the app itself left. */
   onLeave: (reason?: EndReason) => void
+  /** The room actually connected: only a call that did has an end-of-call screen. */
+  onConnected?: () => void
   onError: (error: Error) => void
 }
 
@@ -42,6 +44,7 @@ export default function CallRoom({
   lowBandwidth,
   e2ee,
   onLeave,
+  onConnected,
   onError,
 }: CallRoomProps) {
   // Build once per (bandwidth, passphrase) so the E2EE worker isn't recreated.
@@ -66,6 +69,7 @@ export default function CallRoom({
       audio={micEnabled}
       video={cameraEnabled && !lowBandwidth}
       options={options}
+      onConnected={onConnected}
       onDisconnected={(r) => onLeave(endReasonOf(r))}
       onError={handleError}
       className="relative flex h-dvh flex-col overflow-hidden"

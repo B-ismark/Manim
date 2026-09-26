@@ -7,7 +7,7 @@
   process.env locally and the Worker's `env` binding in production. Uses only
   Web-standard APIs (global fetch, global crypto) so it runs on Workers.
 */
-import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
+import { AccessToken, DataPacket_Kind, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
 import { withoutE2eeKey } from './invite.mjs'
@@ -424,7 +424,7 @@ export async function handleKnock(env, body) {
   const wasApproved = approvedBefore && seatOk
 
   // Removed by the host: stays out, whatever name they use now (server/removed.mjs).
-  if (!isHost && (await wasRemoved(flags.removed, deviceId, userId))) {
+  if (!isHost && (await wasRemoved(flags.removed, deviceId, ''))) {
     return { status: 403, body: { error: 'The host removed you from this call.', code: 'removed' } }
   }
 
@@ -620,6 +620,8 @@ export async function handleKnockStatus(env, query) {
     return { status: 200, body: { status: 'expired' } }
   }
   if (entry.status === 'approved') {
+    // An approval from before a removal doesn't outlive it.
+    if (await wasRemoved(flags.removed, entry.deviceId, '')) return { status: 200, body: { status: 'denied' } }
     const minted = await mintToken(env, room, entry.name, entry.deviceId, false, entry.userId)
     return { status: 200, body: { status: 'approved', ...minted } }
   }
@@ -763,6 +765,16 @@ export async function handleHandoff(env, body, token) {
       const device = String(p.identity).split('#').slice(1).join('#')
       if (pUserId && pUserId === caller.userId && device !== keepDevice) {
         try {
+          // Tell that device it moved BEFORE removing it: LiveKit reports any
+          // removal as "removed", and the end-of-call screen would say the host
+          // threw you out. Server-sent, so no participant can forge it.
+          await roomService
+            .sendData(room, new TextEncoder().encode(JSON.stringify({ type: 'moved' })), DataPacket_Kind.RELIABLE, {
+              destinationIdentities: [p.identity],
+              topic: 'mn.control',
+            })
+            .catch(() => {})
+          await new Promise((r) => setTimeout(r, 300))
           await roomService.removeParticipant(room, p.identity)
           dropped++
         } catch {
@@ -794,18 +806,22 @@ export async function handleModerate(env, body, token) {
     return { status: 403, body: { error: 'Only the host can do that.' } }
   }
   if (action === 'remove') {
+    if (target === modIdentity) return { status: 400, body: { error: 'You can’t remove yourself — use Leave.' } }
     // Remember them first, so a fast re-knock can't slip in between (server/removed.mjs).
-    let targetUser = ''
+    // Keyed on the device only: the account id in live participant metadata is
+    // client-writable, so trusting it would let someone get ANOTHER person's
+    // account banned by copying their id and getting themselves removed.
+    // Best effort: a failed write must never stop the removal itself, and an
+    // empty read (the lookup failed) must not become the merge base, or the
+    // write would wipe hostId, the queue and the join secret.
     try {
-      const p = await roomService.getParticipant(room, target)
-      targetUser = JSON.parse(p?.metadata || '{}').userId || ''
-    } catch {
-      /* already gone: the device key still works */
-    }
-    const entry = await removedEntry(target, targetUser)
-    if (entry) {
+      const entry = await removedEntry(target, '')
       const fresh = await getRoomFlags(roomService, room)
-      await mergeRoomFlags(roomService, room, { removed: withRemoved(fresh.removed, entry) }, fresh)
+      if (entry && Object.keys(fresh).length > 0) {
+        await mergeRoomFlags(roomService, room, { removed: withRemoved(fresh.removed, entry) }, fresh)
+      }
+    } catch {
+      /* the removal below still happens */
     }
     await roomService.removeParticipant(room, target)
   } else if (action === 'mute') {
