@@ -176,8 +176,10 @@ export function admit(
   token: string,
   requestId: string,
   approve: boolean,
+  /** The name the host saw: admitting fails if the guest has renamed since. */
+  name?: string,
 ): Promise<{ ok: boolean }> {
-  return postJson('/api/admit', { room, requestId, approve }, token)
+  return postJson('/api/admit', { room, requestId, approve, name }, token)
 }
 
 export interface ModerateRequest {

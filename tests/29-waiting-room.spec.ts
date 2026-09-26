@@ -57,6 +57,33 @@ test.describe('Waiting room', () => {
     }
   })
 
+  test('a waiting guest can’t rename into the host’s seat', async ({ page, request }) => {
+    const room = uniqueRoom('lobby-seat')
+    const hostKnock = page.waitForResponse((r) => r.url().includes('/api/knock') && r.request().method() === 'POST')
+    await join(page, room, 'Host')
+    const { identity } = await (await hostKnock).json()
+    const hostDevice = String(identity).split('#').slice(1).join('#')
+    await openHostControls(page)
+    await activate(page, page.getByRole('button', { name: 'Waiting room' }))
+    await closePanel(page)
+
+    // Eve knocks from the host's device id under another name, and is queued...
+    const knock = await request.post('/api/knock', { data: { room, name: 'Eve', deviceId: hostDevice } })
+    const queued = await knock.json()
+    expect(queued.pending).toBe(true)
+    // ...but can't then take the host's name (and with it the host's seat).
+    const res = await request.post('/api/knock-update', {
+      data: { room, requestId: queued.requestId, claim: queued.claim, name: 'Host' },
+    })
+    expect(res.status()).toBe(409)
+    expect((await res.json()).code).toBe('seat_taken')
+    // A name nobody holds is fine.
+    const ok = await request.post('/api/knock-update', {
+      data: { room, requestId: queued.requestId, claim: queued.claim, name: 'Eve B' },
+    })
+    expect(ok.status()).toBe(200)
+  })
+
   test('only the guest who knocked can change their request', async ({ request }) => {
     const room = uniqueRoom('lobby-api')
     const res = await request.post('/api/knock-update', { data: { room, requestId: 'anything', claim: 'nope', note: 'hi' } })

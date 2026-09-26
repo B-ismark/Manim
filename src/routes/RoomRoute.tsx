@@ -168,6 +168,10 @@ export function RoomRoute() {
   // keeps trying, on the same clock the in-call banner started (lib/connectionTrouble).
   const [lost, setLost] = useState<{ room: string; since: number } | null>(null)
   const lostRef = useRef(false)
+  // The Reconnecting screen's loop state. Kept here, not in it: each try mounts
+  // the call, which unmounts that screen, and a failed try must pick up where
+  // the backoff and the 3-minute clock left off rather than start over.
+  const retry = useRef<RetryState>({ tries: 0, loopStart: 0, pausedAt: 0 })
   const roomNow = useRef(room)
   roomNow.current = room
   // Set once the call CONNECTS, not when a token arrives: a connect that fails
@@ -287,7 +291,11 @@ export function RoomRoute() {
         // (invite-only / room full) verbatim rather than the generic join error.
         if (
           e instanceof ApiError &&
-          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken' || e.code === 'removed')
+          (e.code === 'not_in_beta' ||
+            e.code === 'room_full' ||
+            e.code === 'seat_taken' ||
+            e.code === 'removed' ||
+            e.code === 'locked')
         ) {
           setError(e.message)
           setConnecting(false)
@@ -419,6 +427,7 @@ export function RoomRoute() {
       lostRef.current = true
       setToken(null)
       setConnecting(false)
+      retry.current = { tries: 0, loopStart: Date.now(), pausedAt: 0 }
       setLost({ room: was, since: troubleSince() })
       return
     }
@@ -484,6 +493,15 @@ export function RoomRoute() {
               leave('dropped')
               return
             }
+            // A retry from the Reconnecting screen whose connect didn't take: not a
+            // join error, not the end of anything. Back to that screen, which
+            // keeps its own count and waits before the next try.
+            if (lostRef.current && !callRoom.current) {
+              addBreadcrumb('reconnect try failed', { message: e.message })
+              setToken(null)
+              setConnecting(false)
+              return
+            }
             countLeft()
             const cls = callRoom.current ? null : joinErrorClass(e)
             if (cls) countUsage('join_error', cls, surface())
@@ -503,6 +521,7 @@ export function RoomRoute() {
       <Reconnecting
         room={room}
         since={lost.since}
+        retry={retry.current}
         attempting={connecting}
         error={error}
         attempt={async () => {
@@ -752,9 +771,16 @@ const AUTO_RETRY_FOR_MS = 3 * 60_000
  * honest choices: Keep trying now, or Leave. After a few minutes it stops on its
  * own and says so, rather than spinning forever.
  */
+interface RetryState {
+  tries: number
+  loopStart: number
+  pausedAt: number
+}
+
 function Reconnecting({
   room,
   since,
+  retry,
   attempting,
   error,
   attempt,
@@ -762,6 +788,8 @@ function Reconnecting({
 }: {
   room: string
   since: number
+  /** Survives this screen unmounting while a try connects (RoomRoute owns it). */
+  retry: RetryState
   attempting: boolean
   error: string | null
   attempt: () => Promise<JoinResult>
@@ -769,11 +797,20 @@ function Reconnecting({
 }) {
   const elapsed = useElapsed(since)
   const online = useOnline()
-  const [tries, setTries] = useState(0)
-  const [pausedAt, setPausedAt] = useState(0)
+  const [tries, setTriesState] = useState(retry.tries)
+  const [pausedAt, setPausedState] = useState(retry.pausedAt)
   const [final, setFinal] = useState(false)
+  const setTries = (f: (n: number) => number) =>
+    setTriesState((n) => {
+      retry.tries = f(n)
+      return retry.tries
+    })
+  const setPausedAt = (t: number) => {
+    retry.pausedAt = t
+    setPausedState(t)
+  }
+  if (!retry.loopStart) retry.loopStart = Date.now()
   const busy = useRef(false)
-  const loopStart = useRef(Date.now())
   // A ref, so a parent re-render doesn't restart the wait below.
   const attemptRef = useRef(attempt)
   attemptRef.current = attempt
@@ -787,26 +824,29 @@ function Reconnecting({
     } finally {
       busy.current = false
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
   // The loop: one try at a time, backing off, only while there's a network.
   useEffect(() => {
     if (final || pausedAt || attempting || !online) return
-    if (Date.now() - loopStart.current > AUTO_RETRY_FOR_MS) {
+    if (Date.now() - retry.loopStart > AUTO_RETRY_FOR_MS) {
       setPausedAt(Date.now())
       return
     }
     const t = window.setTimeout(run, RETRY_DELAYS_MS[Math.min(tries, RETRY_DELAYS_MS.length - 1)])
     return () => window.clearTimeout(t)
-  }, [tries, final, pausedAt, attempting, online, run])
-  // Back online: try now rather than waiting out the delay.
+  }, [tries, final, pausedAt, attempting, online, run]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Back online: try now rather than waiting out the delay. Only on the change,
+  // not on mount (a remount after a failed try would skip the backoff).
+  const wasOnline = useRef(online)
   useEffect(() => {
-    if (online && !final && !pausedAt) void run()
+    if (online && !wasOnline.current && !final && !pausedAt) void run()
+    wasOnline.current = online
   }, [online]) // eslint-disable-line react-hooks/exhaustive-deps
   const keepTrying = () => {
-    loopStart.current = Date.now()
+    retry.loopStart = Date.now()
     setPausedAt(0)
     setFinal(false)
-    setTries(0)
+    setTries(() => 0)
     void run()
   }
   const title = final ? 'Couldn’t get you back in' : pausedAt ? 'Still can’t reconnect' : 'Reconnecting…'

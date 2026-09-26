@@ -85,32 +85,39 @@ function SelfView({ name }: { name: string }) {
   const cameraOn = useAppStore((s) => s.prejoin.cameraEnabled)
   const setPrejoin = useAppStore((s) => s.setPrejoin)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const [stream, setStream] = useState<MediaStream | null>(null)
   const [failed, setFailed] = useState(false)
   const [mirror, setMirror] = useState(true)
 
   useEffect(() => {
     if (!cameraOn || !navigator.mediaDevices?.getUserMedia) return
-    let stream: MediaStream | null = null
+    let held: MediaStream | null = null
     let cancelled = false
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: false })
       .then((s) => {
         if (cancelled) return s.getTracks().forEach((t) => t.stop())
-        stream = s
+        held = s
         setFailed(false)
         setMirror(s.getVideoTracks()[0]?.getSettings().facingMode !== 'environment')
-        if (videoRef.current) videoRef.current.srcObject = s
+        setStream(s)
       })
       .catch(() => {
         if (!cancelled) setFailed(true)
       })
     return () => {
       cancelled = true
-      stream?.getTracks().forEach((t) => t.stop())
+      held?.getTracks().forEach((t) => t.stop())
+      setStream(null)
     }
   }, [cameraOn])
 
   const showVideo = cameraOn && !failed
+  // Attached once both exist, whichever arrived last (the <video> mounts only
+  // after `failed` clears, which can be after the stream).
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.srcObject = stream
+  }, [stream, showVideo])
   const toggle = () => {
     const next = !cameraOn
     setPrejoin({ cameraEnabled: next })

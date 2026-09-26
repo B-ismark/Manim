@@ -655,9 +655,10 @@ export async function handleKnock(env, body) {
  * how many people are in, whether a host is among them, and whether the door is
  * a waiting room, locked, or full. Never names or identities.
  *
- * Without the link it learns nothing: a room with a join-secret answers
- * `unknown` to a wrong or missing secret, the same answer an empty or
- * never-created room gives, so it can't be used to find out which rooms exist.
+ * Without the link it learns nothing about who's inside: a room with a
+ * join-secret answers `unknown` to a wrong or missing secret. (That a secret
+ * room exists at all is no secret from here: knock already answers need_link
+ * for one, and link slugs are random.)
  * Bare typed-name rooms have no secret, and anyone can knock on them anyway.
  */
 export async function handleRoomStatus(env, body) {
@@ -710,7 +711,8 @@ export async function handleKnockStatus(env, query) {
     return { status: 403, body: { status: 'expired', error: 'Not your request' } }
   }
   const flags = await getRoomFlags(roomService, room)
-  const entry = (await readQueue(apiSecret, room, flags)).find((e) => e.id === requestId)
+  const queue = await readQueue(apiSecret, room, flags)
+  const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
   // A pending entry past its TTL is treated as expired — the host never actioned
   // it (left / missed the prompt), so stop the guest polling forever.
@@ -720,11 +722,37 @@ export async function handleKnockStatus(env, query) {
   if (entry.status === 'approved') {
     // An approval from before a removal doesn't outlive it.
     if (await wasRemoved(flags.removed, entry.deviceId, '')) return { status: 200, body: { status: 'denied' } }
+    // Checked again at the mint: the seat may have been taken since the knock
+    // (or the rename), and an approval must never hand out someone else's seat.
+    const identity = `${entry.name}#${entry.deviceId || 'web'}`
+    const participants = await listParticipants(roomService, room)
+    if (seatHeldBy(identity, flags, participants, queue, entry.id)) return { status: 200, body: { status: 'denied' } }
     const minted = await mintToken(env, room, entry.name, entry.deviceId, false, entry.userId)
     return { status: 200, body: { status: 'approved', ...minted } }
   }
   return { status: 200, body: { status: entry.status } }
 }
+
+/**
+ * Is `identity` somebody's seat already: the host, a co-host, someone in the
+ * call, or another request in the queue? A queued name must never become one
+ * of those, or the host would be admitting a stranger INTO that seat: its
+ * token matches hostId in ensureHost and evicts the real owner.
+ */
+function seatHeldBy(identity, flags, participants, queue, exceptId) {
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  return (
+    identity === flags.hostId ||
+    coHosts.includes(identity) ||
+    participants.some((p) => p.identity === identity) ||
+    // Another guest waiting under it. (An old approval isn't a seat: nobody
+    // is in it, and it's often this same guest back after closing the tab.)
+    queue.some((e) => e.id !== exceptId && e.status === 'pending' && `${e.name}#${e.deviceId || 'web'}` === identity)
+  )
+}
+
+/** Changes one waiting request may make: enough to fix a typo and reword a note. */
+const MAX_KNOCK_EDITS = 6
 
 /** A note to the host from the waiting room: one line, short enough for a banner. */
 export const MAX_NOTE_LEN = 120
@@ -753,14 +781,32 @@ export async function handleKnockUpdate(env, body) {
   if (note != null && (typeof note !== 'string' || note.length > MAX_NOTE_LEN || /[\u0000-\u001f\u007f]/.test(note))) {
     return { status: 400, body: { error: `Keep the note to one line of ${MAX_NOTE_LEN} characters.` } }
   }
-  const flags = await getRoomFlags(roomService, room)
+  const [flags, participants] = await Promise.all([getRoomFlags(roomService, room), listParticipants(roomService, room)])
   const queue = await readQueue(apiSecret, room, flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry || entry.status !== 'pending') return { status: 409, body: { error: 'You’re no longer waiting.' } }
-  if (name != null) entry.name = name.trim()
-  if (note != null) entry.note = note.trim()
-  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue), flags)
-  return { status: 200, body: { ok: true, name: entry.name, note: entry.note || '' } }
+  const nextName = name != null ? name.trim() : entry.name
+  const nextNote = note != null ? note.trim() : entry.note || ''
+  // Nothing changed: no metadata write (each one races the host's own writes).
+  if (nextName === entry.name && nextNote === (entry.note || '')) {
+    return { status: 200, body: { ok: true, name: entry.name, note: nextNote } }
+  }
+  if ((entry.edits || 0) >= MAX_KNOCK_EDITS) {
+    return { status: 429, body: { error: 'You’ve changed this enough times. The host will see it as it is.' } }
+  }
+  if (nextName !== entry.name && seatHeldBy(`${nextName}#${entry.deviceId || 'web'}`, flags, participants, queue, entry.id)) {
+    return {
+      status: 409,
+      body: { error: 'Someone with this name is already part of this call. Try another.', code: 'seat_taken' },
+    }
+  }
+  entry.name = nextName
+  entry.note = nextNote
+  entry.edits = (entry.edits || 0) + 1
+  // Re-read just before writing (no base passed), so a host change made while
+  // this was unsealing isn't written back over.
+  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue))
+  return { status: 200, body: { ok: true, name: entry.name, note: entry.note } }
 }
 
 export async function handlePending(env, query, token) {
@@ -777,13 +823,18 @@ export async function handlePending(env, query, token) {
 
 export async function handleAdmit(env, body, token) {
   const { roomService, apiSecret } = services(env)
-  const { room, requestId, approve } = body ?? {}
+  const { room, requestId, approve, name } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const auth = await ensureHost(env, roomService, room, token)
   if (!auth.ok) return { status: 403, body: { error: 'host only' } }
   const queue = await readQueue(apiSecret, room, auth.flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 404, body: { error: 'request not found' } }
+  // The guest can rename while waiting. Let in only the name the host was
+  // shown; a newer one comes back to the banner to be decided on again.
+  if (approve && typeof name === 'string' && name !== entry.name) {
+    return { status: 409, body: { error: 'They changed their name. Check who’s waiting again.', code: 'renamed' } }
+  }
   entry.status = approve ? 'approved' : 'denied'
   entry.settledAt = Date.now()
   // Only local crypto awaited since the flags were read, so reuse them.

@@ -20,15 +20,26 @@ export function useRoomReadiness(room: string, secret: string | undefined, name:
   useEffect(() => {
     let alive = true
     let timer: number | undefined
+    // One ask at a time: a tab coming back mid-ask must not start a second loop.
+    let asking = false
     const ask = async () => {
       window.clearTimeout(timer)
-      if (document.visibilityState === 'visible') {
-        const device = await roomDeviceId(deviceId, room)
-        const next = await roomStatus({ room, secret, name: trimmed || undefined, deviceId: device })
-        if (!alive) return
-        setStatus((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+      if (asking) return
+      asking = true
+      try {
+        if (document.visibilityState === 'visible') {
+          const device = await roomDeviceId(deviceId, room)
+          const next = await roomStatus({ room, secret, name: trimmed || undefined, deviceId: device })
+          if (!alive) return
+          setStatus((prev) => (JSON.stringify(prev) === JSON.stringify(next) ? prev : next))
+        }
+      } finally {
+        asking = false
       }
-      if (alive) timer = window.setTimeout(ask, POLL_MS)
+      if (alive) {
+        window.clearTimeout(timer)
+        timer = window.setTimeout(ask, POLL_MS)
+      }
     }
     // A short beat before the first ask, so typing a name doesn't fire one per key.
     timer = window.setTimeout(ask, 400)

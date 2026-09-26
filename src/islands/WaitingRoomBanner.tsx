@@ -76,10 +76,13 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
   }, [active, room, token])
 
   const decide = useCallback(
-    (id: string, approve: boolean) => {
+    (p: PendingKnocker, approve: boolean) => {
       if (!token) return
-      setPending((prev) => prev.filter((p) => p.id !== id))
-      void admit(room.name, token, id, approve).catch(() => {})
+      setPending((prev) => prev.filter((q) => q.id !== p.id))
+      // A rename since the banner last looked is refused; show them again.
+      void admit(room.name, token, p.id, approve, p.name).catch(() =>
+        listPending(room.name, token).then(setPending, () => {}),
+      )
     },
     [room.name, token],
   )
@@ -107,10 +110,10 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
             </span>
             {/* Default (40px) size: admitting/denying a person is consequential
                 enough to deserve a full touch target, not the compact sm. */}
-            <Button variant="accent" aria-label={`Admit ${p.name}`} onClick={() => decide(p.id, true)}>
+            <Button variant="accent" aria-label={`Admit ${p.name}`} onClick={() => decide(p, true)}>
               Admit
             </Button>
-            <Button variant="ghost" aria-label={`Deny ${p.name}`} onClick={() => decide(p.id, false)}>
+            <Button variant="ghost" aria-label={`Deny ${p.name}`} onClick={() => decide(p, false)}>
               Deny
             </Button>
           </li>
