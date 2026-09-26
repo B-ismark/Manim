@@ -21,6 +21,7 @@ import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useScreenShare } from '@/features/calls/useScreenShare'
 import { cn } from '@/lib/cn'
+import { toggleDevice } from '@/lib/deviceToggle'
 
 /**
  * Compact whole-app view rendered into the Document PiP window: the focused
@@ -113,7 +114,11 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
             tone={isMicrophoneEnabled ? 'neutral' : 'danger'}
             active={!isMicrophoneEnabled}
             className={isMicrophoneEnabled ? 'bg-transparent text-white hover:bg-white/15' : undefined}
-            onClick={() => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)}
+            onClick={() =>
+              toggleDevice('microphone', !isMicrophoneEnabled, () =>
+                localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled),
+              )
+            }
           />
           <IconButton
             size="sm"
@@ -122,7 +127,9 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
             tone={isCameraEnabled ? 'neutral' : 'danger'}
             active={!isCameraEnabled}
             className={isCameraEnabled ? 'bg-transparent text-white hover:bg-white/15' : undefined}
-            onClick={() => localParticipant.setCameraEnabled(!isCameraEnabled)}
+            onClick={() =>
+              toggleDevice('camera', !isCameraEnabled, () => localParticipant.setCameraEnabled(!isCameraEnabled))
+            }
           />
           {/* Screen share — desktop only (touch can't). */}
           {!coarse && (

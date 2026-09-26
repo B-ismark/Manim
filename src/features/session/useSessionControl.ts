@@ -6,6 +6,7 @@ import {
   useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
+import { roomDeviceId } from '@/lib/roomDevice'
 import { useDataTopic } from '@/lib/useDataTopic'
 import { useAppStore } from '@/store/useAppStore'
 import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
@@ -268,7 +269,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const switchToThisDevice = useCallback(async () => {
     if (!roomToken) return
     try {
-      await handoff(room.name, roomToken, deviceId)
+      await handoff(room.name, roomToken, await roomDeviceId(deviceId, room.name))
     } catch {
       /* best effort */
     }

@@ -72,6 +72,14 @@ type = "ratelimit"
 namespace_id = "1002"
 simple = { limit = 20, period = 60 }
 
+# Per-IP rate limit on ringing a contact's devices (/api/push). One ring is one
+# call; 10/60s leaves redials alone and stops a loop from buzzing someone's phone.
+[[unsafe.bindings]]
+name = "PUSH_RATELIMIT"
+type = "ratelimit"
+namespace_id = "1003"
+simple = { limit = 10, period = 60 }
+
 # Durable room-lifecycle store for invite-link expiry (server/core.mjs roomKv). A
 # link-shared room is stamped on join and retired after 30 days of no joins, so a
 # stale link can't silently recreate a fresh room under the same slug. The Worker

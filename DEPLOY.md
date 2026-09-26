@@ -241,10 +241,19 @@ create policy "avatar update own" on storage.objects for update to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 create policy "avatar delete own" on storage.objects for delete to authenticated
   using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
+-- Added 2026-09 (run once): Storage's remove() needs SELECT as well as DELETE, so
+-- without this, replacing or removing a photo (and deleting the account) silently
+-- left the old one public. Scoped to your own folder, so nobody can list anyone else's.
+create policy "avatar read own" on storage.objects for select to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = auth.uid()::text);
 ```
 
-The client uploads to `avatars/<user-id>/avatar.webp` (one object per user,
-upsert), so the folder-name check pins each user to their own prefix.
+The client uploads to `avatars/<user-id>/<random>.webp`, a new random name each
+time (the old one is deleted), so the folder-name check pins each user to their own
+prefix. The name is random because the bucket is public and account ids are seen by
+everyone in a call: a fixed `avatar.webp` let anyone who had your id open your
+photo. Don't add a public `select` policy on `storage.objects` for this bucket —
+that would let anyone list the folder and undo it.
 
 ### 3b. Self-serve account deletion
 The app's **Settings → Delete account** button (privacy requirement) calls a
@@ -488,12 +497,45 @@ language sql security definer set search_path = public as $$
 $$;
 revoke all on function get_push_targets(uuid) from public;
 grant execute on function get_push_targets(uuid) to authenticated;
+
+-- Added 2026-09 (run once, needs pg_cron — see §4d): subscriptions the browser has
+-- dropped (404/410 from the push service) were never deleted, so every ring kept
+-- paying for them. A device renews its row on every app start (upsert, and the
+-- trigger stamps the server's clock); rows nobody renewed in 60 days are dropped.
+-- Only the owner could delete them otherwise, which is why this runs in Supabase.
+alter table push_subscriptions add column if not exists seen_at timestamptz not null default now();
+create or replace function push_seen() returns trigger
+  language plpgsql as $$ begin new.seen_at = now(); return new; end $$;
+drop trigger if exists push_subscriptions_seen on push_subscriptions;
+create trigger push_subscriptions_seen before insert or update on push_subscriptions
+  for each row execute function push_seen();
 ```
 
 **VAPID keys** — generate one keypair: `npx web-push generate-vapid-keys`.
 - Client/build var (Cloudflare → manim → Build): `VITE_VAPID_PUBLIC_KEY` = the public key.
 - Worker runtime vars (Worker → Settings → Variables): `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` as a **Secret** (e.g. `mailto:you@domain.com`: push services use it to reach you about problems; a Secret because this repo is public; unset, it falls back to the repo's URL), plus `SUPABASE_URL` + `SUPABASE_ANON_KEY` (the push sender calls the `get_push_targets` RPC). Without these the push endpoint is a graceful no-op and only the in-app banner shows.
 - iOS note: Web Push needs the PWA installed to the Home Screen (Add to Home Screen) — Safari only delivers push to installed web apps.
+
+4d. **Contact requests and dead push subscriptions expire** (run once — added
+    2026-09, after the §4c addition above). A request nobody answers used to sit in
+    both people's lists forever; this drops unanswered ones after 30 days, and push
+    subscriptions no device has renewed in 60, nightly, inside Supabase (`pg_cron` is on the free plan:
+    Database → Extensions → enable **pg_cron** first if the `create extension`
+    line errors).
+
+```sql
+create extension if not exists pg_cron;
+select cron.schedule(
+  'expire-push-subscriptions',
+  '41 3 * * *',
+  $$delete from public.push_subscriptions where seen_at < now() - interval '60 days'$$
+);
+select cron.schedule(
+  'expire-contact-requests',
+  '23 3 * * *',
+  $$delete from public.contacts where status = 'pending' and created_at < now() - interval '30 days'$$
+);
+```
 
 ## 5. LiveKit Cloud
 Already configured for dev. The Worker needs the same key/secret/URL (step 3,
