@@ -24,6 +24,7 @@ import {
 } from '../server/core.mjs'
 import { rewriteHead, roomFromPath } from '../server/preview.mjs'
 import { count } from '../server/usage.mjs'
+import { CSP } from '../server/headers.mjs'
 
 const json = (r) =>
   new Response(JSON.stringify(r.body), {
@@ -128,8 +129,9 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api/')) return handleApi(request, env, url)
-    // Static assets (SPA fallback handled by [assets] not_found_handling). We
-    // re-emit them cross-origin isolated so SharedArrayBuffer is available — the
+    // Only the pages in run_worker_first reach here (wrangler.toml); every other
+    // file gets the same headers from public/_headers. We serve them
+    // cross-origin isolated so SharedArrayBuffer is available — the
     // @livekit/krisp-noise-filter (the strong AI noise suppression) needs it;
     // without isolation it silently falls back to the weak browser filter.
     // `credentialless` is the least-breaking isolation mode: cross-origin no-cors
@@ -149,23 +151,7 @@ export default {
     // reports themselves go to *.ingest.sentry.io, already inside connect-src.
     // NOTE: verify against the DEPLOYED artifact — tune if a console CSP violation
     // appears (this worker path doesn't run under the local vite dev server).
-    headers.set(
-      'Content-Security-Policy',
-      [
-        "default-src 'self'",
-        "base-uri 'self'",
-        "object-src 'none'",
-        "frame-ancestors 'none'",
-        "form-action 'self'",
-        "img-src 'self' data: blob: https:",
-        "media-src 'self' blob:",
-        "font-src 'self' data:",
-        "style-src 'self' 'unsafe-inline'",
-        "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://browser.sentry-cdn.com",
-        "worker-src 'self' blob:",
-        "connect-src 'self' https: wss:",
-      ].join('; '),
-    )
+    headers.set('Content-Security-Policy', CSP)
     headers.set('X-Content-Type-Options', 'nosniff')
     headers.set('Referrer-Policy', 'strict-origin-when-cross-origin')
     headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')

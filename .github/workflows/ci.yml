@@ -17,6 +17,14 @@ on:
         description: 'load-test: duration (e.g. 60s)'
         default: '60s'
 
+# A new push to a pull request makes the run for the previous one pointless:
+# cancel it rather than let the ~20-minute browser suite finish for nothing.
+# Runs on main are left alone. (No paths-ignore for docs: a check that never
+# reports would leave a pull request waiting on it.)
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   # Always runs — no secrets needed. Gates every push/PR.
   # NOTE: `vite build` is intentionally NOT run here. The build aborts on an

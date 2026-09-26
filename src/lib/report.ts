@@ -49,6 +49,13 @@ const breadcrumbs: Breadcrumb[] = []
 const DEDUPE_MS = 5000
 const recentErrors = new Map<string, number>()
 
+// What actually reaches Sentry is capped per page load: each distinct error
+// once, and no more than a handful in all. The free plan's monthly allowance is
+// shared by everyone, and one tab looping on the same failure every few seconds
+// could spend it; the first report already says everything the rest would.
+const SENTRY_MAX = 15
+const sentToSentry = new Set<string>()
+
 let installed = false
 
 function sentry(): SentryLike | undefined {
@@ -77,6 +84,8 @@ export function reportError(error: unknown, context?: Context): void {
 
   // eslint-disable-next-line no-console
   console.error('[report]', message, { context, breadcrumbs: [...breadcrumbs] }, error)
+  if (sentToSentry.has(message) || sentToSentry.size >= SENTRY_MAX) return
+  sentToSentry.add(message)
   sentry()?.captureException?.(error, { extra: { ...context, breadcrumbs: [...breadcrumbs] } })
 }
 

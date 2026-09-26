@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRoomContext } from '@livekit/components-react'
+import { RoomEvent } from 'livekit-client'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { admit, listPending, type PendingKnocker } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
@@ -7,8 +8,14 @@ import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 
 /**
  * Host-only: shows people knocking when the waiting room is on, with Admit/Deny.
- * Polls the orchestrator (dev server keeps the queue in memory).
+ *
+ * The queue lives (sealed) in the room's metadata, so every knock, admit and
+ * deny changes the metadata and LiveKit pushes that change to everyone in the
+ * call. The banner asks the server for the readable list only then — it used to
+ * ask every 3s, for as long as the waiting room was on, from every host and
+ * co-host. A slow fallback catches requests expiring on their own.
  */
+const FALLBACK_MS = 60_000
 export function WaitingRoomBanner({ active }: { active: boolean }) {
   const room = useRoomContext()
   const token = useAppStore((s) => s.roomToken)
@@ -33,14 +40,14 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
     }
     let stop = false
     async function poll() {
-      // A background tab can't admit anyone, so don't spend a request every 3s on
-      // it; the visibilitychange below catches up the moment the host looks back.
+      // A background tab can't admit anyone, so don't spend a request on it; the
+      // visibilitychange below catches up the moment the host looks back.
       if (document.hidden) return
       const list = await listPending(room.name, token!)
       if (stop) return
-      // The poll almost always returns the queue it returned last time. A fresh
-      // array would re-render the banner (and its avatars) every 3s for nothing,
-      // so keep the previous one unless who's waiting actually changed.
+      // Metadata also changes for things other than the queue (flags, co-hosts). A
+      // fresh array would re-render the banner (and its avatars) for nothing, so
+      // keep the previous one unless who's waiting actually changed.
       setPending((prev) =>
         prev.length === list.length && prev.every((p, i) => p.id === list[i].id && p.name === list[i].name)
           ? prev
@@ -51,14 +58,17 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
       if (!document.hidden) void poll()
     }
     void poll()
-    const id = window.setInterval(poll, 3000)
+    const id = window.setInterval(poll, FALLBACK_MS)
+    const onMetadata = () => void poll()
+    room.on(RoomEvent.RoomMetadataChanged, onMetadata)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       stop = true
       window.clearInterval(id)
+      room.off(RoomEvent.RoomMetadataChanged, onMetadata)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [active, room.name, token])
+  }, [active, room, token])
 
   const decide = useCallback(
     (id: string, approve: boolean) => {

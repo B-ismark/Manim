@@ -326,13 +326,22 @@ export function RoomRoute() {
     setConnecting(false)
   }, [])
 
-  // While queued in the waiting room, poll for the host's decision.
+  // While queued in the waiting room, poll for the host's decision: every 2s at
+  // first, when an answer is likeliest, then every 5s. A request can wait up to 5
+  // minutes, and at 2s throughout that was 150 requests per waiting guest. One at
+  // a time — a slow answer never overlaps the next ask.
   useEffect(() => {
     if (!waitingId) return
     let stop = false
-    const id = window.setInterval(async () => {
-      const s = await knockStatus(room, waitingId, waitClaim.current)
-      if (stop || !s) return
+    let id = 0
+    const started = Date.now()
+    const next = () => {
+      if (!stop) id = window.setTimeout(ask, Date.now() - started < 30_000 ? 2000 : 5000)
+    }
+    const ask = async () => {
+      const s = await knockStatus(room, waitingId, waitClaim.current).catch(() => null)
+      if (stop) return
+      if (!s) return next()
       if (s.status === 'approved' && s.token) {
         rememberSeat(room, s.identity, s.seat)
         // If they backgrounded the app while waiting, ping them to come back.
@@ -346,11 +355,14 @@ export function RoomRoute() {
         setWaitingId(null)
         setError(null)
         toast('Your request to join timed out — try again', 'warning')
+      } else {
+        next()
       }
-    }, 2000)
+    }
+    next()
     return () => {
       stop = true
-      window.clearInterval(id)
+      window.clearTimeout(id)
     }
   }, [waitingId, room])
 

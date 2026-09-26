@@ -84,7 +84,7 @@ export function Landing() {
       const token = signedIn
         ? (await (await getSupabase())?.auth.getSession())?.data.session?.access_token
         : undefined
-      const me = await getMe(token)
+      const me = await getMe(token, token ? useAuthStore.getState().userId : '')
       if (!alive) return
       setBetaGate(me.betaGate)
       setCanHost(me.allowed)

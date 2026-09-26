@@ -270,6 +270,8 @@ async function syncProfile(session: Session) {
  *  previous-user profile before the async sync resolves. */
 const PROFILE_UID_KEY = 'manim-profile-uid'
 
+let profileSyncedFor: string | null = null
+
 function applySession(session: Session | null) {
   if (session?.user) {
     const uid = session.user.id
@@ -289,8 +291,15 @@ function applySession(session: Session | null) {
       useAuthStore.setState({ avatarUrl: avatarFromSession(session) || null })
       useAppStore.getState().setDisplayName(nameFromSession(session), false)
     }
-    void syncProfile(session)
+    // Once per account per page load: the session is applied at start-up twice
+    // (getSession and the listener's first event) and again on every hourly token
+    // refresh, and each was a profile read, sometimes a write.
+    if (profileSyncedFor !== uid) {
+      profileSyncedFor = uid
+      void syncProfile(session)
+    }
   } else {
+    profileSyncedFor = null
     useAuthStore.setState({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
   }
 }
