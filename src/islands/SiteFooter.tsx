@@ -16,9 +16,11 @@ export function SiteFooter() {
       <Link to="/terms" className="hover:text-ink">
         Terms
       </Link>
-      <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-ink">
-        Contact
-      </a>
+      {CONTACT_EMAIL && (
+        <a href={`mailto:${CONTACT_EMAIL}`} className="hover:text-ink">
+          Contact
+        </a>
+      )}
     </footer>
   )
 }

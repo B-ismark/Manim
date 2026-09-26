@@ -62,6 +62,7 @@ build vars live under the Build section.)
 | `RESEND_API_KEY` | runtime (secret) | optional | real email invites (else mailto) |
 | `RESEND_FROM` | runtime | optional | e.g. `Manim <onboarding@resend.dev>` |
 | `VITE_GIPHY_KEY` | build | optional | GIF picker (free key from developers.giphy.com) |
+| `VITE_SENTRY_DSN` | build | optional | Crash reports. Unset = reporting stays in the browser console. Setup below (§3c). |
 | `VITE_ANNOTATE` | build | optional | Draw-on-shared-screen. **Inverted — unset means ON.** Set to exactly `false` to disable it without a code change. |
 
 > Set `VITE_LIVEKIT_URL` in **both** build and runtime (the client connects with
@@ -90,6 +91,44 @@ Two more gotchas:
 - The new-variable dialog has **Deploy** and **Save version**. **Save version
   does NOT go live** — it only stages a version. Always click **Deploy** (or let
   a `git push` run `wrangler deploy`, which deploys to 100%).
+
+### 3c. Crash reports (Sentry, optional)
+The app loads Sentry through its **Loader Script** only when `VITE_SENTRY_DSN` is
+set, and strips every room link's `#fragment` (join secret + E2EE key) from each
+report before it leaves the browser (`src/lib/report.ts`). The Worker's CSP
+already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
+`browser.sentry-cdn.com`); reports go to `*.ingest.sentry.io`, inside `connect-src`.
+
+1. **sentry.io → Create project → Platform: Browser JavaScript** (not Next.js —
+   this is a Vite app; React also works). Under Products leave only Error
+   monitoring; don't tick Session replay, Tracing, Profiling, Logging or Metrics.
+   Name it `manim`. Skip the install instructions Sentry shows afterwards: the app
+   already has the code. Pick the data region you want (EU keeps reports in
+   Frankfurt; the Privacy page lists Sentry either way).
+2. **Project Settings → Loader Script**: keep the SDK version on the latest 8.x or
+   newer, and switch **off Session Replay** and **Performance Monitoring
+   (tracing)**. Replay records the page — names, chat, the call UI — which the
+   Privacy page does not disclose and the scrubber does not cover.
+3. **Project Settings → Security & Privacy**: turn on **Data Scrubber**,
+   **Use Default Scrubbers** and **Prevent Storing of IP Addresses**. Leave
+   *Additional Sensitive Fields* empty: it matches any field name that CONTAINS the
+   entry, so `e` or `k` there would blank almost every field. Instead, as a
+   server-side backstop, **Advanced Data Scrubbing → Add Rule**: Method *Replace*
+   (placeholder `[room-secret]`), Data Type *Regex Matches*, Regex
+   `(?:[#?&]|%23|%3F|%26)(?:k|e|[a-z_]*token)(?:=|%3D)[^&\s"'#%]+`,
+   Source `$string`. (The `?` matters: livekit-client puts the call's join token in
+   a query string, `?access_token=…`, when it checks a failed connection.)
+4. **Project Settings → Client Keys (DSN)**: copy the DSN
+   (`https://<key>@o<org>.ingest<region>.sentry.io/<project>`).
+5. **Cloudflare → the Worker → Settings → Build → Variables and secrets**: add
+   `VITE_SENTRY_DSN` = that DSN (a *build* variable — it is baked into the bundle;
+   a DSN is public by design). Then push to `main` (or retry the latest build) so
+   the bundle is rebuilt with it.
+6. **Verify on the deployed site**, not the build: DevTools → Network shows
+   `js.sentry-cdn.com/<key>.min.js` loading with no CSP error in the Console. Run
+   `window.Sentry.captureMessage('manim sentry check')` in the Console on a room
+   page opened from an encrypted link, confirm the event reaches Sentry, and open
+   it to check the URLs carry no `#k=` / `#e=`.
 
 ## 4. Supabase setup (accounts + presence)
 1. **Authentication → Providers → Email**: enable. (Magic links work on the free
@@ -136,6 +175,48 @@ security definer
 set search_path = public
 as $$
   select id from profiles where email = lower(lookup_email) limit 1;
+$$;
+revoke all on function lookup_profile_id(text) from public;
+grant execute on function lookup_profile_id(text) to authenticated;
+```
+
+#### 3.1 Rate-limit the email lookup (run once — added 2026-09)
+`lookup_profile_id` answers "does this email have a Manim account?" for any
+signed-in caller, so without a limit it can check a whole list of addresses. This
+replaces it with the same lookup, throttled to **30 lookups per 10 minutes per
+account**. A throttled call raises `rate_limited`, which the app shows as "Too many
+lookups — try again in a few minutes." Safe to re-run.
+
+```sql
+create table if not exists lookup_attempts (
+  user_id uuid not null references auth.users (id) on delete cascade,
+  ts timestamptz not null default now()
+);
+create index if not exists lookup_attempts_user_ts on lookup_attempts (user_id, ts);
+alter table lookup_attempts enable row level security; -- no policies: only the function touches it
+
+create or replace function lookup_profile_id(lookup_email text)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  recent int;
+begin
+  if uid is null then return null; end if;
+  -- One caller at a time per user: without it, parallel calls each count the same
+  -- committed rows and all pass, so a burst of 500 at once would bypass the cap.
+  perform pg_advisory_xact_lock(hashtext('lookup_profile_id'), hashtext(uid::text));
+  delete from lookup_attempts where user_id = uid and ts < now() - interval '10 minutes';
+  select count(*) into recent from lookup_attempts where user_id = uid;
+  if recent >= 30 then
+    raise exception 'rate_limited' using errcode = 'P0001';
+  end if;
+  insert into lookup_attempts (user_id) values (uid);
+  return (select id from profiles where email = lower(lookup_email) limit 1);
+end;
 $$;
 revoke all on function lookup_profile_id(text) from public;
 grant execute on function lookup_profile_id(text) to authenticated;

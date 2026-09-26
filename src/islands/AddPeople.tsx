@@ -134,7 +134,7 @@ export function AddPeople({
             placeholder={canRing ? 'Search contacts or type an email' : 'Invite by email'}
             aria-label={canRing ? 'Search contacts or type an email address' : 'Invite by email'}
             autoComplete="off"
-            className="h-9 w-full rounded-field bg-sunken px-3 text-sm outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
+            className="h-9 w-full rounded-field bg-sunken px-3 text-base outline-none sm:text-sm placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
 
           {/* The audit's L4 disclosure — that entering an address causes us to

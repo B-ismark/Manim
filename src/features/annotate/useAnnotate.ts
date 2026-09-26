@@ -9,6 +9,7 @@ import { RoomEvent, type RemoteParticipant } from 'livekit-client'
 import { AnnotationEngine } from './AnnotationEngine'
 import { decode, encode, targetHash, type StrokePacket } from '@/lib/annotate/wire'
 import { colorIndexFor } from '@/lib/annotate/palette'
+import { displayNameOf } from '@/lib/participantName'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 
@@ -35,8 +36,6 @@ const ANNOUNCE_COOLDOWN_MS = 15_000
  * VITE_ANNOTATE=false to turn it off without a revert.
  */
 export const annotateEnabled = import.meta.env.VITE_ANNOTATE !== 'false'
-
-const displayName = (identity: string, name?: string) => name || identity.split('#')[0] || 'Guest'
 
 /**
  * Wires AnnotationEngine to the LiveKit data channel.
@@ -98,12 +97,22 @@ export function useAnnotate(featuredShareId: string | null) {
   // The latest handler, reachable from a subscription that is made once. Refreshed
   // after every render so it always closes over current props/state, without the
   // subscription itself churning.
+  // Who may draw, from room metadata (set by the effect below). Read on RECEIVE
+  // too: `allowed` only disarms this client's own pen, so a modified client could
+  // otherwise ignore host-only and ink everyone's screen anyway.
+  const policy = useRef<{ hostOnly: boolean; hostId: string; coHosts: string[] }>({
+    hostOnly: false,
+    hostId: '',
+    coHosts: [],
+  })
   const onPacket = useRef<(payload: Uint8Array, from?: RemoteParticipant) => void>(() => {})
   onPacket.current = (payload, from) => {
     // Attribution comes from the SFU-attributed sender, never the payload — a
     // payload field would let anyone draw under someone else's name.
     const identity = from?.identity
     if (!identity || identity === localParticipant.identity) return
+    const { hostOnly, hostId, coHosts } = policy.current
+    if (hostOnly && identity !== hostId && !coHosts.includes(identity)) return
     const packet = decode(payload)
     if (!packet) return
     // Ink is addressed in unit coordinates against the share it was drawn on, so a
@@ -112,7 +121,7 @@ export function useAnnotate(featuredShareId: string | null) {
     // SID was known — and stays accepted, which is what keeps a mixed-version room
     // working in one direction rather than neither.
     if (packet.target !== 0 && packet.target !== targetRef.current) return
-    const name = displayName(identity, from?.name)
+    const name = displayNameOf(identity, from?.name)
     engine.ingest(identity, packet, name)
 
     const last = announcedAt.current.get(identity) ?? 0
@@ -176,7 +185,7 @@ export function useAnnotate(featuredShareId: string | null) {
   useEffect(() => {
     engine.setLocalAuthor(
       localColorIdx,
-      displayName(localParticipant.identity, localParticipant.name),
+      displayNameOf(localParticipant.identity, localParticipant.name),
     )
   }, [engine, localColorIdx, localParticipant.identity, localParticipant.name])
 
@@ -198,6 +207,7 @@ export function useAnnotate(featuredShareId: string | null) {
     } catch {
       /* malformed metadata — fall back to permissive, matching the default */
     }
+    policy.current = { hostOnly, hostId, coHosts }
     const me = localParticipant.identity
     setAllowed(!hostOnly || me === hostId || coHosts.includes(me))
   }, [roomMetadata, localParticipant.identity, setAllowed])

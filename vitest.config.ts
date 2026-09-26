@@ -5,8 +5,8 @@ import { fileURLToPath, URL } from 'node:url'
 // focus selection). These run in Node with no browser/LiveKit — fast and
 // deterministic, complementing the Playwright E2E suite in tests/ (which owns
 // everything that needs a real room). Kept separate: Playwright globs *.spec.ts
-// under tests/, Vitest globs *.test.ts(x) under src/, so neither picks up the
-// other's files.
+// under tests/, Vitest globs *.test.ts(x) under src/ (and *.test.mjs beside the
+// server core in server/), so neither picks up the other's files.
 export default defineConfig({
   resolve: {
     alias: {
@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx}', 'server/**/*.test.mjs'],
     environment: 'node',
   },
 })

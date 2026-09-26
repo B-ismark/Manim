@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { installMediaGuards } from '@/lib/mediaGuards'
 
 /*
   Document Picture-in-Picture — pops the *app UI* into a floating OS window (like
@@ -81,6 +82,9 @@ export function useDocumentPip(autoArm = false): DocumentPipControls {
       // this fills the window instead of letterboxing a tall portrait frame.
       const win = await dpip.requestWindow({ width: 480, height: 320 })
       copyStyles(win)
+      // Its own document, so the main page's video-menu guard never sees its
+      // events (lib/mediaGuards). The window's teardown takes the listeners.
+      installMediaGuards(win.document)
       win.addEventListener('pagehide', () => setPipWindow(null))
       winRef.current = win
       setPipWindow(win)

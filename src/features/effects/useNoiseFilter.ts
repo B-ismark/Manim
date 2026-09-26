@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, TrackEvent, type LocalAudioTrack } from 'livekit-client'
 import { reportError } from '@/lib/report'
@@ -161,7 +161,14 @@ export function useNoiseFilter() {
 
   const toggle = useCallback(() => setEnabled((v) => !v), [])
 
-  return { enabled, setEnabled, toggle, usingKrisp }
+  // Memoized so consumers get a stable object while nothing changed: a fresh
+  // literal every render gives any memo boundary / effect dep downstream a new
+  // identity on each RoomView render. `setEnabled` (setState) and `toggle`
+  // (useCallback) are already stable, so only the two values key it.
+  return useMemo(
+    () => ({ enabled, setEnabled, toggle, usingKrisp }),
+    [enabled, toggle, usingKrisp],
+  )
 }
 
 export type NoiseFilterControls = ReturnType<typeof useNoiseFilter>

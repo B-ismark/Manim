@@ -4,9 +4,24 @@ import { supabase } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/store/useToastStore'
 import { squareDownscale } from '@/lib/image'
+import { disablePush } from '@/lib/push'
+import { forgetAuthSession, forgetPersonalData } from '@/lib/localData'
 
 /** Public Storage bucket holding user avatars (see DEPLOY.md §4a). */
 const AVATAR_BUCKET = 'avatars'
+
+/**
+ * After sign-out / account deletion: forget this person (lib/localData) and start
+ * the page over. A reload is the one reset every store honours — the device id,
+ * recents, contacts and notification state are all read from storage at startup,
+ * so patching each in memory would be a list that goes stale the day a store is
+ * added.
+ */
+function leaveThisBrowser(): void {
+  forgetPersonalData()
+  forgetAuthSession()
+  window.location.assign('/')
+}
 
 /** Stable guest id (device-bound) used when not signed in. */
 function guestId(): string {
@@ -55,9 +70,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { error } = await supabase.auth.signInWithOtp({
       // Return to the EXACT page sign-in started from (e.g. /r/standup), not the
       // bare origin — otherwise a user who signs in mid-join lands on / and has to
-      // re-navigate. href carries the path + any query.
+      // re-navigate. The room's #fragment (its join secret and E2EE key) stays
+      // behind: this goes to Supabase and into the email, and the sign-in round
+      // trip replaces the fragment anyway — lib/roomKeys puts it back from this
+      // browser's memory when you land.
       email,
-      options: { emailRedirectTo: window.location.href },
+      options: { emailRedirectTo: returnUrl() },
     })
     if (error) throw error
   },
@@ -76,25 +94,36 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // DEPLOY.md. (The exact return URL must be in Supabase's allow-list.)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.href },
+      options: { redirectTo: returnUrl() },
     })
     if (error) throw error
   },
   signOut: async () => {
-    if (supabase) await supabase.auth.signOut()
-    set({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
+    // Push rows are deletable only by their owner (RLS), so unsubscribe while the
+    // session still exists — after sign-out this browser would keep ringing for
+    // an account nobody here is signed into.
+    await disablePush()
+    // Offline or mid-outage this fails and keeps the session; leaveThisBrowser
+    // drops it regardless.
+    if (supabase) await supabase.auth.signOut().catch(() => {})
+    leaveThisBrowser()
   },
 
   deleteAccount: async () => {
     const sb = supabase
-    if (!sb || !get().signedIn) throw new Error('Sign in to delete your account.')
+    const { signedIn, userId } = get()
+    if (!sb || !signedIn) throw new Error('Sign in to delete your account.')
+    // The photo is a public object keyed by user id and isn't covered by the
+    // account's cascade, so it outlived the account. Best-effort, before the row goes.
+    await sb.storage.from(AVATAR_BUCKET).remove([`${userId}/avatar.webp`]).catch(() => {})
+    await disablePush()
     // The DB function deletes the caller's own auth.users row (auth.uid()); the
     // on-delete-cascade FKs take profiles/contacts/push_subscriptions with it.
     const { error } = await sb.rpc('delete_account')
     if (error) throw new Error('Could not delete your account. Please contact support.')
     // The user no longer exists — clear the (now invalid) session and drop to guest.
-    await sb.auth.signOut()
-    set({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
+    await sb.auth.signOut().catch(() => {})
+    leaveThisBrowser()
   },
 
   uploadAvatar: async (file) => {
@@ -258,6 +287,11 @@ export function persistNameToAccount(name: string): void {
   nameWriteTimer = setTimeout(() => {
     void sb.from('profiles').upsert({ id, display_name }).then(() => {})
   }, 600)
+}
+
+/** Where a sign-in returns to: this page, without its #fragment (see signInWithEmail). */
+function returnUrl(): string {
+  return location.origin + location.pathname + location.search
 }
 
 /**

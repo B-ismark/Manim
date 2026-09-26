@@ -19,7 +19,11 @@ interface SentryLike {
   captureException?: (error: unknown, context?: unknown) => void
   addBreadcrumb?: (breadcrumb: unknown) => void
   // Provided by the Sentry Loader Script — queue init until the full SDK arrives.
-  init?: (options: { dsn: string }) => void
+  init?: (options: {
+    dsn: string
+    beforeSend?: (event: unknown) => unknown
+    beforeBreadcrumb?: (crumb: unknown) => unknown
+  }) => void
   onLoad?: (cb: () => void) => void
 }
 
@@ -104,9 +108,74 @@ function initSentry(): void {
   script.addEventListener('load', () => {
     const s = sentry()
     // The loader exposes onLoad; configure the SDK once it's actually present.
-    s?.onLoad?.(() => s.init?.({ dsn }))
+    s?.onLoad?.(() => s.init?.({ dsn, beforeSend: stripFragments, beforeBreadcrumb: stripFragments }))
   })
   document.head.appendChild(script)
+}
+
+/** A #fragment, up to where text around a URL usually ends it. */
+const FRAGMENT = /#[^\s"'`<>()\\]*/g
+/** Parameters that make a fragment a secret: a room's join secret (`k`) and E2EE
+ *  key (`e`), and the tokens a sign-in round trip leaves (`access_token`, …). */
+const SECRET_PARAM = /(?:^|[#&])(?:k|e|[a-z_]*token)=/i
+
+/** The same, percent-encoded inside another URL — e.g. a sign-in request's
+ *  `redirect_to=…%2Fr%2Fslug%23k%3D…%26e%3D…`, which a fetch breadcrumb records. */
+const ENCODED_FRAGMENT = /%23[^\s"'`<>()\\&]*/gi
+const ENCODED_SECRET_PARAM = /(?:^|%23|%26)(?:k|e|[a-z_]*token)%3D/i
+
+/** A token in a QUERY string. livekit-client puts the join token there
+ *  (`/rtc/validate?access_token=<JWT>`) and fetches it after a failed connect,
+ *  which a fetch breadcrumb records; a live token lets anyone into that call. */
+const QUERY_TOKEN = /((?:[?&]|%3F|%26)[a-z_]*token(?:=|%3D))[^&\s"'`<>()\\#%]+/gi
+
+function scrubText(s: string): string {
+  if (/token/i.test(s)) s = s.replace(QUERY_TOKEN, '$1[redacted]')
+  if (s.includes('#')) s = s.replace(FRAGMENT, (f) => (SECRET_PARAM.test(f) ? '' : f))
+  if (/%23/i.test(s)) s = s.replace(ENCODED_FRAGMENT, (f) => (ENCODED_SECRET_PARAM.test(f) ? '' : f))
+  return s
+}
+
+/**
+ * Remove secret-bearing #fragments from every string in a report. A room URL's
+ * fragment IS the room's credentials (`#k=<join secret>&e=<E2EE key>`,
+ * lib/roomLink), and Sentry's request context, navigation breadcrumbs and error
+ * messages all carry URLs — absolute (`location.href`) and relative (history
+ * breadcrumbs record `/r/slug#k=…` for same-origin moves) — so without this the
+ * first error in an encrypted call would hand its key to a third party.
+ *
+ * It walks the value rather than regex-ing its JSON: a JSON round trip failed
+ * OPEN (any quoted URL in a message produced invalid JSON, and the catch sent the
+ * original), which is the one direction this must never fail. Every string is
+ * visited, so a new field that happens to hold a URL can't slip past; fragments
+ * with no secret in them (`#hashtag`, `#section`) are left alone.
+ */
+export function stripFragments<T>(value: T): T {
+  const seen = new WeakMap<object, unknown>()
+  const walk = (v: unknown, depth: number): unknown => {
+    if (typeof v === 'string') return scrubText(v)
+    if (v === null || typeof v !== 'object') return v
+    if (depth > 20) return undefined // pathological nesting: drop it rather than ship it unscrubbed
+    const cached = seen.get(v)
+    if (cached !== undefined) return cached
+    const json = (v as { toJSON?: () => unknown }).toJSON
+    if (typeof json === 'function') {
+      const out = walk(json.call(v), depth + 1)
+      seen.set(v, out)
+      return out
+    }
+    if (Array.isArray(v)) {
+      const out: unknown[] = []
+      seen.set(v, out)
+      for (const x of v) out.push(walk(x, depth + 1))
+      return out
+    }
+    const out: Record<string, unknown> = {}
+    seen.set(v, out)
+    for (const [k, x] of Object.entries(v)) out[k] = walk(x, depth + 1)
+    return out
+  }
+  return walk(value, 0) as T
 }
 
 /** Install the global last-resort handlers. Idempotent; call once at startup

@@ -1,7 +1,19 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
 import { useParticipants } from '@livekit/components-react'
 import { Avatar, Button, IconButton, Popover, Sheet, Tooltip } from '@/components/primitives'
-import { AttachIcon, CloseIcon, DownloadIcon, GifIcon, PeopleIcon, PinIcon, ReactionIcon, ReplyIcon, SendIcon } from '@/components/icons'
+import {
+  AttachIcon,
+  ChevronDownIcon,
+  CloseIcon,
+  DownloadIcon,
+  EditIcon,
+  GifIcon,
+  PeopleIcon,
+  PinIcon,
+  ReactionIcon,
+  ReplyIcon,
+  SendIcon,
+} from '@/components/icons'
 import { EmojiPicker } from '@/islands/EmojiPicker'
 import { encodeMentions, mentionsIdentity, plainText, type MentionTarget } from '@/features/chat/mentions'
 import { joinNames, reactorList } from '@/features/chat/reactors'
@@ -20,6 +32,8 @@ import { isImage, IMAGE_INLINE_MAX_BYTES, looksLikeImageUrl, isAutoLoadImageUrl,
 import { GifPicker, gifEnabled } from '@/islands/GifPicker'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { renderRichText } from '@/lib/formatText'
+import { useChatHistoryOn } from '@/features/chat/chatHistory'
+import { displayNameOf } from '@/lib/participantName'
 import { cn } from '@/lib/cn'
 
 /** A live mention candidate the composer can tag. */
@@ -108,7 +122,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
     () =>
       participants
         .filter((p) => p.identity !== myIdentity)
-        .map((p) => ({ identity: p.identity, name: p.name || p.identity.split('#')[0] || 'Guest' }))
+        .map((p) => ({ identity: p.identity, name: displayNameOf(p.identity, p.name) }))
         .filter((t) => t.name),
     [participants, myIdentity],
   )
@@ -395,9 +409,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
               </span>
             )}
             <span>{unseen > 0 ? 'new' : 'Latest'}</span>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 9l6 6 6-6" />
-            </svg>
+            <ChevronDownIcon />
           </button>
         )}
       </div>
@@ -477,6 +489,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           onChange={(e) => onPickFiles(e.target.files)}
         />
         <textarea
+          dir="auto"
           ref={inputRef}
           value={draft}
           onChange={(e) => {
@@ -647,6 +660,7 @@ const MessageList = memo(function MessageList({
         <div>
           <p className="text-sm font-medium">No messages yet</p>
           <p className="mt-1 text-xs text-ink-muted">Say hi or share a file.</p>
+          <HistoryNote className="mt-3" />
         </div>
       </div>
     )
@@ -654,6 +668,7 @@ const MessageList = memo(function MessageList({
   const isPinned = (id: string) => pinned.some((p) => p.id === id)
   return (
     <>
+      <HistoryNote className="pb-2 text-center" />
       {items.map((item, i) => (
         <MessageRow
           key={item.id}
@@ -676,6 +691,20 @@ const MessageList = memo(function MessageList({
     </>
   )
 })
+
+/**
+ * Who else will read this: chat is replayed to people who join later unless the
+ * host turned that off (features/chat/chatHistory). Said once, quietly, at the top
+ * of the conversation, because nobody expected it and it was never disclosed.
+ */
+function HistoryNote({ className }: { className?: string }) {
+  const on = useChatHistoryOn()
+  return (
+    <p className={cn('text-xs text-ink-subtle', className)}>
+      {on ? 'People who join later can see earlier messages.' : 'People who join later won’t see earlier messages.'}
+    </p>
+  )
+}
 
 function MessageRow({
   item,
@@ -898,6 +927,7 @@ function MessageRow({
         {editing && item.kind === 'text' ? (
           <div className="mt-0.5 flex flex-col gap-1.5">
             <textarea
+              dir="auto"
               value={editDraft}
               ref={(el) => {
                 // Size to content on open so the whole message is visible.
@@ -942,7 +972,7 @@ function MessageRow({
           looksLikeImageUrl(item.text) ? (
             <ImageBubble src={item.text} />
           ) : (
-            <p className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderRichText(item.text, myIdentity)}</p>
+            <p dir="auto" className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderRichText(item.text, myIdentity)}</p>
           )
         ) : (
           <FileMessage file={item} />
@@ -1001,12 +1031,7 @@ function MessageRow({
               size="sm"
               tone="neutral"
               label="Edit message"
-              icon={
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 20h9" />
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                </svg>
-              }
+              icon={<EditIcon />}
               onClick={startEdit}
             />
           )}
@@ -1086,10 +1111,7 @@ function MessageRow({
                     startEdit()
                   }}
                 >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M12 20h9" />
-                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                  </svg>
+                  <EditIcon />
                   Edit message
                 </button>
               )}
@@ -1266,7 +1288,7 @@ function PinnedRow({ pin, onJump, onUnpin }: { pin: PinnedMessage; onJump: () =>
             <PinIcon />
             Pinned · {pin.name}
           </p>
-          <p className="truncate text-xs text-ink">{pin.text}</p>
+          <p dir="auto" className="truncate text-xs text-ink">{pin.text}</p>
         </div>
       </button>
       <IconButton size="sm" tone="neutral" label="Unpin message" icon={<CloseIcon />} onClick={onUnpin} className="self-center" />

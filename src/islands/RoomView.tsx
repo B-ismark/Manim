@@ -361,6 +361,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     isHost,
     locked,
     waiting,
+    chatHistory,
+    toggleChatHistory,
     doLeave,
     endForEveryone,
     mergeInto,
@@ -368,7 +370,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     toggleWaiting,
     sameNameOther,
     switchToThisDevice,
-  } = useSessionControl(onLeave)
+  } = useSessionControl(onLeave, e2eeActive)
   const panel = useRoomStore((s) => s.panel)
   const companion = useRoomStore((s) => s.companion)
   const setCompanion = useRoomStore((s) => s.setCompanion)
@@ -527,6 +529,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         onToggleLock={toggleLock}
         waiting={waiting}
         onToggleWaiting={toggleWaiting}
+        chatHistory={chatHistory}
+        onToggleChatHistory={toggleChatHistory}
         sendReaction={sendReaction}
         handRaised={handRaised}
         toggleHand={toggleHand}

@@ -1,4 +1,5 @@
 import type { ReactorNames } from '@/features/chat/useChatMessages'
+import { displayNameOf } from '@/lib/participantName'
 
 /**
  * Turning a reaction's identity list into "who reacted".
@@ -35,7 +36,7 @@ export function reactorList(by: string[], names: ReactorNames, myIdentity: strin
   const mine = by.includes(myIdentity)
   const others = by
     .filter((id) => id !== myIdentity)
-    .map((id) => names[id] || id.split('#')[0] || 'Guest')
+    .map((id) => displayNameOf(id, names[id]))
     .sort((a, b) => a.localeCompare(b))
   return mine ? ['You', ...others] : others
 }

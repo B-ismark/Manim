@@ -9,6 +9,8 @@
 */
 import { AccessToken, RoomServiceClient, TokenVerifier, TrackSource } from 'livekit-server-sdk'
 import { sendPush, pushConfigured } from './webpush.mjs'
+import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
+import { withoutE2eeKey } from './invite.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -22,6 +24,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 // waits forever on a knock no one will action (host left / never opened admit).
 // knock-status flips stale pending → expired; new knocks also prune by it.
 const KNOCK_TTL_MS = 5 * 60 * 1000
+/** Display names are shown on tiles and stored in the waiting-room queue. */
+const MAX_NAME_LEN = 64
+const MAX_ROOM_LEN = 128
 
 // Link expiry. A link-shared room (one entered with an invite secret) is recorded
 // in durable KV on join and refreshed on every join; if no one joins for LINK_TTL,
@@ -113,7 +118,9 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
     canUpdateOwnMetadata: true,
     roomAdmin: isHost,
   })
-  return { token: await at.toJwt(), identity }
+  // The seat key travels with every token and only ever to the client this token
+  // was minted for; it's what lets that client (and only it) reclaim the seat.
+  return { token: await at.toJwt(), identity, seat: await seatKey(apiSecret, room, identity) }
 }
 
 async function listParticipants(roomService, room) {
@@ -304,9 +311,22 @@ export async function handleMe(env, body) {
 
 export async function handleKnock(env, body) {
   const { apiKey, apiSecret, roomService } = services(env)
-  const { room, name, deviceId, host, accessToken, secret } = body ?? {}
+  const { room, name, deviceId, host, accessToken, secret, seat, hasKey } = body ?? {}
   if (!room || !name) return { status: 400, body: { error: 'room and name are required' } }
   if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
+  // Bound what lands in the identity and in room metadata (the waiting-room queue
+  // stores names, and LiveKit caps metadata size — a few huge names would make
+  // every later knock's metadata write fail). `#` would make the identity's
+  // name#device split ambiguous.
+  if (typeof room !== 'string' || room.length > MAX_ROOM_LEN || typeof name !== 'string') {
+    return { status: 400, body: { error: 'Invalid room or name' } }
+  }
+  if (name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim()) {
+    return { status: 400, body: { error: 'Please use a shorter name without special characters.' } }
+  }
+  if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64 || /[#\u0000-\u001f\u007f]/.test(deviceId))) {
+    return { status: 400, body: { error: 'Invalid device' } }
+  }
 
   const identity = `${name}#${deviceId || 'web'}`
   // SERVER-DERIVED account — never the client-supplied `userId` (which a client can
@@ -366,14 +386,40 @@ export async function handleKnock(env, body) {
         return false
       }
     })
-  const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
   const queue = Array.isArray(flags.queue) ? flags.queue : []
   // Already admitted this session? Someone the host let in, who then left, should
   // walk straight back in rather than re-queueing in the lobby (the "can't rejoin
   // after being allowed in" bug). Match on the stable name+device identity.
-  const wasApproved = queue.some(
+  const approvedBefore = queue.some(
     (e) => e.name === name && (e.deviceId || '') === (deviceId || '') && e.status === 'approved',
   )
+  // Every privilege below that keys off an EXISTING identity — reclaiming host,
+  // co-host, stepping back into a live seat, skipping the lobby — needs the seat
+  // key minted for it (server/seat.mjs). Identities are public (the roster, and
+  // hostId in metadata), so without this anyone who'd seen one could knock as it,
+  // get its grants, and evict its owner.
+  //  - Holding a seat (host, co-host, live) without the key is refused outright
+  //    rather than downgraded: a plain token under that identity would still
+  //    collide with the owner's session and still match hostId in ensureHost.
+  //  - A past lobby approval without the key is just dropped, and the knock queues
+  //    like any other. Nobody holds that seat, and the honest case is common: a
+  //    guest who closed the tab while waiting and was approved anyway never
+  //    received the key, and must not be told their own name is taken.
+  const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
+  const holdsSeat =
+    identity === flags.hostId || coHosts.includes(identity) || participants.some((p) => p.identity === identity)
+  const seatOk = (holdsSeat || approvedBefore) && (await seatKeyValid(apiSecret, room, identity, seat))
+  if (holdsSeat && !seatOk) {
+    return {
+      status: 409,
+      body: {
+        error: 'Someone with this name is already part of this call. Change your name to join.',
+        code: 'seat_taken',
+      },
+    }
+  }
+  const isHost = identity === flags.hostId || (participants.length === 0 && !flags.hostId)
+  const wasApproved = approvedBefore && seatOk
 
   // Beta allowlist gate (host-gated). Only an approved account may CREATE/hold a
   // room; their invited guests join the link without being on the list (still
@@ -453,6 +499,24 @@ export async function handleKnock(env, body) {
     }
   }
 
+  // Encryption-key gate. A host whose encryption is on marks the room `encrypted`
+  // (never the key — the server can't hold it). Someone arriving without the key,
+  // usually from an emailed invite, which leaves it out on purpose, would join a
+  // call they can't see or hear while their own camera and mic went out
+  // unencrypted. Tell them at the door instead. `hasKey` is the client's word, so
+  // this is a courtesy, not a control: a client that lies only hurts itself.
+  // Absent (an older client) = no gate.
+  if (flags.encrypted === true && hasKey === false && !alreadyIn) {
+    return {
+      status: 409,
+      body: {
+        error:
+          'This call is end-to-end encrypted, and the link you opened doesn’t include its key. Ask whoever invited you for the full invite link.',
+        code: 'need_key',
+      },
+    }
+  }
+
   // Past the gate → a legitimate entrant. Stamp the link's activity so it stays alive
   // for another LINK_TTL window (createdAt is written once, the first time we see it).
   if (linkRoom) {
@@ -526,13 +590,20 @@ export async function handleKnock(env, body) {
   const live = queue.filter((e) => e.status !== 'pending' || now - (e.ts || now) < KNOCK_TTL_MS)
   live.push({ id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now })
   await mergeRoomFlags(roomService, room, { queue: live.slice(-50) })
-  return { status: 200, body: { pending: true, requestId } }
+  // The request id is readable by everyone in the room (it's in the queue above);
+  // the claim key is what knock-status actually honours, and only this caller has it.
+  return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
 }
 
 export async function handleKnockStatus(env, query) {
-  const { roomService } = services(env)
+  const { roomService, apiSecret } = services(env)
   if (!roomService) return { status: 200, body: { status: 'expired' } }
-  const { room, requestId } = query
+  const { room, requestId, claim } = query
+  // Without the claim key an approved request id — public in room metadata — would
+  // mint the admitted guest's token for whoever polled it first.
+  if (!(await claimKeyValid(apiSecret, room, requestId, claim))) {
+    return { status: 403, body: { status: 'expired', error: 'Not your request' } }
+  }
   const flags = await getRoomFlags(roomService, room)
   const entry = (Array.isArray(flags.queue) ? flags.queue : []).find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
@@ -731,7 +802,7 @@ export async function handleModerate(env, body, token) {
 
 export async function handleRoomflags(env, body, token) {
   const { roomService } = services(env)
-  const { room, locked, waiting, annotateHostOnly, coHosts } = body ?? {}
+  const { room, locked, waiting, annotateHostOnly, chatHistory, encrypted, coHosts } = body ?? {}
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const identity = await verifyCaller(env, token, room)
   if (!identity) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
@@ -747,6 +818,12 @@ export async function handleRoomflags(env, body, token) {
   // it's a moderation control over the shared screen, not a change to who holds
   // authority. Absent/false means everyone in the room may draw.
   if (typeof annotateHostOnly === 'boolean') patch.annotateHostOnly = annotateHostOnly
+  // Whether people who join later are shown earlier chat. Absent = on (the
+  // behaviour rooms always had); enforced by the peers that replay it.
+  if (typeof chatHistory === 'boolean') patch.chatHistory = chatHistory
+  // One way: once a host with encryption on has marked the room, nobody can
+  // unmark it for the room's lifetime (it resets when the room empties).
+  if (encrypted === true) patch.encrypted = true
   if (coHosts !== undefined) {
     // Only the primary host may change the co-host roster — otherwise a co-host
     // could demote the host or promote allies.
@@ -762,8 +839,13 @@ export async function handleRoomflags(env, body, token) {
   return { status: 200, body: { ok: true, ...patch } }
 }
 
-export async function handleEmailInvite(env, body, token) {
-  const { to, room, link, fromName } = body ?? {}
+/**
+ * `appOrigin` is where this deployment serves the app (the Worker passes the
+ * origin of the URL the request hit). When given, the link must point there;
+ * without it (the local dev server, behind Vite's proxy) only the path is checked.
+ */
+export async function handleEmailInvite(env, body, token, appOrigin) {
+  const { to, room, link } = body ?? {}
   if (!to || !link) return { status: 400, body: { error: 'to and link required' } }
   // Require a valid join token for the room being invited to. Without this the
   // endpoint is an open relay: anyone could make our verified Resend domain send
@@ -771,7 +853,8 @@ export async function handleEmailInvite(env, body, token) {
   // burn). The token is the same signed LiveKit token the inviter holds in-call,
   // bound to this room (verifyCaller rejects a token minted for another room).
   if (!room) return { status: 400, body: { error: 'room required' } }
-  if (!(await verifyCaller(env, token, room))) {
+  const caller = await verifyCaller(env, token, room)
+  if (!caller) {
     return { status: 401, body: { error: 'Join the call before inviting others.' } }
   }
   // Validate the recipient + the link. The link must be an http(s) URL — this
@@ -787,22 +870,51 @@ export async function handleEmailInvite(env, body, token) {
   if (url.protocol !== 'http:' && url.protocol !== 'https:') {
     return { status: 400, body: { error: 'invalid link' } }
   }
+  // And it must be THIS room on THIS app. Any http(s) link used to pass, which let
+  // anyone who'd joined any open room send mail from our verified domain, under a
+  // name of their choosing, to a destination of their choosing: a phishing kit.
+  // (The #fragment carries the room's secrets and is left alone.)
+  // Compared decoded, trailing slash ignored: browsers keep `:@+,;=&$` literal in a
+  // path and may lowercase percent-hex, so the raw form of a real link can differ
+  // from encodeURIComponent's.
+  let path
+  try {
+    path = decodeURIComponent(url.pathname).replace(/\/+$/, '')
+  } catch {
+    return { status: 400, body: { error: 'invalid link' } }
+  }
+  if ((appOrigin && url.origin !== appOrigin) || path !== `/r/${room}`) {
+    return { status: 400, body: { error: 'invalid link' } }
+  }
   const key = env.RESEND_API_KEY
   if (!key) return { status: 501, body: { error: 'email not configured' } }
   const from = env.RESEND_FROM || 'Manim <onboarding@resend.dev>'
   // All interpolated values are escaped — they come from the client.
-  const who = escapeHtml(fromName || 'Someone')
+  // The sender is who the signed token says, not a free-text field.
+  const sender = String(caller).split('#')[0].slice(0, 64) || 'Someone'
+  const who = escapeHtml(sender)
   const safeRoom = room ? escapeHtml(room) : ''
-  const href = escapeHtml(url.href)
+  // Never mail the encryption key (server/invite.mjs). The join secret stays, so
+  // the link still opens the room. The client strips it first, so whether to say
+  // "encrypted" comes from the room's own flag as well as the link.
+  const { url: mailed, hadKey } = withoutE2eeKey(url.href)
+  const { roomService } = services(env)
+  const encrypted = hadKey || (roomService ? (await getRoomFlags(roomService, room)).encrypted === true : false)
+  const href = escapeHtml(mailed.href)
+  const encryptedNote = encrypted
+    ? `<p>This call is end-to-end encrypted, so its encryption key isn't in this email. Ask ${who} to send you the full link to join with encryption.</p>`
+    : ''
   const r = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       from,
       to: [String(to)],
-      subject: `${who} invited you to a Manim call`,
+      // Plain text, not HTML — escaping here would mail "O&#39;Neil invited you".
+      // Knock already refuses control characters in names, so no header tricks.
+      subject: `${sender} invited you to a Manim call`,
       html: `<p>${who} invited you to join a Manim call${safeRoom ? ` (room <b>${safeRoom}</b>)` : ''}.</p>
-             <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>`,
+             <p><a href="${href}">Join the call</a></p><p style="color:#888">${href}</p>${encryptedNote}`,
     }),
   })
   if (!r.ok) return { status: 502, body: { error: 'email send failed' } }

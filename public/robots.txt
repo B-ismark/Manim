@@ -1,3 +1,7 @@
 User-agent: *
 Allow: /
-Disallow: /r/
+# Room pages are kept out of search by `noindex` (a meta tag and the X-Robots-Tag
+# header the Worker sets on /r/*), NOT by a Disallow here. A Disallow stopped the
+# X and LinkedIn preview bots from ever reading an invite, so invites unfurled as
+# nothing there — and it never reliably kept a URL out of an index anyway, since
+# a crawler that can't read the page never sees the noindex. See server/preview.mjs.

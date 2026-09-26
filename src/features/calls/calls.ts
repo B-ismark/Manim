@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { lookupError } from '@/lib/lookupError'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCallStore, type IncomingCall } from '@/store/useCallStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
@@ -31,7 +32,7 @@ export async function ringUser(
   const { data, error } = await supabase.rpc('lookup_profile_id', {
     lookup_email: email.trim().toLowerCase(),
   })
-  if (error) return 'Could not look up that user.'
+  if (error) return lookupError(error)
   if (!data) return 'No Manim account with that email.'
 
   // Broadcast the ring SERVER-SIDE via a SECURITY DEFINER RPC that verifies the

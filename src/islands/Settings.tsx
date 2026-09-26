@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react'
+import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Dialog, Toggle, Button, Avatar, Popover, IconButton } from '@/components/primitives'
 import { SettingsIcon } from '@/components/icons'
 import { ThemeSwitcher } from '@/islands/ThemeSwitcher'
@@ -150,6 +151,8 @@ function SettingsContent() {
         <input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
+          maxLength={MAX_NAME_LEN}
+          dir="auto"
           placeholder="Your name"
           aria-label="Your name"
           autoComplete="name"

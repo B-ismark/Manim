@@ -1,11 +1,13 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { Island, Button } from '@/components/primitives'
+import { LockIcon } from '@/components/icons'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
+import { rememberSeat, seatFor } from '@/lib/seatKeys'
 import { supabase } from '@/lib/supabase'
 import { parseRoomHash, roomHash } from '@/lib/roomLink'
 import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roomKeys'
@@ -148,7 +150,11 @@ export function RoomRoute() {
   const [connecting, setConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [expired, setExpired] = useState(false)
+  // The room is marked encrypted and this link had no key (see NeedFullLink).
+  const [needKey, setNeedKey] = useState(false)
   const [waitingId, setWaitingId] = useState<string | null>(null)
+  // Goes with waitingId: the proof knock-status asks for (the id itself is public).
+  const waitClaim = useRef('')
   // Set when the knock reports the same account is already in the call on another
   // device — we hold the (already-minted) token and let the user pick "join anyway"
   // (companion, muted) vs "transfer here" (drop the other device) before connecting.
@@ -176,7 +182,9 @@ export function RoomRoute() {
         // Send the Supabase session token (if signed in), NOT a client-asserted
         // userId — the server derives the trusted account id from it. Absent → guest.
         const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
-        const res = await knock({ room, name: displayName, deviceId, accessToken, secret })
+        const seat = seatFor(room, `${displayName}#${deviceId}`)
+        const res = await knock({ room, name: displayName, deviceId, accessToken, secret, seat, hasKey: Boolean(e2ee) })
+        rememberSeat(room, res.identity, res.seat)
         if (res.token) {
           // Same account already in the call on another device? Don't auto-connect —
           // let the user choose companion vs transfer first (the token is held).
@@ -188,6 +196,7 @@ export function RoomRoute() {
           }
         } else if (res.pending && res.requestId) {
           // Waiting room is on — wait for the host to admit us.
+          waitClaim.current = res.claim ?? ''
           setWaitingId(res.requestId)
           setConnecting(false)
         } else {
@@ -203,6 +212,11 @@ export function RoomRoute() {
           setConnecting(false)
           return
         }
+        if (e instanceof ApiError && e.code === 'need_key') {
+          setNeedKey(true)
+          setConnecting(false)
+          return
+        }
         // The join-secret gate turned us away. If we got here on a REMEMBERED secret
         // it is stale (the room was recreated, or the link epoch moved), and keeping
         // it would make every future attempt fail the same way with nothing the user
@@ -215,7 +229,10 @@ export function RoomRoute() {
         }
         // Beta gate rejections are definitive — no retry. Show the server's message
         // (invite-only / room full) verbatim rather than the generic join error.
-        if (e instanceof ApiError && (e.code === 'not_in_beta' || e.code === 'room_full')) {
+        if (
+          e instanceof ApiError &&
+          (e.code === 'not_in_beta' || e.code === 'room_full' || e.code === 'seat_taken')
+        ) {
           setError(e.message)
           setConnecting(false)
           return
@@ -234,7 +251,7 @@ export function RoomRoute() {
         return
       }
     }
-  }, [room, displayName, deviceId, secret])
+  }, [room, displayName, deviceId, secret, e2ee])
 
   // "You're already in on another device" choices (see deviceChoice). Both connect with
   // the held token; companion joins muted, transfer drops the other device.
@@ -270,9 +287,10 @@ export function RoomRoute() {
     if (!waitingId) return
     let stop = false
     const id = window.setInterval(async () => {
-      const s = await knockStatus(room, waitingId)
-      if (stop) return
+      const s = await knockStatus(room, waitingId, waitClaim.current)
+      if (stop || !s) return
       if (s.status === 'approved' && s.token) {
+        rememberSeat(room, s.identity, s.seat)
         // If they backgrounded the app while waiting, ping them to come back.
         if (document.hidden) notifyAdmitted(room)
         setToken(s.token)
@@ -308,6 +326,7 @@ export function RoomRoute() {
       setWaitingId(null)
       setError(null)
       setExpired(false)
+      setNeedKey(false)
       setDeviceChoice(null)
       setCompanion(false)
     }
@@ -357,6 +376,11 @@ export function RoomRoute() {
 
   if (expired) {
     return <ExpiredLink room={room} onHome={() => navigate('/')} />
+  }
+
+  // Opening the full link afterwards brings the key, and this screen steps aside.
+  if (needKey && !e2ee) {
+    return <NeedFullLink room={room} onHome={() => navigate('/')} />
   }
 
   if (waitingId) {
@@ -418,6 +442,34 @@ function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
         </p>
         <Button variant="accent" className="mt-5" onClick={onHome}>
           Start a new meeting
+        </Button>
+      </Island>
+    </main>
+  )
+}
+
+/**
+ * The call is end-to-end encrypted and the link that brought you here has no key.
+ * Emailed invites leave it out on purpose (so the key never passes through a mail
+ * provider), and joining without it would put you in a call you can't see or hear
+ * while your own camera went out unencrypted. So the server turns the knock away
+ * (need_key) and this says what to do instead.
+ */
+function NeedFullLink({ room, onHome }: { room: string; onHome: () => void }) {
+  return (
+    <main className="grid min-h-dvh place-items-center p-4">
+      <Island pad="lg" className="w-full max-w-sm text-center">
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-sunken text-ink-muted [&_svg]:size-6">
+          <LockIcon />
+        </span>
+        <h1 className="mt-4 text-lg font-semibold">This call is encrypted</h1>
+        <p className="mt-1 text-sm text-ink-muted">
+          To join <span className="font-medium text-ink">{prettyRoom(room)}</span> you need its full
+          invite link. Email invites leave out the encryption key, so it never passes through a mail
+          server. Ask whoever invited you for the full link.
+        </p>
+        <Button variant="accent" className="mt-5" onClick={onHome}>
+          Back to home
         </Button>
       </Island>
     </main>

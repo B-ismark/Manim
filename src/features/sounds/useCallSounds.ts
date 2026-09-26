@@ -3,11 +3,12 @@ import { useRoomContext } from '@livekit/components-react'
 import { RoomEvent } from 'livekit-client'
 import type { Participant } from 'livekit-client'
 import { sounds } from '@/lib/sounds'
+import { displayNameOf } from '@/lib/participantName'
 import { toast } from '@/store/useToastStore'
 import { HAND_ATTR } from '@/features/reactions/useReactions'
 
 function nameOf(p: Participant): string {
-  return p.name || p.identity.split('#')[0] || 'Someone'
+  return displayNameOf(p.identity, p.name, 'Someone')
 }
 
 // Join/leave chimes only fire in small rooms — in a busy call a cue on every

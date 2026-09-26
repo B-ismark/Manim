@@ -10,11 +10,15 @@ const sizeClass: Record<Size, string> = {
   xl: 'size-24 text-3xl',
 }
 
-function initials(name: string): string {
+/** First characters by code point, not UTF-16 unit: `'😀'.slice(0, 1)` is half a
+ *  surrogate pair, which rendered as a broken glyph for any emoji-led name. */
+const chars = (s: string, n: number) => Array.from(s).slice(0, n).join('')
+
+export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
   if (parts.length === 0) return '?'
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+  if (parts.length === 1) return chars(parts[0], 2).toUpperCase()
+  return (chars(parts[0], 1) + chars(parts[parts.length - 1], 1)).toUpperCase()
 }
 
 /** Deterministic hue from name so a person keeps the same color. */
@@ -44,6 +48,7 @@ export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
         alt=""
         aria-hidden
         onError={() => setBroken(true)}
+        draggable={false}
         className={cn(
           'inline-block rounded-control object-cover shrink-0',
           sizeClass[size],
