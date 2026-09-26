@@ -48,6 +48,7 @@ import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
+import { STRIP_H, useChatCompanion, type CompanionLayout } from '@/lib/chatCompanion'
 import { useElementFullscreen } from '@/lib/useFullscreen'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
@@ -207,11 +208,14 @@ export const Stage = memo(function Stage() {
     .map(shareId)
     .join('|')
   const tileKeyList = visible.map(tileKey).join('|')
+  const chatCompanionOn = useChatCompanion().mode !== 'none'
   useEffect(() => {
     prunePresentation(shareIdKey ? shareIdKey.split('|') : [], tileKeyList ? tileKeyList.split('|') : [])
   }, [shareIdKey, tileKeyList, prunePresentation])
 
-  if (participants.length <= 1 && visible.length <= 1) {
+  // Alone, with a phone's chat open, the companion strip shows you (TouchStage)
+  // rather than the solo screen half-hidden behind the sheet.
+  if (participants.length <= 1 && visible.length <= 1 && !(coarse && chatCompanionOn)) {
     return <SoloStage selfTrack={visible[0]} />
   }
 
@@ -692,6 +696,15 @@ function TouchStage({
   const selfIsTiled = view === 'gallery' || (view === 'speaker' && focus === localCam)
   const showSelfCard = Boolean(localCam) && !selfViewHidden && !selfIsTiled
 
+  // A phone with chat open keeps the call in view beside it (lib/chatCompanion).
+  // The stage's own view steps out of the way — unmounted, not just covered, so
+  // nobody's video decodes twice — but the measured box stays, so its size is
+  // current when the chat closes.
+  const companion = useChatCompanion()
+  const companionOn = companion.mode !== 'none'
+  const companionPrimary = shareLeads && share ? share : focus && !isLocalCam(focus) ? focus : roster[0] ?? localCam
+  const companionOthers = roster.filter((t) => t !== companionPrimary)
+
   return (
     <div
       className="relative flex min-h-0 flex-1 flex-col p-2"
@@ -703,7 +716,7 @@ function TouchStage({
       style={view === 'gallery' && railBand ? { paddingRight: railBand } : undefined}
     >
       <div ref={ref} className="relative flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2">
-        {view === 'content' && share && shareSid ? (
+        {companionOn ? null : view === 'content' && share && shareSid ? (
           <div ref={bigRef} className="relative size-full">
             <Tile
               trackRef={share}
@@ -770,7 +783,17 @@ function TouchStage({
           doesn't want the height (in portrait a landscape share is width-bound, so
           the space under it is slack rather than a budget). Self is deliberately
           NOT in it — during a share the floating card is still your self-view. */}
-      {view === 'content' && (
+      {companionOn && (
+        <ChatCompanionStage
+          layout={companion}
+          primary={companionPrimary}
+          others={companionOthers}
+          aspects={aspects}
+          onAspect={reportAspect}
+        />
+      )}
+
+      {view === 'content' && !companionOn && (
         <RosterStrip
           tracks={roster}
           open={rosterOpen}
@@ -781,9 +804,11 @@ function TouchStage({
         />
       )}
 
-      {showSelfCard && localCam && <SelfViewCard trackRef={localCam} lift={selfLift} />}
+      {showSelfCard && localCam && !companionOn && <SelfViewCard trackRef={localCam} lift={selfLift} />}
 
-      <StageViewSwitcher view={view} hasShare={Boolean(share)} lift={selfLift} onSelect={pickView} />
+      {!companionOn && (
+        <StageViewSwitcher view={view} hasShare={Boolean(share)} lift={selfLift} onSelect={pickView} />
+      )}
     </div>
   )
 }
@@ -1247,6 +1272,191 @@ function RosterStrip({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The call beside a phone's open chat (lib/chatCompanion) — so chatting doesn't
+ * mean losing sight of the people you're chatting with.
+ *
+ * Upright it's one row of people above the sheet, speaker first, swiped sideways.
+ * The row has one height and each person's WIDTH follows their camera: a laptop's
+ * 16:9 at full height would be one person per screen, so it's trimmed to 4:3 (a
+ * little off each side, where laptop cameras rarely have anything) while a
+ * phone's tall picture stays tall. Faces then come out the same size whoever is
+ * on what. The trim is only here; the gallery keeps everyone's true shape.
+ *
+ * Sideways the panel takes the right and this gets the left, for whoever is
+ * talking, in their true shape. A wide speaker fills the width and everyone else
+ * is a "+N" chip (two wide tiles won't stack in 390px). A tall speaker is a
+ * column, which leaves room beside it, so the next two people fill that instead
+ * of empty space.
+ *
+ * You're left out unless there's nobody else: your own face is what the chat
+ * doesn't need. A share, when it leads the stage, leads here too.
+ */
+const COMPANION_MOUNT_CAP = 8
+
+function ChatCompanionStage({
+  layout,
+  primary,
+  others,
+  aspects,
+  onAspect,
+}: {
+  layout: Exclude<CompanionLayout, { mode: 'none' }>
+  primary: TrackReferenceOrPlaceholder | undefined
+  others: TrackReferenceOrPlaceholder[]
+  aspects: Record<string, number>
+  onAspect: (key: string, ratio: number) => void
+}) {
+  const setPanel = useRoomStore((s) => s.setPanel)
+  const aspectOf = (t: TrackReferenceOrPlaceholder) => aspects[tileKey(t)] ?? 16 / 9
+  const tile = (t: TrackReferenceOrPlaceholder, box: number) => (
+    <Tile trackRef={t} fill boxAspect={box} onAspect={(r) => onAspect(tileKey(t), r)} />
+  )
+  const people = primary ? [primary, ...others] : others
+  // Everyone in the call, you included — "+3 in the call" beside one speaker in a
+  // call of four.
+  const headcount = useParticipants().length
+
+  if (layout.mode === 'strip') {
+    if (!layout.stripShown) return null
+    const shown = people.slice(0, people.length > COMPANION_MOUNT_CAP ? COMPANION_MOUNT_CAP - 1 : COMPANION_MOUNT_CAP)
+    const overflow = people.length - shown.length
+    // A share keeps its own shape (clamped so a tall one still reads); a camera is
+    // trimmed to 4:3 if it's wide and left tall if it's tall.
+    const shape = (t: TrackReferenceOrPlaceholder) => {
+      const a = aspectOf(t)
+      if (isScreenShare(t)) return Math.min(16 / 9, Math.max(3 / 4, a))
+      return a > 1 ? 4 / 3 : Math.max(9 / 16, a)
+    }
+    return (
+      <div
+        data-no-stage-gesture
+        data-chat-companion="strip"
+        role="group"
+        aria-label="People in the call"
+        className="absolute inset-x-0 z-10 flex snap-x scroll-px-2 gap-2 overflow-x-auto px-2 no-scrollbar"
+        style={{ top: layout.stripTop, height: STRIP_H }}
+      >
+        {shown.map((t) => (
+          <div
+            key={tileKey(t)}
+            className="h-full shrink-0 snap-start transition-[width] duration-200 ease-out"
+            style={{ width: Math.round(STRIP_H * shape(t)) }}
+          >
+            {tile(t, shape(t))}
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div className="h-full shrink-0" style={{ width: Math.round(STRIP_H * 0.75) }}>
+            <OverflowTile count={overflow} onClick={() => setPanel('people')} />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <CompanionSide
+      panelW={layout.panelW}
+      primary={primary}
+      others={others}
+      people={headcount}
+      aspectOf={aspectOf}
+      tile={tile}
+    />
+  )
+}
+
+/** Sideways: the room left of the panel. Its own component so it measures its box
+ *  on mount — a phone turned while chatting arrives here from the strip. */
+function CompanionSide({
+  panelW,
+  primary,
+  others,
+  people,
+  aspectOf,
+  tile,
+}: {
+  panelW: number
+  primary: TrackReferenceOrPlaceholder | undefined
+  others: TrackReferenceOrPlaceholder[]
+  people: number
+  aspectOf: (t: TrackReferenceOrPlaceholder) => number
+  tile: (t: TrackReferenceOrPlaceholder, box: number) => ReactNode
+}) {
+  const setPanel = useRoomStore((s) => s.setPanel)
+  const bottomBand = useIslandBand()
+  const { ref, size } = useElementSize<HTMLDivElement>()
+  const gap = 8
+  const chipH = 32
+  const aw = size.width
+  const ah = size.height
+  const a = primary ? aspectOf(primary) : 16 / 9
+  const tall = a < 1
+  const beside = tall ? others.slice(0, 2) : []
+  const rest = Math.max(0, people - 1 - beside.length)
+  let bigW = 0
+  let bigH = 0
+  let sideW = 0
+  if (aw > 0 && ah > 0) {
+    if (tall) {
+      bigH = ah
+      bigW = Math.min(bigH * Math.max(9 / 16, a), beside.length ? aw * 0.6 : aw)
+      bigH = bigW / Math.max(9 / 16, a)
+      sideW = beside.length ? aw - bigW - gap : 0
+    } else {
+      const room = ah - (rest > 0 ? chipH + gap : 0)
+      bigW = Math.min(aw, room * a)
+      bigH = bigW / a
+    }
+  }
+  const smallH = beside.length ? Math.min((ah - (rest > 0 ? chipH + gap : 0) - gap * (beside.length - 1)) / beside.length, sideW * 0.75) : 0
+  const chip = rest > 0 && (
+    <button
+      type="button"
+      onClick={() => setPanel('people')}
+      className="h-8 shrink-0 self-center rounded-full bg-overlay px-3 text-sm font-medium text-white backdrop-blur"
+    >
+      +{rest} in the call
+    </button>
+  )
+  return (
+    <div
+      ref={ref}
+      data-chat-companion="side"
+      className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))] z-10"
+      style={{ right: panelW + gap, bottom: bottomBand }}
+    >
+      {primary && bigW > 0 && (
+        <div className="flex size-full items-center justify-center" style={{ gap }}>
+          {tall ? (
+            <>
+              <div className="shrink-0" style={{ width: bigW, height: bigH }}>
+                {tile(primary, bigW / bigH)}
+              </div>
+              {beside.length > 0 && (
+                <div className="flex shrink-0 flex-col justify-center" style={{ width: sideW, gap }}>
+                  {beside.map((t) => (
+                    <div key={tileKey(t)} style={{ height: smallH }}>
+                      {tile(t, sideW / smallH)}
+                    </div>
+                  ))}
+                  {chip}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-start" style={{ gap }}>
+              <div style={{ width: bigW, height: bigH }}>{tile(primary, a)}</div>
+              {chip}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

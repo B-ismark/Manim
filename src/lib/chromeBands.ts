@@ -99,6 +99,11 @@ export function useSafeAreaBottom(): number {
   return useSafeArea('bottom')
 }
 
+/** The top safe-area inset (notch / status bar). */
+export function useSafeAreaTop(): number {
+  return useSafeArea('top')
+}
+
 /**
  * Whether the touch call chrome has faded out.
  *

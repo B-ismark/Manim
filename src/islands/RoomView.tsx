@@ -49,6 +49,7 @@ import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
 import { useChromeHidden } from '@/lib/chromeBands'
+import { useChatCompanion } from '@/lib/chatCompanion'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
 /** Idle delay before the touch chrome slides out of the thumb zone. */
@@ -93,7 +94,7 @@ function overlayOpen(): boolean {
  *   nor within 4s of the user touching it.
  * Desktop keeps controls always visible (hover model) and ignores gestures.
  */
-function useStageChrome() {
+function useStageChrome(suppressed: boolean) {
   // Touch-UX (auto-hide / gestures) keys off pointer type, matching the compact
   // bar and portrait tiles — so wide foldables behave consistently.
   const mobile = useMemo(() => isTouch(), [])
@@ -134,11 +135,20 @@ function useStageChrome() {
     return () => window.clearTimeout(hideTimer.current)
   }, [mobile, scheduleHide])
 
+  // A phone's chat keeps the call in view (lib/chatCompanion) and the bars step
+  // aside for it; closing the chat brings them back, on a fresh countdown.
+  const wasSuppressed = useRef(suppressed)
+  useEffect(() => {
+    if (wasSuppressed.current && !suppressed) show()
+    wasSuppressed.current = suppressed
+  }, [suppressed, show])
+  const shown = visible && !suppressed
+
   // Tell the stage, so its tiles grow into the room the bars leave (chromeBands).
   useEffect(() => {
-    useChromeHidden.setState({ hidden: mobile && !visible })
+    useChromeHidden.setState({ hidden: mobile && !shown })
     return () => useChromeHidden.setState({ hidden: false })
-  }, [mobile, visible])
+  }, [mobile, shown])
 
   const onPointerDown = useCallback((e: PointerEvent) => {
     down.current = { x: e.clientX, y: e.clientY, t: e.timeStamp }
@@ -148,7 +158,7 @@ function useStageChrome() {
     (e: PointerEvent) => {
       const d = down.current
       down.current = null
-      if (!d || !mobile) return
+      if (!d || !mobile || suppressed) return
       // Ignore interactions on real controls (buttons) or the draggable self-view.
       if ((e.target as HTMLElement).closest('button, a, input, [data-no-stage-gesture]')) return
       const dx = e.clientX - d.x
@@ -161,10 +171,10 @@ function useStageChrome() {
         scheduleHide()
       }
     },
-    [mobile, scheduleHide],
+    [mobile, scheduleHide, suppressed],
   )
 
-  return { chromeVisible: visible, show, stageHandlers: { onPointerDown, onPointerUp } }
+  return { chromeVisible: shown, show, stageHandlers: { onPointerDown, onPointerUp } }
 }
 
 // The chat/participants panel is only needed once opened — defer its chunk.
@@ -402,7 +412,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     void import('@/islands/SidePanel')
   }, [])
-  const { chromeVisible, show: keepChromeUp, stageHandlers } = useStageChrome()
+  const chatCompanion = useChatCompanion().mode !== 'none'
+  const { chromeVisible, show: keepChromeUp, stageHandlers } = useStageChrome(chatCompanion)
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()

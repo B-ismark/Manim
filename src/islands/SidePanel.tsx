@@ -5,6 +5,7 @@ import { ChatPanel, type ChatApi } from '@/islands/ChatPanel'
 import { ParticipantsPanel } from '@/islands/ParticipantsPanel'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useChatCompanion } from '@/lib/chatCompanion'
 
 /**
  * The unified Chat / People panel (Slack model): one docked island / mobile
@@ -25,6 +26,15 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
   // without leaving the conversation.
   const count = useParticipants().length
 
+  // A phone keeps the call in view beside the panel (lib/chatCompanion).
+  const companion = useChatCompanion()
+  const dock =
+    companion.mode === 'strip'
+      ? { top: companion.sheetTop }
+      : companion.mode === 'side'
+        ? { width: companion.panelW }
+        : undefined
+
   return (
     <TabsRoot value={value} onValueChange={(v) => setPanel(v as 'chat' | 'people')}>
       <Sheet
@@ -35,6 +45,7 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
         hideTitle
         modal={coarse}
         expandable={coarse}
+        dock={dock}
         headerContent={
           <TabList
             className="h-11 rounded-full [&>*]:rounded-full"

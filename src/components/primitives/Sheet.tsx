@@ -45,6 +45,14 @@ export interface SheetProps {
    * message. The title stays, for assistive tech only.
    */
   headerContent?: ReactNode
+  /**
+   * A phone keeping the call in view beside the panel (lib/chatCompanion): `top`
+   * pins the sheet's top edge below the stage's strip of people; `width` makes it
+   * a full-height panel down the right of a phone on its side. Either way it is
+   * non-modal with no scrim — the stage beside it is live, and a tap on it (a
+   * swipe along the strip) must not close the chat.
+   */
+  dock?: { top: number } | { width: number }
 }
 
 // pb safe-area keeps the bottom-sheet content (e.g. chat input) above the iOS
@@ -93,11 +101,14 @@ export function Sheet({
   side = 'responsive',
   flush = false,
   hideTitle = false,
-  modal = true,
-  expandable = false,
+  modal: modalProp = true,
+  expandable: expandableProp = false,
   className,
   headerContent,
+  dock,
 }: SheetProps) {
+  const modal = modalProp && !dock
+  const expandable = expandableProp && !dock
   // Drag state lives here so it resets each open. `frac` is the live height as a
   // fraction of the viewport; null means "use the CSS default" (desktop / not yet
   // dragged). Only meaningful for the mobile bottom layout.
@@ -179,9 +190,11 @@ export function Sheet({
    */
   const kb = useKeyboardInset()
   const keyboardStyle =
-    kb > 0 && side !== 'right'
+    kb > 0 && (side !== 'right' || dock)
       ? { bottom: kb, maxHeight: `calc(100dvh - ${kb}px - 1rem)` }
       : undefined
+
+  const dockStyle = dock ? ('top' in dock ? { top: dock.top } : { width: dock.width }) : undefined
 
   const onCloseAutoFocus = useReturnFocus(open)
 
@@ -200,10 +213,15 @@ export function Sheet({
           aria-modal={modal ? 'true' : undefined}
           // Keyboard offset last: it must win over the dragged detent's
           // `maxHeight: 'none'`, or a dragged-open sheet ignores the clamp.
-          style={{ ...draggableStyle, ...keyboardStyle }}
+          style={{ ...draggableStyle, ...dockStyle, ...keyboardStyle }}
+          data-dock={dock ? ('top' in dock ? 'strip' : 'side') : undefined}
           className={cn(
             'fixed z-50 flex flex-col bg-surface text-ink shadow-raised focus:outline-none',
-            sideClass[side],
+            dock
+              ? 'top' in dock
+                ? 'inset-x-0 bottom-0 rounded-t-island pb-[env(safe-area-inset-bottom)] transition-[top] duration-200 ease-out'
+                : 'inset-y-0 right-0 rounded-l-island pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]'
+              : sideClass[side],
             // When a drag height is applied, neutralise it at the desktop breakpoint.
             draggableStyle && 'md:!h-auto',
             // The max-height half is dropped while a keyboard offset is in force:

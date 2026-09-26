@@ -61,6 +61,7 @@ import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScree
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { useChatCompanion } from '@/lib/chatCompanion'
 import { useRail, useRailTwoCol } from '@/lib/chromeBands'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
@@ -198,6 +199,7 @@ export function ControlBar({
   const rail = useRail()
   // A rail too short for one column wraps into two (lib/chromeBands).
   const twoCol = useRailTwoCol()
+  const companionOpen = useChatCompanion().mode !== 'none'
   const compact = touch || narrowBar
   // A modal and the tray must not be up together — the modal would scrim the tray
   // it was opened from.
@@ -957,6 +959,10 @@ export function ControlBar({
     // Slides out of the thumb zone when chrome is hidden (mobile tap-to-hide).
     <div
       data-rail={rail || undefined}
+      // A phone's chat has the bars step aside for the call beside it
+      // (lib/chatCompanion). Faded is not gone: out of the tab order and the
+      // accessibility tree too, or a screen reader walks into a bar under the panel.
+      inert={companionOpen || undefined}
       className={cn(
         'pointer-events-none fixed z-30 flex',
         rail

@@ -730,6 +730,58 @@ test.describe('Mobile fit (no page scroll)', () => {
     await expect(page.getByRole('button', { name: 'Leave call' })).toBeInViewport({ ratio: 1 })
   })
 
+  /**
+   * Chat on a phone keeps the call in view (lib/chatCompanion). Upright the sheet
+   * stops short of the top and the stage becomes a row of people above it;
+   * sideways the panel runs down the right and the speaker has the left. The bars
+   * step aside either way — out of the accessibility tree, not just faded — and
+   * come back when the chat closes.
+   */
+  test('chat keeps the call in view: a strip above it upright, the speaker beside it sideways', async ({
+    page,
+    browser,
+  }) => {
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peer = await newParticipant(browser, room, 'Guest')
+    try {
+      await openChat(page)
+      const strip = page.getByRole('group', { name: 'People in the call' })
+      await expect(strip).toBeVisible()
+      await expect(strip.getByRole('group', { name: /Guest/ })).toBeVisible()
+      const up = await page.evaluate(() => {
+        const s = document.querySelector('[data-chat-companion="strip"]')!.getBoundingClientRect()
+        const d = document.querySelector('[role="dialog"][data-dock]')!.getBoundingClientRect()
+        return { stripTop: s.top, stripBottom: s.bottom, sheetTop: d.top, sheetBottom: d.bottom, vh: innerHeight }
+      })
+      expect(up.stripTop, 'the strip is on screen').toBeGreaterThanOrEqual(0)
+      expect(up.stripBottom, 'the strip is not under the sheet').toBeLessThanOrEqual(up.sheetTop)
+      expect(up.sheetBottom).toBeLessThanOrEqual(up.vh + 1)
+      const barInert = () =>
+        page.evaluate(() => !!document.querySelector('[aria-label="Call controls"]')?.closest('[inert]'))
+      expect(await barInert(), 'the bar steps aside').toBe(true)
+
+      await page.setViewportSize({ width: 844, height: 390 })
+      const side = page.locator('[data-chat-companion="side"]')
+      await expect(side).toBeVisible()
+      await expect(side.getByRole('group', { name: /Guest/ })).toBeVisible()
+      const across = await page.evaluate(() => {
+        const s = document.querySelector('[data-chat-companion="side"]')!.getBoundingClientRect()
+        const d = document.querySelector('[role="dialog"][data-dock]')!.getBoundingClientRect()
+        return { sideRight: s.right, panelLeft: d.left, panelTop: d.top, panelBottom: d.bottom, vh: innerHeight }
+      })
+      expect(across.sideRight, 'the speaker is beside the panel, not under it').toBeLessThanOrEqual(across.panelLeft)
+      expect(across.panelTop, 'the panel runs full height').toBeLessThanOrEqual(1)
+      expect(across.panelBottom).toBeGreaterThanOrEqual(across.vh - 1)
+
+      await closePanel(page)
+      await expect.poll(barInert, { message: 'the bar is back' }).toBe(false)
+      await expect(page.getByRole('button', { name: 'Leave call' })).toBeInViewport()
+    } finally {
+      await closeContext(peer.context)
+    }
+  })
+
   test('the gallery keeps its layout while the bars come and go', async ({ page, browser }) => {
     // 4 people at 390x664 (an iPhone in Safari) is the case that used to flip: the
     // bars-up room pages 2 per screen (scroller), the bars-down room fits 4 (packed

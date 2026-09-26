@@ -97,6 +97,12 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   tiles you. Desktop has no floating card at all. There is deliberately **no swipe
   gesture** on the stage any more: the view chip is the route, and a gesture would
   have to fight the gallery's own scroll.
+- **A phone's chat keeps the call in view** (`lib/chatCompanion`, one geometry for
+  the stage and the sheet). Upright the sheet docks below a 180px strip of people
+  (wide cameras trimmed to 4:3, tall ones kept tall); sideways it's a full-height
+  right panel with the speaker, in their true shape, on the left. The sheet is
+  non-modal there (a swipe along the strip must not close it), and the control
+  bar goes `inert` for as long as it's open. Tablets keep the docked panel.
 - **The control island must fit its viewport, and every control stays 44px.** Six 44px
   controls plus gaps and padding is 318px of the 343px available at 375px — there is
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
