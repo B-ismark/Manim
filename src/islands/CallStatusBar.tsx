@@ -5,7 +5,7 @@ import {
   useLocalParticipant,
 } from '@livekit/components-react'
 import { ConnectionQuality as Quality, ConnectionState } from 'livekit-client'
-import { LockIcon } from '@/components/icons'
+import { LockIcon, MicOffIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 
 export interface CallStatusBarProps {
@@ -146,6 +146,30 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
           </span>
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * "Muted", while the touch chrome is hidden.
+ *
+ * The mic button is the one piece of state you must never lose track of in a call,
+ * and it fades out with the rest of the island. So while the bars are gone, and only
+ * if you're muted, this takes the timer's slot at the top: glanceable, red, and
+ * gone again the moment the bars come back and the button itself says the same.
+ * A status, so it lives in TopStack rather than anywhere near the bar. Taps pass
+ * through (a tap anywhere brings the controls back, which is how you'd unmute).
+ */
+export function MutedPill({ chromeVisible }: { chromeVisible: boolean }) {
+  const { isMicrophoneEnabled } = useLocalParticipant()
+  if (chromeVisible || isMicrophoneEnabled) return null
+  return (
+    <div
+      data-testid="muted-pill"
+      className="mn-pop flex h-8 items-center gap-1.5 rounded-control bg-danger px-3 text-xs font-medium text-white shadow-sm"
+    >
+      <MicOffIcon className="size-3.5" aria-hidden />
+      Muted
     </div>
   )
 }

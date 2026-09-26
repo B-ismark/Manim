@@ -38,7 +38,7 @@ import { useBlurControls } from '@/features/effects/BlurContext'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useShareLink } from '@/lib/useShareLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
-import { useIslandBand } from '@/lib/chromeBands'
+import { useChromeHidden, useIslandBand, useRail, useRailBand, useTopBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
@@ -397,6 +397,12 @@ function StageViewSwitcher({
   onSelect: (v: TouchView) => void
 }) {
   const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  // A control, so it goes with the rest of the chrome. The self-view card stays:
+  // it's you, not a button, and it's what tells you your camera is still on.
+  const hidden = useChromeHidden((s) => s.hidden)
+  // Sideways there's no bar under it and height is the scarce axis, so it moves up
+  // into the top band's empty left end instead of taking a row off the tiles.
+  const rail = useRail()
   const meta: Record<TouchView, { label: string; icon: ReactNode }> = {
     speaker: { label: 'Speaker', icon: <SpeakerLayoutIcon /> },
     gallery: { label: 'Gallery', icon: <GridIcon /> },
@@ -408,15 +414,19 @@ function StageViewSwitcher({
     // status banners, and this is a control anchored to a corner (the same category
     // as StageTopBar's participants chip, at the same layer).
     <div
-      className="absolute left-2 z-20"
-      style={{
-        bottom: selfCardBottom + lift,
-      }}
+      className={cn(
+        'absolute left-2 z-20 transition-opacity duration-[var(--dur-base)]',
+        rail && 'top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]',
+        hidden && 'pointer-events-none opacity-0',
+      )}
+      style={rail ? undefined : { bottom: selfCardBottom + lift }}
+      aria-hidden={hidden || undefined}
       data-no-stage-gesture
     >
       <DropdownMenu
-        // Opens upward: there is a whole stage above it and a control bar below.
-        side="top"
+        // Opens away from the edge it's parked on: up from above the bar, down
+        // from the top band when the phone is on its side.
+        side={rail ? 'bottom' : 'top'}
         align="start"
         trigger={
           <StageChip aria-label={`View: ${current.label}. Change view`}>
@@ -463,14 +473,18 @@ function ScrollGallery({
   cols,
   gap,
   cellAspect = 3 / 4,
+  extraBottom = 0,
 }: {
   tracks: TrackReferenceOrPlaceholder[]
   cols: number
   gap: number
   /** Width/height of a cell. 3:4 unless that would be taller than the stage. */
   cellAspect?: number
+  /** More room under the last row (the view chip's band — see VIEW_CHIP_BAND). */
+  extraBottom?: number
 }) {
-  const islandBandPx = useIslandBand()
+  const islandBandPx = useIslandBand() + extraBottom
+  const topBand = useTopBand()
   return (
     <div
       // Scrolls INTERNALLY — the page itself never scrolls (see CLAUDE.md). The
@@ -481,7 +495,7 @@ function ScrollGallery({
       // under the timer and the last one down past the island, which is how a
       // scroller should behave — nothing is permanently unreachable, and at rest
       // nothing is hidden.
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+      style={{ paddingTop: topBand, paddingBottom: islandBandPx }}
     >
       <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap }}>
         {tracks.map((t) => (
@@ -537,6 +551,8 @@ function TouchStage({
   shareLeads: boolean
 }) {
   const islandBandPx = useIslandBand()
+  const topBand = useTopBand()
+  const railBand = useRailBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
@@ -623,7 +639,12 @@ function TouchStage({
   // island's band is reserved), and against the UNDOCKED width — a phone never
   // docks a panel, but a large touch tablet does, and deciding capacity from the
   // narrowed stage is what used to page people out on every chat toggle.
-  const galleryH = Math.max(1, size.height - islandBandPx - TOPSTACK_BAND)
+  // The view chip sits in the band just above the island (portrait, bars showing):
+  // a gallery that ran into that band put the chip over the last row's name tag.
+  const chromeHidden = useChromeHidden((s) => s.hidden)
+  const rail = useRail()
+  const chipBand = view === 'gallery' && !chromeHidden && !rail ? VIEW_CHIP_BAND : 0
+  const galleryH = Math.max(1, size.height - islandBandPx - chipBand - topBand)
   const realCap = gridCapacity(size.width, galleryH, true)
   const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true)
   const cols = realCap.cols
@@ -650,7 +671,13 @@ function TouchStage({
   const showSelfCard = Boolean(localCam) && !selfViewHidden && !selfIsTiled
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col p-2">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col p-2 transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]"
+      // Sideways the controls are a rail on the right, so the tiles give way on
+      // that side instead of the bottom. Only the gallery: a single feed or a
+      // share stays full-bleed with the rail on glass, as it does with the bar.
+      style={view === 'gallery' && railBand ? { paddingRight: railBand } : undefined}
+    >
       <div ref={ref} className="relative flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2">
         {view === 'content' && share && shareSid ? (
           <div ref={bigRef} className="relative size-full">
@@ -689,7 +716,7 @@ function TouchStage({
             // measured box would paint one size and then jump to another.
             <div
               className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2"
-              style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+              style={{ paddingTop: topBand, paddingBottom: islandBandPx + chipBand }}
             >
               <TileRows
                 tracks={gallery}
@@ -702,7 +729,13 @@ function TouchStage({
               />
             </div>
           ) : (
-            <ScrollGallery tracks={gallery} cols={cols} gap={gap} cellAspect={scrollCellAspect} />
+            <ScrollGallery
+              tracks={gallery}
+              cols={cols}
+              gap={gap}
+              cellAspect={scrollCellAspect}
+              extraBottom={chipBand}
+            />
           )
         ) : (
           focus && <FocusTile trackRef={focus} />
@@ -833,6 +866,7 @@ function TileRows({
  */
 function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
+  const topBand = useTopBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
   const videosFirst = useRoomStore((s) => s.videosFirst)
@@ -922,12 +956,12 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
-    // Both chrome bands reserved — see ISLAND_BAND and TOPSTACK_BAND. This layout
+    // Both chrome bands reserved — see useIslandBand and useTopBand. This layout
     // had NEITHER: its top row rendered behind the call timer and its bottom row
     // ran underneath the floating control island, at every desktop viewport.
     <div
       className="relative flex min-h-0 flex-1 flex-col px-2 sm:px-3"
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+      style={{ paddingTop: topBand, paddingBottom: islandBandPx }}
     >
       <div
         ref={ref}
@@ -1012,10 +1046,18 @@ const TILED_GUTTER = 12
 const SELF_CARD_GUTTER = 16
 
 /**
+ * What the view chip takes out of a portrait gallery: it sits SELF_CARD_GUTTER above
+ * the island and is 44px tall, so a last row has to stop that far up (the stage's own
+ * 8px padding supplies the gap). Only while the chip is showing — it fades with the
+ * rest of the chrome, and the tiles take the room back.
+ */
+const VIEW_CHIP_BAND = SELF_CARD_GUTTER + 44
+
+/**
  * Vertical band TopStack's first row occupies: its 16px inset plus a 44px pill plus
  * a gutter.
  *
- * The mirror image of ISLAND_BAND, and it exists for the same reason. The call
+ * The mirror image of the island band, and it exists for the same reason. The call
  * timer is always up there, centred, and any layout whose content reaches the top
  * edge puts something underneath it: the speaker filmstrip rendered its middle
  * thumbnails behind the timer, and the desktop gallery's top row did the same. A
@@ -1028,7 +1070,8 @@ const SELF_CARD_GUTTER = 16
  * are transient and can stack; reserving for every combination would give every
  * layout a permanent empty third. They overlay, as overlays do.
  */
-const TOPSTACK_BAND = 68
+// The number itself, and how it collapses while the touch chrome is hidden, live
+// in lib/chromeBands (`useTopBand`) beside the island's band.
 
 /** Strip height on touch — a 3:4 thumbnail wide enough to recognise a face. */
 const STRIP_TILE_H = 80
@@ -1317,6 +1360,7 @@ function Filmstrip({
  */
 function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
+  const topBand = useTopBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
@@ -1340,7 +1384,7 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
     // up there and was landing squarely on the middle thumbnails.
     <div
       className="relative flex min-h-0 flex-1 px-2 sm:px-3"
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+      style={{ paddingTop: topBand, paddingBottom: islandBandPx }}
     >
       <div ref={ref} className="relative min-h-0 flex-1">
         {size.width > 2 && size.height > 2 && (
@@ -1395,6 +1439,7 @@ function ContentStage({
   featuredSid: string
 }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
+  const topBand = useTopBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const setSpotlight = useRoomStore((s) => s.setSpotlight)
@@ -1428,7 +1473,7 @@ function ContentStage({
   // height — that is the entire argument for a right-hand rail, so paying for the
   // chip out of the share's height instead would give the rail back with one hand
   // and take the content with the other.
-  const L = contentLayout(size.width, size.height, ordered.length, gap, TOPSTACK_BAND)
+  const L = contentLayout(size.width, size.height, ordered.length, gap, topBand)
   const { shown, overflow } = splitVisible(ordered, L.capacity)
 
   /** Tapping a person in the strip spotlights them; tapping the share re-features it. */
@@ -1605,12 +1650,15 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
  */
 function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceholder; lift?: number }) {
   const islandBandPx = useIslandBand()
+  const topBand = useTopBand()
   const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  // Sideways, the controls are a rail down the right edge: the card parks beside it.
+  const railBand = useRailBand()
   // Extra clearance for whatever else is claiming the band above the island (the
   // roster strip, during a share). It moves the CSS anchor and the drag floor
   // together — those two disagreeing is how the card ended up parked underneath
   // the control island in the first place.
-  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: islandBandPx + lift })
+  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: islandBandPx + lift, reserveRight: railBand })
   const [expanded, setExpanded] = useState(false)
   // Tap to expand, drag to move — one pointer, two gestures, so the tap has to be
   // told apart from the drag. useDraggable's own 6px threshold decides whether a
@@ -1626,11 +1674,12 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
       data-no-stage-gesture
       style={{
         bottom: selfCardBottom + lift,
+        ...(railBand ? { right: railBand + 16 } : {}),
         // Width from the viewport's WIDTH alone made a 3:4 card taller than a phone
         // on its side (expanded: 427px on a 390px screen), so its top went off the
         // screen. Also cap it by the height actually left between the island's band
         // (measured, safe area included) and the TopStack band above.
-        maxWidth: `min(${expanded ? '20rem' : '11rem'}, calc((100dvh - ${selfCardBottom + lift + TOPSTACK_BAND}px) * 0.75))`,
+        maxWidth: `min(${expanded ? '20rem' : '11rem'}, calc((100dvh - ${selfCardBottom + lift + topBand}px) * 0.75))`,
         ...style,
       }}
       {...handlers}

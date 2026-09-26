@@ -61,6 +61,7 @@ import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScree
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useMediaQuery } from '@/lib/useMediaQuery'
+import { useRail } from '@/lib/chromeBands'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
@@ -193,6 +194,8 @@ export function ControlBar({
   // edge, so anything under ~646px clipped it. 680 leaves room for one more
   // control; add one and re-measure (24-reflow-and-layers sweeps the widths).
   const narrowBar = useMediaQuery('(max-width: 679px)') && !touch
+  // A phone on its side: the bar becomes a column down the right edge (chromeBands).
+  const rail = useRail()
   const compact = touch || narrowBar
   // A modal and the tray must not be up together — the modal would scrim the tray
   // it was opened from.
@@ -897,7 +900,7 @@ export function ControlBar({
         </Dialog>
         </ReturnFocusContext.Provider>
 
-        <div className="mx-1 h-7 w-px bg-line" aria-hidden />
+        <div className={cn(rail ? 'my-1 h-px w-7' : 'mx-1 h-7 w-px', 'bg-line')} aria-hidden />
 
         {isHost && !compact ? (
           // Split control: leaving (call continues) is the primary action; ending
@@ -950,10 +953,16 @@ export function ControlBar({
     // bottom inset clears the iOS home indicator (viewport-fit=cover is set).
     // Slides out of the thumb zone when chrome is hidden (mobile tap-to-hide).
     <div
+      data-rail={rail || undefined}
       className={cn(
-        'pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 flex justify-center px-4',
+        'pointer-events-none fixed z-30 flex',
+        rail
+          ? // Sideways: a column on the trailing edge, centred on it, clear of the
+            // notch side's inset. Same 16px floor, same 60px thickness, turned.
+            'inset-y-0 right-[max(1rem,env(safe-area-inset-right))] items-center py-2'
+          : 'inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] justify-center px-4',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
-        !chromeVisible && 'translate-y-[150%] opacity-0',
+        !chromeVisible && (rail ? 'translate-x-[150%] opacity-0' : 'translate-y-[150%] opacity-0'),
       )}
     >
       <Island
@@ -978,15 +987,34 @@ export function ControlBar({
           // control bar. That is the whole point: there is no second element to
           // lose track of, so a picker outliving its anchor stops being a bug to
           // fix and becomes a state that cannot be constructed.
-          audioTrayOpen
-            ? 'flex w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden'
-            : 'flex items-center gap-1.5 px-3 py-2 sm:gap-2',
+          //
+          // On the rail the same idea turns sideways: the tray opens to the LEFT of
+          // the column, and the column stays where the thumb left it.
+          rail
+            ? audioTrayOpen
+              ? 'flex max-h-full w-[min(26rem,calc(100vw-2rem))] flex-row-reverse overflow-hidden'
+              : 'flex max-h-full flex-col items-center gap-1.5 overflow-y-auto px-2 py-2 no-scrollbar'
+            : audioTrayOpen
+              ? 'flex w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden'
+              : 'flex items-center gap-1.5 px-3 py-2 sm:gap-2',
           // Only interactive while shown — otherwise the off-screen bar still
           // caught taps/focus.
           chromeVisible ? 'pointer-events-auto' : 'pointer-events-none',
         )}
       >
-        {audioTrayOpen && (
+        {audioTrayOpen && rail && (
+          <div className="min-w-0 flex-1 overflow-y-auto no-scrollbar">
+            <AudioTray
+              noise={noise}
+              onClose={() => setAudioTrayOpen(false)}
+              onAllDevices={() => {
+                setAudioTrayOpen(false)
+                setModal('devices')
+              }}
+            />
+          </div>
+        )}
+        {audioTrayOpen && !rail && (
           <AudioTray
             noise={noise}
             onClose={() => setAudioTrayOpen(false)}
@@ -997,7 +1025,14 @@ export function ControlBar({
           />
         )}
         {audioTrayOpen ? (
-          <div className="flex items-center gap-1.5 border-t border-line bg-sunken px-3 py-2">{barRow}</div>
+          <div
+            className={cn(
+              'flex items-center gap-1.5 bg-sunken',
+              rail ? 'flex-col overflow-y-auto border-l border-line px-2 py-2 no-scrollbar' : 'border-t border-line px-3 py-2',
+            )}
+          >
+            {barRow}
+          </div>
         ) : (
           barRow
         )}

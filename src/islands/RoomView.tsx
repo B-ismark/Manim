@@ -12,7 +12,7 @@ import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner, CompanionBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
-import { CallStatusBar } from '@/islands/CallStatusBar'
+import { CallStatusBar, MutedPill } from '@/islands/CallStatusBar'
 import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { StageTopBar } from '@/islands/StageTopBar'
 import { PinCoachmark } from '@/islands/PinCoachmark'
@@ -48,6 +48,7 @@ import { markEnd } from '@/lib/callEnd'
 import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
+import { useChromeHidden } from '@/lib/chromeBands'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
 /** Idle delay before the touch chrome slides out of the thumb zone. */
@@ -132,6 +133,12 @@ function useStageChrome() {
     if (mobile) scheduleHide()
     return () => window.clearTimeout(hideTimer.current)
   }, [mobile, scheduleHide])
+
+  // Tell the stage, so its tiles grow into the room the bars leave (chromeBands).
+  useEffect(() => {
+    useChromeHidden.setState({ hidden: mobile && !visible })
+    return () => useChromeHidden.setState({ hidden: false })
+  }, [mobile, visible])
 
   const onPointerDown = useCallback((e: PointerEvent) => {
     down.current = { x: e.clientX, y: e.clientY, t: e.timeStamp }
@@ -482,6 +489,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
         )}
         <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
+        <MutedPill chromeVisible={chromeVisible} />
         {presenting && (
           <PresentingIndicator
             annotating={annotatingOwnShare}

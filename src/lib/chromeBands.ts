@@ -1,4 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
+import { create } from 'zustand'
+import { useIsTouch } from '@/lib/useIsTouch'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 
 /**
  * How much room the floating chrome takes out of the stage.
@@ -49,18 +52,18 @@ export function islandBand(safeBottom: number, extra = 0): number {
   return Math.max(ISLAND_INSET, inset) + ISLAND_H + extra
 }
 
-/** Read `env(safe-area-inset-bottom)` as a number. CSS resolves it; JS can't, so we
+/** Read `env(safe-area-inset-<side>)` as a number. CSS resolves it; JS can't, so we
  *  ask the engine by giving a throwaway element that height and measuring it. */
-function readSafeBottom(): number {
+function readSafe(side: 'top' | 'bottom' | 'right'): number {
   if (typeof document === 'undefined' || !document.body) return 0
   const probe = document.createElement('div')
   // Tagged so the e2e suite can force a non-zero inset with a stylesheet. Emulated
   // devices all report 0, so without a seam the one case this function exists for is
   // the one case that can never be exercised in a browser test. Inert in production.
-  probe.setAttribute('data-safe-area-probe', '')
+  probe.setAttribute(side === 'bottom' ? 'data-safe-area-probe' : `data-safe-area-probe-${side}`, '')
   probe.style.cssText =
     'position:fixed;left:0;bottom:0;width:0;visibility:hidden;pointer-events:none;' +
-    'height:env(safe-area-inset-bottom,0px)'
+    `height:env(safe-area-inset-${side},0px)`
   document.body.appendChild(probe)
   const h = probe.getBoundingClientRect().height
   probe.remove()
@@ -68,30 +71,102 @@ function readSafeBottom(): number {
 }
 
 /**
- * The bottom safe-area inset, kept current across rotation.
+ * A safe-area inset, kept current across rotation.
  *
  * Starts at 0 and corrects on mount. That ordering is deliberate: 0 yields the
  * old constant, so the first paint is never worse than what shipped, and the
  * correction only ever adds padding.
  */
-export function useSafeAreaBottom(): number {
+function useSafeArea(side: 'top' | 'bottom' | 'right'): number {
   const [inset, setInset] = useState(0)
   useLayoutEffect(() => {
-    setInset(readSafeBottom())
-  }, [])
+    setInset(readSafe(side))
+  }, [side])
   useEffect(() => {
-    const read = () => setInset(readSafeBottom())
+    const read = () => setInset(readSafe(side))
     window.addEventListener('resize', read)
     window.addEventListener('orientationchange', read)
     return () => {
       window.removeEventListener('resize', read)
       window.removeEventListener('orientationchange', read)
     }
-  }, [])
+  }, [side])
   return inset
+}
+
+/** The bottom safe-area inset (home indicator / gesture bar). */
+export function useSafeAreaBottom(): number {
+  return useSafeArea('bottom')
+}
+
+/**
+ * Whether the touch call chrome has faded out.
+ *
+ * On a phone the island and the top pills auto-hide after a few seconds without a
+ * touch (RoomView's useStageChrome, the only writer). While they're gone there is
+ * nothing to reserve room for, so the bands below collapse to a thin gutter and the
+ * video grows into the space the bars leave — Meet and FaceTime do the same. One tap
+ * brings the bars back and the tiles step aside again. Always false on desktop,
+ * whose chrome never hides.
+ */
+export const useChromeHidden = create<{ hidden: boolean }>(() => ({ hidden: false }))
+
+/** What's left of either band while the chrome is hidden: a hairline gutter. */
+export const HIDDEN_BAND = 8
+
+/**
+ * Vertical band TopStack's first row occupies: its 16px inset plus a 44px pill plus
+ * a gutter. Only the FIRST row: the stack's banners (reconnecting, waiting room)
+ * are transient and overlay, as overlays do.
+ */
+export const TOPSTACK_BAND = 68
+
+/**
+ * A phone on its side: the island leaves the bottom edge for a column on the right.
+ *
+ * Sideways, height is the scarce axis (a 390px-tall stage), and a 60px bar across
+ * the bottom took a sixth of it off every tile. Width is what there's plenty of, so
+ * the controls become a slim rail on the trailing edge, the way Meet, FaceTime and
+ * the camera app all do it. "Short" is Material's compact height (under 480dp),
+ * which every phone in landscape is and no tablet is, so a tablet keeps its bar.
+ */
+export const RAIL_QUERY = '(orientation: landscape) and (max-height: 479px)'
+
+export function useRail(): boolean {
+  const touch = useIsTouch()
+  const sideways = useMediaQuery(RAIL_QUERY)
+  return touch && sideways
 }
 
 /** The island's band on this device, ready to spend as padding. */
 export function useIslandBand(extra = 0): number {
-  return islandBand(useSafeAreaBottom(), extra)
+  const safe = useSafeAreaBottom()
+  const hidden = useChromeHidden((s) => s.hidden)
+  const rail = useRail()
+  // Nothing sits on the bottom edge while the bars are away, or when they're a rail.
+  return hidden || rail ? Math.max(HIDDEN_BAND, safe) + extra : islandBand(safe, extra)
+}
+
+/**
+ * The rail's band down the right edge (0 unless `useRail`). The island is a 60px-wide
+ * column at `right: max(1rem, safe-area-right)` — the same geometry as the bottom
+ * bar, turned on its side — and the band collapses with it when the chrome hides.
+ */
+export function useRailBand(extra = 0): number {
+  const safe = useSafeArea('right')
+  const hidden = useChromeHidden((s) => s.hidden)
+  const rail = useRail()
+  if (!rail) return 0
+  return hidden ? Math.max(0, safe) : Math.max(ISLAND_INSET, safe) + ISLAND_H + extra
+}
+
+/**
+ * The band a tiled layout keeps clear under TopStack's timer pill. The pill sits at
+ * `top: max(1rem, safe-area-top)`, so the band follows the notch the same way the
+ * island's follows the home indicator.
+ */
+export function useTopBand(): number {
+  const safe = useSafeArea('top')
+  const hidden = useChromeHidden((s) => s.hidden)
+  return hidden ? Math.max(HIDDEN_BAND, safe) : Math.max(ISLAND_INSET, safe) + TOPSTACK_BAND - ISLAND_INSET
 }

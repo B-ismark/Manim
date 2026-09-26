@@ -69,9 +69,9 @@ export function cornerPosition(
  */
 export function useDraggable(
   margin = 8,
-  opts: { initial?: Corner; reserveBottom?: number } = {},
+  opts: { initial?: Corner; reserveBottom?: number; reserveRight?: number } = {},
 ) {
-  const { initial = 'br', reserveBottom = 0 } = opts
+  const { initial = 'br', reserveBottom = 0, reserveRight = 0 } = opts
   const [corner, setCorner] = useState<Corner>(initial)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const drag = useRef<DragState | null>(null)
@@ -84,12 +84,12 @@ export function useDraggable(
     (el: HTMLElement) => ({
       left: margin,
       top: margin,
-      right: window.innerWidth - margin,
+      right: window.innerWidth - margin - reserveRight,
       bottom: window.innerHeight - margin - reserveBottom,
       w: el.offsetWidth,
       h: el.offsetHeight,
     }),
-    [margin, reserveBottom],
+    [margin, reserveBottom, reserveRight],
   )
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLElement>) => {
