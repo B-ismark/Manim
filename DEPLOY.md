@@ -62,6 +62,7 @@ build vars live under the Build section.)
 | `RESEND_API_KEY` | runtime (secret) | optional | real email invites (else mailto) |
 | `RESEND_FROM` | runtime | optional | e.g. `Manim <onboarding@resend.dev>` |
 | `VITE_GIPHY_KEY` | build | optional | GIF picker (free key from developers.giphy.com) |
+| `VITE_SENTRY_DSN` | build | optional | Crash reports. Unset = reporting stays in the browser console. Setup below (§3c). |
 | `VITE_ANNOTATE` | build | optional | Draw-on-shared-screen. **Inverted — unset means ON.** Set to exactly `false` to disable it without a code change. |
 
 > Set `VITE_LIVEKIT_URL` in **both** build and runtime (the client connects with
@@ -90,6 +91,36 @@ Two more gotchas:
 - The new-variable dialog has **Deploy** and **Save version**. **Save version
   does NOT go live** — it only stages a version. Always click **Deploy** (or let
   a `git push` run `wrangler deploy`, which deploys to 100%).
+
+### 3c. Crash reports (Sentry, optional)
+The app loads Sentry through its **Loader Script** only when `VITE_SENTRY_DSN` is
+set, and strips every room link's `#fragment` (join secret + E2EE key) from each
+report before it leaves the browser (`src/lib/report.ts`). The Worker's CSP
+already allows the two script hosts the loader needs (`js.sentry-cdn.com`,
+`browser.sentry-cdn.com`); reports go to `*.ingest.sentry.io`, inside `connect-src`.
+
+1. **sentry.io → Create project → Browser JavaScript.** Pick the data region you
+   want (EU keeps reports in Frankfurt; the Privacy page lists Sentry as a
+   sub-processor either way).
+2. **Project Settings → Loader Script**: keep the SDK version on the latest 8.x or
+   newer, and switch **off Session Replay** and **Performance Monitoring
+   (tracing)**. Replay records the page — names, chat, the call UI — which the
+   Privacy page does not disclose and the scrubber does not cover.
+3. **Project Settings → Security & Privacy**: turn on **Data Scrubber** and
+   **Use Default Scrubbers**, and turn on **Prevent Storing of IP Addresses**.
+   Add `k`, `e` and `access_token` to **Additional Sensitive Fields** as a
+   server-side backstop.
+4. **Project Settings → Client Keys (DSN)**: copy the DSN
+   (`https://<key>@o<org>.ingest<region>.sentry.io/<project>`).
+5. **Cloudflare → the Worker → Settings → Build → Variables and secrets**: add
+   `VITE_SENTRY_DSN` = that DSN (a *build* variable — it is baked into the bundle;
+   a DSN is public by design). Then push to `main` (or retry the latest build) so
+   the bundle is rebuilt with it.
+6. **Verify on the deployed site**, not the build: DevTools → Network shows
+   `js.sentry-cdn.com/<key>.min.js` loading with no CSP error in the Console. Run
+   `window.Sentry.captureMessage('manim sentry check')` in the Console on a room
+   page opened from an encrypted link, confirm the event reaches Sentry, and open
+   it to check the URLs carry no `#k=` / `#e=`.
 
 ## 4. Supabase setup (accounts + presence)
 1. **Authentication → Providers → Email**: enable. (Magic links work on the free

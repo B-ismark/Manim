@@ -14,7 +14,7 @@
 export const APP_NAME = 'Manim'
 
 /** Operator contact for privacy, deletion, abuse, and security disclosure. */
-export const CONTACT_EMAIL = 'privacy@manim.app'
+export const CONTACT_EMAIL = 'bismarkgyau@gmail.com'
 
 /** Shown on the policy/terms pages so users know how current the text is. */
 export const LAST_UPDATED = '25 September 2026'

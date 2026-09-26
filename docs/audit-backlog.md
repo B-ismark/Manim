@@ -22,8 +22,7 @@ key, and a Worker crash on returning visitors that never reached production.
 - [ ] **Deploy when no important calls are live.** Seat keys start working on deploy;
       someone already in a call who reloads afterwards has no key for their seat and
       is asked to change their name (a host rejoins as a guest). Once only.
-- [ ] Replace the placeholder `privacy@manim.app` in `src/lib/legal.ts` with a real
-      inbox, and have counsel read the updated Privacy page.
+- [ ] Have counsel read the updated Privacy page.
 
 ## Areas not yet audited
 
@@ -54,10 +53,9 @@ key, and a Worker crash on returning visitors that never reached production.
       sender's name from the message. Attribute to the verified sender.
 - [ ] Hardening: narrow CSP `script-src` from all of jsDelivr to the MediaPipe path;
       rate-limit `/api/push`; show only fixed strings for auth errors from the URL.
-- [ ] **Error reporting is off in production without anyone knowing.** The CSP's
-      `script-src` doesn't allow `js.sentry-cdn.com`, so with `VITE_SENTRY_DSN` set
-      the Sentry loader is blocked. Decide: allow it (the report scrubber is ready)
-      or remove the Sentry path and its Privacy page line.
+- [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set
+      `VITE_SENTRY_DSN` in the Cloudflare build and keep Session Replay and
+      tracing off in Sentry's Loader Script settings (steps in DEPLOY.md).
 - [ ] Merging calls sends the target room's E2EE key over the call's data channel,
       which LiveKit can read (disclosed on the Privacy page). Fixed by the
       per-recipient encryption item above.
