@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
+import { toggleDevice } from '@/lib/deviceToggle'
 
 /*
   Surface mic / camera / hang-up buttons in the browser's NATIVE picture-in-
@@ -32,8 +33,12 @@ export function useMediaSessionControls(onLeave: () => void) {
       }
     }
 
-    set('togglemicrophone', () => void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled))
-    set('togglecamera', () => void localParticipant.setCameraEnabled(!isCameraEnabled))
+    set('togglemicrophone', () =>
+      toggleDevice('microphone', !isMicrophoneEnabled, () => localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)),
+    )
+    set('togglecamera', () =>
+      toggleDevice('camera', !isCameraEnabled, () => localParticipant.setCameraEnabled(!isCameraEnabled)),
+    )
     set('hangup', () => onLeave())
     try {
       ms.setMicrophoneActive?.(isMicrophoneEnabled)

@@ -83,7 +83,17 @@ async function handleApi(request, env, url) {
       // client header — so an invite can only ever link back here.
       return json(await handleEmailInvite(env, await bodyOf(), bearer(request), url.origin))
     }
-    if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
+    if (path === 'push' && method === 'POST') {
+      // Per-IP rate limit: each call wakes a contact's phone, so an unthrottled
+      // endpoint could buzz someone's devices on a loop. A real ring is one call.
+      const limiter = env.PUSH_RATELIMIT
+      if (limiter && typeof limiter.limit === 'function') {
+        const ip = request.headers.get('cf-connecting-ip') || 'anon'
+        const { success } = await limiter.limit({ key: `push:${ip}` })
+        if (!success) return json({ status: 429, body: { error: 'Too many calls — wait a moment and try again.' } })
+      }
+      return json(await handlePushRing(env, await bodyOf()))
+    }
     return new Response('Not found', { status: 404 })
   } catch {
     return json({ status: 500, body: { error: 'Something went wrong on our side. Try again in a moment.' } })
@@ -127,7 +137,7 @@ export default {
         "media-src 'self' blob:",
         "font-src 'self' data:",
         "style-src 'self' 'unsafe-inline'",
-        "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net https://js.sentry-cdn.com https://browser.sentry-cdn.com",
+        "script-src 'self' 'wasm-unsafe-eval' https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://browser.sentry-cdn.com",
         "worker-src 'self' blob:",
         "connect-src 'self' https: wss:",
       ].join('; '),

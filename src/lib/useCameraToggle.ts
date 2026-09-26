@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, type LocalVideoTrack } from 'livekit-client'
+import { toggleDevice } from '@/lib/deviceToggle'
 
 /**
  * Camera on/off with a "warm, then release" strategy.
@@ -45,7 +46,7 @@ export function useCameraToggle() {
   // we never leak a powered camera.
   useEffect(() => releaseWarm, [releaseWarm])
 
-  const toggleCamera = useCallback(async () => {
+  const flip = useCallback(async () => {
     if (isCameraEnabled) {
       // Turn OFF — keep the track warm rather than stopping it.
       const pub = localParticipant.getTrackPublication(Track.Source.Camera)
@@ -86,6 +87,9 @@ export function useCameraToggle() {
     }
     await localParticipant.setCameraEnabled(true)
   }, [isCameraEnabled, localParticipant, releaseWarm])
+
+  // Never rejects: a camera that won't start says why (lib/deviceToggle).
+  const toggleCamera = useCallback(() => toggleDevice('camera', !isCameraEnabled, flip), [isCameraEnabled, flip])
 
   return { isCameraEnabled, toggleCamera }
 }
