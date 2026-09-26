@@ -11,6 +11,7 @@ import { AccessToken, DataPacket_Kind, RoomServiceClient, TokenVerifier, TrackSo
 import { sendPush, pushConfigured } from './webpush.mjs'
 import { seal, unseal } from './sealed.mjs'
 import { seatKey, seatKeyValid, claimKey, claimKeyValid } from './seat.mjs'
+import { accountClaim } from './account.mjs'
 import { withoutE2eeKey } from './invite.mjs'
 import { removedEntry, withRemoved, wasRemoved } from './removed.mjs'
 import { roomTitle } from './preview.mjs'
@@ -112,7 +113,9 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
     identity,
     name,
     ttl: '15m',
-    metadata: JSON.stringify({ host: isHost, userId: userId || '' }),
+    // ak/as: the account claim (server/account.mjs) that lets your other devices
+    // in this call recognise this seat as yours.
+    metadata: JSON.stringify({ host: isHost, userId: userId || '', ...(await accountClaim(apiSecret, room, identity, userId)) }),
   })
   at.addGrant({
     room,

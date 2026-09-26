@@ -86,6 +86,9 @@ function timeOf(ts: number): string {
  *  time render once for the run, follow-ups are just the bubble. A reply always
  *  breaks the group — it needs its own header for the quoted context to read. */
 const GROUP_WINDOW_MS = 5 * 60 * 1000
+
+/** Yours, from this device or another of yours in the call (lib/sameAccount). */
+const fromMe = (i: ChatItem) => i.isLocal || Boolean(i.fromOtherSeat)
 function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
   if (!prev) return false
   if (item.kind === 'text' && item.replyTo) return false
@@ -94,11 +97,9 @@ function continuesGroup(prev: ChatItem | undefined, item: ChatItem): boolean {
   const prevReplayed = prev.kind === 'text' && prev.replayed
   const itemReplayed = item.kind === 'text' && item.replayed
   if (prevReplayed !== itemReplayed) return false
-  return (
-    prev.fromIdentity === item.fromIdentity &&
-    prev.isLocal === item.isLocal &&
-    item.timestamp - prev.timestamp < GROUP_WINDOW_MS
-  )
+  // All of yours group together, whichever of your devices sent them.
+  const sameSender = fromMe(prev) && fromMe(item) ? true : prev.fromIdentity === item.fromIdentity && prev.isLocal === item.isLocal
+  return sameSender && item.timestamp - prev.timestamp < GROUP_WINDOW_MS
 }
 
 /** Chat timeline + composer. Images preview inline; files + GIFs supported (STYLE.md §5 Tier-1). */
@@ -301,7 +302,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   // Stable so the memoized MessageList isn't invalidated on every ChatPanel
   // re-render (draft typing, participant speaking-state churn, etc.).
   const startReply = useCallback((item: ChatItem) => {
-    setReplyTo({ id: item.id, name: item.isLocal ? 'You' : item.fromName, text: previewOf(item) })
+    setReplyTo({ id: item.id, name: fromMe(item) ? 'You' : item.fromName, text: previewOf(item) })
     inputRef.current?.focus()
   }, [])
 
@@ -838,7 +839,7 @@ function MessageRow({
     settleSwipe()
   }
 
-  const mine = item.isLocal
+  const mine = fromMe(item)
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
   // Highlight the whole row when you were tagged, so a mention is scannable in a
   // busy timeline (Slack/Teams convention).
@@ -1129,7 +1130,7 @@ function MessageRow({
             trigger={
               <button
                 type="button"
-                aria-label={`Message actions, ${item.isLocal ? 'your message' : `message from ${item.fromName}`}`}
+                aria-label={`Message actions, ${fromMe(item) ? 'your message' : `message from ${item.fromName}`}`}
                 className="absolute right-2 top-2 grid size-px place-items-center overflow-hidden rounded-control opacity-0 focus-visible:size-8 focus-visible:bg-surface focus-visible:opacity-100 focus-visible:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&_svg]:size-4"
               >
                 <MoreIcon />
