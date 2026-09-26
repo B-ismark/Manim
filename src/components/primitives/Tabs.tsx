@@ -21,33 +21,58 @@ export interface TabsProps {
  */
 export function Tabs({ items, value, onValueChange, children, className }: TabsProps) {
   return (
-    <RT.Root value={value} onValueChange={onValueChange} className={cn('flex flex-col', className)}>
-      <RT.List className="flex shrink-0 gap-1 rounded-control bg-sunken p-1">
-        {items.map((it) => (
-          <RT.Trigger
-            key={it.value}
-            value={it.value}
-            className={cn(
-              'flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-medium',
-              'transition-colors duration-[var(--dur-fast)] outline-none',
-              // An outline, not a ring: the active pill already uses `ring-*`, and
-              // the base `outline-none` had left keyboard users no focus mark at all.
-              'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent',
-              'text-ink-muted hover:text-ink',
-              // Active pill: lifted surface + an inset ring. The ring carries the
-              // contrast in dark mode, where surface↔sunken differ by ~ΔL 0.03 and
-              // the drop shadow is invisible against a dark track.
-              'data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-pop',
-              'data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-line-strong',
-              '[&_svg]:size-4',
-            )}
-          >
-            {it.label}
-          </RT.Trigger>
-        ))}
-      </RT.List>
+    <TabsRoot value={value} onValueChange={onValueChange} className={cn('flex flex-col', className)}>
+      <TabList items={items} />
+      {children}
+    </TabsRoot>
+  )
+}
+
+/**
+ * The two halves of `Tabs`, for a layout that puts the switch somewhere its panels
+ * aren't — the chat panel's header row, which lives in the Sheet's own header while
+ * the panels live in its body. Radix context crosses the Sheet's portal, so the
+ * root can wrap the whole Sheet.
+ */
+export function TabsRoot({
+  value,
+  onValueChange,
+  children,
+  className,
+}: Omit<TabsProps, 'items'>) {
+  return (
+    <RT.Root value={value} onValueChange={onValueChange} className={className}>
       {children}
     </RT.Root>
+  )
+}
+
+export function TabList({ items, className }: { items: TabItem[]; className?: string }) {
+  return (
+    <RT.List className={cn('flex shrink-0 gap-1 rounded-control bg-sunken p-1', className)}>
+      {items.map((it) => (
+        <RT.Trigger
+          key={it.value}
+          value={it.value}
+          className={cn(
+            'flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-control px-3 py-1.5 text-sm font-medium',
+            'transition-colors duration-[var(--dur-fast)] outline-none',
+            // An outline, not a ring: the active pill already uses `ring-*`, and
+            // the base `outline-none` had left keyboard users no focus mark at all.
+            'focus-visible:outline-2 focus-visible:outline-solid focus-visible:outline-offset-2 focus-visible:outline-accent',
+            'text-ink-muted hover:text-ink',
+            // Active pill: lifted surface + an inset ring. The ring carries the
+            // contrast in dark mode, where surface↔sunken differ by ~ΔL 0.03 and
+            // the drop shadow is invisible against a dark track.
+            'data-[state=active]:bg-surface data-[state=active]:text-ink data-[state=active]:shadow-pop',
+            'data-[state=active]:ring-1 data-[state=active]:ring-inset data-[state=active]:ring-line-strong',
+            '[&_svg]:size-4',
+          )}
+        >
+          {it.label}
+        </RT.Trigger>
+      ))}
+    </RT.List>
   )
 }
 

@@ -38,6 +38,13 @@ export interface SheetProps {
    */
   expandable?: boolean
   className?: string
+  /**
+   * Content for the header row, beside the close button (the chat panel's
+   * Chat / People switch). One row instead of a title row above a tab row: on a
+   * phone those two rows plus a notice were ~280px of chrome before the first
+   * message. The title stays, for assistive tech only.
+   */
+  headerContent?: ReactNode
 }
 
 // pb safe-area keeps the bottom-sheet content (e.g. chat input) above the iOS
@@ -89,6 +96,7 @@ export function Sheet({
   modal = true,
   expandable = false,
   className,
+  headerContent,
 }: SheetProps) {
   // Drag state lives here so it resets each open. `frac` is the live height as a
   // fraction of the viewport; null means "use the CSS default" (desktop / not yet
@@ -223,17 +231,30 @@ export function Sheet({
               <span aria-hidden className="h-1 w-9 rounded-full bg-line-strong" />
             </div>
           )}
-          <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5">
-            {hideTitle ? (
+          <header
+            className={cn(
+              'flex shrink-0 items-center gap-2',
+              headerContent ? 'px-3 pb-1 pt-2.5' : 'border-b border-line px-3 py-2.5',
+            )}
+          >
+            {hideTitle || headerContent ? (
               <RD.Title asChild>
                 <VisuallyHidden>{title}</VisuallyHidden>
               </RD.Title>
             ) : (
               <RD.Title className="text-sm font-semibold">{title}</RD.Title>
             )}
+            {headerContent && <div className="min-w-0 flex-1">{headerContent}</div>}
             <RD.Close
               aria-label="Close panel"
-              className="ml-auto grid place-items-center rounded-control p-1.5 text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent pointer-coarse:size-11 pointer-coarse:-my-1.5"
+              className={cn(
+                'ml-auto grid shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                // Beside a switch it's a round 44px button of its own, level with
+                // the switch, rather than a bare glyph floating at the row's end.
+                headerContent
+                  ? 'size-11 bg-sunken text-ink hover:bg-line'
+                  : 'p-1.5 pointer-coarse:size-11 pointer-coarse:-my-1.5',
+              )}
             >
               <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />

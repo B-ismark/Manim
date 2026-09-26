@@ -224,7 +224,7 @@ test.describe('Chat history setting', () => {
     const room = uniqueRoom('hist')
     await join(page, room, 'Ada')
     const composer = await openChat(page)
-    await expect(page.getByText('People who join later can see earlier messages.')).toBeVisible()
+    await expect(page.getByText('Only people in this call see messages, including people who join later.')).toBeVisible()
     await composer.fill('said before anyone came')
     await composer.press('Enter')
 
@@ -243,7 +243,7 @@ test.describe('Chat history setting', () => {
 
     const lin = await newParticipant(browser, room, 'Lin')
     await openChat(lin.page)
-    await expect(lin.page.getByText('People who join later won’t see earlier messages.')).toBeVisible()
+    await expect(lin.page.getByText('Only people in this call see messages. People who join later won’t see earlier ones.')).toBeVisible()
     // Give a replay every chance to arrive before asserting it didn't.
     await lin.page.waitForTimeout(3000)
     await expect(lin.page.getByText('said before anyone came')).toHaveCount(0)

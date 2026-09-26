@@ -17,4 +17,4 @@ export {
   type DropdownMenuProps,
   type DropdownItemProps,
 } from './DropdownMenu'
-export { Tabs, TabPanel, type TabsProps, type TabPanelProps, type TabItem } from './Tabs'
+export { Tabs, TabsRoot, TabList, TabPanel, type TabsProps, type TabPanelProps, type TabItem } from './Tabs'

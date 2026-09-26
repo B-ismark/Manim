@@ -1,4 +1,5 @@
-import { Sheet, Tabs, TabPanel } from '@/components/primitives'
+import { useParticipants } from '@livekit/components-react'
+import { Sheet, TabList, TabPanel, TabsRoot } from '@/components/primitives'
 import { ChatIcon, PeopleIcon } from '@/components/icons'
 import { ChatPanel, type ChatApi } from '@/islands/ChatPanel'
 import { ParticipantsPanel } from '@/islands/ParticipantsPanel'
@@ -20,32 +21,45 @@ export function SidePanel({ chat }: { chat: ChatApi }) {
   // focus trap + tap-to-dismiss), which is right for a small screen.
   const coarse = useIsTouch()
 
+  // The head count rides on the People tab, so a busy call's size is readable
+  // without leaving the conversation.
+  const count = useParticipants().length
+
   return (
-    <Sheet
-      open={panel !== null}
-      onOpenChange={(o) => !o && setPanel(null)}
-      title={value === 'chat' ? 'Chat' : 'People'}
-      flush
-      hideTitle
-      modal={coarse}
-      expandable={coarse}
-    >
-      <Tabs
-        items={[
-          { value: 'chat', label: <><ChatIcon /> Chat</> },
-          { value: 'people', label: <><PeopleIcon /> People</> },
-        ]}
-        value={value}
-        onValueChange={(v) => setPanel(v as 'chat' | 'people')}
-        className="min-h-0 flex-1 px-3 pt-1"
+    <TabsRoot value={value} onValueChange={(v) => setPanel(v as 'chat' | 'people')}>
+      <Sheet
+        open={panel !== null}
+        onOpenChange={(o) => !o && setPanel(null)}
+        title={value === 'chat' ? 'Chat' : 'People'}
+        flush
+        hideTitle
+        modal={coarse}
+        expandable={coarse}
+        headerContent={
+          <TabList
+            className="h-11 rounded-full [&>*]:rounded-full"
+            items={[
+              { value: 'chat', label: <><ChatIcon /> Chat</> },
+              {
+                value: 'people',
+                label: (
+                  <>
+                    <PeopleIcon /> People
+                    <span className="rounded-full bg-line px-1.5 text-xs font-semibold tabular-nums text-ink">{count}</span>
+                  </>
+                ),
+              },
+            ]}
+          />
+        }
       >
-        <TabPanel value="chat" className="-mx-3 mt-2 flex min-h-0 flex-col">
+        <TabPanel value="chat" className="flex min-h-0 flex-col">
           <ChatPanel chat={chat} />
         </TabPanel>
-        <TabPanel value="people" className="-mx-3 mt-2 flex min-h-0 flex-col">
+        <TabPanel value="people" className="mt-2 flex min-h-0 flex-col">
           <ParticipantsPanel />
         </TabPanel>
-      </Tabs>
-    </Sheet>
+      </Sheet>
+    </TabsRoot>
   )
 }

@@ -11,7 +11,7 @@ import { useRoomStore } from '@/store/useRoomStore'
 import { plainText } from '@/features/chat/mentions'
 import { sounds } from '@/lib/sounds'
 import { displayNameOf } from '@/lib/participantName'
-import { toast } from '@/store/useToastStore'
+import { toast, useToastStore } from '@/store/useToastStore'
 import { useChatHistoryOn } from '@/features/chat/chatHistory'
 
 /** Data-channel topic for P2P file transfer (no storage at rest — streams through the SFU). */
@@ -718,8 +718,15 @@ export function useChatMessages() {
         ? `${fresh.length} new messages, including from ${last.fromName}`
         : `New message from ${last.fromName}`,
       'info',
+      { tag: 'chat' },
     )
   }, [items, bumpUnread])
+
+  // Opening chat is reading them: a "New message from Kofi" still counting down
+  // over the call would announce the message you are now looking at.
+  useEffect(() => {
+    if (panel === 'chat') useToastStore.getState().dismissTag('chat')
+  }, [panel])
 
   /** Send a chat message. Returns false if the transport rejected it (e.g. sent
    *  mid-reconnect) so the composer can keep the text + tell the user, instead of

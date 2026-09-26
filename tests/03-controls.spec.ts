@@ -27,11 +27,11 @@ test.describe('In-call controls', () => {
 
     await revealChrome(page)
     await page.getByRole('button', { name: 'Open chat' }).click()
-    await expect(page.getByText('Messages are visible only to people in this call.')).toBeVisible()
+    await expect(page.getByText(/^Only people in this call see messages/)).toBeVisible()
     // Close by tapping the panel's X — how a real user (esp. on touch, no Esc key)
     // dismisses the sheet.
     await closePanel(page)
-    await expect(page.getByText('Messages are visible only to people in this call.')).toBeHidden()
+    await expect(page.getByText(/^Only people in this call see messages/)).toBeHidden()
 
     expect(appErrors(sink)).toEqual([])
   })
