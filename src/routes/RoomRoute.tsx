@@ -17,6 +17,7 @@ import { toast } from '@/store/useToastStore'
 import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
 import { countUsage, durationRange, joinErrorClass, surface } from '@/lib/usage'
+import { clearTrouble, formatElapsed, troubleSince, useElapsed, useOnline } from '@/lib/connectionTrouble'
 
 /**
  * Fire a local OS notification when the host admits a *backgrounded* guest. The
@@ -93,6 +94,8 @@ function isTransientJoinError(e: unknown, raw: string): boolean {
   )
 }
 
+type JoinResult = 'ok' | 'choice' | 'failed' | 'final'
+
 const JOIN_MAX_ATTEMPTS = 3
 /** Backoff before retry N (ms): ~0.8s, ~2s. */
 const JOIN_BACKOFF_MS = [800, 2000]
@@ -160,6 +163,10 @@ export function RoomRoute() {
   // move to another call (merge, answering a ring) never shows it: the route has
   // already changed when the old call disconnects.
   const [ended, setEnded] = useState<{ room: string; reason: EndReason; ms: number; people: string[] } | null>(null)
+  // The call dropped and LiveKit gave up reconnecting: the Reconnecting screen
+  // keeps trying, on the same clock the in-call banner started (lib/connectionTrouble).
+  const [lost, setLost] = useState<{ room: string; since: number } | null>(null)
+  const lostRef = useRef(false)
   const roomNow = useRef(room)
   roomNow.current = room
   // Set once the call CONNECTS, not when a token arrives: a connect that fails
@@ -202,12 +209,15 @@ export function RoomRoute() {
   // (companion, muted) vs "transfer here" (drop the other device) before connecting.
   const [deviceChoice, setDeviceChoice] = useState<string | null>(null)
 
-  const handleJoin = useCallback(async () => {
+  // Resolves how it went, for the Reconnecting screen's retry loop: 'ok' (a token,
+  // the waiting room, or a device choice), 'failed' (worth another try) or
+  // 'final' (retrying can't help: the link is dead, you were removed, …).
+  const handleJoin = useCallback(async (): Promise<JoinResult> => {
     setError(null)
     if (!LIVEKIT_URL) {
       console.warn('No media server configured: set VITE_LIVEKIT_URL in .env, then restart the dev server.')
       setError('Calls aren’t set up here yet.')
-      return
+      return 'final'
     }
     setConnecting(true)
     // Download the in-call chunk in parallel with the knock round-trip. By the time
@@ -235,31 +245,32 @@ export function RoomRoute() {
           if (res.alsoOnDevice) {
             setDeviceChoice(res.token)
             setConnecting(false)
-          } else {
-            setToken(res.token)
+            return 'choice'
           }
+          setToken(res.token)
+          return 'ok'
         } else if (res.pending && res.requestId) {
           // Waiting room is on — wait for the host to admit us.
           waitClaim.current = res.claim ?? ''
           setWaitingId(res.requestId)
           setConnecting(false)
-        } else {
-          setError('Couldn’t join this call. Try again.')
-          setConnecting(false)
+          return 'ok'
         }
-        return
+        setError('Couldn’t join this call. Try again.')
+        setConnecting(false)
+        return 'failed'
       } catch (e) {
         // A dead invite link is definitive — no retry, no generic error toast. Show
         // the dedicated "link expired" screen that tells the user what to do next.
         if (e instanceof ApiError && e.code === 'link_expired') {
           setExpired(true)
           setConnecting(false)
-          return
+          return 'final'
         }
         if (e instanceof ApiError && e.code === 'need_key') {
           setNeedKey(true)
           setConnecting(false)
-          return
+          return 'final'
         }
         // The join-secret gate turned us away. If we got here on a REMEMBERED secret
         // it is stale (the room was recreated, or the link epoch moved), and keeping
@@ -269,7 +280,7 @@ export function RoomRoute() {
           forgetRoomSecrets(room)
           setError(e.message)
           setConnecting(false)
-          return
+          return 'final'
         }
         // Beta gate rejections are definitive — no retry. Show the server's message
         // (invite-only / room full) verbatim rather than the generic join error.
@@ -279,7 +290,7 @@ export function RoomRoute() {
         ) {
           setError(e.message)
           setConnecting(false)
-          return
+          return 'final'
         }
         const raw = e instanceof Error ? e.message : String(e)
         if (isTransientJoinError(e, raw) && attempt < JOIN_MAX_ATTEMPTS) {
@@ -294,9 +305,10 @@ export function RoomRoute() {
         if (cls) countUsage('join_error', cls, surface())
         setError(friendlyJoinError(e, raw))
         setConnecting(false)
-        return
+        return 'failed'
       }
     }
+    return 'failed'
   }, [room, displayName, deviceId, secret, e2ee])
 
   // "You're already in on another device" choices (see deviceChoice). Both connect with
@@ -397,11 +409,25 @@ export function RoomRoute() {
   }, [room, autojoin, displayName, handleJoin])
 
   function leave(reason?: EndReason) {
+    const was = callRoom.current
+    // A drop that came after a real reconnect attempt isn't the end of the call
+    // yet: hold it (the time in, who was there) and go to the Reconnecting screen.
+    if (reason === 'dropped' && troubleSince() && was && was === roomNow.current) {
+      takeEnd('dropped')
+      callRoom.current = null
+      lostRef.current = true
+      setToken(null)
+      setConnecting(false)
+      setLost({ room: was, since: troubleSince() })
+      return
+    }
+    // The app's own onLeave arriving after that, or a retry whose connect didn't
+    // take: still reconnecting, nothing has ended.
+    if (lostRef.current && !was) return
     // Read before countLeft zeroes it: the end screen says how long you were in.
     const ms = joinedAt.current ? Date.now() - joinedAt.current : 0
     countLeft()
     const why = takeEnd(reason ?? 'left')
-    const was = callRoom.current
     callRoom.current = null
     setToken(null)
     setConnecting(false)
@@ -433,6 +459,11 @@ export function RoomRoute() {
           onLeave={leave}
           onConnected={() => {
             callRoom.current = roomNow.current
+            if (lostRef.current) {
+              lostRef.current = false
+              setLost(null)
+              clearTrouble()
+            }
             if (!joinedAt.current) {
               joinedAt.current = Date.now()
               resetPeople()
@@ -444,6 +475,14 @@ export function RoomRoute() {
             }
           }}
           onError={(e) => {
+            // A call that was up and then failed while reconnecting: LiveKit can
+            // report the final give-up as an error instead of a disconnect (it does
+            // when you're alone). Same thing to the person: the Reconnecting screen.
+            if (callRoom.current && troubleSince()) {
+              addBreadcrumb('reconnect gave up (error)', { message: e.message })
+              leave('dropped')
+              return
+            }
             countLeft()
             const cls = callRoom.current ? null : joinErrorClass(e)
             if (cls) countUsage('join_error', cls, surface())
@@ -455,6 +494,36 @@ export function RoomRoute() {
           }}
         />
       </Suspense>
+    )
+  }
+
+  if (lost && lost.room === room) {
+    return (
+      <Reconnecting
+        room={room}
+        since={lost.since}
+        attempting={connecting}
+        error={error}
+        attempt={async () => {
+          const r = await handleJoin()
+          // Your other device is in the call: that's a choice for the join screen.
+          if (r === 'choice') {
+            lostRef.current = false
+            setLost(null)
+            clearTrouble()
+          }
+          return r
+        }}
+        onLeave={() => {
+          const ms = joinedAt.current ? Date.now() - joinedAt.current : 0
+          countLeft()
+          lostRef.current = false
+          setLost(null)
+          clearTrouble()
+          setError(null)
+          setEnded({ room, reason: 'dropped', ms, people: takePeople() })
+        }}
+      />
     )
   }
 
@@ -502,7 +571,7 @@ export function RoomRoute() {
 
   return (
     <div className="relative">
-      <PreJoin room={room} onJoin={handleJoin} encrypted={Boolean(e2ee)} secret={secret || undefined} />
+      <PreJoin room={room} onJoin={async () => void (await handleJoin())} encrypted={Boolean(e2ee)} secret={secret || undefined} />
       {deviceChoice && (
         <AlreadyOnDevicePrompt
           onJoinAnyway={joinAsCompanion}
@@ -650,6 +719,125 @@ function CallEnded({
             Go home
           </Button>
           <p className="pt-1 text-center text-xs text-ink-subtle">We don’t record calls</p>
+        </div>
+      </div>
+    </main>
+  )
+}
+
+/** Waits between automatic tries: soon at first, then every 15s. */
+const RETRY_DELAYS_MS = [1_000, 3_000, 5_000, 10_000, 15_000]
+/** Stop trying on our own after this long; Keep trying starts again. */
+const AUTO_RETRY_FOR_MS = 3 * 60_000
+
+/**
+ * The call dropped and LiveKit stopped trying. Not the end-of-call page: the
+ * call is probably still going, and most drops are a train tunnel or a Wi-Fi
+ * handover. So this keeps trying by itself (and at once when the browser says
+ * it's back online), counts up from when the trouble started, and offers the two
+ * honest choices: Keep trying now, or Leave. After a few minutes it stops on its
+ * own and says so, rather than spinning forever.
+ */
+function Reconnecting({
+  room,
+  since,
+  attempting,
+  error,
+  attempt,
+  onLeave,
+}: {
+  room: string
+  since: number
+  attempting: boolean
+  error: string | null
+  attempt: () => Promise<JoinResult>
+  onLeave: () => void
+}) {
+  const elapsed = useElapsed(since)
+  const online = useOnline()
+  const [tries, setTries] = useState(0)
+  const [pausedAt, setPausedAt] = useState(0)
+  const [final, setFinal] = useState(false)
+  const busy = useRef(false)
+  const loopStart = useRef(Date.now())
+  // A ref, so a parent re-render doesn't restart the wait below.
+  const attemptRef = useRef(attempt)
+  attemptRef.current = attempt
+  const run = useCallback(async () => {
+    if (busy.current) return
+    busy.current = true
+    try {
+      const r = await attemptRef.current()
+      if (r === 'final') setFinal(true)
+      else setTries((n) => n + 1)
+    } finally {
+      busy.current = false
+    }
+  }, [])
+  // The loop: one try at a time, backing off, only while there's a network.
+  useEffect(() => {
+    if (final || pausedAt || attempting || !online) return
+    if (Date.now() - loopStart.current > AUTO_RETRY_FOR_MS) {
+      setPausedAt(Date.now())
+      return
+    }
+    const t = window.setTimeout(run, RETRY_DELAYS_MS[Math.min(tries, RETRY_DELAYS_MS.length - 1)])
+    return () => window.clearTimeout(t)
+  }, [tries, final, pausedAt, attempting, online, run])
+  // Back online: try now rather than waiting out the delay.
+  useEffect(() => {
+    if (online && !final && !pausedAt) void run()
+  }, [online]) // eslint-disable-line react-hooks/exhaustive-deps
+  const keepTrying = () => {
+    loopStart.current = Date.now()
+    setPausedAt(0)
+    setFinal(false)
+    setTries(0)
+    void run()
+  }
+  const title = final ? 'Couldn’t get you back in' : pausedAt ? 'Still can’t reconnect' : 'Reconnecting…'
+  const body = final
+    ? (error ?? 'This call can’t be rejoined from here.')
+    : !online
+      ? 'You’re offline. We’ll try again as soon as you’re back.'
+      : pausedAt
+        ? 'Check your Wi-Fi or mobile data, then try again.'
+        : 'Your connection dropped. The call is still going, and we’re trying to get you back in.'
+  return (
+    <main className="flex min-h-dvh flex-col items-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:justify-center">
+      <div className="flex w-full max-w-md flex-1 flex-col md:flex-none">
+        <header className="px-1 pt-4 md:pt-0">
+          <p className="text-xs font-medium text-ink-subtle">Connection lost</p>
+          <h1 className="truncate text-2xl font-semibold leading-tight">{prettyRoom(room)}</h1>
+        </header>
+        <section className="mt-5 rounded-island bg-surface p-5 shadow-raised" aria-live="polite">
+          <span className="grid size-12 place-items-center rounded-2xl bg-sunken text-ink [&_svg]:size-6">
+            <EndedBadge reason="dropped" />
+          </span>
+          <h2 className="mt-4 flex items-baseline gap-2 text-xl font-semibold">
+            {title}
+            {/* The clock is not in the live region's words: read once, not every second. */}
+            <span aria-hidden className="text-base font-medium tabular-nums text-ink-muted">
+              {formatElapsed(elapsed)}
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-ink-muted">{body}</p>
+          {!final && !pausedAt && online && (
+            <p className="mt-3 flex items-center gap-2 text-xs text-ink-subtle">
+              <span aria-hidden className="size-2 animate-pulse rounded-full bg-warning" />
+              {attempting ? 'Trying now…' : 'Trying again in a moment'}
+            </p>
+          )}
+        </section>
+        <div className="mt-auto flex flex-col gap-2 pt-6 md:mt-6 md:pt-0">
+          {!final && (
+            <Button variant="accent" size="lg" block disabled={attempting} onClick={keepTrying}>
+              {attempting ? 'Trying…' : 'Keep trying'}
+            </Button>
+          )}
+          <Button variant={final ? 'accent' : 'neutral'} size="lg" block onClick={onLeave}>
+            Leave
+          </Button>
         </div>
       </div>
     </main>

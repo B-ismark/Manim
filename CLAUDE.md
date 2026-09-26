@@ -232,6 +232,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   remembers it, and the recovered fragment is written BACK to the address bar — never
   over an auth fragment. Any new navigation to a room must carry secrets (`roomTo`),
   never a bare `/r/<slug>`.
+- **A dropped connection is never a silent end.** In the call, `ConnectionBanner`
+  shows "Reconnecting… 0:12" with Leave (and "You're offline" when the browser
+  knows). If LiveKit gives up, `RoomRoute` does NOT show the end page: a drop after
+  a real Reconnecting goes to the Reconnecting screen, which re-knocks by itself
+  (backing off, and at once on `online`), on the same clock (`lib/connectionTrouble`),
+  and stops after 3 min with Keep trying / Leave. LiveKit reports that final
+  give-up as an ERROR when you're alone and as a disconnect otherwise; both routes
+  go there. `27-reconnect` drives it with `setOffline` (works on a local server).
 - **`ConnectionQuality` is a bandwidth heuristic, not connection state.** It reports
   `Lost` for a packet-loss spike and the value sticks until the next update. Only
   `ConnectionState` (Reconnecting / SignalReconnecting) may be called "lost" in the UI

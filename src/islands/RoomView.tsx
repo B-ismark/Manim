@@ -513,7 +513,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         {/* Audio that isn't working outranks a reconnect that's already in hand. */}
         <MicUnavailableBanner />
         <AudioBlockedBanner canPlayback={audio.canPlayback} onResume={() => void audio.resume()} />
-        <ConnectionBanner />
+        <ConnectionBanner onLeave={leaveWithUndo} />
         {e2eeFailed && <NotEncryptedPill />}
         <WaitingRoomBanner active={isHost && waiting} />
         {companion ? (
