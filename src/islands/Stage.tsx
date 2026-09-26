@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from 'react'
 import {
   useTracks,
   VideoTrack,
@@ -48,7 +48,7 @@ import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
-import { STRIP_H, useChatCompanion, type CompanionLayout } from '@/lib/chatCompanion'
+import { useChatCompanion, type CompanionLayout } from '@/lib/chatCompanion'
 import { useElementFullscreen } from '@/lib/useFullscreen'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
@@ -1280,24 +1280,18 @@ function RosterStrip({
  * The call beside a phone's open chat (lib/chatCompanion) — so chatting doesn't
  * mean losing sight of the people you're chatting with.
  *
- * Upright it's one row of people above the sheet, speaker first, swiped sideways.
- * The row has one height and each person's WIDTH follows their camera: a laptop's
- * 16:9 at full height would be one person per screen, so it's trimmed to 4:3 (a
- * little off each side, where laptop cameras rarely have anything) while a
- * phone's tall picture stays tall. Faces then come out the same size whoever is
- * on what. The trim is only here; the gallery keeps everyone's true shape.
+ * Both ways it shows whoever is talking, in their true shape, in the room the
+ * panel leaves: the top half upright (the sheet takes the bottom half), the left
+ * side sideways. A wide speaker fills the width and everyone else is a "+N" chip
+ * (two wide tiles won't stack). A tall speaker is a column, which leaves room
+ * beside it, so the next two people fill that instead of empty space.
  *
- * Sideways the panel takes the right and this gets the left, for whoever is
- * talking, in their true shape. A wide speaker fills the width and everyone else
- * is a "+N" chip (two wide tiles won't stack in 390px). A tall speaker is a
- * column, which leaves room beside it, so the next two people fill that instead
- * of empty space.
+ * Upright used to be a 180px row of thumbnails with the sheet taking the rest;
+ * see lib/chatCompanion for why it became half and half.
  *
  * You're left out unless there's nobody else: your own face is what the chat
  * doesn't need. A share, when it leads the stage, leads here too.
  */
-const COMPANION_MOUNT_CAP = 8
-
 function ChatCompanionStage({
   layout,
   primary,
@@ -1311,57 +1305,23 @@ function ChatCompanionStage({
   aspects: Record<string, number>
   onAspect: (key: string, ratio: number) => void
 }) {
-  const setPanel = useRoomStore((s) => s.setPanel)
   const aspectOf = (t: TrackReferenceOrPlaceholder) => aspects[tileKey(t)] ?? 16 / 9
   const tile = (t: TrackReferenceOrPlaceholder, box: number) => (
     <Tile trackRef={t} fill boxAspect={box} onAspect={(r) => onAspect(tileKey(t), r)} />
   )
-  const people = primary ? [primary, ...others] : others
   // Everyone in the call, you included — "+3 in the call" beside one speaker in a
   // call of four.
   const headcount = useParticipants().length
 
-  if (layout.mode === 'strip') {
-    if (!layout.stripShown) return null
-    const shown = people.slice(0, people.length > COMPANION_MOUNT_CAP ? COMPANION_MOUNT_CAP - 1 : COMPANION_MOUNT_CAP)
-    const overflow = people.length - shown.length
-    // A share keeps its own shape (clamped so a tall one still reads); a camera is
-    // trimmed to 4:3 if it's wide and left tall if it's tall.
-    const shape = (t: TrackReferenceOrPlaceholder) => {
-      const a = aspectOf(t)
-      if (isScreenShare(t)) return Math.min(16 / 9, Math.max(3 / 4, a))
-      return a > 1 ? 4 / 3 : Math.max(9 / 16, a)
-    }
-    return (
-      <div
-        data-no-stage-gesture
-        data-chat-companion="strip"
-        role="group"
-        aria-label="People in the call"
-        className="absolute inset-x-0 z-10 flex snap-x scroll-px-2 gap-2 overflow-x-auto px-2 no-scrollbar"
-        style={{ top: layout.stripTop, height: STRIP_H }}
-      >
-        {shown.map((t) => (
-          <div
-            key={tileKey(t)}
-            className="h-full shrink-0 snap-start transition-[width] duration-200 ease-out"
-            style={{ width: Math.round(STRIP_H * shape(t)) }}
-          >
-            {tile(t, shape(t))}
-          </div>
-        ))}
-        {overflow > 0 && (
-          <div className="h-full shrink-0" style={{ width: Math.round(STRIP_H * 0.75) }}>
-            <OverflowTile count={overflow} onClick={() => setPanel('people')} />
-          </div>
-        )}
-      </div>
-    )
-  }
-
+  if (layout.mode === 'top' && !layout.stageShown) return null
   return (
-    <CompanionSide
-      panelW={layout.panelW}
+    <CompanionBox
+      placement={layout.mode}
+      style={
+        layout.mode === 'top'
+          ? { top: layout.stageTop, height: layout.stageH }
+          : { right: layout.panelW + 8 }
+      }
       primary={primary}
       others={others}
       people={headcount}
@@ -1371,17 +1331,20 @@ function ChatCompanionStage({
   )
 }
 
-/** Sideways: the room left of the panel. Its own component so it measures its box
- *  on mount — a phone turned while chatting arrives here from the strip. */
-function CompanionSide({
-  panelW,
+/** The room the panel leaves: the top half upright, the left side sideways. Its
+ *  own component so it measures its box on mount — a phone turned while chatting
+ *  arrives here from the other placement. */
+function CompanionBox({
+  placement,
+  style,
   primary,
   others,
   people,
   aspectOf,
   tile,
 }: {
-  panelW: number
+  placement: 'top' | 'side'
+  style: CSSProperties
   primary: TrackReferenceOrPlaceholder | undefined
   others: TrackReferenceOrPlaceholder[]
   people: number
@@ -1427,9 +1390,17 @@ function CompanionSide({
   return (
     <div
       ref={ref}
-      data-chat-companion="side"
-      className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))] z-10"
-      style={{ right: panelW + gap, bottom: bottomBand }}
+      data-no-stage-gesture
+      data-chat-companion={placement}
+      role="group"
+      aria-label="People in the call"
+      className={cn(
+        'absolute z-10',
+        placement === 'top'
+          ? 'inset-x-2'
+          : 'left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))]',
+      )}
+      style={placement === 'top' ? style : { ...style, bottom: bottomBand }}
     >
       {primary && bigW > 0 && (
         <div className="flex size-full items-center justify-center" style={{ gap }}>
