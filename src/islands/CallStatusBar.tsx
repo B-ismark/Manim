@@ -7,6 +7,8 @@ import {
 import { ConnectionQuality as Quality, ConnectionState } from 'livekit-client'
 import { LockIcon, MicOffIcon } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
+import { MUTED_PILL_H, useChromeHidden, useRail } from '@/lib/chromeBands'
+import { cn } from '@/lib/cn'
 
 export interface CallStatusBarProps {
   /** True only when E2EE is ACTUALLY active (room.setE2EEEnabled resolved), not
@@ -157,16 +159,32 @@ export function CallStatusBar({ encrypted, visible }: CallStatusBarProps) {
  * and it fades out with the rest of the island. So while the bars are gone, and only
  * if you're muted, this takes the timer's slot at the top: glanceable, red, and
  * gone again the moment the bars come back and the button itself says the same.
- * A status, so it lives in TopStack rather than anywhere near the bar. Taps pass
- * through (a tap anywhere brings the controls back, which is how you'd unmute).
+ * Taps pass through (a tap anywhere brings the controls back, which is how you'd
+ * unmute).
+ *
+ * Sideways it moves to the bottom-left corner instead: at the top it landed among
+ * the corner buttons of whichever tile was under it. It is still rendered from
+ * TopStack (one home for status), just positioned out of the column, and it tells
+ * the stage it's there so the tiles leave its strip clear (chromeBands).
  */
 export function MutedPill({ chromeVisible }: { chromeVisible: boolean }) {
   const { isMicrophoneEnabled } = useLocalParticipant()
-  if (chromeVisible || isMicrophoneEnabled) return null
+  const rail = useRail()
+  const shown = !chromeVisible && !isMicrophoneEnabled
+  const corner = shown && rail
+  useEffect(() => {
+    useChromeHidden.setState({ mutedCorner: corner })
+    return () => useChromeHidden.setState({ mutedCorner: false })
+  }, [corner])
+  if (!shown) return null
   return (
     <div
       data-testid="muted-pill"
-      className="mn-pop flex h-8 items-center gap-1.5 rounded-control bg-danger px-3 text-xs font-medium text-white shadow-sm"
+      className={cn(
+        'mn-pop flex items-center gap-1.5 rounded-control bg-danger px-3 text-xs font-medium text-white shadow-sm',
+        corner && 'fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-[max(1rem,env(safe-area-inset-left))]',
+      )}
+      style={{ height: MUTED_PILL_H }}
     >
       <MicOffIcon className="size-3.5" aria-hidden />
       Muted

@@ -109,7 +109,18 @@ export function useSafeAreaBottom(): number {
  * brings the bars back and the tiles step aside again. Always false on desktop,
  * whose chrome never hides.
  */
-export const useChromeHidden = create<{ hidden: boolean }>(() => ({ hidden: false }))
+export const useChromeHidden = create<{ hidden: boolean; mutedCorner: boolean }>(() => ({
+  hidden: false,
+  mutedCorner: false,
+}))
+
+/**
+ * The "Muted" pill's corner, sideways: 16px up (or the home-indicator inset), 32px
+ * tall, and a gutter. Only while it's actually there (`mutedCorner`, set by the pill
+ * itself), so an unmuted call gets the whole height back.
+ */
+export const MUTED_PILL_H = 32
+
 
 /** What's left of either band while the chrome is hidden: a hairline gutter. */
 export const HIDDEN_BAND = 8
@@ -142,7 +153,11 @@ export function useRail(): boolean {
 export function useIslandBand(extra = 0): number {
   const safe = useSafeAreaBottom()
   const hidden = useChromeHidden((s) => s.hidden)
+  const mutedCorner = useChromeHidden((s) => s.mutedCorner)
   const rail = useRail()
+  // Sideways with the bars away, the "Muted" pill sits in the bottom-left corner,
+  // exactly where the bottom-left tile carries its name tag. Keep it a strip.
+  if (mutedCorner) return Math.max(ISLAND_INSET, safe) + MUTED_PILL_H + HIDDEN_BAND + extra
   // Nothing sits on the bottom edge while the bars are away, or when they're a rail.
   return hidden || rail ? Math.max(HIDDEN_BAND, safe) + extra : islandBand(safe, extra)
 }

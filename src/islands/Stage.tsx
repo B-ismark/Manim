@@ -672,10 +672,12 @@ function TouchStage({
 
   return (
     <div
-      className="relative flex min-h-0 flex-1 flex-col p-2 transition-[padding] duration-[var(--dur-base)] ease-[var(--ease-island)]"
+      className="relative flex min-h-0 flex-1 flex-col p-2"
       // Sideways the controls are a rail on the right, so the tiles give way on
       // that side instead of the bottom. Only the gallery: a single feed or a
       // share stays full-bleed with the rail on glass, as it does with the bar.
+      // Not transitioned: the TILES glide (TileRows), and easing the padding as
+      // well re-packed them on every frame of it, so they overshot the edge.
       style={view === 'gallery' && railBand ? { paddingRight: railBand } : undefined}
     >
       <div ref={ref} className="relative flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2">
@@ -801,6 +803,9 @@ function TileRows({
   tileProps?: (t: TrackReferenceOrPlaceholder) => TileOverrides
 }) {
   const measured = width > 2 && height > 2
+  // Touch only: a desktop re-pack follows a window being dragged, where a lag
+  // behind the pointer reads as sluggish rather than smooth.
+  const glide = useIsTouch()
   // Snap to buckets at pack time (raw ratios stored) so a stream nudging across a
   // boundary doesn't thrash the layout.
   const rows = useMemo(() => {
@@ -835,24 +840,51 @@ function TileRows({
     )
   }
 
+  // Every tile placed absolutely inside one box, rather than a flex row per row.
+  // Rows used to be separate elements, so a tile the packer moved to another row
+  // was a different element: its video unmounted and re-attached, and it jumped.
+  // One keyed list of positioned tiles means a re-pack (the touch chrome fading,
+  // someone joining, a rotation) is just new coordinates, and on touch they glide
+  // there with the same easing the bars slide on.
+  let boxH = 0
+  const placed: Array<{ tref: TrackReferenceOrPlaceholder; x: number; y: number; w: number; h: number }> = []
+  for (const row of rowTiles) {
+    const rowW = row.reduce((sum, c) => sum + c.w, 0) + gap * (row.length - 1)
+    const rowH = Math.max(0, ...row.map((c) => c.h))
+    let x = (width - rowW) / 2
+    for (const c of row) {
+      placed.push({ tref: c.tref, x, y: boxH + (rowH - c.h) / 2, w: c.w, h: c.h })
+      x += c.w + gap
+    }
+    boxH += rowH + gap
+  }
+  boxH = Math.max(0, boxH - gap)
+
   return (
-    <>
-      {rowTiles.map((row, ri) => (
-        <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
-          {row.map(({ tref, w, h }) => (
-            <div key={tileKey(tref)} className="min-h-0" style={{ width: w, height: h }}>
-              <Tile
-                trackRef={tref}
-                fill
-                boxAspect={h > 0 ? w / h : undefined}
-                onAspect={(r) => onAspect(tileKey(tref), r)}
-                {...tileProps?.(tref)}
-              />
-            </div>
-          ))}
+    // `w-full`, not the measured width: that measure lands a frame after a layout
+    // change, and a box one frame too wide, centred, threw the first column off
+    // the left edge for that frame.
+    <div data-tile-rows className="relative w-full shrink-0" style={{ height: boxH }}>
+      {placed.map(({ tref, x, y, w, h }) => (
+        <div
+          key={tileKey(tref)}
+          className={cn(
+            'absolute',
+            glide &&
+              'transition-[left,top,width,height] duration-[var(--dur-slow)] ease-[var(--ease-island)] motion-reduce:transition-none',
+          )}
+          style={{ left: x, top: y, width: w, height: h }}
+        >
+          <Tile
+            trackRef={tref}
+            fill
+            boxAspect={h > 0 ? w / h : undefined}
+            onAspect={(r) => onAspect(tileKey(tref), r)}
+            {...tileProps?.(tref)}
+          />
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
