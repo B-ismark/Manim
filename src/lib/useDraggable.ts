@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
 interface DragState {
   startX: number
@@ -77,6 +77,8 @@ export function useDraggable(
   const drag = useRef<DragState | null>(null)
   /** Set once the user actually drags, so an un-dragged card keeps its CSS anchor. */
   const moved = useRef(false)
+  /** The element last dragged, so a rotation can re-park it in its corner. */
+  const elRef = useRef<HTMLElement | null>(null)
 
   const boundsFor = useCallback(
     (el: HTMLElement) => ({
@@ -91,6 +93,7 @@ export function useDraggable(
   )
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLElement>) => {
+    elRef.current = e.currentTarget
     const rect = e.currentTarget.getBoundingClientRect()
     drag.current = { startX: e.clientX, startY: e.clientY, originX: rect.left, originY: rect.top }
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -135,6 +138,27 @@ export function useDraggable(
     },
     [boundsFor],
   )
+
+  // A dragged card holds PIXELS, and pixels don't survive a rotation: a card parked
+  // bottom-right on a portrait phone (y ≈ 580) sat below a 390px landscape screen.
+  // Re-derive the position from the corner it was snapped to whenever the viewport
+  // changes; the corner is what the user chose, the pixels were only its answer.
+  const dragged = pos !== null
+  useEffect(() => {
+    if (!dragged) return
+    const repark = () => {
+      const el = elRef.current
+      if (!el || drag.current) return
+      const b = boundsFor(el)
+      setPos(cornerPosition(corner, b, b))
+    }
+    window.addEventListener('resize', repark)
+    window.addEventListener('orientationchange', repark)
+    return () => {
+      window.removeEventListener('resize', repark)
+      window.removeEventListener('orientationchange', repark)
+    }
+  }, [dragged, corner, boundsFor])
 
   const style: CSSProperties | undefined = pos
     ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' }

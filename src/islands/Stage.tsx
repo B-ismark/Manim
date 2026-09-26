@@ -462,10 +462,13 @@ function ScrollGallery({
   tracks,
   cols,
   gap,
+  cellAspect = 3 / 4,
 }: {
   tracks: TrackReferenceOrPlaceholder[]
   cols: number
   gap: number
+  /** Width/height of a cell. 3:4 unless that would be taller than the stage. */
+  cellAspect?: number
 }) {
   const islandBandPx = useIslandBand()
   return (
@@ -485,8 +488,8 @@ function ScrollGallery({
           // 3:4 cells: touch senders are overwhelmingly portrait phones, and a
           // uniform cell is what makes the scroll calm — a mixed-aspect packer
           // re-flows the whole column every time one person rotates.
-          <div key={tileKey(t)} className="aspect-[3/4]">
-            <Tile trackRef={t} fill boxAspect={3 / 4} />
+          <div key={tileKey(t)} style={{ aspectRatio: cellAspect }}>
+            <Tile trackRef={t} fill boxAspect={cellAspect} />
           </div>
         ))}
       </div>
@@ -628,6 +631,11 @@ function TouchStage({
   // Everyone fits → pack them to FILL the stage (three people get big tiles, not
   // three small ones with a void underneath). They don't → uniform scrolling cells.
   const galleryFits = gallery.length <= perPage
+  // On a phone held sideways even the legibility floor can leave a 3:4 cell a
+  // little taller than the stage; widen the cell just enough that one row always
+  // shows whole faces rather than scrolling between halves.
+  const cellW = (size.width - gap * (cols - 1)) / cols
+  const scrollCellAspect = galleryH > 1 ? Math.max(3 / 4, cellW / galleryH) : 3 / 4
 
   const stripShowing = view === 'content' && rosterOpen && rosterFits(size, bucketAspect(bigAspect))
   // Lift the self-view clear of the roster strip — they both want the band above the
@@ -694,7 +702,7 @@ function TouchStage({
               />
             </div>
           ) : (
-            <ScrollGallery tracks={gallery} cols={cols} gap={gap} />
+            <ScrollGallery tracks={gallery} cols={cols} gap={gap} cellAspect={scrollCellAspect} />
           )
         ) : (
           focus && <FocusTile trackRef={focus} />
@@ -1522,7 +1530,16 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useShareLink()
   const coarse = useIsTouch()
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28">
+    <div
+      className={cn(
+        'flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28',
+        // A phone on its side is ~360px tall: a card stacked over the invite
+        // overflowed it, and `justify-center` split the overflow so the top of
+        // your own video went off-screen. Side by side instead, card sized by
+        // the height it actually has.
+        coarse && 'landscape:flex-row landscape:gap-6 landscape:pt-4 landscape:pb-24',
+      )}
+    >
       {/* Touch (phones): a tall portrait card that fills the available height
           (Meet/Gmail self-view), invite below. Desktop (mouse): a constrained
           landscape card — full height would waste the wide canvas. */}
@@ -1532,7 +1549,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           // Touch: a tall portrait card, but height-capped so the invite below
           // stays on-screen (flex-1 ate the whole viewport and pushed it off).
           coarse
-            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh]'
+            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh] landscape:h-full landscape:max-h-none landscape:w-auto landscape:max-w-none'
             : 'aspect-video w-full max-w-3xl max-h-[55dvh]',
         )}
       >
@@ -1544,7 +1561,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           </div>
         )}
       </div>
-      <div className="shrink-0 text-center">
+      <div className={cn('shrink-0 text-center', coarse && 'landscape:text-left')}>
         <p className="text-sm font-medium">You’re the only one here</p>
         <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
         <Button variant="accent" className="mt-3" onClick={copy}>
@@ -1629,7 +1646,12 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
         // so it reads the same on a 320px phone and a 430px one. Expanded is a look
         // at yourself; collapsed is a glance that leaves the call visible behind it.
         'aspect-[3/4] overflow-hidden rounded-tile shadow-raised ring-1 ring-white/10',
-        expanded ? 'w-[62vw] max-w-[20rem]' : 'w-[33vw] max-w-[11rem]',
+        // Width from the viewport's WIDTH alone made a 3:4 card taller than a phone on
+        // its side (expanded: 427px on a 390px screen), so the top went off-screen.
+        // The second term caps it by the height left between the bands.
+        expanded
+          ? 'w-[min(62vw,calc((100dvh-11rem)*0.75))] max-w-[20rem]'
+          : 'w-[min(33vw,calc((100dvh-11rem)*0.75))] max-w-[11rem]',
       )}
     >
       {/* No `boxAspect`: this crops to fill rather than letterboxing. A phone
