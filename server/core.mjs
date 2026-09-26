@@ -1019,28 +1019,19 @@ export async function handlePushRing(env, body) {
   if (!Array.isArray(subs) || subs.length === 0) return { status: 200, body: { ok: true, sent: 0 } }
 
   let sent = 0
-  const gone = []
   await Promise.all(
     subs.map(async (s) => {
       try {
         const st = await sendPush(env, s.endpoint)
         if (st >= 200 && st < 300) sent++
-        // 404/410: the browser unsubscribed or the push service expired it. It will
-        // never work again, and every ring would keep paying for it.
-        else if (st === 404 || st === 410) gone.push(s.endpoint)
+        // 404/410 (gone) isn't pruned here: only the subscription's owner may delete
+        // it, and letting a caller do so would let any contact switch off someone's
+        // push. Supabase drops subscriptions no device has renewed in 60 days
+        // (DEPLOY.md §4c), and a live device renews its own on every app start.
       } catch {
         /* one dead endpoint shouldn't fail the others */
       }
     }),
   )
-  if (gone.length) {
-    // Same authority as the read: the RPC only deletes a contact's rows, and only
-    // the endpoints named (DEPLOY.md §4, prune_push_targets). Absent = no-op.
-    await fetch(`${url.replace(/\/+$/, '')}/rest/v1/rpc/prune_push_targets`, {
-      method: 'POST',
-      headers: { apikey: anon, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ target_id: targetId, endpoints: gone }),
-    }).catch(() => {})
-  }
   return { status: 200, body: { ok: true, sent } }
 }

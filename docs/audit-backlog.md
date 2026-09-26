@@ -36,6 +36,8 @@ of people (see that PR).
       `wrangler.toml` because the repo is public; unset, push uses the repo URL.
 - [ ] Update the Sentry advanced scrubbing rule to the one in DEPLOY.md §3c (it now
       also catches a token in a query string).
+- [ ] Run the new SQL (Sept 2026 batch): the `avatar read own` policy (§3a), the
+      push `seen_at` column and trigger (§4c), and the nightly clean-up jobs (§4d).
 
 ## Areas not yet audited
 
@@ -68,26 +70,16 @@ of people (see that PR).
 - [ ] **Forgeable chat state.** Pins and history replay relay other people's
       messages, so the author and text are whatever the relayer says. Needs signed
       messages to fix properly. (Report notices now name the verified sender.)
-- [ ] Hardening: narrow CSP `script-src` from all of jsDelivr to the MediaPipe path;
-      rate-limit `/api/push`.
 - [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set
       `VITE_SENTRY_DSN` in the Cloudflare build and keep Session Replay and
       tracing off in Sentry's Loader Script settings (steps in DEPLOY.md).
 - [ ] Merging calls sends the target room's E2EE key over the call's data channel,
       which LiveKit can read (disclosed on the Privacy page). Fixed by the
       per-recipient encryption item above.
-- [ ] Profile photos sit in a public bucket at `avatars/<account id>/avatar.webp`, and
-      the account id is visible to everyone in a call, so anyone in a call with you
-      can open your photo. Use an unguessable object name (or a private bucket with
-      signed URLs); account deletion then needs the stored name.
-- [ ] Waiting-room requests (name, device id, account id, denied ones too) stay in
-      room metadata, visible to everyone in the call, until the room closes. Prune
-      settled requests.
-- [ ] Push endpoints that return 404/410 are never deleted (`server/core.mjs`
-      push loop). Prune them.
-- [ ] Pending contact requests never expire.
-- [ ] Participants' persistent device id and account id are visible to everyone in
-      every call (identity + metadata + waiting-room queue). Use a per-room hash.
+- [ ] Participants' account id is visible to everyone in every call (participant
+      metadata), which links you across calls. It feeds photos and the
+      same-account-on-another-device check, so a per-room value needs those to
+      move server-side. (The device id is already per call.)
 
 ## Experience
 
@@ -95,10 +87,6 @@ of people (see that PR).
       should move into TopStack so the layering rules cover them.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
-- [ ] Turning a camera back ON after another app took it fails silently: a muted
-      track re-acquires via `unmute()` → `restart()`, which never raises LiveKit's
-      `MediaDevicesError` (`useMediaDeviceWatch`), so no message and an unhandled
-      rejection. Catch at the toggle call sites or wrap `setCameraEnabled`.
 - [ ] Long toasts still overlap prejoin's Back label on a phone while they're up
       (part of moving toasts into TopStack, above).
 

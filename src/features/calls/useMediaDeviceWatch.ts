@@ -8,7 +8,7 @@ import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { useScreenShare } from '@/features/calls/useScreenShare'
 import { recoverMicrophone } from '@/lib/audioRecovery'
 import { setMicFault } from '@/store/useAudioStore'
-import { toggleDevice } from '@/lib/deviceToggle'
+import { markDeviceErrorTold, toggleDevice } from '@/lib/deviceToggle'
 
 /** What to announce for a mic we couldn't get back — each names a different fix. */
 const FAULT_MESSAGE: Record<'no-device' | 'blocked' | 'acquire-failed', string> = {
@@ -195,8 +195,9 @@ export function useMediaDeviceWatch() {
   // rethrows a failed join-time publish into LiveKitRoom's onError, and CallRoom
   // leaves those to this event rather than toast twice. The wording says why (in
   // use, missing, blocked) where the browser says so (lib/mediaErrors).
-  // Not covered: turning a camera back on after it was muted goes through
-  // track.unmute() → restart(), which never emits this event (audit backlog).
+  // Turning a camera back on after it was muted goes through track.unmute() →
+  // restart(), which never emits this event; lib/deviceToggle covers that path,
+  // and skips errors this handler has already announced.
   useEffect(() => {
     if (!room) return
     const onErr = (e: Error, kind?: MediaDeviceKind) => {
@@ -204,6 +205,7 @@ export function useMediaDeviceWatch() {
       // useScreenShare already tells a real failure from a cancel; "your camera or
       // microphone is blocked" would send the user to the wrong setting.
       if (kind !== 'videoinput' && kind !== 'audioinput') return
+      markDeviceErrorTold(e)
       reportError(e, { context: 'media-devices-error' })
       const what = kind === 'videoinput' ? 'camera' : kind === 'audioinput' ? 'microphone' : undefined
       const known = mediaErrorMessage(e, what)

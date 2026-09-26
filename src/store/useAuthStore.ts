@@ -147,7 +147,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     const url = sb.storage.from(AVATAR_BUCKET).getPublicUrl(path).data.publicUrl
     const previous = avatarObjects(userId, get().avatarUrl)
-    await sb.from('profiles').upsert({ id: userId, avatar_url: url })
+    const { error: rowErr } = await sb.from('profiles').upsert({ id: userId, avatar_url: url })
+    if (rowErr) {
+      // The account still points at the old photo: keep it, drop the new one.
+      await sb.storage.from(AVATAR_BUCKET).remove([path]).catch(() => {})
+      throw new Error('Couldn’t save your photo — try again')
+    }
     set({ avatarUrl: url })
     // The old photo (and the legacy fixed-name one) go once the row points away.
     await sb.storage.from(AVATAR_BUCKET).remove(previous.filter((o) => o !== path)).catch(() => {})
