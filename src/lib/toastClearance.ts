@@ -46,14 +46,22 @@ export function useToastClearance(ref: RefObject<Element | null>, active = true)
     const el = ref.current
     if (!el || !active || typeof ResizeObserver === 'undefined') return
     if (!observer) observer = new ResizeObserver(schedule)
-    if (tracked.size === 0) window.addEventListener('resize', schedule)
+    // Resize, and scroll in any container (prejoin's card scrolls as a fallback on
+    // a tiny screen, which moves its header without resizing it).
+    if (tracked.size === 0) {
+      window.addEventListener('resize', schedule)
+      window.addEventListener('scroll', schedule, { capture: true, passive: true })
+    }
     tracked.add(el)
     observer.observe(el)
     schedule()
     return () => {
       tracked.delete(el)
       observer?.unobserve(el)
-      if (tracked.size === 0) window.removeEventListener('resize', schedule)
+      if (tracked.size === 0) {
+        window.removeEventListener('resize', schedule)
+        window.removeEventListener('scroll', schedule, { capture: true })
+      }
       schedule()
     }
   }, [ref, active])

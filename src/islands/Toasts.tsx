@@ -91,9 +91,13 @@ export function Toasts() {
     <div
       aria-live="polite"
       data-testid="toasts"
+      data-toasts
       // Starts below whatever owns the top band (TopStack's banners, prejoin's Back
-      // row on a phone) — lib/toastClearance measures it.
-      className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top),var(--toast-top,0px))] z-[60] flex flex-col items-center gap-2 px-4"
+      // row on a phone) — lib/toastClearance measures it — and glides when that
+      // band grows or shrinks rather than jumping. Under a modal it goes back to the
+      // top edge (app.css): the banners are behind the scrim then, and the offset
+      // would only push toasts onto the dialog.
+      className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top),var(--toast-top,0px))] z-[60] flex flex-col items-center gap-2 px-4 transition-[top] duration-[var(--dur-base)] ease-[var(--ease-island)]"
     >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />

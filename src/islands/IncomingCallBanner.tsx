@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { LeaveIcon, CameraIcon } from '@/components/icons'
@@ -7,6 +7,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { roomTo } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
+import { useToastClearance } from '@/lib/toastClearance'
 
 /**
  * App-level incoming-call surface, mounted once. Owns the single Realtime
@@ -33,6 +34,10 @@ export function IncomingCallBanner() {
     const t = window.setInterval(() => setElapsed((s) => s + 1), 1000)
     return () => window.clearInterval(t)
   }, [incoming])
+  // The desktop banner owns the top edge while it rings: toasts queue under it
+  // rather than over its Join / Ignore buttons.
+  const bannerRef = useRef<HTMLDivElement>(null)
+  useToastClearance(bannerRef, Boolean(incoming) && !inCall && !touch)
   // In a call → defer to the in-call banner (which adds Merge / Switch).
   if (inCall || !incoming) return null
   const mmss = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
@@ -87,7 +92,10 @@ export function IncomingCallBanner() {
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-50 flex justify-center px-4">
+    <div
+      ref={bannerRef}
+      className="pointer-events-none fixed inset-x-0 top-[max(1rem,env(safe-area-inset-top))] z-50 flex justify-center px-4"
+    >
       <Island elevation="raised" pad="sm" className="pointer-events-auto flex items-center gap-3">
         <Avatar name={incoming.fromName} size="sm" />
         <div className="min-w-0">

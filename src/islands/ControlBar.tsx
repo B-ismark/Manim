@@ -188,10 +188,14 @@ export function ControlBar({
   const [audioTrayOpen, setAudioTrayOpen] = useState(false)
   const touch = useIsTouch()
   // A desktop window narrower than the full bar — 400% zoom on a 1280px screen is
-  // 320 CSS px (WCAG reflow), and the bar measures ~560. It used to run off both
-  // edges, taking Mute and End for everyone with it. Narrow, it keeps mic, camera,
-  // chat, More and Leave, and the rest moves into More exactly as it does on touch.
-  const narrowBar = useMediaQuery('(max-width: 599px)') && !touch
+  // 320 CSS px (WCAG reflow). It used to run off both edges, taking Mute and End
+  // for everyone with it. Narrow, it keeps mic, camera, chat, More and Leave, and
+  // the rest moves into More exactly as it does on touch. The threshold is the
+  // WIDEST bar plus its margins: a host during a share (Annotate and the split
+  // Leave both showing) measures ~614px and the island sits 16px in from each
+  // edge, so anything under ~646px clipped it. 680 leaves room for one more
+  // control; add one and re-measure (24-reflow-and-layers sweeps the widths).
+  const narrowBar = useMediaQuery('(max-width: 679px)') && !touch
   const compact = touch || narrowBar
   useEffect(() => {
     onMenuOpenChange?.(audioTrayOpen)

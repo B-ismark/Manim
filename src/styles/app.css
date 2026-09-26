@@ -453,4 +453,10 @@
     backdrop-filter: none !important;
     -webkit-backdrop-filter: none !important;
   }
+
+  /* A modal owns the screen: toasts drop back to the top edge instead of queueing
+     under banners that are behind its scrim now (lib/toastClearance). */
+  html:has([role='dialog'][aria-modal='true']) [data-toasts] {
+    top: max(1rem, env(safe-area-inset-top));
+  }
 }

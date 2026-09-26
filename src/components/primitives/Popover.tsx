@@ -19,6 +19,8 @@ export interface PopoverProps {
   /** The panel's accessible name. Default: whatever the trigger is called, so a
    *  screen reader says "More options, dialog" rather than an unnamed dialog. */
   label?: string
+  /** Radix's close-time focus return; `preventDefault()` keeps focus where it is. */
+  onCloseAutoFocus?: (e: Event) => void
 }
 
 /** Anchored transient panel (More menu, device pickers). Radix handles a11y. */
@@ -32,6 +34,7 @@ export function Popover({
   modal = false,
   className,
   label,
+  onCloseAutoFocus,
 }: PopoverProps) {
   const triggerId = useId()
   return (
@@ -46,6 +49,7 @@ export function Popover({
           sideOffset={10}
           aria-label={label}
           aria-labelledby={label ? undefined : triggerId}
+          onCloseAutoFocus={onCloseAutoFocus}
           className={cn(
             'z-50 min-w-44 rounded-island bg-raised text-ink shadow-pop border border-line p-2 mn-pop',
             'focus:outline-none',

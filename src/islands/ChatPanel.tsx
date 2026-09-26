@@ -759,6 +759,11 @@ function MessageRow({
   // Touch action model: tap a bubble to open the actions popover (Reply, reaction,
   // edit, pin); swipe-left is a shortcut for reply. Desktop keeps the hover toolbar.
   const [actionsOpen, setActionsOpen] = useState(false)
+  // Where focus should land once the touch actions menu has closed. The menu is
+  // modal, so it holds focus until it's gone; a field that mounts in the same
+  // commit (Edit's textarea) can't take it with autoFocus and has to be handed it.
+  const afterMenu = useRef<(() => void) | null>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
   // Touch reaction picker rides a bottom Sheet (full width + scrollable + scrim)
   // rather than the cramped long-press popover — the emoji grid needs the room.
   const [reactOpen, setReactOpen] = useState(false)
@@ -838,6 +843,7 @@ function MessageRow({
   }
   return (
     <div
+      ref={rowRef}
       data-mid={item.id}
       onPointerDown={onRowPointerDown}
       onPointerMove={onRowPointerMove}
@@ -1077,6 +1083,22 @@ function MessageRow({
             side="top"
             align="end"
             label="Message actions"
+            // Radix returns focus to the trigger on close. When the action has put
+            // focus somewhere on purpose (Edit's textarea, the composer for Reply),
+            // leave it there — stealing it back closed the phone's keyboard.
+            // Dismissed without an action, focus goes back to the button, which is
+            // where a screen reader user left off.
+            onCloseAutoFocus={(e) => {
+              const next = afterMenu.current
+              afterMenu.current = null
+              if (next) {
+                e.preventDefault()
+                next()
+                return
+              }
+              const el = document.activeElement
+              if (el && el !== document.body) e.preventDefault()
+            }}
             // A real button, not a bare anchor: tapping the bubble is invisible to
             // a screen reader, so VoiceOver/TalkBack had no route to Reply, react,
             // edit or pin at all. It stays a 1px spot at the bubble's corner (the
@@ -1135,6 +1157,7 @@ function MessageRow({
                   type="button"
                   className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
                   onClick={() => {
+                    afterMenu.current = () => rowRef.current?.querySelector('textarea')?.focus()
                     setActionsOpen(false)
                     startEdit()
                   }}
