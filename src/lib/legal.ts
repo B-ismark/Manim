@@ -1,8 +1,9 @@
 /**
  * Single source of truth for the user-facing legal/operational surfaces
  * (privacy policy, terms, footer). Centralised so the operator contact and the
- * provider list are edited in ONE place. `public/.well-known/security.txt` is a
- * static file and carries its own copy of the contact address: keep them in step.
+ * provider list are edited in ONE place. `public/.well-known/security.txt`, when
+ * published, is a static file with its own copy of the contact address: keep them
+ * in step.
  *
  * The policy/terms text is an honest description of what the code actually does,
  * not legal advice — have counsel review it for the jurisdictions you operate in
@@ -12,8 +13,12 @@
 
 export const APP_NAME = 'Manim'
 
-/** Operator contact for privacy, deletion, abuse, and security disclosure. */
-export const CONTACT_EMAIL = 'bismarkgyau@gmail.com'
+/** Operator contact for privacy, deletion, abuse, and security disclosure. Empty
+ *  until the owner publishes one: the legal pages then say an address is coming
+ *  and point to Settings → Delete account, and the footer drops its Contact link.
+ *  When you set it, also restore `public/.well-known/security.txt` (RFC 9116
+ *  requires a Contact line, so it was taken down rather than left invalid). */
+export const CONTACT_EMAIL: string = ''
 
 /** Youngest age allowed to use Manim (the GDPR default for consenting alone). */
 export const MIN_AGE = 16

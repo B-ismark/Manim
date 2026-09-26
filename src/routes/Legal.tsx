@@ -44,14 +44,44 @@ function P({ children }: { children: ReactNode }) {
   return <p className="text-sm leading-relaxed text-ink-muted">{children}</p>
 }
 
-function MailLink() {
+const linkClass = 'font-medium text-accent-text underline underline-offset-2 hover:text-accent-hover'
+
+/** "email <address>", or — while no address is published — "contact us",
+ *  pointing at the Contact section that says what to do meanwhile. */
+function ContactUs({ start = false }: { start?: boolean }) {
+  if (!CONTACT_EMAIL)
+    return (
+      <a href="#contact" className={linkClass}>
+        {start ? 'Contact us' : 'contact us'}
+      </a>
+    )
   return (
-    <a
-      href={`mailto:${CONTACT_EMAIL}`}
-      className="font-medium text-accent underline underline-offset-2 hover:text-accent-hover"
-    >
-      {CONTACT_EMAIL}
-    </a>
+    <>
+      {start ? 'Email' : 'email'}{' '}
+      <a href={`mailto:${CONTACT_EMAIL}`} className={linkClass}>
+        {CONTACT_EMAIL}
+      </a>
+    </>
+  )
+}
+
+/** The Contact section's body: the address, or what to do until there is one. */
+function ContactBody({ topic }: { topic: string }) {
+  if (CONTACT_EMAIL)
+    return (
+      <>
+        {topic}:{' '}
+        <a href={`mailto:${CONTACT_EMAIL}`} className={linkClass}>
+          {CONTACT_EMAIL}
+        </a>
+        .
+      </>
+    )
+  return (
+    <>
+      We're setting up a contact address for {topic.toLowerCase()} and will publish it here.
+      Meanwhile you can delete your account yourself from Settings → Delete account.
+    </>
   )
 }
 
@@ -170,7 +200,7 @@ export function Privacy() {
           your data from that browser. Some copies outlast it for a while: call invitations in our
           database (up to 3 days), our email and crash-report providers' logs (for as long as they
           keep them), and, if you were given early access, your email on our access list until we
-          remove it. Email <MailLink /> to have those removed too. Call audio and video are never
+          remove it. <ContactUs start /> to have those removed too. Call audio and video are never
           kept, since calls aren't recorded.
         </P>
       </section>
@@ -189,8 +219,8 @@ export function Privacy() {
         <Heading>Children</Heading>
         <P>
           {APP_NAME} is for people aged {MIN_AGE} and over. We don't knowingly collect data from
-          anyone younger. If you think a child under {MIN_AGE} has given us their data, email{' '}
-          <MailLink /> and we'll delete it.
+          anyone younger. If you think a child under {MIN_AGE} has given us their data,{' '}
+          <ContactUs /> and we'll delete it.
         </P>
       </section>
 
@@ -199,7 +229,7 @@ export function Privacy() {
         <P>
           You can ask for a copy of the data we hold about you, have it corrected or deleted, ask
           us to stop or limit using it, or take back a choice you made, such as notifications.
-          Email <MailLink /> and we'll reply within a month. If you're unhappy with the answer,
+          <ContactUs start /> and we'll reply within a month. If you're unhappy with the answer,
           you can complain to your local data protection authority.
         </P>
       </section>
@@ -212,11 +242,11 @@ export function Privacy() {
         </P>
       </section>
 
-      <section>
+      <section id="contact" className="scroll-mt-6">
         <Heading>Contact</Heading>
         <P>
-          Questions, deletion requests, or abuse reports: <MailLink />. The Report button in a call
-          alerts that call's host only; to report abuse to us, email us.
+          <ContactBody topic="Questions, deletion requests and abuse reports" /> The Report button
+          in a call alerts that call's host only.
         </P>
       </section>
     </LegalPage>
@@ -280,7 +310,7 @@ export function Terms() {
       <section>
         <Heading>Contact</Heading>
         <P>
-          Questions about these terms: <MailLink />.
+          <ContactBody topic="Questions about these terms" />
         </P>
       </section>
     </LegalPage>
