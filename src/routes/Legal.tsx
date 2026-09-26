@@ -166,8 +166,8 @@ export function Privacy() {
         <Heading>Local storage (no cookie banner)</Heading>
         <P>
           {APP_NAME} stores what it needs to work in your browser’s local storage: your sign-in,
-          display name, device and guest ids, your notification choice, your theme, sound, device
-          and effect preferences, and your recent rooms with their invite links and saved keys. It
+          display name, device and guest ids, your notification choice, your theme, sound, keyboard,
+          device and effect preferences, and your recent rooms with their invite links and saved keys. It
           doesn’t use cookies, and nothing is used to track you across sites, so there’s no consent
           banner. Signing out removes your sign-in, name, ids, notification subscription, recent
           rooms and saved keys from this browser, and keeps your theme and device preferences. Other tabs that are still open, and your browser’s history, keep

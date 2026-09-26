@@ -63,6 +63,7 @@ import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
 import { cn } from '@/lib/cn'
+import { useShortcutStore } from '@/store/useShortcutStore'
 
 export interface ControlBarProps {
   /** When false (mobile auto-hide), the bar slides out of the thumb zone. */
@@ -295,14 +296,18 @@ export function ControlBar({
   // Desktop keyboard shortcuts (Architecture-Plan §8.6). Ignored on touch and
   // while typing / holding a modifier, so they never fight text entry or browser
   // chords. Leave/end are intentionally NOT bound — too costly to trigger by slip.
+  const shortcutsOn = useShortcutStore((s) => s.enabled)
   useEffect(() => {
-    if (touch) return
+    if (touch || !shortcutsOn) return
     function onKey(e: KeyboardEvent) {
       if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return
       const el = e.target as HTMLElement | null
       if (el?.closest('input, textarea, [contenteditable="true"], select')) return
-      // Don't hijack keys while a dialog/menu is open (e.g. the shortcuts dialog).
-      if (document.querySelector('[role="dialog"], [role="menu"]')) return
+      // Don't hijack keys while a MODAL dialog or a menu is open (e.g. the
+      // shortcuts dialog). Only modal: the docked chat/people panel is a
+      // non-modal dialog too, and matching it switched every shortcut off for as
+      // long as the panel was open.
+      if (document.querySelector('[role="dialog"][aria-modal="true"], [role="menu"]')) return
       switch (e.key.toLowerCase()) {
         case 'm':
           void localParticipant.setMicrophoneEnabled(!isMicrophoneEnabled)
@@ -329,7 +334,7 @@ export function ControlBar({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [touch, localParticipant, isMicrophoneEnabled, toggleCamera, toggleFullscreen, setPanel, panel])
+  }, [touch, shortcutsOn, localParticipant, isMicrophoneEnabled, toggleCamera, toggleFullscreen, setPanel, panel])
 
   // Shared "More" body — rendered in a bottom sheet on mobile, a popover on
   // desktop. A reaction strip headlines the sheet; quick toggles fill a grid;
@@ -515,6 +520,7 @@ export function ControlBar({
           icon={<SortIcon />}
           label="Videos first"
           active={videosFirst}
+          pressed={videosFirst}
           // State toggle: stays open so you see the state flip.
           onClick={toggleVideosFirst}
         />
@@ -771,10 +777,11 @@ export function ControlBar({
         <Tooltip content="Chat">
           <span className="relative inline-flex">
             <IconButton
-              label="Open chat"
+              label={unread > 0 && panel !== 'chat' ? `Open chat, ${unread} unread` : 'Open chat'}
               icon={<ChatIcon />}
               tone="neutral"
               active={panel === 'chat'}
+              aria-expanded={panel === 'chat'}
               onClick={() => togglePanel('chat')}
             />
             {unread > 0 && panel !== 'chat' && (
@@ -800,6 +807,8 @@ export function ControlBar({
               icon={<MoreIcon />}
               tone="neutral"
               active={moreOpen}
+              aria-haspopup="dialog"
+              aria-expanded={moreOpen}
               onClick={() => setMore(true)}
             />
             <Sheet open={moreOpen} onOpenChange={setMore} side="bottom" title="More">
@@ -923,6 +932,9 @@ export function ControlBar({
     >
       <Island
         ref={barRef}
+        // A landmark, so "jump to Call controls" works from anywhere on the page.
+        role="region"
+        aria-label="Call controls"
         pad="none"
         elevation="raised"
         // Capture phase, on the whole island: a press anywhere on it — including
@@ -980,7 +992,7 @@ const SHORTCUTS: Array<[string, string]> = [
 /** Keyboard-shortcut legend (desktop). Opened from More or by pressing "?". */
 function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts" description="Available on desktop while not typing.">
+    <Dialog open={open} onOpenChange={onOpenChange} title="Keyboard shortcuts" description="Available on desktop while not typing. Turn them off in Settings.">
       <ul className="flex flex-col gap-1.5">
         {SHORTCUTS.map(([key, desc]) => (
           <li key={key} className="flex items-center justify-between gap-4 text-sm">
@@ -1074,12 +1086,16 @@ function MenuRow({
   label,
   onClick,
   active,
+  pressed,
   danger,
 }: {
   icon: ReactNode
   label: string
   onClick: () => void
   active?: boolean
+  /** A toggle whose label doesn't change: announced as pressed, and marked with a
+   *  check, so its state isn't carried by the text colour alone. */
+  pressed?: boolean
   /** Destructive row (end the call for everyone) — tone matches the bar's control. */
   danger?: boolean
 }) {
@@ -1092,9 +1108,11 @@ function MenuRow({
       // platform guidelines, and sitting next to 68px GridTiles.
       className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent-text data-[danger=true]:text-danger-text"
       data-active={active}
+      aria-pressed={pressed}
     >
       {icon}
       {label}
+      {pressed && <CheckIcon className="ml-auto" aria-hidden />}
     </button>
   )
 }

@@ -30,6 +30,26 @@ test.describe('A11y — interaction behaviours', () => {
     await expect(tile).not.toHaveAttribute('aria-label', /pinned/, { timeout: 10_000 })
   })
 
+  test('keyboard: closing a panel puts focus back on the control that opened it', async ({ page }) => {
+    test.skip(await isTouch(page), 'keyboard focus return is a pointer-fine behaviour')
+    const room = uniqueRoom('kbfocus')
+    await join(page, room, 'Solo')
+
+    // Radix only restores focus to its own Trigger, which the app never uses, so
+    // closing used to drop focus on <body> (the top of the page for a keyboard user).
+    const chat = page.getByRole('button', { name: /^Open chat/ })
+    await chat.focus()
+    await page.keyboard.press('Enter')
+    const composer = page.getByRole('combobox', { name: 'Message' })
+    await expect(composer).toBeVisible({ timeout: 10_000 })
+    await expect(chat).toHaveAttribute('aria-expanded', 'true')
+
+    await page.keyboard.press('Escape')
+    await expect(composer).toBeHidden()
+    await expect(chat).toBeFocused()
+    await expect(chat).toHaveAttribute('aria-expanded', 'false')
+  })
+
   test('announcer: muting the mic updates the polite live region', async ({ page }) => {
     const room = uniqueRoom('announce')
     await join(page, room, 'Speaker')

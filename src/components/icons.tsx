@@ -13,6 +13,9 @@ const base = (props: P) => ({
   strokeWidth: 2,
   strokeLinecap: 'round' as const,
   strokeLinejoin: 'round' as const,
+  // Decorative unless labelled: an unlabelled icon is noise to a screen reader,
+  // and a labelled one (the lock on the call timer) is an image with a name.
+  ...(props['aria-label'] ? { role: 'img' } : { 'aria-hidden': true }),
   ...props,
 })
 

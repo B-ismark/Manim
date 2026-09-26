@@ -37,7 +37,9 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
   }, [paused])
   return (
     <div
-      role="status"
+      // A failure interrupts (alert); everything else waits its turn in the
+      // stack's polite region below.
+      role={toast.tone === 'danger' ? 'alert' : undefined}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -86,9 +88,13 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
 export function Toasts() {
   const toasts = useToastStore((s) => s.toasts)
   const dismiss = useToastStore((s) => s.dismiss)
-  if (toasts.length === 0) return null
+  // Always mounted, even when empty: a live region inserted already holding its
+  // text is often not announced at all, so the region has to exist first.
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-2 px-4">
+    <div
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-2 px-4"
+    >
       {toasts.map((t) => (
         <ToastItem key={t.id} toast={t} onDismiss={() => dismiss(t.id)} />
       ))}

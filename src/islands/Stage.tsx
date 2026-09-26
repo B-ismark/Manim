@@ -880,6 +880,10 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   useEffect(() => {
     if (page !== current) setPage(current)
   }, [page, current])
+  // Reaching either end disables that arrow, which would drop keyboard focus to
+  // <body>; hand it to the other arrow first.
+  const prevRef = useRef<HTMLButtonElement>(null)
+  const nextRef = useRef<HTMLButtonElement>(null)
 
   const start = current * perPage
   const shown = ordered.slice(start, start + perPage)
@@ -928,18 +932,26 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
         <>
           <button
             type="button"
+            ref={prevRef}
             aria-label="Previous page"
             disabled={current === 0}
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            onClick={() => {
+              if (current - 1 <= 0) nextRef.current?.focus()
+              setPage((p) => Math.max(0, p - 1))
+            }}
             className="absolute left-1 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-overlay text-white shadow-pop backdrop-blur transition-opacity hover:bg-overlay disabled:pointer-events-none disabled:opacity-0 [&_svg]:size-5"
           >
             <ChevronLeftIcon />
           </button>
           <button
             type="button"
+            ref={nextRef}
             aria-label="Next page"
             disabled={current >= pageCount - 1}
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+            onClick={() => {
+              if (current + 1 >= pageCount - 1) prevRef.current?.focus()
+              setPage((p) => Math.min(pageCount - 1, p + 1))
+            }}
             className="absolute right-1 top-1/2 z-10 grid size-10 -translate-y-1/2 place-items-center rounded-full bg-overlay text-white shadow-pop backdrop-blur transition-opacity hover:bg-overlay disabled:pointer-events-none disabled:opacity-0 [&_svg]:size-5"
           >
             <ChevronRightIcon />
@@ -2026,6 +2038,7 @@ function Tile({
               // toneActive.accent — the darker PRESSED shade — so this one control
               // would have looked different from the rest when switched on.
               active={blur.mode === 'blur'}
+              pressed={blur.mode === 'blur'}
               className={cn(blur.mode !== 'blur' && 'bg-overlay text-white hover:bg-overlay')}
               onClick={() => (blur.mode === 'blur' ? blur.useNone() : blur.useBlur())}
             />

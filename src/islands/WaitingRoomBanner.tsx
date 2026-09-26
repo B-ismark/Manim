@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRoomContext } from '@livekit/components-react'
 import { Island, Button, Avatar } from '@/components/primitives'
 import { admit, listPending, type PendingKnocker } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
+import { useAnnounce } from '@/features/a11y/AnnouncerContext'
 
 /**
  * Host-only: shows people knocking when the waiting room is on, with Admit/Deny.
@@ -12,6 +13,18 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
   const room = useRoomContext()
   const token = useAppStore((s) => s.roomToken)
   const [pending, setPending] = useState<PendingKnocker[]>([])
+
+  // Say who's arrived, once each: the banner alone is silent to a host using a
+  // screen reader, who would have to go looking for it.
+  const announce = useAnnounce()
+  const announced = useRef(new Set<string>())
+  useEffect(() => {
+    for (const p of pending) {
+      if (announced.current.has(p.id)) continue
+      announced.current.add(p.id)
+      announce(`${p.name} is waiting to join`)
+    }
+  }, [pending, announce])
 
   useEffect(() => {
     if (!active || !token) {
@@ -71,10 +84,10 @@ export function WaitingRoomBanner({ active }: { active: boolean }) {
             <span dir="auto" className="min-w-0 flex-1 truncate text-sm font-medium">{p.name}</span>
             {/* Default (40px) size: admitting/denying a person is consequential
                 enough to deserve a full touch target, not the compact sm. */}
-            <Button variant="accent" onClick={() => decide(p.id, true)}>
+            <Button variant="accent" aria-label={`Admit ${p.name}`} onClick={() => decide(p.id, true)}>
               Admit
             </Button>
-            <Button variant="ghost" onClick={() => decide(p.id, false)}>
+            <Button variant="ghost" aria-label={`Deny ${p.name}`} onClick={() => decide(p.id, false)}>
               Deny
             </Button>
           </li>

@@ -1,6 +1,7 @@
 import * as RD from '@radix-ui/react-dialog'
 import type { ReactNode } from 'react'
 import { cn } from '@/lib/cn'
+import { ownsEscape, useReturnFocus } from './useReturnFocus'
 
 export interface DialogProps {
   open: boolean
@@ -11,6 +12,9 @@ export interface DialogProps {
   description?: string
   children: ReactNode
   className?: string
+  /** Where focus goes on close if whatever opened the dialog has since unmounted
+   *  (a menu row, say). */
+  returnFocus?: { current: HTMLElement | null }
 }
 
 /** Modal dialog over the scrim. Radix handles focus trap + Esc + ARIA. */
@@ -22,12 +26,16 @@ export function Dialog({
   description,
   children,
   className,
+  returnFocus,
 }: DialogProps) {
+  const onCloseAutoFocus = useReturnFocus(open, returnFocus)
   return (
     <RD.Root open={open} onOpenChange={onOpenChange}>
       <RD.Portal>
         <RD.Overlay className="fixed inset-0 z-40 bg-scrim mn-pop" />
         <RD.Content
+          onCloseAutoFocus={onCloseAutoFocus}
+          onEscapeKeyDown={(e) => ownsEscape(e.target) && e.preventDefault()}
           className={cn(
             'fixed left-1/2 top-1/2 z-50 flex w-[min(92vw,32rem)] -translate-x-1/2 -translate-y-1/2 flex-col lg:w-[min(90vw,38rem)]',
             // Bound to the viewport so tall bodies (effects preview + controls)
@@ -43,7 +51,7 @@ export function Dialog({
               who doesn't know the shortcut. Sits above the title row. */}
           <RD.Close
             aria-label="Close"
-            className="absolute right-3 top-3 grid size-8 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="absolute right-3 top-3 grid size-8 place-items-center pointer-coarse:size-11 pointer-coarse:right-1.5 pointer-coarse:top-1.5 rounded-control text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
