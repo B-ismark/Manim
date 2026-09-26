@@ -14,7 +14,8 @@
   worker-src — without it noise suppression fails WORKLET_NOT_SUPPORTED on the
   deployed site only; only script already on the page can mint a blob URL). It
   also allows the MediaPipe CDN + wasm (blur), and Sentry's
-  loader (js.sentry-cdn.com) plus the SDK bundle it pulls in
+  loader (js.sentry-cdn.com, or js-de. for an EU project — lib/report's
+  sentryLoaderUrl) plus the SDK bundle it pulls in
   (browser.sentry-cdn.com) for crash reports when VITE_SENTRY_DSN is set; the
   reports themselves go to *.ingest.sentry.io, already inside connect-src.
   NOTE: verify against the DEPLOYED artifact — tune if a console CSP violation
@@ -30,7 +31,7 @@ export const CSP = [
   "media-src 'self' blob:",
   "font-src 'self' data:",
   "style-src 'self' 'unsafe-inline'",
-  "script-src 'self' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://browser.sentry-cdn.com",
+  "script-src 'self' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://js-de.sentry-cdn.com https://browser.sentry-cdn.com",
   "worker-src 'self' blob:",
   "connect-src 'self' https: wss:",
 ].join('; ')
