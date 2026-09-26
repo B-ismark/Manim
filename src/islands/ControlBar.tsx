@@ -36,7 +36,6 @@ import {
   SpeakerLayoutIcon,
   EffectsIcon,
   KeyboardIcon,
-  EyeOffIcon,
   EyeIcon,
   SlidersIcon,
   SortIcon,
@@ -45,6 +44,7 @@ import {
   AnnotateIcon,
   CheckIcon,
   CloseIcon,
+  ChevronRightIcon,
 } from '@/components/icons'
 import { DeviceSettings, DeviceRow, useSwitchDevice } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
@@ -179,7 +179,10 @@ export function ControlBar({
     (id: NonNullable<typeof modal>) => (open: boolean) => setModal(open ? id : null),
     [],
   )
-  const [moreOpen, setMoreOpen] = useState(false)
+  const moreOpen = useRoomStore((s) => s.moreOpen)
+  const setMoreOpen = useRoomStore((s) => s.setMoreOpen)
+  // A closed call leaves nothing open behind it for the next one.
+  useEffect(() => () => setMoreOpen(false), [setMoreOpen])
   const moreRef = useRef<HTMLButtonElement>(null)
   // The audio tray. Not a Radix layer, so the DOM-based auto-hide guard in
   // useStageChrome can't see it — it needs the explicit hold below or the island
@@ -199,7 +202,8 @@ export function ControlBar({
   const rail = useRail()
   // A rail too short for one column wraps into two (lib/chromeBands).
   const twoCol = useRailTwoCol()
-  const companionOpen = useChatCompanion().mode !== 'none'
+  const companion = useChatCompanion()
+  const companionOpen = companion.mode !== 'none'
   const compact = touch || narrowBar
   // A modal and the tray must not be up together — the modal would scrim the tray
   // it was opened from.
@@ -534,30 +538,18 @@ export function ControlBar({
             closeMore()
           }}
         />
+        {/* Switches say where they stand (On / Off), rather than flipping their
+            own words: "Hide self view" read as an instruction and a state at once.
+            They stay open on a click, so you see it change. */}
+        <MenuRow icon={<EyeIcon />} label="Self view" state={!selfViewHidden} onClick={toggleSelfView} />
+        <MenuRow icon={<SortIcon />} label="Videos first" state={videosFirst} onClick={toggleVideosFirst} />
+        {/* Whether we DECODE others' video. Named for what it's for (Discord "Allow
+            incoming video", a data-saver) and kept away from the "Audio & video"
+            device picker it used to be confused with. */}
         <MenuRow
-          icon={selfViewHidden ? <EyeIcon /> : <EyeOffIcon />}
-          label={selfViewHidden ? 'Show self view' : 'Hide self view'}
-          active={selfViewHidden}
-          // State toggle: stays open so you see the state flip.
-          onClick={toggleSelfView}
-        />
-        <MenuRow
-          icon={<SortIcon />}
-          label="Videos first"
-          active={videosFirst}
-          pressed={videosFirst}
-          // State toggle: stays open so you see the state flip.
-          onClick={toggleVideosFirst}
-        />
-        {/* This toggles whether we DECODE others' video — renamed off "Audio-only
-            mode" because it read as (and sat next to) the "Audio & video" device
-            picker, the exact confusion users reported. Framed as incoming video
-            (Discord "Allow incoming video" / Skype), with a data-saver hint. */}
-        <MenuRow
-          icon={audioOnly ? <CameraIcon /> : <CameraOffIcon />}
-          label={audioOnly ? 'Turn on incoming video' : 'Turn off incoming video (save data)'}
-          active={audioOnly}
-          // State toggle: stays open so you see the state flip.
+          icon={<CameraOffIcon />}
+          label="Save data (pause incoming video)"
+          state={audioOnly}
           onClick={toggleAudioOnly}
         />
         <div className="my-1 border-t border-line" />
@@ -594,6 +586,177 @@ export function ControlBar({
             }}
           />
         </div>
+      </div>
+    </div>
+  )
+
+  /**
+   * More on a phone: ONE grid of identical tiles, no section headings.
+   *
+   * The list it replaces had five kinds of element (round emoji, a segmented
+   * switch, captioned circles, a flat list and headings between them), which is
+   * what read as clutter. Now reactions share the top row, the view switch sits
+   * under them, and everything else is the same tile. What a tile does is carried
+   * by its corner: an on/off switch shows a small toggle (and the tile turns accent
+   * when it's on), a tile that opens something shows an arrow, and a plain action
+   * shows neither. Three across upright; four in the sideways panel, which is the
+   * same width as the chat panel so the call beside it doesn't move.
+   *
+   * Same order and names as the desktop menu, so the two can't drift apart.
+   */
+  const reactionRow = (
+    <div className="flex items-center justify-between gap-1" role="group" aria-label="Reactions">
+      {REACTION_EMOJI.map((e) => (
+        <IconButton
+          key={e}
+          label={`React ${e}`}
+          icon={<span className="text-xl">{e}</span>}
+          className="rounded-full"
+          onClick={() => {
+            sendReaction(e)
+            closeMore()
+          }}
+        />
+      ))}
+      <IconButton
+        label={handRaised ? 'Lower hand' : 'Raise hand'}
+        icon={<HandIcon />}
+        tone={handRaised ? 'accent' : 'neutral'}
+        active={handRaised}
+        className="rounded-full"
+        onClick={() => {
+          toggleHand()
+          closeMore()
+        }}
+      />
+    </div>
+  )
+  const moreTouch = (
+    <div className={cn('flex flex-col px-3 pb-3', rail ? 'gap-2' : 'gap-3')}>
+      {!rail && reactionRow}
+      <div className="flex h-11 shrink-0 rounded-full bg-sunken p-1" role="group" aria-label="View layout">
+        {(
+          [
+            { value: 'speaker', label: 'Speaker', icon: <SpeakerLayoutIcon /> },
+            { value: 'grid', label: 'Gallery', icon: <GridIcon /> },
+          ] as const
+        ).map((opt) => {
+          const active = layout === opt.value
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => setLayout(opt.value)}
+              className={cn(
+                'flex flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-colors [&_svg]:size-4',
+                active ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted',
+              )}
+            >
+              {opt.icon}
+              {opt.label}
+            </button>
+          )
+        })}
+      </div>
+      <div className={cn('grid gap-2', rail ? 'grid-cols-4' : 'grid-cols-3')}>
+        {canScreenShare && (
+          <MoreTile
+            compact={rail}
+            icon={<ScreenShareIcon />}
+            label={shareSlotsFull ? 'Share screen (in use)' : 'Share screen'}
+            on={screenShare.enabled}
+            disabled={shareSlotsFull}
+            onClick={() => screenShare.toggle()}
+          />
+        )}
+        <MoreTile
+            compact={rail}
+          icon={<PipIcon />}
+          label="Mini player"
+          on={docPip.supported ? docPip.active : pipActive}
+          onClick={() => {
+            if (docPip.supported) docPip.toggle()
+            else void togglePip()
+            closeMore()
+          }}
+        />
+        {canFullscreen && (
+          <MoreTile
+            compact={rail}
+            icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
+            label="Full screen"
+            on={isFullscreen}
+            onClick={() => {
+              toggleFullscreen()
+              closeMore()
+            }}
+          />
+        )}
+        {/* Switches stay open on a tap, so you see the state flip. */}
+        <MoreTile compact={rail} kind="switch" icon={<EyeIcon />} label="Self view" on={!selfViewHidden} onClick={toggleSelfView} />
+        <MoreTile compact={rail} kind="switch" icon={<SortIcon />} label="Videos first" on={videosFirst} onClick={toggleVideosFirst} />
+        <MoreTile
+            compact={rail}
+          kind="switch"
+          icon={<CameraOffIcon />}
+          label="Save data"
+          name="Save data (pause incoming video)"
+          on={audioOnly}
+          onClick={toggleAudioOnly}
+        />
+        {isHost && <MoreTile compact={rail} kind="switch" icon={<LockIcon />} label="Lock call" on={locked} onClick={onToggleLock} />}
+        {isHost && (
+          <MoreTile compact={rail} kind="switch" icon={<WaitingRoomIcon />} label="Waiting room" on={waiting} onClick={onToggleWaiting} />
+        )}
+        {isHost && (
+          <MoreTile compact={rail} kind="switch" icon={<ChatIcon />} label="Chat history" on={chatHistory} onClick={onToggleChatHistory} />
+        )}
+        <MoreTile
+            compact={rail}
+          kind="link"
+          icon={<EffectsIcon />}
+          label="Effects"
+          name="Backgrounds & effects"
+          onClick={() => {
+            setModal('effects')
+            closeMore()
+          }}
+        />
+        <MoreTile
+            compact={rail}
+          kind="link"
+          icon={<SlidersIcon />}
+          label="Audio & video"
+          onClick={() => {
+            setModal('devices')
+            closeMore()
+          }}
+        />
+        <MoreTile
+            compact={rail}
+          kind="link"
+          icon={<SettingsIcon />}
+          label="Settings"
+          onClick={() => {
+            setModal('settings')
+            closeMore()
+          }}
+        />
+        {/* The one thing here that can't be undone: its own red tile, last, and
+            still through the confirm dialog. */}
+        {isHost && (
+          <MoreTile
+            compact={rail}
+            danger
+            icon={<LeaveIcon />}
+            label="End call for everyone"
+            onClick={() => {
+              setModal('endConfirm')
+              closeMore()
+            }}
+          />
+        )}
       </div>
     </div>
   )
@@ -841,8 +1004,26 @@ export function ControlBar({
               aria-expanded={moreOpen}
               onClick={() => setMore(true)}
             />
-            <Sheet open={moreOpen} onOpenChange={setMore} side="bottom" title="More">
-              {moreContent}
+            <Sheet
+              open={moreOpen}
+              onOpenChange={setMore}
+              side="bottom"
+              title="More"
+              flush
+              // Sideways it's the same right-hand panel as chat (lib/chatCompanion),
+              // with the reactions in its top row beside the X.
+              dock={companion.mode === 'side' ? { width: companion.panelW } : undefined}
+              headerContent={
+                rail ? (
+                  reactionRow
+                ) : (
+                  <span aria-hidden className="px-1 text-lg font-semibold">
+                    More
+                  </span>
+                )
+              }
+            >
+              <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">{moreTouch}</div>
             </Sheet>
           </>
         ) : (
@@ -1157,6 +1338,7 @@ function MenuRow({
   active,
   pressed,
   danger,
+  state,
 }: {
   icon: ReactNode
   label: string
@@ -1167,6 +1349,8 @@ function MenuRow({
   pressed?: boolean
   /** Destructive row (end the call for everyone) — tone matches the bar's control. */
   danger?: boolean
+  /** An on/off switch: announced as pressed, and says On or Off at the row's end. */
+  state?: boolean
 }) {
   return (
     <button
@@ -1175,13 +1359,18 @@ function MenuRow({
       // 44px on a coarse pointer (audit F6). The More sheet is a touch-only surface
       // and these rows were ~36px — clear of WCAG 2.5.8's 24px, short of both
       // platform guidelines, and sitting next to 68px GridTiles.
-      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent-text data-[danger=true]:text-danger-text"
+      className="flex w-full items-center gap-2.5 rounded-field px-2.5 py-2 text-left text-sm hover:bg-sunken pointer-coarse:min-h-11 [&_svg]:size-4 data-[active=true]:text-accent-text data-[danger=true]:text-danger-text"
       data-active={active}
-      aria-pressed={pressed}
+      aria-pressed={state ?? pressed}
     >
       {icon}
       {label}
       {pressed && <CheckIcon className="ml-auto" aria-hidden />}
+      {state !== undefined && (
+        <span aria-hidden className={cn('ml-auto text-xs font-medium', state ? 'text-accent-text' : 'text-ink-subtle')}>
+          {state ? 'On' : 'Off'}
+        </span>
+      )}
     </button>
   )
 }
@@ -1485,6 +1674,84 @@ function BluetoothToggle({ touch = false }: { touch?: boolean }) {
 }
 
 /** Quick-action tile in the More grid: round icon over a small label. */
+/**
+ * One tile of the phone's More grid. `kind` says what a press does, and the
+ * tile's corner says it back: a switch shows a small toggle (accent tile when
+ * on), a link shows an arrow, an action shows nothing. `name` is for the few
+ * whose short label needs its longer, established name for assistive tech; it
+ * always begins with the visible label, so voice control can still say it.
+ */
+function MoreTile({
+  icon,
+  label,
+  name,
+  kind = 'action',
+  on,
+  disabled,
+  danger,
+  compact,
+  onClick,
+}: {
+  icon: ReactNode
+  label: string
+  name?: string
+  compact?: boolean
+  kind?: 'action' | 'switch' | 'link'
+  on?: boolean
+  disabled?: boolean
+  danger?: boolean
+  onClick: () => void
+}) {
+  const lit = Boolean(on) && kind !== 'link'
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={name}
+      aria-pressed={kind === 'link' || danger ? undefined : Boolean(on)}
+      data-danger={danger || undefined}
+      className={cn(
+        'relative flex flex-col items-start justify-between rounded-[18px] text-left text-[13px] font-semibold leading-tight transition-colors [&_svg]:size-5',
+        danger
+          ? 'bg-danger/10 text-danger-text hover:bg-danger/15'
+          : lit
+            ? // Straight accent over the sheet, not accent-soft: that one is mixed
+              // with the warm surface and came out pink, a shade away from the
+              // red End tile two rows down.
+              'bg-accent/15 text-accent-text'
+            : 'bg-sunken text-ink hover:bg-line',
+        // Sideways the sheet is 390px tall and a host's grid is three rows; the
+        // same tile with a slightly tighter pad is what keeps the last row on screen.
+        compact ? 'gap-1.5 p-2.5' : 'min-h-[4.5rem] gap-2 p-3',
+        disabled && 'pointer-events-none opacity-40',
+      )}
+    >
+      <span className="flex w-full items-start justify-between">
+        {icon}
+        {kind === 'switch' && (
+          <span
+            aria-hidden
+            className={cn(
+              'relative h-4 w-7 shrink-0 rounded-full transition-colors',
+              on ? 'bg-accent' : 'bg-line-strong',
+            )}
+          >
+            <span
+              className={cn(
+                'absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-[left]',
+                on ? 'left-3.5' : 'left-0.5',
+              )}
+            />
+          </span>
+        )}
+        {kind === 'link' && <ChevronRightIcon aria-hidden className="!size-4 text-ink-muted" />}
+      </span>
+      <span>{label}</span>
+    </button>
+  )
+}
+
 function GridTile({
   icon,
   label,

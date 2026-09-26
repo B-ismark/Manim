@@ -386,14 +386,15 @@ export async function selectStageView(
 /**
  * Open the More surface — a bottom sheet on touch, a popover on desktop.
  *
- * "Quick actions" is the heading of its body on both platforms, which makes it the
- * signal that the surface is actually up rather than merely asked for.
+ * The Speaker / Gallery switch is in its body on both platforms (the phone's
+ * tile grid has no headings to wait on), which makes it the signal that the
+ * surface is actually up rather than merely asked for.
  */
 export async function openMore(page: Page): Promise<void> {
   await pressChrome(
     page,
     page.getByRole('button', { name: 'More options' }),
-    page.getByText('Quick actions', { exact: true }),
+    page.getByRole('group', { name: 'View layout' }),
   )
 }
 

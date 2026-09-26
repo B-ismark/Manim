@@ -507,11 +507,11 @@ test.describe('Mobile fit (no page scroll)', () => {
         .poll(surfaces, { timeout: 20_000, message: 'speaker view floats the card again' })
         .toEqual({ card: 1, cells: 0 })
 
-      // "Hide self view" has to reach the cell too. It only ever had a card to hide
+      // Self view off has to reach the cell too. It only ever had a card to hide
       // before, so a filter that stopped at the card would leave the setting looking
       // like it worked in speaker view and silently failing in the gallery.
       await openMore(page)
-      await page.getByRole('button', { name: 'Hide self view' }).tap()
+      await page.getByRole('button', { name: 'Self view' }).tap()
       await closePanel(page)
       await expect
         .poll(surfaces, { timeout: 20_000, message: 'hidden means hidden in speaker view' })

@@ -39,14 +39,12 @@ test.describe('In-call controls', () => {
   test('More menu exposes layout switch + self-view + audio-only', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
     await openMore(page)
-    // Quick actions
     await expect(page.getByRole('button', { name: 'Gallery' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Speaker' })).toBeVisible()
-    // Action rows
-    await expect(page.getByRole('button', { name: /Hide self view|Show self view/ })).toBeVisible()
-    // This row was renamed off "Audio-only mode" (it read as the device picker it
-    // sat beside); the test had kept asserting the old name and failing for it.
-    await expect(page.getByRole('button', { name: /incoming video/ })).toBeVisible()
+    // Switches say where they stand rather than flipping their words.
+    await expect(page.getByRole('button', { name: 'Self view' })).toHaveAttribute('aria-pressed', 'true')
+    // Renamed off "Audio-only mode" (it read as the device picker it sat beside).
+    await expect(page.getByRole('button', { name: /^Save data/ })).toHaveAttribute('aria-pressed', 'false')
     // Switch to speaker layout. The menu deliberately STAYS open — a view is a
     // thing you flip between to see which you want, and closing on the first pick
     // makes comparing them a four-tap round trip. (This assertion used to expect a

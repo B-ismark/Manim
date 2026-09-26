@@ -17,8 +17,8 @@ import { useRoomStore } from '@/store/useRoomStore'
  * - `strip` (upright): the sheet stops short of the top, and the stage becomes one
  *   row of people above it, `STRIP_H` tall, speaker first, swiped sideways.
  * - `side` (a phone on its side): the panel runs full height down the right, the
- *   same width for Chat and People so it never jumps, and the stage shows whoever
- *   is talking in the space on the left.
+ *   same width for Chat, People and More so it never jumps, and the stage shows
+ *   whoever is talking in the space on the left.
  *
  * In both, the controls step aside (there's no room for the bar under a sheet or
  * the rail beside a panel), and the Muted pill carries your mic state instead.
@@ -64,6 +64,7 @@ export function sidePanelWidth(viewportW: number): number {
 export function useChatCompanion(): CompanionLayout {
   const touch = useIsTouch()
   const open = useRoomStore((s) => s.panel !== null)
+  const more = useRoomStore((s) => s.moreOpen)
   const rail = useRail()
   const tablet = useMediaQuery('(min-width: 768px)')
   const safeTop = useSafeAreaTop()
@@ -71,9 +72,11 @@ export function useChatCompanion(): CompanionLayout {
   const kb = useKeyboardInset()
   const { w, h } = useViewport()
 
-  if (!touch || !open) return { mode: 'none' }
-  if (rail) return { mode: 'side', panelW: sidePanelWidth(w) }
-  if (tablet) return { mode: 'none' }
+  if (!touch) return { mode: 'none' }
+  // Sideways, More gets the same panel as chat, so the call on the left looks the
+  // same whichever is open. Upright it stays a bottom sheet: it's a short visit.
+  if (rail && (open || more)) return { mode: 'side', panelW: sidePanelWidth(w) }
+  if (!open || rail || tablet) return { mode: 'none' }
   // Whatever TopStack still shows (a Muted pill, a reconnect banner) keeps its row;
   // the strip starts under it.
   const stripTop = rows > 0 ? Math.max(16, safeTop) + rows + STRIP_GAP : Math.max(12, safeTop)
