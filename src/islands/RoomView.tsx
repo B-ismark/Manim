@@ -44,7 +44,8 @@ import { useSharePresence } from '@/lib/useSharePresence'
 import { parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
-import { markEnd } from '@/lib/callEnd'
+import { markEnd, notePerson } from '@/lib/callEnd'
+import { displayNameOf } from '@/lib/participantName'
 import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
@@ -189,6 +190,14 @@ const SOLO_TIMEOUT_MS = 5 * 60 * 1000
  * Stay button that restarts the clock (someone waiting for a late guest shouldn't
  * be thrown out). The timers reset the moment anyone else is present.
  */
+/** Note everyone who's in the call, for the end-of-call summary (lib/callEnd). */
+function useNotePeople() {
+  const participants = useParticipants({ updateOnlyOn: [] })
+  useEffect(() => {
+    for (const p of participants) notePerson(p.identity, displayNameOf(p.identity, p.name, ''))
+  }, [participants])
+}
+
 function useSoloAutoLeave(onLeave: () => void) {
   // Head-count only, so joins and leaves: the default also fires on every
   // speaking, quality and mute change, and this is the component the whole call
@@ -429,6 +438,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.
   useSoloAutoLeave(doLeave)
+  useNotePeople()
   // Advertise this call to the user's other signed-in devices (quick-join). Carry
   // the link secrets so the other device can reconstruct the full invite link and
   // pass the join-secret gate — the presence channel is owner-only (Realtime RLS).
