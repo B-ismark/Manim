@@ -1,12 +1,14 @@
 import { create } from 'zustand'
 import type { Session } from '@supabase/supabase-js'
 import { avatarObjects } from '@/lib/avatarObjects'
-import { supabase } from '@/lib/supabase'
+import { supabase, getSupabase, authEnabled } from '@/lib/supabase'
 import { useAppStore } from '@/store/useAppStore'
 import { toast } from '@/store/useToastStore'
 import { squareDownscale } from '@/lib/image'
 import { disablePush } from '@/lib/push'
 import { forgetAuthSession, forgetPersonalData } from '@/lib/localData'
+import { forgetDeviceKey } from '@/lib/deviceKey'
+import { registerDeviceKey, unregisterDeviceKey } from '@/features/calls/deviceKeys'
 
 /** Public Storage bucket holding user avatars (see DEPLOY.md §4a). */
 const AVATAR_BUCKET = 'avatars'
@@ -67,8 +69,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signedIn: false,
   avatarUrl: null,
   signInWithEmail: async (email) => {
-    if (!supabase) throw new Error('Sign-in is not configured.')
-    const { error } = await supabase.auth.signInWithOtp({
+    const sb = await getSupabase()
+    if (!sb) throw new Error('Sign-in is not configured.')
+    const { error } = await sb.auth.signInWithOtp({
       // Return to the EXACT page sign-in started from (e.g. /r/standup), not the
       // bare origin — otherwise a user who signs in mid-join lands on / and has to
       // re-navigate. The room's #fragment (its join secret and E2EE key) stays
@@ -81,19 +84,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (error) throw error
   },
   verifyEmailOtp: async (email, token) => {
-    if (!supabase) throw new Error('Sign-in is not configured.')
+    const sb = await getSupabase()
+    if (!sb) throw new Error('Sign-in is not configured.')
     // type 'email' covers the OTP token from a signInWithOtp email. On success the
     // onAuthStateChange listener (initAuth) applies the session — no extra wiring.
-    const { error } = await supabase.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: 'email' })
+    const { error } = await sb.auth.verifyOtp({ email: email.trim(), token: token.trim(), type: 'email' })
     if (error) throw error
   },
   signInWithGoogle: async () => {
-    if (!supabase) throw new Error('Sign-in is not configured.')
+    const sb = await getSupabase()
+    if (!sb) throw new Error('Sign-in is not configured.')
     // Redirects to Google, then back to the page sign-in started from, where
     // onAuthStateChange (initAuth) picks up the session. Requires the Google
     // provider enabled in the Supabase dashboard (OAuth client id/secret) — see
     // DEPLOY.md. (The exact return URL must be in Supabase's allow-list.)
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await sb.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: returnUrl() },
     })
@@ -104,9 +109,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // session still exists — after sign-out this browser would keep ringing for
     // an account nobody here is signed into.
     await disablePush()
+    const sb = await getSupabase()
+    // Same for this browser's sealing key: nobody should keep sealing call keys to
+    // a device that's no longer signed in.
+    const { signedIn, userId } = get()
+    if (sb && signedIn) await unregisterDeviceKey(sb, userId).catch(() => {})
+    await forgetDeviceKey().catch(() => {})
     // Offline or mid-outage this fails and keeps the session; leaveThisBrowser
     // drops it regardless.
-    if (supabase) await supabase.auth.signOut().catch(() => {})
+    if (sb) await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
 
@@ -123,6 +134,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const { error } = await sb.rpc('delete_account')
     if (error) throw new Error('Couldn’t delete your account — try again')
     // The user no longer exists — clear the (now invalid) session and drop to guest.
+    // (Their device_keys rows went with the cascade; the private key is local.)
+    await forgetDeviceKey().catch(() => {})
     await sb.auth.signOut().catch(() => {})
     leaveThisBrowser()
   },
@@ -257,6 +270,8 @@ async function syncProfile(session: Session) {
  *  previous-user profile before the async sync resolves. */
 const PROFILE_UID_KEY = 'manim-profile-uid'
 
+let profileSyncedFor: string | null = null
+
 function applySession(session: Session | null) {
   if (session?.user) {
     const uid = session.user.id
@@ -269,13 +284,22 @@ function applySession(session: Session | null) {
     const known = localStorage.getItem(PROFILE_UID_KEY)
     const differentUser = known !== null && known !== uid
     localStorage.setItem(PROFILE_UID_KEY, uid)
+    // Before signedIn flips, so presence (which waits on it) sees this call.
+    if (supabase) void registerDeviceKey(supabase, uid, differentUser)
     useAuthStore.setState({ userId: uid, email: session.user.email ?? null, signedIn: true })
     if (differentUser) {
       useAuthStore.setState({ avatarUrl: avatarFromSession(session) || null })
       useAppStore.getState().setDisplayName(nameFromSession(session), false)
     }
-    void syncProfile(session)
+    // Once per account per page load: the session is applied at start-up twice
+    // (getSession and the listener's first event) and again on every hourly token
+    // refresh, and each was a profile read, sometimes a write.
+    if (profileSyncedFor !== uid) {
+      profileSyncedFor = uid
+      void syncProfile(session)
+    }
   } else {
+    profileSyncedFor = null
     useAuthStore.setState({ userId: guestId(), email: null, signedIn: false, avatarUrl: null })
   }
 }
@@ -342,8 +366,11 @@ function reportAuthErrorFromUrl(): void {
 
 /** Call once at startup: hydrate session + subscribe to auth changes. */
 export function initAuth(): void {
-  if (!supabase) return
+  if (!authEnabled) return
   reportAuthErrorFromUrl()
-  void supabase.auth.getSession().then(({ data }) => applySession(data.session))
-  supabase.auth.onAuthStateChange((_event, session) => applySession(session))
+  void getSupabase().then((sb) => {
+    if (!sb) return
+    void sb.auth.getSession().then(({ data }) => applySession(data.session))
+    sb.auth.onAuthStateChange((_event, session) => applySession(session))
+  })
 }

@@ -32,3 +32,21 @@ export function isLowPowerDevice(): boolean {
   if (typeof cores === 'number' && cores <= 4) return true
   return isMobile()
 }
+
+/**
+ * Mark the document on a touch device that reports modest hardware, so CSS can
+ * drop the frosted-glass pills. `backdrop-filter` over LIVE video re-blurs every
+ * frame the video changes, which is every frame, for each pill; on a low-end
+ * Android that is measurable jank for a purely decorative effect. The pills keep
+ * the same tint (a touch denser), so text contrast doesn't change. Uses only the
+ * hardware signals — not the phone-size fallback isLowPowerDevice has — so a
+ * capable phone keeps the glass.
+ */
+export function markLiteGraphics(): void {
+  if (typeof document === 'undefined' || !isTouch()) return
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+  const cores = navigator.hardwareConcurrency
+  if ((typeof mem === 'number' && mem <= 4) || (typeof cores === 'number' && cores <= 4)) {
+    document.documentElement.dataset.lite = ''
+  }
+}

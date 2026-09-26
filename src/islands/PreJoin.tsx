@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { MAX_NAME_LEN } from '@/lib/displayName'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
 import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
 import { useAppStore, rememberPrejoin } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
+import { useToastClearance } from '@/lib/toastClearance'
 import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
+import { countUsage, surface } from '@/lib/usage'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
  *  … 16:9 (laptop); anything outside is a bogus or freak mode, and letting it through
@@ -61,6 +63,21 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
 
   const cameraOn = prejoin.cameraEnabled && !prejoin.lowBandwidth
 
+  // Anonymous usage counts (lib/usage): reaching this screen, and the browser's
+  // camera/mic block stopping someone here (once per visit).
+  const location = useLocation()
+  useEffect(() => {
+    const via = (location.state as { via?: string } | null)?.via === 'new' ? 'new' : 'link'
+    countUsage('prejoin', via, surface())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const deniedCounted = useRef(false)
+  const countDenied = (which: 'camera' | 'mic' | 'both') => {
+    if (deniedCounted.current) return
+    deniedCounted.current = true
+    countUsage('permission_denied', which, surface())
+  }
+
   // Best-effort read of the current camera/mic grant so we can show a rationale
   // *before* the OS prompt (priming) instead of a bare browser dialog. The
   // Permissions API is absent on some browsers (notably older Safari) — there we
@@ -81,6 +98,9 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         const update = () => {
           const states = [cam.state, mic.state]
           const next = states.includes('denied') ? 'denied' : states.includes('prompt') ? 'prompt' : 'granted'
+          if (next === 'denied') {
+            countDenied(cam.state === 'denied' && mic.state === 'denied' ? 'both' : cam.state === 'denied' ? 'camera' : 'mic')
+          }
           // Re-allowed in the browser's settings while this screen was open: the
           // "blocked" message no longer applies, and the preview starts again
           // without a reload.
@@ -121,7 +141,10 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
       stream.getTracks().forEach((t) => t.stop())
       setPermission('granted')
       setError(null)
-    } catch {
+    } catch (err) {
+      // A missing or busy device isn't the browser's permission block.
+      const name = err instanceof Error ? err.name : ''
+      if (name === 'NotAllowedError' || name === 'SecurityError') countDenied('both')
       setPermission('denied')
       setError('Access to your camera and microphone is blocked. Allow it from the icon in your browser’s address bar.')
     } finally {
@@ -224,6 +247,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // failure this screen exists to avoid, and it showed up as an 8% aspect error the
   // moment the box had a flexible container instead of a fixed dvh cap.
   const { ref: stageRef, size: stage } = useElementSize<HTMLDivElement>()
+  const headerRef = useRef<HTMLDivElement>(null)
+  useToastClearance(headerRef)
   const previewBox =
     stage.width > 0 && stage.height > 0
       ? stage.width / stage.height > previewAspect
@@ -272,29 +297,33 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
         pad="none"
         className="flex h-full max-h-[46rem] w-full max-w-lg flex-col p-4 sm:p-6 short:p-3 sm:short:p-4"
       >
-        <button
-          type="button"
-          onClick={() => navigate('/')}
-          className="-ml-1 mb-2 inline-flex shrink-0 items-center gap-1 rounded-field py-1 pr-2 text-sm text-ink-muted hover:text-ink [&_svg]:size-4"
-        >
-          <ChevronLeftIcon />
-          Back
-        </button>
-        <div className="flex shrink-0 items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-ink-subtle">Joining</p>
-            <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
+        {/* Back + title: on a phone this row is in the toasts' band, so they queue
+            under it instead of covering Back (lib/toastClearance). */}
+        <div ref={headerRef} className="flex shrink-0 flex-col">
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="-ml-1 mb-2 inline-flex shrink-0 items-center gap-1 rounded-field py-1 pr-2 text-sm text-ink-muted hover:text-ink [&_svg]:size-4"
+          >
+            <ChevronLeftIcon />
+            Back
+          </button>
+          <div className="flex shrink-0 items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-ink-subtle">Joining</p>
+              <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
+            </div>
+            {/* Share the invite before joining — host can pull people in from the
+                green room. The current URL already carries the invite secret + E2EE
+                key in its #fragment, so it's the full link. */}
+            <IconButton
+              label={copied ? 'Invite link copied' : 'Share invite link'}
+              icon={copied ? <CheckIcon /> : <ShareIcon />}
+              tone="neutral"
+              className="mt-0.5 shrink-0"
+              onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
+            />
           </div>
-          {/* Share the invite before joining — host can pull people in from the
-              green room. The current URL already carries the invite secret + E2EE
-              key in its #fragment, so it's the full link. */}
-          <IconButton
-            label={copied ? 'Invite link copied' : 'Share invite link'}
-            icon={copied ? <CheckIcon /> : <ShareIcon />}
-            tone="neutral"
-            className="mt-0.5 shrink-0"
-            onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
-          />
         </div>
 
         {/* The box takes the CAMERA's shape, not a device guess. This screen answers

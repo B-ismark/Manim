@@ -6,19 +6,19 @@ import { SettingsLauncher } from '@/islands/Settings'
 import { ContactsLauncher } from '@/islands/Contacts'
 import { SetupStatusButton, SetupBanner, showSetup } from '@/islands/SetupStatus'
 import { SiteFooter } from '@/islands/SiteFooter'
-import { authEnabled } from '@/lib/supabase'
+import { authEnabled, getSupabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useAppStore } from '@/store/useAppStore'
 import { useInviteStore } from '@/store/useInviteStore'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { toast } from '@/store/useToastStore'
 import { getMe } from '@/lib/orchestrator'
-import { supabase } from '@/lib/supabase'
 import { ringUser } from '@/features/calls/calls'
 import { useOtherDeviceMeetings } from '@/features/calls/usePresence'
 import { distinctRoomNames, toSlug } from '@/lib/roomName'
 import { newRoomSecrets, parseRoomHash, roomTo, type RoomSecrets } from '@/lib/roomLink'
 import type { ContactRow } from '@/store/useContactsStore'
+import { countUsage, surface } from '@/lib/usage'
 
 // Unambiguous base32-ish alphabet (no 0/o/1/l/i) for the random suffix.
 const CODE_ALPHABET = 'abcdefghjkmnpqrstuvwxyz23456789'
@@ -82,9 +82,9 @@ export function Landing() {
     let alive = true
     const probe = (async () => {
       const token = signedIn
-        ? (await supabase?.auth.getSession())?.data.session?.access_token
+        ? (await (await getSupabase())?.auth.getSession())?.data.session?.access_token
         : undefined
-      const me = await getMe(token)
+      const me = await getMe(token, token ? useAuthStore.getState().userId : '')
       if (!alive) return
       setBetaGate(me.betaGate)
       setCanHost(me.allowed)
@@ -97,9 +97,12 @@ export function Landing() {
   }, [signedIn])
 
   /** Navigate to a room, carrying any join-secret / E2EE key in the #fragment. */
-  function goTo(slug: string, secrets: RoomSecrets = {}) {
-    if (slug) navigate(roomTo(slug, secrets))
+  function goTo(slug: string, secrets: RoomSecrets = {}, via?: 'new') {
+    if (slug) navigate(roomTo(slug, secrets), via ? { state: { via } } : undefined)
   }
+
+  // Anonymous usage count (lib/usage): the top of the join funnel.
+  useEffect(() => countUsage('landing', surface()), [])
 
   // A typed value is usually a bare meeting name, but may be a pasted invite link
   // (which carries its own secrets in the #fragment) — handle both.
@@ -168,7 +171,10 @@ export function Landing() {
       )
       return
     }
-    if (!typed) return goTo(randomRoom(), newRoomSecrets())
+    if (!typed) {
+      countUsage('new_call', surface())
+      return goTo(randomRoom(), newRoomSecrets(), 'new')
+    }
     if (!parsed.slug) {
       // Typed only symbols. Minting a random room here would silently discard
       // what they wrote and drop them into a differently-named call — say why
@@ -176,7 +182,9 @@ export function Landing() {
       toast('Call names need letters or numbers', 'warning')
       return
     }
-    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
+    // A pasted invite link is a join, not a new call.
+    if (!parsed.secrets.secret) countUsage('new_call', surface())
+    goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets(), parsed.secrets.secret ? undefined : 'new')
   }
 
   // Arriving from an expired link's "Start a new call": start one, once. The state
@@ -206,7 +214,8 @@ export function Landing() {
     // they join (their display name matches), so it doubles as a waiting indicator.
     addInvite(c.name)
     toast(`Ringing ${c.name}…`, 'info')
-    goTo(slug, secrets)
+    countUsage('new_call', surface())
+    goTo(slug, secrets, 'new')
   }
 
   return (

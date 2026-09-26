@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { RoomEvent } from 'livekit-client'
 import { useNavigate } from 'react-router-dom'
 import {
   useLocalParticipant,
@@ -51,7 +52,8 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const room = useRoomContext()
   const navigate = useNavigate()
   const { localParticipant } = useLocalParticipant()
-  const participants = useParticipants()
+  // Identities and account ids (metadata) only; not every speaking change.
+  const participants = useParticipants({ updateOnlyOn: [RoomEvent.ParticipantMetadataChanged] })
   const { metadata: roomMetadata } = useRoomInfo()
   const deviceId = useAppStore((s) => s.deviceId)
   const roomToken = useAppStore((s) => s.roomToken)
@@ -98,8 +100,8 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   // Host succession (#15). When the recorded host is no longer in the live roster,
   // trigger a server-side election so the seat doesn't point at a ghost and the
   // co-host roster stops being frozen. The server picks the successor
-  // deterministically, so every client calling at once is safe — but we still
-  // guard to one call per absence and announce "host left" just once.
+  // deterministically, so several clients calling at once is safe — but only the
+  // likely successor calls first (below), and "host left" is announced just once.
   //
   // After a grace period, not at once: a host whose connection drops for a few
   // seconds (a train tunnel, wifi → cellular, a reload) comes back with a new
@@ -129,14 +131,34 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       toast('The host left the call', 'neutral')
     }
     if (elected.current || !roomToken) return
-    elected.current = true
+    // Only the likely successor asks straight away (the server's own pick: the
+    // longest-present co-host, else the longest-present person). Everyone else
+    // waits, and asks only if the seat is STILL empty — a new hostId re-runs this
+    // effect and cancels them. It used to be one request from every person.
+    const present = participants.filter((p) => coHosts.includes(p.identity))
+    const pool = present.length ? present : participants
+    // Same order as the server's pick (handleElectHost), missing times first.
+    const tenure = (p: (typeof participants)[number]) => Math.floor((p.joinedAt?.getTime() ?? 0) / 1000)
+    const first = [...pool].sort(
+      (a, b) => tenure(a) - tenure(b) || (a.identity < b.identity ? -1 : a.identity > b.identity ? 1 : 0),
+    )[0]
+    const wait = first?.identity === localParticipant.identity ? 0 : 15_000
     let retry: ReturnType<typeof setTimeout> | undefined
-    void electHost(room.name, roomToken).catch(() => {
-      // Nothing else re-runs this effect, so schedule the retry ourselves.
-      elected.current = false
-      retry = setTimeout(() => setElectTry((n) => n + 1), 10_000)
-    })
-    return () => clearTimeout(retry)
+    const ask = setTimeout(() => {
+      elected.current = true
+      void electHost(room.name, roomToken).catch(() => {
+        // Nothing else re-runs this effect, so schedule the retry ourselves.
+        elected.current = false
+        retry = setTimeout(() => setElectTry((n) => n + 1), 10_000)
+      })
+    }, wait)
+    return () => {
+      clearTimeout(ask)
+      clearTimeout(retry)
+    }
+    // participants/coHosts only decide who goes first; re-running on every roster
+    // change would restart the wait.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graceOver, hostPresent, hostId, roomToken, room.name, electTry])
 
   // "You're now the host" once you inherit the primary seat (skip the initial

@@ -127,17 +127,21 @@ export function Privacy() {
             in a call could still record it on their own devices.
           </li>
           <li>
-            <span className="text-ink">Audio and video can be end-to-end encrypted.</span> Calls
+            <span className="text-ink">Calls can be end-to-end encrypted.</span> Calls
             you start with New meeting or by calling a contact are. The key is part of the invite
             link, so anyone with the full link can join and see and hear the call: share it only
-            with people you mean to invite. The key reaches our providers in three cases. When you
-            ring a contact, it goes through Supabase and stays in our database for up to 3 days.
-            When your own signed-in devices show which call you’re in, it passes through Supabase
-            without being stored. When a host merges two calls, it is sent over the call’s message
-            channel, which LiveKit can read. Email invites leave the key out. Chat, files, drawings
-            and reactions are encrypted on their way to LiveKit but not end-to-end, so LiveKit’s
-            servers can read them. A call opened without a key isn’t end-to-end encrypted; the
-            padlock in the call shows which applies.
+            with people you mean to invite. When you ring a contact, or your own signed-in devices
+            show which call you’re in, the key goes through Supabase locked to that person’s (or
+            your) signed-in devices, so the copy kept in our database for up to 3 days can’t be read
+            from there. The locks come from Supabase too, so this guards against leaks of what’s
+            stored, not against Supabase itself. If none of their devices has signed in since this
+            was added, or we can’t look their devices up, the key goes unlocked instead so the call
+            still reaches them. When a host merges two calls, the key
+            is sent over the call’s message channel, which is end-to-end encrypted on an encrypted
+            call and readable by LiveKit on one that isn’t. Email invites leave the key out. On an encrypted call, chat, files,
+            drawings and reactions are end-to-end encrypted too; names, raised hands and who is in
+            the call are not. A call opened without a key isn’t end-to-end encrypted; the padlock
+            in the call shows which applies.
           </li>
           <li>
             Background notifications say only that someone is calling. If {APP_NAME} is open in
@@ -159,6 +163,16 @@ export function Privacy() {
           earlier chat messages, because the people still in the call pass them on. A host can turn
           that off from More → Chat history; the chat panel always says which applies. GIFs posted
           in chat load from Giphy or Tenor for everyone in the call.
+        </P>
+      </section>
+
+      <section>
+        <Heading>Usage counts</Heading>
+        <P>
+          To see where people get stuck, {APP_NAME} counts a few anonymous events, such as “a call
+          was joined” and roughly how long it lasted, in ranges. These counts don’t use cookies and
+          don’t include your name, account, device, IP address or call names, so they can’t be
+          linked to you. They’re stored by Cloudflare for three months.
         </P>
       </section>
 
@@ -196,7 +210,7 @@ export function Privacy() {
         <P>
           Account data (profile, photo, contacts, notification subscriptions) is kept while your
           account exists. You can delete your account from Settings → Delete account. That removes
-          your profile, photo, contacts and notification subscriptions straight away, and clears
+          your profile, photo, contacts, notification subscriptions and device keys straight away, and clears
           your data from that browser. Some copies outlast it for a while: call invitations in our
           database (up to 3 days), our email and crash-report providers' logs (for as long as they
           keep them), and, if you were given early access, your email on our access list until we

@@ -46,20 +46,21 @@ import {
   CheckIcon,
   CloseIcon,
 } from '@/components/icons'
-import { DeviceSettings, DeviceRow } from '@/islands/DeviceMenu'
+import { DeviceSettings, DeviceRow, useSwitchDevice } from '@/islands/DeviceMenu'
 import { EffectsDialog } from '@/islands/BackgroundEffects'
 import { SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
 import { useRoomStore } from '@/store/useRoomStore'
-import { useDeviceStore, type StoredDeviceKind } from '@/store/useDeviceStore'
+import { useDeviceStore } from '@/store/useDeviceStore'
 import { useAudioStore } from '@/store/useAudioStore'
 import { recoverMicrophone } from '@/lib/audioRecovery'
 import { useCameraToggle } from '@/lib/useCameraToggle'
 import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScreenShare'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
+import { useMediaQuery } from '@/lib/useMediaQuery'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
@@ -70,8 +71,6 @@ import { toggleDevice } from '@/lib/deviceToggle'
 export interface ControlBarProps {
   /** When false (mobile auto-hide), the bar slides out of the thumb zone. */
   chromeVisible: boolean
-  /** Pin/unpin the auto-hiding chrome — held open while a menu is showing. */
-  onMenuOpenChange?: (open: boolean) => void
   /**
    * Restart the auto-hide countdown. Called when the user touches the island.
    *
@@ -119,7 +118,6 @@ export interface ControlBarProps {
  */
 export function ControlBar({
   chromeVisible,
-  onMenuOpenChange,
   onInteract,
   onLeave,
   onEndForEveryone,
@@ -186,9 +184,16 @@ export function ControlBar({
   // would slide out of the thumb zone taking an open tray with it.
   const [audioTrayOpen, setAudioTrayOpen] = useState(false)
   const touch = useIsTouch()
-  useEffect(() => {
-    onMenuOpenChange?.(audioTrayOpen)
-  }, [audioTrayOpen, onMenuOpenChange])
+  // A desktop window narrower than the full bar — 400% zoom on a 1280px screen is
+  // 320 CSS px (WCAG reflow). It used to run off both edges, taking Mute and End
+  // for everyone with it. Narrow, it keeps mic, camera, chat, More and Leave, and
+  // the rest moves into More exactly as it does on touch. The threshold is the
+  // WIDEST bar plus its margins: a host during a share (Annotate and the split
+  // Leave both showing) measures ~614px and the island sits 16px in from each
+  // edge, so anything under ~646px clipped it. 680 leaves room for one more
+  // control; add one and re-measure (24-reflow-and-layers sweeps the widths).
+  const narrowBar = useMediaQuery('(max-width: 679px)') && !touch
+  const compact = touch || narrowBar
   // A modal and the tray must not be up together — the modal would scrim the tray
   // it was opened from.
   useEffect(() => {
@@ -287,16 +292,9 @@ export function ControlBar({
     onLeave()
   }
 
-  // Single open/close path for the More menu so the chrome hold always tracks
-  // it — including programmatic closes (controlled prop changes don't fire the
-  // primitive's onOpenChange).
-  const setMore = useCallback(
-    (open: boolean) => {
-      setMoreOpen(open)
-      onMenuOpenChange?.(open)
-    },
-    [onMenuOpenChange],
-  )
+  // The touch chrome stays up while More is open because RoomView's overlayOpen()
+  // sees the sheet in the DOM; nothing here has to report it.
+  const setMore = setMoreOpen
   const closeMore = () => setMore(false)
 
   // Desktop keyboard shortcuts (Architecture-Plan §8.6). Ignored on touch and
@@ -351,7 +349,7 @@ export function ControlBar({
   // breakpoint, so nothing duplicates.
   const moreContent = (
     <div className="flex flex-col">
-      <div className="mb-2 pointer-fine:hidden">
+      <div className={cn('mb-2', !narrowBar && 'pointer-fine:hidden')}>
         <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">React</p>
         <div className="flex flex-wrap items-center justify-center gap-1">
           {REACTION_EMOJI.map((e) => (
@@ -394,13 +392,25 @@ export function ControlBar({
             player's Share again so the two can never disagree. */}
         {canScreenShare && (
           <GridTile
-            className="pointer-fine:hidden"
+            className={cn(!narrowBar && 'pointer-fine:hidden')}
             icon={<ScreenShareIcon />}
             label={shareSlotsFull ? 'Share screen (in use)' : 'Share screen'}
             active={screenShare.enabled}
             disabled={shareSlotsFull}
             // State toggle: stays open so you see the state flip.
             onClick={() => screenShare.toggle()}
+          />
+        )}
+        {/* A narrow desktop window has no room for Annotate on the bar. */}
+        {canAnnotate && narrowBar && (
+          <GridTile
+            icon={<AnnotateIcon />}
+            label={annotateActive ? 'Stop annotating' : 'Annotate'}
+            active={annotateActive}
+            onClick={() => {
+              toggleAnnotate()
+              closeMore()
+            }}
           />
         )}
         {/* Grid/Speaker moved into the unified "View" control below (layout + density
@@ -547,7 +557,7 @@ export function ControlBar({
         {/* Host-only, touch-only: the desktop bar has this behind the leave caret,
             which is too small to aim at with a thumb. Still routed through the
             confirm dialog — this is the one action in the sheet that can't be undone. */}
-        {isHost && touch && (
+        {isHost && compact && (
           <MenuRow
             icon={<LeaveIcon />}
             label="End call for everyone"
@@ -668,7 +678,7 @@ export function ControlBar({
               popover full of nested dropdowns, which is what the mobile device
               picker rework replaces. Touch reaches every one of these devices via
               the Output button and "Audio & video" in More. */}
-          {!touch && (
+          {!compact && (
             <DeviceCaret label="Audio options">
               <AudioDevicePanel noise={noise} />
             </DeviceCaret>
@@ -686,7 +696,7 @@ export function ControlBar({
             />
           </Tooltip>
           {/* Desktop only — same inert-class trap as the audio caret above. */}
-          {!touch && (
+          {!compact && (
             <DeviceCaret label="Camera options">
               <CameraDevicePanel />
             </DeviceCaret>
@@ -733,7 +743,7 @@ export function ControlBar({
             `hidden` in the cascade, so this stayed visible on touch and phones
             showed the control TWICE — here and in the More sheet. Rendering
             conditionally can't lose a specificity race. */}
-        {canScreenShare && !touch && (
+        {canScreenShare && !compact && (
           <Tooltip
             content={
               shareSlotsFull
@@ -771,7 +781,7 @@ export function ControlBar({
         {/* Annotate — only while someone is actually sharing, and desktop only:
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
-        {canAnnotate && (
+        {canAnnotate && !narrowBar && (
           <Tooltip content={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
@@ -804,9 +814,11 @@ export function ControlBar({
 
         {/* Reactions (desktop inline; folded into More on touch). One button —
             it also carries raise-hand. Layout switching lives in More / top chip. */}
-        <span className="hidden pointer-fine:inline-flex">
-          <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
-        </span>
+        {!narrowBar && (
+          <span className="hidden pointer-fine:inline-flex">
+            <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
+          </span>
+        )}
 
         {/* More — bottom sheet on mobile (thumb-reachable), popover on desktop.
             Both render the same body; see moreContent above. */}
@@ -887,7 +899,7 @@ export function ControlBar({
 
         <div className="mx-1 h-7 w-px bg-line" aria-hidden />
 
-        {isHost && !touch ? (
+        {isHost && !compact ? (
           // Split control: leaving (call continues) is the primary action; ending
           // for everyone is tucked behind the caret. Styled as one danger pill.
           //
@@ -911,7 +923,6 @@ export function ControlBar({
             <DropdownMenu
               side="top"
               align="end"
-              onOpenChange={onMenuOpenChange}
               trigger={
                 <button
                   type="button"
@@ -1084,17 +1095,7 @@ function ReactionButton({
 /** Background-noise suppression: a single on/off toggle. When on, the best filter
  *  the device can run is used (AI/Krisp, else the browser's built-in filter). */
 function NoiseSuppression({ controls }: { controls: NoiseFilterControls }) {
-  const { enabled, setEnabled } = controls
-  return (
-    <div className="px-2.5 py-1.5">
-      <Toggle
-        checked={enabled}
-        onCheckedChange={setEnabled}
-        label="Noise suppression"
-        className="w-full justify-between"
-      />
-    </div>
-  )
+  return <ToggleRow label="Noise suppression" checked={controls.enabled} onChange={controls.setEnabled} />
 }
 
 function MenuRow({
@@ -1296,6 +1297,8 @@ function AudioTray({
   return (
     <div
       id={AUDIO_TRAY_ID}
+      // Holds the touch chrome up while it's open (RoomView overlayOpen).
+      data-chrome-hold
       role="group"
       aria-label="Audio settings"
       className="flex max-h-[min(60dvh,26rem)] flex-col overflow-y-auto no-scrollbar"
@@ -1318,13 +1321,14 @@ function AudioTray({
       <DeviceRouteList kind="audioinput" heading="Microphone" />
 
       <div className="border-t border-line">
-        <TrayToggle
+        <ToggleRow
           label="Noise suppression"
           hint="Filters keyboards and traffic"
           checked={noise.enabled}
           onChange={noise.setEnabled}
+          touch
         />
-        <BluetoothTrayToggle />
+        <BluetoothToggle touch />
       </div>
 
       <button
@@ -1352,7 +1356,7 @@ function AudioTray({
  */
 function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: string }) {
   const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind })
-  const remember = useDeviceStore((s) => s.remember)
+  const switchTo = useSwitchDevice(kind, heading, setActiveMediaDevice)
   if (devices.length === 0) return null
   const activeId = devices.find((d) => d.deviceId === activeDeviceId)?.deviceId ?? devices[0]?.deviceId
   return (
@@ -1368,11 +1372,7 @@ function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: st
               <button
                 type="button"
                 aria-pressed={active}
-                onClick={() => {
-                  void setActiveMediaDevice(d.deviceId)
-                    .then(() => remember(kind as StoredDeviceKind, d.deviceId, d.label))
-                    .catch(() => toast(`Couldn’t switch ${heading.toLowerCase()}`, 'danger'))
-                }}
+                onClick={() => switchTo(d)}
                 className={cn(
                   'flex w-full items-center gap-3 px-3 text-left [&_svg]:size-5 [&_svg]:shrink-0',
                   active ? 'text-accent-text' : 'text-ink hover:bg-sunken',
@@ -1391,59 +1391,44 @@ function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: st
   )
 }
 
-/** Full-width toggle row sized for a thumb. */
-function TrayToggle({
+/**
+ * One settings switch as a full-width row. There were three copies of this (the
+ * menu's noise and Bluetooth rows and the touch tray's) that differed only in
+ * padding; `touch` is the thumb-sized one from the audio tray.
+ */
+function ToggleRow({
   label,
   hint,
   checked,
   onChange,
+  touch = false,
 }: {
   label: string
   hint?: string
   checked: boolean
   onChange: (v: boolean) => void
+  touch?: boolean
 }) {
   return (
-    <div className={cn('flex items-center gap-3 px-3', TOUCH_ROW)}>
-      <Toggle
-        checked={checked}
-        onCheckedChange={onChange}
-        label={label}
-        hint={hint}
-        className="w-full justify-between"
-      />
+    <div className={touch ? cn('flex items-center gap-3 px-3', TOUCH_ROW) : 'px-2.5 py-1.5'}>
+      <Toggle checked={checked} onCheckedChange={onChange} label={label} hint={hint} className="w-full justify-between" />
     </div>
-  )
-}
-
-/** "Auto-connect Bluetooth" as a tray row. */
-function BluetoothTrayToggle() {
-  const autoBluetooth = useDeviceStore((s) => s.autoBluetooth)
-  const setAutoBluetooth = useDeviceStore((s) => s.setAutoBluetooth)
-  return (
-    <TrayToggle
-      label="Auto-connect Bluetooth"
-      hint="Take over when a headset connects"
-      checked={autoBluetooth}
-      onChange={setAutoBluetooth}
-    />
   )
 }
 
 /** "Auto-connect Bluetooth" preference — when on, a headset that connects takes over
  *  audio automatically (useAudioDeviceAutoswitch). */
-function BluetoothToggle() {
+function BluetoothToggle({ touch = false }: { touch?: boolean }) {
   const autoBluetooth = useDeviceStore((s) => s.autoBluetooth)
   const setAutoBluetooth = useDeviceStore((s) => s.setAutoBluetooth)
   return (
-    <div className="px-2.5 py-1.5">
-      <Toggle
-        checked={autoBluetooth}
-        onCheckedChange={setAutoBluetooth}
-        label="Auto-connect Bluetooth"
-        className="w-full justify-between"
-      />
-    </div>
+    <ToggleRow
+      label="Auto-connect Bluetooth"
+      hint={touch ? 'Take over when a headset connects' : undefined}
+      checked={autoBluetooth}
+      onChange={setAutoBluetooth}
+      touch={touch}
+    />
   )
 }
 

@@ -34,10 +34,10 @@ export const SUBPROCESSORS: { name: string; purpose: string }[] = [
   {
     name: 'LiveKit Cloud',
     purpose:
-      'Carries every call through its servers: audio, video, screen share, chat, files, drawings, names and account numbers. On end-to-end-encrypted calls it can’t see or hear the audio and video, but it can read everything else.',
+      'Carries every call through its servers: audio, video, screen share, chat, files, drawings, names and account numbers. On end-to-end-encrypted calls it can’t see or hear the audio and video or read chat, files and drawings; it still sees names, account numbers, raised hands and who is in the call.',
   },
   { name: 'Supabase', purpose: 'Accounts, profiles, photos, contacts, and ringing your devices.' },
-  { name: 'Cloudflare', purpose: 'Hosting the app, and rate limiting joins and invites.' },
+  { name: 'Cloudflare', purpose: 'Hosting the app, rate limiting joins and invites, and anonymous usage counts.' },
   { name: 'Resend', purpose: 'Sending email invites. It keeps a delivery record of each one.' },
   { name: 'Brevo (through Supabase)', purpose: 'Sending sign-in codes.' },
   {
@@ -87,6 +87,11 @@ export const DATA_COLLECTED: { what: string; where: string; why: string }[] = [
     what: 'Your contacts',
     where: 'Your account (Supabase)',
     why: 'To show your contacts and let you call them. Anyone who knows your email can find out you have an account and send you a request; they see your name and photo while it’s pending. Once you accept, you each see the other’s email, name and photo.',
+  },
+  {
+    what: 'A public key for each signed-in browser',
+    where: 'Your account (Supabase); the matching private key never leaves the browser',
+    why: 'So a call’s key can be locked to your devices when someone rings you. Your contacts can see how many browsers you’re signed in on and their random ids. Signing out while online removes it, and one not signed in for 90 days is deleted.',
   },
   {
     what: 'Notification subscription',

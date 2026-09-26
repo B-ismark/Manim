@@ -537,6 +537,63 @@ select cron.schedule(
 );
 ```
 
+4e. **Sealed call keys** (run once — added 2026-09, after §4c and §4d). A ring
+    and the "you're in a call on another device" offer both carry the room's join
+    secret and E2EE key, and until now they crossed Supabase Realtime readable to
+    anyone who could read that traffic. Each signed-in browser now keeps its own
+    keypair (the private half never leaves the browser) and publishes the public
+    half here; a caller seals the secrets to the callee's devices so only those
+    devices can open them. Until this is run, or for someone whose devices haven't
+    registered yet, the app sends the secrets the old way, so ringing never breaks.
+    What this protects against: anyone reading the stored rings or Realtime
+    traffic. It does NOT protect against Supabase itself acting maliciously, since
+    Supabase also serves the public keys a caller seals to.
+
+```sql
+-- One public key per signed-in browser. The private half stays in the browser.
+create table if not exists device_keys (
+  user_id uuid not null default auth.uid() references auth.users(id) on delete cascade,
+  device_id text not null check (length(device_id) between 8 and 64),
+  -- A P-256 public key is ~200 bytes; the cap keeps anyone from making their
+  -- callers download (and run crypto over) something huge.
+  public_key jsonb not null check (pg_column_size(public_key) < 512 and public_key ? 'x' and public_key ? 'y'),
+  seen_at timestamptz not null default now(),
+  primary key (user_id, device_id)
+);
+alter table device_keys enable row level security;
+create policy "own keys read"   on device_keys for select using (auth.uid() = user_id);
+create policy "own keys insert" on device_keys for insert with check (auth.uid() = user_id);
+create policy "own keys update" on device_keys for update using (auth.uid() = user_id);
+create policy "own keys delete" on device_keys for delete using (auth.uid() = user_id);
+-- Reuses §4c's trigger function: every sign-in renews the row's seen_at.
+drop trigger if exists device_keys_seen on device_keys;
+create trigger device_keys_seen before insert or update on device_keys
+  for each row execute function push_seen();
+
+-- Public keys for yourself (your other devices) or an accepted contact only, the
+-- 10 most recently signed-in browsers at most.
+create or replace function get_device_keys(target_id uuid)
+returns table (device_id text, public_key jsonb)
+language sql security definer set search_path = public as $$
+  select k.device_id, k.public_key from device_keys k
+  where k.user_id = target_id and (target_id = auth.uid() or exists (
+    select 1 from contacts c where c.status = 'accepted'
+      and ((c.requester = auth.uid() and c.addressee = target_id)
+        or (c.addressee = auth.uid() and c.requester = target_id))
+  ))
+  order by k.seen_at desc limit 10;
+$$;
+revoke all on function get_device_keys(uuid) from public, anon;
+grant execute on function get_device_keys(uuid) to authenticated;
+
+-- A browser not signed in for 90 days stops being sealed to.
+select cron.schedule(
+  'expire-device-keys',
+  '53 3 * * *',
+  $$delete from public.device_keys where seen_at < now() - interval '90 days'$$
+);
+```
+
 ## 5. LiveKit Cloud
 Already configured for dev. The Worker needs the same key/secret/URL (step 3,
 runtime). No other setup.

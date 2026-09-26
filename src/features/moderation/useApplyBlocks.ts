@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { RoomEvent } from 'livekit-client'
 import { useParticipants } from '@livekit/components-react'
 import type { RemoteParticipant } from 'livekit-client'
 import { useBlockStore } from '@/store/useBlockStore'
@@ -8,7 +9,8 @@ import { useBlockStore } from '@/store/useBlockStore'
  * client (tiles are hidden separately in the Stage). Mounted once in the room.
  */
 export function useApplyBlocks() {
-  const participants = useParticipants()
+  // Joins/leaves plus each new audio track; speaking-state churn is irrelevant here.
+  const participants = useParticipants({ updateOnlyOn: [RoomEvent.TrackSubscribed] })
   const blocked = useBlockStore((s) => s.blocked)
 
   useEffect(() => {

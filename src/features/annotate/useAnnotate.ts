@@ -5,8 +5,9 @@ import {
   useRoomContext,
   useRoomInfo,
 } from '@livekit/components-react'
-import { RoomEvent, type RemoteParticipant } from 'livekit-client'
+import { RoomEvent, type RemoteParticipant, Encryption_Type } from 'livekit-client'
 import { AnnotationEngine } from './AnnotationEngine'
+import { acceptData } from '@/lib/useDataTopic'
 import { decode, encode, targetHash, type StrokePacket } from '@/lib/annotate/wire'
 import { colorIndexFor } from '@/lib/annotate/palette'
 import { displayNameOf } from '@/lib/participantName'
@@ -60,7 +61,7 @@ export const annotateEnabled = import.meta.env.VITE_ANNOTATE !== 'false'
  */
 export function useAnnotate(featuredShareId: string | null) {
   const { localParticipant } = useLocalParticipant()
-  const participants = useParticipants()
+  const participants = useParticipants({ updateOnlyOn: [] }) // identities only
 
   // Which share ink is currently aimed at, as the 32-bit form that goes on the wire.
   // Held in a ref because the engine flushes from its own frame loop, outside React's
@@ -144,8 +145,9 @@ export function useAnnotate(featuredShareId: string | null) {
       participant?: RemoteParticipant,
       _kind?: unknown,
       topic?: string,
+      encryptionType?: Encryption_Type,
     ) => {
-      if (topic !== ANNOTATE_TOPIC) return
+      if (topic !== ANNOTATE_TOPIC || !acceptData(room, participant, encryptionType)) return
       onPacket.current(payload, participant)
     }
     room.on(RoomEvent.DataReceived, onData)

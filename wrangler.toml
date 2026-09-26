@@ -4,15 +4,17 @@ compatibility_date = "2024-09-23"
 # nodejs_compat lets livekit-server-sdk (jose / crypto) run on the Workers runtime.
 compatibility_flags = ["nodejs_compat"]
 
-# Workers + Static Assets: serve the Vite build and route /api/* through the
-# Worker. run_worker_first = true so the Worker handles API routes before the
-# SPA fallback; everything else is served from the assets (index.html for
-# unknown client routes like /r/:room).
+# Workers + Static Assets. Only these paths run the Worker: the API, and the two
+# pages whose head it rewrites for link previews (server/preview.mjs). Every
+# other file — scripts, styles, images, the service worker — is served straight
+# from the build and doesn't count as a Worker request (it used to be 10-25 of
+# them per page view); its headers come from public/_headers instead. Unknown
+# client routes still get index.html (not_found_handling).
 [assets]
 directory = "./dist"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = true
+run_worker_first = ["/", "/r/*", "/api/*"]
 
 # Runtime plain-text vars. These MUST live here (not just the dashboard): a
 # `wrangler deploy` treats wrangler.toml as the source of truth and drops any
@@ -79,6 +81,21 @@ name = "PUSH_RATELIMIT"
 type = "ratelimit"
 namespace_id = "1003"
 simple = { limit = 10, period = 60 }
+
+# Anonymous usage counts (/api/count, server/usage.mjs). 30/60s per IP is far above
+# what one person's visit sends (a handful of events) and stops a script padding
+# the numbers.
+[[unsafe.bindings]]
+name = "COUNT_RATELIMIT"
+type = "ratelimit"
+namespace_id = "1004"
+simple = { limit = 30, period = 60 }
+
+# Where those counts go: Workers Analytics Engine (free; created on first write,
+# kept three months). No cookies, no ids — see docs/analytics-proposal.md.
+[[analytics_engine_datasets]]
+binding = "USAGE"
+dataset = "manim_usage"
 
 # Durable room-lifecycle store for invite-link expiry (server/core.mjs roomKv). A
 # link-shared room is stamped on join and retired after 30 days of no joins, so a

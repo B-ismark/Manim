@@ -141,7 +141,12 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   if (e2eePassphrase) {
     const keyProvider = new ExternalE2EEKeyProvider()
     void keyProvider.setKey(e2eePassphrase)
-    options.e2ee = { keyProvider, worker: new E2EEWorker() }
+    // `encryption`, not the deprecated `e2ee`: the same media encryption, plus the
+    // data channel. With `e2ee` only audio and video were end-to-end encrypted;
+    // chat, reactions, files, drawings and the room key a host hands over when
+    // merging calls all crossed LiveKit readable. Everyone in the call must be on
+    // this build to read each other's data (a peer on an older one sees nothing).
+    options.encryption = { keyProvider, worker: new E2EEWorker() }
   }
 
   return options

@@ -1,6 +1,8 @@
 # Analytics proposal — Manim
 
-**Status:** a proposal only. Nothing has been built. **One decision is needed** (at the end).
+**Status:** decided **yes** (Sept 2026) and built as Option A — `server/usage.mjs`,
+`src/lib/usage.ts`, `/api/count`. How to read the numbers: [usage-counts.md](usage-counts.md).
+The owner skipped the counsel review for now (a small private beta).
 
 ## The problem
 

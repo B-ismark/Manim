@@ -105,7 +105,11 @@
   --shadow-pop: 0 8px 24px -8px oklch(0.2 0.03 270 / 0.3);
 
   /* ── Type ─────────────────────────────────────────────────── */
-  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  /* The platform's own UI face. 'Inter' used to head this list without ever being
+     loaded, so the app looked one way on machines that happened to have Inter
+     installed and another everywhere else. Loading it would cost a font download
+     before first paint for a look nobody had actually been getting. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
 /*
@@ -435,5 +439,24 @@
       outline: 3px solid var(--color-accent) !important;
       outline-offset: 2px;
     }
+  }
+
+  /*
+    Low-end touch devices (lib/device markLiteGraphics): no frosted glass over
+    live video — it re-blurs every frame. The overlay tint gets a little denser
+    instead, so the pills stay as readable as their blurred versions.
+  */
+  html[data-lite] {
+    --color-overlay: oklch(0.18 0.02 270 / 0.8);
+  }
+  html[data-lite] [class*='backdrop-blur'] {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* A modal owns the screen: toasts drop back to the top edge instead of queueing
+     under banners that are behind its scrim now (lib/toastClearance). */
+  html:has([role='dialog'][aria-modal='true']) [data-toasts] {
+    top: max(1rem, env(safe-area-inset-top));
   }
 }

@@ -4,6 +4,27 @@ import { CheckIcon, ChevronDownIcon } from '@/components/icons'
 import { toast } from '@/store/useToastStore'
 import { useDeviceStore, type StoredDeviceKind } from '@/store/useDeviceStore'
 
+/**
+ * THE way a picker switches a device: apply, remember the pick for next time, and
+ * say so only if it failed. The two pickers used to disagree — this dropdown
+ * toasted "Camera switched to …" on success, the tray's list said nothing — so
+ * the same action read differently depending on where you did it. Silent success
+ * won: the control itself already shows the new device (Meet and Teams do the
+ * same), and a toast per pick is noise.
+ */
+export function useSwitchDevice(
+  kind: MediaDeviceKind,
+  label: string,
+  setActiveMediaDevice: (id: string) => Promise<void>,
+) {
+  const remember = useDeviceStore((s) => s.remember)
+  return (d: MediaDeviceInfo) => {
+    void setActiveMediaDevice(d.deviceId)
+      .then(() => remember(kind as StoredDeviceKind, d.deviceId, d.label))
+      .catch(() => toast(`Couldn’t switch ${label.toLowerCase()}`, 'danger'))
+  }
+}
+
 interface RowProps {
   kind: MediaDeviceKind
   label: string
@@ -19,7 +40,7 @@ interface RowProps {
  */
 export function DeviceRow({ kind, label }: RowProps) {
   const { devices, activeDeviceId, setActiveMediaDevice } = useMediaDeviceSelect({ kind })
-  const remember = useDeviceStore((s) => s.remember)
+  const switchTo = useSwitchDevice(kind, label, setActiveMediaDevice)
   if (devices.length === 0) return null
   const active = devices.find((d) => d.deviceId === activeDeviceId) ?? devices[0]
 
@@ -44,14 +65,7 @@ export function DeviceRow({ kind, label }: RowProps) {
           <DropdownItem
             key={d.deviceId}
             icon={d.deviceId === active?.deviceId ? <CheckIcon /> : <span className="size-4" />}
-            onSelect={() => {
-              void setActiveMediaDevice(d.deviceId)
-                .then(() => {
-                  remember(kind as StoredDeviceKind, d.deviceId, d.label)
-                  toast(d.label ? `${label} switched to ${d.label}` : `Switched ${label.toLowerCase()}`, 'neutral')
-                })
-                .catch(() => toast(`Couldn’t switch ${label.toLowerCase()}`, 'danger'))
-            }}
+            onSelect={() => switchTo(d)}
           >
             <span className="truncate">{d.label || 'Unnamed device'}</span>
           </DropdownItem>

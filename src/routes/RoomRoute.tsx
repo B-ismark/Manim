@@ -10,12 +10,13 @@ import { useAppStore } from '@/store/useAppStore'
 import { useRoomStore } from '@/store/useRoomStore'
 import { knock, knockStatus, handoff, LIVEKIT_URL, ApiError } from '@/lib/orchestrator'
 import { rememberSeat, seatFor } from '@/lib/seatKeys'
-import { supabase } from '@/lib/supabase'
+import { getSupabase } from '@/lib/supabase'
 import { parseRoomHash, roomHash } from '@/lib/roomLink'
 import { forgetRoomSecrets, isAuthFragment, resolveRoomSecrets } from '@/lib/roomKeys'
 import { toast } from '@/store/useToastStore'
 import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
+import { countUsage, durationRange, joinErrorClass, surface } from '@/lib/usage'
 
 /**
  * Fire a local OS notification when the host admits a *backgrounded* guest. The
@@ -165,6 +166,22 @@ export function RoomRoute() {
   // also reports a disconnect first, and must show its real error, not "You were
   // disconnected".
   const callRoom = useRef<string | null>(null)
+  // Anonymous usage count (lib/usage): how long the call lasted, as a range. Counted
+  // once — on leaving, or on the tab closing mid-call.
+  const joinedAt = useRef(0)
+  const countLeft = useCallback(() => {
+    if (!joinedAt.current) return
+    countUsage('left', durationRange(Date.now() - joinedAt.current), surface())
+    joinedAt.current = 0
+  }, [])
+  useEffect(() => {
+    window.addEventListener('pagehide', countLeft)
+    return () => {
+      window.removeEventListener('pagehide', countLeft)
+      // Leaving the call by navigating away (Back, a link home) unmounts this.
+      countLeft()
+    }
+  }, [countLeft])
 
   // Mirror the join token into the store so in-room host controls can present it
   // as the Bearer credential to the orchestrator (admit / moderate / roomflags).
@@ -207,7 +224,7 @@ export function RoomRoute() {
       try {
         // Send the Supabase session token (if signed in), NOT a client-asserted
         // userId — the server derives the trusted account id from it. Absent → guest.
-        const accessToken = (await supabase?.auth.getSession())?.data.session?.access_token
+        const accessToken = (await (await getSupabase())?.auth.getSession())?.data.session?.access_token
         const device = await roomDeviceId(deviceId, room)
         const seat = seatFor(room, `${displayName}#${device}`)
         const res = await knock({ room, name: displayName, deviceId: device, accessToken, secret, seat, hasKey: Boolean(e2ee) })
@@ -273,6 +290,8 @@ export function RoomRoute() {
           continue
         }
         reportError(e, { context: 'join', room, attempt })
+        const cls = joinErrorClass(e)
+        if (cls) countUsage('join_error', cls, surface())
         setError(friendlyJoinError(e, raw))
         setConnecting(false)
         return
@@ -311,13 +330,22 @@ export function RoomRoute() {
     setConnecting(false)
   }, [])
 
-  // While queued in the waiting room, poll for the host's decision.
+  // While queued in the waiting room, poll for the host's decision: every 2s at
+  // first, when an answer is likeliest, then every 5s. A request can wait up to 5
+  // minutes, and at 2s throughout that was 150 requests per waiting guest. One at
+  // a time — a slow answer never overlaps the next ask.
   useEffect(() => {
     if (!waitingId) return
     let stop = false
-    const id = window.setInterval(async () => {
-      const s = await knockStatus(room, waitingId, waitClaim.current)
-      if (stop || !s) return
+    let id = 0
+    const started = Date.now()
+    const next = () => {
+      if (!stop) id = window.setTimeout(ask, Date.now() - started < 30_000 ? 2000 : 5000)
+    }
+    const ask = async () => {
+      const s = await knockStatus(room, waitingId, waitClaim.current).catch(() => null)
+      if (stop) return
+      if (!s) return next()
       if (s.status === 'approved' && s.token) {
         rememberSeat(room, s.identity, s.seat)
         // If they backgrounded the app while waiting, ping them to come back.
@@ -331,11 +359,14 @@ export function RoomRoute() {
         setWaitingId(null)
         setError(null)
         toast('Your request to join timed out — try again', 'warning')
+      } else {
+        next()
       }
-    }, 2000)
+    }
+    next()
     return () => {
       stop = true
-      window.clearInterval(id)
+      window.clearTimeout(id)
     }
   }, [waitingId, room])
 
@@ -366,6 +397,7 @@ export function RoomRoute() {
   }, [room, autojoin, displayName, handleJoin])
 
   function leave(reason?: EndReason) {
+    countLeft()
     const why = takeEnd(reason ?? 'left')
     const was = callRoom.current
     callRoom.current = null
@@ -399,8 +431,19 @@ export function RoomRoute() {
           onLeave={leave}
           onConnected={() => {
             callRoom.current = roomNow.current
+            if (!joinedAt.current) {
+              joinedAt.current = Date.now()
+              countUsage(
+                'joined',
+                !companion && prejoin.cameraEnabled && !prejoin.lowBandwidth ? 'cam_on' : 'cam_off',
+                prejoin.lowBandwidth ? 'low_on' : 'low_off',
+              )
+            }
           }}
           onError={(e) => {
+            countLeft()
+            const cls = callRoom.current ? null : joinErrorClass(e)
+            if (cls) countUsage('join_error', cls, surface())
             callRoom.current = null
             reportError(e, { context: 'livekit-room', room })
             setError(friendlyJoinError(e, e.message))

@@ -1,7 +1,10 @@
 import { forwardRef, type ButtonHTMLAttributes, type ReactNode } from 'react'
 import { cn } from '@/lib/cn'
 
-type Tone = 'neutral' | 'accent' | 'danger'
+/** `overlay`: a control floating over live video (tile actions, flip camera, exit
+ *  full screen) — the translucent dark fill that reads on any frame. Eight
+ *  call sites used to spell it out as a className override. */
+type Tone = 'neutral' | 'accent' | 'danger' | 'overlay'
 type Size = 'sm' | 'md' | 'lg'
 
 const sizeClass: Record<Size, string> = {
@@ -14,6 +17,7 @@ const toneIdle: Record<Tone, string> = {
   neutral: 'bg-sunken text-ink hover:bg-line',
   accent: 'bg-accent text-accent-ink hover:bg-accent-hover',
   danger: 'bg-danger text-danger-ink hover:bg-danger-hover',
+  overlay: 'bg-overlay text-white hover:bg-overlay',
 }
 
 // "active" = toggled-on state (e.g. panel open). "off" = a muted/disabled-capability
@@ -22,6 +26,8 @@ const toneActive: Record<Tone, string> = {
   neutral: 'bg-accent text-accent-ink hover:bg-accent-hover',
   accent: 'bg-accent-hover text-accent-ink',
   danger: 'bg-danger text-danger-ink hover:bg-danger-hover',
+  // On over video looks like on anywhere else.
+  overlay: 'bg-accent text-accent-ink hover:bg-accent-hover',
 }
 
 export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {

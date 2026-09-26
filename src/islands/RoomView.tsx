@@ -68,7 +68,11 @@ const CHROME_HIDE_MS = 4000
  * cannot be forgotten.
  */
 function overlayOpen(): boolean {
-  return !!document.querySelector('[role="dialog"], [role="menu"]')
+  // `data-chrome-hold` is for the one layer that isn't a Radix one: the audio tray
+  // lives INSIDE the island. It used to be the reason a second mechanism existed
+  // (a setChromeHold callback the control bar had to remember to call); marking
+  // the element puts it under the same single check.
+  return !!document.querySelector('[role="dialog"], [role="menu"], [data-chrome-hold]')
 }
 
 /**
@@ -93,23 +97,25 @@ function useStageChrome() {
   const mobile = useMemo(() => isTouch(), [])
   const [visible, setVisible] = useState(true)
   const hideTimer = useRef<number | undefined>(undefined)
-  const held = useRef(false)
   const down = useRef<{ x: number; y: number; t: number } | null>(null)
 
   const scheduleHide = useCallback(() => {
-    // Don't auto-hide while a menu is open (held) — the control bar must stay
-    // put or the open popover loses its anchor.
-    if (!mobile || held.current) return
+    if (!mobile) return
     // Re-check at the moment of hiding, not only when the timer was armed. A menu
     // opened DURING the countdown is the orphan case, and the countdown is usually
     // already running by then: the island arms its timer on mount and on every
     // stage tap, so a picker opened at t=3.9s had 100ms to live. While a layer is
     // up this re-arms (a 4s no-op poll) rather than hiding; the first tick after
     // it closes hides normally.
-    const arm = () => {
+    // A layer seen open on one tick earns a full fresh countdown once it closes:
+    // the More sheet and the end-call menu render outside the island, so closing
+    // them isn't an island touch, and without this the bar could slide away a
+    // moment after the sheet did.
+    const arm = (layerWasOpen = false) => {
       window.clearTimeout(hideTimer.current)
       hideTimer.current = window.setTimeout(() => {
-        if (overlayOpen()) return arm()
+        if (overlayOpen()) return arm(true)
+        if (layerWasOpen) return arm()
         setVisible(false)
       }, CHROME_HIDE_MS)
     }
@@ -120,21 +126,6 @@ function useStageChrome() {
     setVisible(true)
     scheduleHide()
   }, [scheduleHide])
-
-  // Pin the chrome open (e.g. while the More menu is showing); release resumes
-  // the auto-hide countdown.
-  const setHold = useCallback(
-    (hold: boolean) => {
-      held.current = hold
-      if (hold) {
-        window.clearTimeout(hideTimer.current)
-        setVisible(true)
-      } else {
-        scheduleHide()
-      }
-    },
-    [scheduleHide],
-  )
 
   useEffect(() => {
     if (mobile) scheduleHide()
@@ -165,7 +156,7 @@ function useStageChrome() {
     [mobile, scheduleHide],
   )
 
-  return { chromeVisible: visible, show, setChromeHold: setHold, stageHandlers: { onPointerDown, onPointerUp } }
+  return { chromeVisible: visible, show, stageHandlers: { onPointerDown, onPointerUp } }
 }
 
 // The chat/participants panel is only needed once opened — defer its chunk.
@@ -181,7 +172,10 @@ const SOLO_TIMEOUT_MS = 5 * 60 * 1000
  * be thrown out). The timers reset the moment anyone else is present.
  */
 function useSoloAutoLeave(onLeave: () => void) {
-  const participants = useParticipants()
+  // Head-count only, so joins and leaves: the default also fires on every
+  // speaking, quality and mute change, and this is the component the whole call
+  // screen hangs off.
+  const participants = useParticipants({ updateOnlyOn: [] })
   const alone = participants.length <= 1
   const [stayed, setStayed] = useState(0)
   useEffect(() => {
@@ -318,6 +312,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // setE2EEEnabled actually resolves, and on failure we drop the badge and warn
   // loudly rather than swallowing the error.
   const [e2eeActive, setE2eeActive] = useState(false)
+  // Encryption was asked for (the link carries a key) and couldn't be turned on.
+  // Stays true for the whole call: a toast alone scrolled away while media went
+  // out in the clear for the rest of it.
+  const [e2eeFailed, setE2eeFailed] = useState(false)
   useEffect(() => {
     if (!e2eePassphrase) return
     let cancelled = false
@@ -329,6 +327,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       .catch((e) => {
         if (cancelled) return
         setE2eeActive(false)
+        setE2eeFailed(true)
         // This is a security-correctness failure (media flows unencrypted while the
         // user expected E2EE) — it must NOT vanish silently. Warn the user AND
         // report it so its real-world rate is measurable (E1/E2).
@@ -392,7 +391,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     void import('@/islands/SidePanel')
   }, [])
-  const { chromeVisible, show: keepChromeUp, setChromeHold, stageHandlers } = useStageChrome()
+  const { chromeVisible, show: keepChromeUp, stageHandlers } = useStageChrome()
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
@@ -471,6 +470,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         <MicUnavailableBanner />
         <AudioBlockedBanner canPlayback={audio.canPlayback} onResume={() => void audio.resume()} />
         <ConnectionBanner />
+        {e2eeFailed && <NotEncryptedPill />}
         <WaitingRoomBanner active={isHost && waiting} />
         {companion ? (
           <CompanionBanner onTakeOver={() => setCompanion(false)} onTransfer={switchToThisDevice} />
@@ -521,7 +521,6 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
 
       <ControlBar
         chromeVisible={chromeVisible}
-        onMenuOpenChange={setChromeHold}
         onInteract={keepChromeUp}
         onLeave={leaveWithUndo}
         onEndForEveryone={endForEveryone}
@@ -589,6 +588,24 @@ function PipPlaceholder({ onBack }: { onBack: () => void }) {
  * end-to-end encryption, and two padlocks a few pixels apart meaning different
  * things is worse than either alone.
  */
+/**
+ * Standing notice that this call is NOT end-to-end encrypted although its link
+ * asked for it. Not tied to the chrome's auto-hide like the status pills: it's
+ * the one fact about the call that must stay true on screen. Capped like every
+ * wide TopStack child so it clears a tile's corner controls on touch.
+ */
+function NotEncryptedPill() {
+  return (
+    <span
+      data-testid="not-encrypted"
+      className="mn-pop pointer-events-none flex max-w-[calc(100%-6rem)] items-center gap-2 rounded-control bg-overlay px-3 py-1.5 text-xs font-medium text-white shadow-raised backdrop-blur"
+    >
+      <span className="size-2 shrink-0 rounded-full bg-danger" aria-hidden />
+      Not end-to-end encrypted
+    </span>
+  )
+}
+
 function RoomLockedPill({ locked, visible }: { locked: boolean; visible: boolean }) {
   // Unmounted, not hidden, for the same reason as CallStatusBar: an invisible row
   // still holds its slot and its gap in TopStack.

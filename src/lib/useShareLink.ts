@@ -13,6 +13,17 @@ import { useCallback, useState } from 'react'
 export function useShareLink() {
   const [copied, setCopied] = useState(false)
 
+  /** Copy only (no share sheet) — for surfaces labelled "Copy link". */
+  const copy = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1800)
+    } catch {
+      /* clipboard blocked — ignore */
+    }
+  }, [])
+
   const share = useCallback(async (data?: { title?: string; text?: string }) => {
     const url = window.location.href
     if (typeof navigator.share === 'function') {
@@ -25,14 +36,8 @@ export function useShareLink() {
         // Any other failure (sheet unavailable, blocked) → fall back to copy below.
       }
     }
-    try {
-      await navigator.clipboard.writeText(url)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1800)
-    } catch {
-      /* clipboard blocked — ignore */
-    }
-  }, [])
+    await copy()
+  }, [copy])
 
-  return { copied, share }
+  return { copied, copy, share }
 }

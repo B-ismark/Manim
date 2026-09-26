@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { supabase } from '@/lib/supabase'
+import { getSupabase, supabase } from '@/lib/supabase'
 import { lookupError } from '@/lib/lookupError'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useCallStore, type IncomingCall } from '@/store/useCallStore'
@@ -7,6 +7,7 @@ import { useNotifyStore } from '@/store/useNotifyStore'
 import { toast } from '@/store/useToastStore'
 import type { RoomSecrets } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
+import { openSecrets, secretsFor } from '@/features/calls/deviceKeys'
 
 export type { IncomingCall }
 
@@ -26,6 +27,7 @@ export async function ringUser(
    *  gate and get the E2EE key. Requires the 5-arg `ring` RPC (see DEPLOY.md §4b). */
   secrets: RoomSecrets = {},
 ): Promise<string | null> {
+  const supabase = await getSupabase()
   if (!supabase) return 'Calling isn’t available right now.'
   // Resolve via a SECURITY DEFINER RPC (single exact-match lookup) rather than a
   // table select — the profiles table is not publicly readable, to prevent email
@@ -40,12 +42,15 @@ export async function ringUser(
   // caller is an accepted contact of the target, then writes into the target's
   // private channel. The sender never joins that channel (no harvest), and
   // non-contacts can't ring (share the invite link instead).
+  // The secrets are sealed to the callee's own devices when they have any
+  // registered, so the relay (Supabase Realtime) never sees the call's key.
+  const sent = await secretsFor(supabase, data as string, secrets)
   const { data: result, error: ringErr } = await supabase.rpc('ring', {
     target_id: data as string,
     room,
     from_name: fromName,
-    join_secret: secrets.secret ?? null,
-    e2ee_key: secrets.e2ee ?? null,
+    join_secret: sent.secret ?? null,
+    e2ee_key: sent.e2ee ?? null,
   })
   if (ringErr) return 'Couldn’t place the call.'
   if (result === 'not_contact') {
@@ -110,16 +115,24 @@ export function useIncomingCalls() {
     // channel, and only the SECURITY DEFINER `ring` RPC (contact-gated) can write
     // to it — so no one can ring-spam or harvest by joining someone else's channel.
     const channel = sb.channel(`user:${userId}`, { config: { private: true, broadcast: { self: false } } })
+    let live = true
+    let latest = 0
     channel
       .on('broadcast', { event: 'ring' }, ({ payload }) => {
         const p = payload as IncomingCall
-        if (p?.room) {
-          setIncoming({ room: p.room, fromName: p.fromName || 'Someone', secret: p.secret, e2ee: p.e2ee })
+        if (!p?.room) return
+        const mine = ++latest
+        void openSecrets({ secret: p.secret, e2ee: p.e2ee }).then((opened) => {
+          // Stale (signed out, or a newer ring arrived first), or sealed for your
+          // other devices only: this one couldn't answer it, so it doesn't ring.
+          if (!live || mine !== latest || !opened) return
+          setIncoming({ room: p.room, fromName: p.fromName || 'Someone', ...opened })
           notifyIncoming(p.fromName || 'Someone', p.room)
-        }
+        })
       })
       .subscribe()
     return () => {
+      live = false
       void sb.removeChannel(channel)
     }
   }, [userId, signedIn, setIncoming])

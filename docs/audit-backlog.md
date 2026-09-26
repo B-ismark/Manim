@@ -15,67 +15,62 @@ encryption claims, the chat-history host setting, the find-by-email throttle, an
 "need the full link" screen for guests who arrive at an encrypted call without its
 key, and a Worker crash on returning visitors that never reached production.
 Words and voice (Sept 2026): one voice across the app, no developer text in front
-of people (see that PR).
+of people (see that PR). Later in Sept 2026: rings and the other-device offer carry
+the call's key locked to the recipient's devices, anonymous usage counts
+(`docs/usage-counts.md`), and a quota pass (static files off the Worker, no 3s
+waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
 
 ## Needs doing outside the code
 
 - [ ] **Deploy when no important calls are live.** Seat keys start working on deploy;
       someone already in a call who reloads afterwards has no key for their seat and
       is asked to change their name (a host rejoins as a guest). Once only.
-- [ ] Have counsel read the updated Privacy page. Still missing and theirs to decide:
-      the legal basis for each use and the safeguards for data processed in the US.
-      The page deliberately names no operator (owner's choice); counsel should
-      confirm that's acceptable where you operate. Minimum age is 16.
-- [ ] Confirm Brevo is the sign-in email sender configured in Supabase (the Privacy
-      page lists it). Without custom SMTP, Supabase only emails the project team.
-- [ ] **Email invites only reach you.** `RESEND_FROM` is Resend's test sender
-      (`onboarding@resend.dev`), which delivers only to the Resend account owner.
-      Verify a domain you own in Resend and point `RESEND_FROM` at it. Until then
-      guests get the mail-app fallback, which works.
-- [ ] Set `VAPID_SUBJECT` as a Worker **Secret** (`mailto:` your address). It left
-      `wrangler.toml` because the repo is public; unset, push uses the repo URL.
-- [ ] Update the Sentry advanced scrubbing rule to the one in DEPLOY.md §3c (it now
-      also catches a token in a query string).
+- Not planned (owner, Sept 2026: a private beta among friends): a counsel read of
+  the Privacy page (legal basis per use, US-processing safeguards, naming no
+  operator, minimum age 16). Revisit before opening it up.
+- [ ] **Email invites only reach you** (deferred, Sept 2026: needs a domain).
+      `RESEND_FROM` is Resend's test sender (`onboarding@resend.dev`), which
+      delivers only to the Resend account owner, and a `workers.dev` address can't
+      be verified. With a domain: verify it in Resend and point `RESEND_FROM` at it,
+      and move the Supabase sign-in sender (Brevo, currently a Gmail address, which
+      can land in spam) onto it too. Until then guests get the mail-app fallback.
+- [ ] `VAPID_SUBJECT` must be a Worker **Secret**, not a plain variable (Sept 2026 it
+      was added as a variable, which the next deploy from `wrangler.toml` wipes).
+- [ ] Confirm crash reports arrive: the DSN and scrubbing rule are set (Sept 2026);
+      run DEPLOY.md §3c step 6 in a browser without an ad blocker (they block
+      Sentry's loader, which is also why some visitors will never report).
 - [ ] Run the new SQL (Sept 2026 batch): the `avatar read own` policy (§3a), the
-      push `seen_at` column and trigger (§4c), and the nightly clean-up jobs (§4d).
+      push `seen_at` column and trigger (§4c), the nightly clean-up jobs (§4d), and
+      the device keys for sealed rings (§4e, after §4c). Until §4e runs, rings work
+      the old way.
+- [ ] After the deploy, check the served site: a file under `/assets/` answers with the
+      COOP/COEP/CSP headers, and a call page
+      still reports `crossOriginIsolated` true in the console.
 
 ## Areas not yet audited
 
-- [ ] **Accessibility: the screen-reader walk.** The code-level pass is done (focus
-      returns on close, Escape stays in the composer, landmarks, honest toggle
-      states, announcements, switchable one-key shortcuts). What's left needs a
-      real screen reader: `docs/screen-reader-check.md` (~15 minutes). Still open in
-      code: the desktop control bar doesn't reflow at 320px (400% zoom), and on
-      touch a message's actions are reachable only by tapping the bubble. Live
-      captions: not for now (owner, Sept 2026).
-- [ ] **Real devices and bad networks.** `docs/real-device-checklist.md`: iPhone
-      Safari, a low-end Android, a weak or lossy connection, on your own devices.
-- [ ] **Product analytics: decide.** `docs/analytics-proposal.md` recommends eight
-      anonymous counters in the Worker (no cookies, no third party). One decision:
-      anonymous counts, yes or no.
-- [ ] **Cost and scale: decide the levers.** The model is `docs/cost-and-scale.md`
-      (free plan everywhere). LiveKit's 5,000 participant-minutes a month is the
-      first wall, at roughly 13 three-person half-hour calls a week. Product calls
-      for you: default video quality, room size cap, and how soon a call ends when
-      you're alone in it. Code levers still open: fewer KV writes per join, the
-      host's 3-second waiting-room poll, static files counting as Worker requests.
+- [ ] **Real devices and bad networks** (owner, later). `docs/real-device-checklist.md`:
+      iPhone Safari, a low-end Android, a weak or lossy connection, on your own devices.
+- [ ] **Cost and scale.** The model is `docs/cost-and-scale.md` (free plan
+      everywhere). LiveKit's 5,000 participant-minutes a month is the first wall.
+      Video quality stays as is (owner, Sept 2026); room size cap and how soon a
+      call ends when you're alone in it are still yours to call. The code levers
+      are done.
+- Not planned (owner, Sept 2026): the screen-reader walk (`docs/screen-reader-check.md`
+  is there if that changes) and live captions.
 
 ## Security
 
-- [ ] **End-to-end encryption, properly.** The key still passes through Supabase
-      when ringing a contact (`features/calls/calls.ts`) and in cross-device
-      presence (`features/calls/usePresence.ts`). Encrypt it per recipient. Also
-      move to livekit-client's `encryption` option so chat, files and drawings are
-      end-to-end encrypted too (`lib/livekit.ts` uses the legacy `e2ee`).
+- [ ] **Who vouches for a device key.** Rings are sealed to the keys Supabase hands
+      out (`features/calls/deviceKeys.ts`), so Supabase itself could swap one in, and
+      a lookup that fails twice sends the key unsealed so the call still gets
+      through. Fix: remember each contact's device keys the first time and warn on
+      a change, and never fall back once keys have been seen.
 - [ ] **Forgeable chat state.** Pins and history replay relay other people's
       messages, so the author and text are whatever the relayer says. Needs signed
       messages to fix properly. (Report notices now name the verified sender.)
-- [ ] **Switch crash reporting on.** The CSP now allows Sentry's loader; set
-      `VITE_SENTRY_DSN` in the Cloudflare build and keep Session Replay and
-      tracing off in Sentry's Loader Script settings (steps in DEPLOY.md).
-- [ ] Merging calls sends the target room's E2EE key over the call's data channel,
-      which LiveKit can read (disclosed on the Privacy page). Fixed by the
-      per-recipient encryption item above.
+- [ ] Merging an UNENCRYPTED call into an encrypted one still sends the target's
+      key over a channel LiveKit can read (disclosed on the Privacy page).
 - [ ] Participants' account id is visible to everyone in every call (participant
       metadata), which links you across calls. It feeds photos and the
       same-account-on-another-device check, so a per-room value needs those to
@@ -83,37 +78,20 @@ of people (see that PR).
 
 ## Experience
 
-- [ ] **Encryption failure** should be a persistent pill in TopStack, and toasts
-      should move into TopStack so the layering rules cover them.
 - [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
       now: visitors no longer see the pill).
-- [ ] Long toasts still overlap prejoin's Back label on a phone while they're up
-      (part of moving toasts into TopStack, above).
 
 ## Performance
 
-- [ ] **The whole call screen redraws on every speaker change**: `RoomView`,
-      `useSessionControl` and `useApplyBlocks` listen to every participant update and
-      nothing below is memoized. Narrow the listeners, move chat state down,
-      memoize ControlBar and Stage. Biggest remaining win, especially on phones.
-- [ ] Supabase (~40–50 KB gz) loads before the landing page renders, even for guests.
-- [ ] Opening the side panel re-packs the gallery on every animation frame.
-- [ ] The prejoin mic meter opens a second microphone capture.
-- [ ] Frosted pills over live video re-blur every frame on low-end phones.
-- [ ] The font stack names Inter but never loads it.
+- [ ] The prejoin mic meter opens its own microphone capture next to the video
+      preview's. Kept on purpose for now: one combined capture would restart the
+      video (a visible flicker) every time the mic is toggled. Revisit only if a
+      real device shows the second capture failing.
 
 ## Redundancy
 
 - [ ] Noise suppression appears in three places; on touch, device choice has two
-      routes to one dialog. Check Mobbin before collapsing.
-- [ ] Two fullscreen implementations (`Stage.tsx` vs `lib/useFullscreen.ts`); a bug
-      has already come from them drifting.
-- [ ] Two copy-link hooks; two device pickers that disagree about a success toast;
-      three near-identical toggle rows; seven copies of the over-video button style;
-      five copies of the chat long-press row style.
-- [ ] Control-bar auto-hide has two mechanisms (`setChromeHold` and `overlayOpen()`).
-- [ ] Move point-in-time audits and prototypes in `docs/` and `audit/` to
-      `docs/archive/`.
+      routes to one dialog. A design call: check Mobbin before collapsing.
 
 ## Product ideas
 

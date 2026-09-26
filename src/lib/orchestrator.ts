@@ -261,7 +261,18 @@ export interface MeStatus {
 /** Whether the current user can host, per the beta gate. `accessToken` is the
  *  Supabase session token (absent for guests). Never throws — defaults to a
  *  signed-out, gate-off view so the UI degrades to "open" if the probe fails. */
-export async function getMe(accessToken?: string): Promise<MeStatus> {
+/** How long this tab trusts an answer: every visit to the home page asked again. */
+const ME_TTL_MS = 10 * 60_000
+
+/** `account`: whose answer this is ('' for a guest), so it can be reused for a while. */
+export async function getMe(accessToken?: string, account = ''): Promise<MeStatus> {
+  const key = `manim-me:${account || 'guest'}`
+  try {
+    const hit = JSON.parse(sessionStorage.getItem(key) || 'null') as { ts: number; me: MeStatus } | null
+    if (hit && Date.now() - hit.ts < ME_TTL_MS) return hit.me
+  } catch {
+    /* no storage — just ask */
+  }
   try {
     const res = await fetch('/api/me', {
       method: 'POST',
@@ -269,7 +280,17 @@ export async function getMe(accessToken?: string): Promise<MeStatus> {
       body: JSON.stringify({ accessToken }),
     })
     if (!res.ok) return { signedIn: false, betaGate: false, allowed: true }
-    return (await res.json()) as MeStatus
+    const me = (await res.json()) as MeStatus
+    // Only a real answer about the account asked for is worth keeping, and never
+    // a refusal: someone just added to the allowlist shouldn't wait it out.
+    if (me.signedIn === Boolean(accessToken) && me.allowed) {
+      try {
+        sessionStorage.setItem(key, JSON.stringify({ ts: Date.now(), me }))
+      } catch {
+        /* no storage */
+      }
+    }
+    return me
   } catch {
     return { signedIn: false, betaGate: false, allowed: true }
   }

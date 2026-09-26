@@ -48,7 +48,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useInviteStore } from '@/store/useInviteStore'
 import { toast } from '@/store/useToastStore'
-import { useCopyLink } from '@/lib/useCopyLink'
+import { useShareLink } from '@/lib/useShareLink'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
 import { countSettled } from '@/lib/settle'
@@ -69,7 +69,7 @@ export function ParticipantsPanel() {
   const { localParticipant } = useLocalParticipant()
   const myUserId = useMyUserId()
   const room = useRoomContext()
-  const { copied, copy } = useCopyLink()
+  const { copied, copy } = useShareLink()
   const [callMsg, setCallMsg] = useState<string | null>(null)
   // Set when the server couldn't send (not configured, or provider rejected the
   // recipient). We render a real mailto link the user can click — a programmatic

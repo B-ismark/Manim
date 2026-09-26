@@ -43,6 +43,8 @@ const LINK_TTL_MS = 30 * 24 * 60 * 60 * 1000
 // "never existed" (an absent record = a brand-new room, which is allowed). An
 // untouched slug only frees for reuse after a year.
 const LINK_RECORD_TTL_S = 365 * 24 * 60 * 60
+/** How stale the link's activity stamp may get before a join rewrites it. */
+const LINK_STAMP_EVERY_MS = 6 * 60 * 60 * 1000
 
 /** The room-lifecycle KV namespace, or null when unbound (local dev / unprovisioned).
  *  Degrades to a no-op exactly like the rate-limit bindings. */
@@ -481,13 +483,21 @@ export async function handleKnock(env, body) {
   // dead, so skip the check when anyone is in it.
   const kv = roomKv(env)
   const linkRoom = kv && Boolean(secret)
-  if (linkRoom && participants.length === 0) {
-    let rec = null
-    try {
-      rec = await kv.get(`room:${room}`, 'json')
-    } catch {
-      rec = null
+  // Read at most once per knock: the expiry check and the activity stamp below
+  // both need it.
+  let linkRec
+  const readLinkRec = async () => {
+    if (linkRec === undefined) {
+      try {
+        linkRec = await kv.get(`room:${room}`, 'json')
+      } catch {
+        linkRec = null
+      }
     }
+    return linkRec
+  }
+  if (linkRoom && participants.length === 0) {
+    const rec = await readLinkRec()
     if (rec && Date.now() - (rec.lastJoinTs || 0) > LINK_TTL_MS) {
       return {
         status: 410,
@@ -500,7 +510,7 @@ export async function handleKnock(env, body) {
   }
 
   if (!isHost && !alreadyIn && flags.locked) {
-    return { status: 403, body: { error: 'The host has locked this call.' } }
+    return { status: 403, body: { error: 'The host has locked this call.', code: 'locked' } }
   }
 
   // Join-secret gate. Once a room records a secretHash (set by its creator from the
@@ -548,16 +558,21 @@ export async function handleKnock(env, body) {
 
   // Past the gate → a legitimate entrant. Stamp the link's activity so it stays alive
   // for another LINK_TTL window (createdAt is written once, the first time we see it).
+  // At most every few hours: KV's free plan allows 1,000 writes a day, and this was
+  // one per join — every person, every rejoin. Hours of slack on a 30-day window
+  // changes nothing anyone could notice.
   if (linkRoom) {
-    try {
-      const prev = await kv.get(`room:${room}`, 'json')
-      await kv.put(
-        `room:${room}`,
-        JSON.stringify({ createdAt: prev?.createdAt ?? Date.now(), lastJoinTs: Date.now() }),
-        { expirationTtl: LINK_RECORD_TTL_S },
-      )
-    } catch {
-      /* KV write failed — non-fatal; joining still works, expiry just isn't refreshed */
+    const prev = await readLinkRec()
+    if (!prev || Date.now() - (prev.lastJoinTs || 0) >= LINK_STAMP_EVERY_MS) {
+      try {
+        await kv.put(
+          `room:${room}`,
+          JSON.stringify({ createdAt: prev?.createdAt ?? Date.now(), lastJoinTs: Date.now() }),
+          { expirationTtl: LINK_RECORD_TTL_S },
+        )
+      } catch {
+        /* KV write failed — non-fatal; joining still works, expiry just isn't refreshed */
+      }
     }
   }
 
@@ -608,7 +623,10 @@ export async function handleKnock(env, body) {
       (Array.isArray(flags.coHosts) && flags.coHosts.includes(p.identity)),
   )
   if (!hostLive) {
-    return { status: 503, body: { error: 'The host isn’t here to let you in yet — try again in a moment.' } }
+    return {
+      status: 503,
+      body: { error: 'The host isn’t here to let you in yet — try again in a moment.', code: 'host_absent' },
+    }
   }
 
   const now = Date.now()
@@ -736,7 +754,9 @@ export async function handleElectHost(env, body, token) {
 
   const byTenure = (a, b) =>
     Number(a.joinedAt || 0) - Number(b.joinedAt || 0) ||
-    String(a.identity).localeCompare(String(b.identity))
+    // Plain code-unit order, not locale order: clients compute the same pick
+    // (useSessionControl) to decide who asks first.
+    (String(a.identity) < String(b.identity) ? -1 : String(a.identity) > String(b.identity) ? 1 : 0)
   const coHosts = Array.isArray(flags.coHosts) ? flags.coHosts : []
   const presentCoHosts = participants.filter((p) => coHosts.includes(p.identity)).sort(byTenure)
   const successor = (presentCoHosts[0] || [...participants].sort(byTenure)[0]).identity

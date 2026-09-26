@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from 'react'
+import { RoomEvent } from 'livekit-client'
 import { useParticipants } from '@livekit/components-react'
 import { Avatar, Button, IconButton, Popover, Sheet, Tooltip } from '@/components/primitives'
 import {
@@ -8,6 +9,7 @@ import {
   DownloadIcon,
   EditIcon,
   GifIcon,
+  MoreIcon,
   PeopleIcon,
   PinIcon,
   ReactionIcon,
@@ -35,6 +37,10 @@ import { renderRichText } from '@/lib/formatText'
 import { useChatHistoryOn } from '@/features/chat/chatHistory'
 import { displayNameOf } from '@/lib/participantName'
 import { cn } from '@/lib/cn'
+
+/** A row in the touch message-actions menu (one style, five rows). */
+const MENU_ROW =
+  'flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted'
 
 /** A live mention candidate the composer can tag. */
 interface MentionMatch {
@@ -117,7 +123,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
   const prevLen = useRef(0)
 
   // Everyone else in the call is taggable. Memoized so the picker filter is cheap.
-  const participants = useParticipants()
+  const participants = useParticipants({ updateOnlyOn: [RoomEvent.ParticipantNameChanged] })
   const mentionTargets = useMemo<MentionTarget[]>(
     () =>
       participants
@@ -758,6 +764,11 @@ function MessageRow({
   // Touch action model: tap a bubble to open the actions popover (Reply, reaction,
   // edit, pin); swipe-left is a shortcut for reply. Desktop keeps the hover toolbar.
   const [actionsOpen, setActionsOpen] = useState(false)
+  // Where focus should land once the touch actions menu has closed. The menu is
+  // modal, so it holds focus until it's gone; a field that mounts in the same
+  // commit (Edit's textarea) can't take it with autoFocus and has to be handed it.
+  const afterMenu = useRef<(() => void) | null>(null)
+  const rowRef = useRef<HTMLDivElement>(null)
   // Touch reaction picker rides a bottom Sheet (full width + scrollable + scrim)
   // rather than the cramped long-press popover — the emoji grid needs the room.
   const [reactOpen, setReactOpen] = useState(false)
@@ -837,6 +848,7 @@ function MessageRow({
   }
   return (
     <div
+      ref={rowRef}
       data-mid={item.id}
       onPointerDown={onRowPointerDown}
       onPointerMove={onRowPointerMove}
@@ -1076,12 +1088,40 @@ function MessageRow({
             side="top"
             align="end"
             label="Message actions"
-            trigger={<span aria-hidden className="absolute right-2 top-2 h-px w-px" />}
+            // Radix returns focus to the trigger on close. When the action has put
+            // focus somewhere on purpose (Edit's textarea, the composer for Reply),
+            // leave it there — stealing it back closed the phone's keyboard.
+            // Dismissed without an action, focus goes back to the button, which is
+            // where a screen reader user left off.
+            onCloseAutoFocus={(e) => {
+              const next = afterMenu.current
+              afterMenu.current = null
+              if (next) {
+                e.preventDefault()
+                next()
+                return
+              }
+              const el = document.activeElement
+              if (el && el !== document.body) e.preventDefault()
+            }}
+            // A real button, not a bare anchor: tapping the bubble is invisible to
+            // a screen reader, so VoiceOver/TalkBack had no route to Reply, react,
+            // edit or pin at all. It stays a 1px spot at the bubble's corner (the
+            // popover still anchors there) until a keyboard focuses it.
+            trigger={
+              <button
+                type="button"
+                aria-label={`Message actions, ${item.isLocal ? 'your message' : `message from ${item.fromName}`}`}
+                className="absolute right-2 top-2 grid size-px place-items-center overflow-hidden rounded-control opacity-0 focus-visible:size-8 focus-visible:bg-surface focus-visible:opacity-100 focus-visible:shadow-pop focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&_svg]:size-4"
+              >
+                <MoreIcon />
+              </button>
+            }
           >
             <div className="flex flex-col">
               <button
                 type="button"
-                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                className={MENU_ROW}
                 onClick={() => {
                   setActionsOpen(false)
                   onReply()
@@ -1092,7 +1132,7 @@ function MessageRow({
               </button>
               <button
                 type="button"
-                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                className={MENU_ROW}
                 onClick={() => {
                   setActionsOpen(false)
                   setReactOpen(true)
@@ -1107,7 +1147,7 @@ function MessageRow({
               {hasReactions && (
                 <button
                   type="button"
-                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  className={MENU_ROW}
                   onClick={() => {
                     setActionsOpen(false)
                     setWhoOpen(true)
@@ -1120,8 +1160,9 @@ function MessageRow({
               {onEdit && (
                 <button
                   type="button"
-                  className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                  className={MENU_ROW}
                   onClick={() => {
+                    afterMenu.current = () => rowRef.current?.querySelector('textarea')?.focus()
                     setActionsOpen(false)
                     startEdit()
                   }}
@@ -1132,7 +1173,7 @@ function MessageRow({
               )}
               <button
                 type="button"
-                className="flex items-center gap-3 rounded-control px-2.5 py-2.5 text-left text-[15px] hover:bg-sunken active:bg-sunken [&_svg]:size-[18px] [&_svg]:text-ink-muted"
+                className={MENU_ROW}
                 onClick={() => {
                   setActionsOpen(false)
                   onTogglePin()
