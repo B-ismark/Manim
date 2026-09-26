@@ -112,9 +112,10 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   button on the bar.** One used to sit there, and the popover it opened was
   `AudioDevicePanel`: the same component, same props, that the caret two controls to
   its left already opens. Not a similar panel — the same one. Meet/Teams/Zoom all hang
-  output off the mic's caret for this reason. Touch is the case that needs its own
-  control (`AudioRouteButton` → the island's tray) because there are no carets there
-  at all. Don't re-add the desktop button: it also cost 52px of a bar whose width is
+  output off the mic's caret for this reason. Touch has no carets at all, so
+  there speaker choice is More → Audio & video (a page in the sheet whose row names
+  the current route). The phone bar is mic, camera, reactions + hand, chat, More,
+  leave: reactions took the slot the touch audio-output button and its tray had. Don't re-add the desktop button: it also cost 52px of a bar whose width is
   the scarce resource `lib/panelDock` is built around, and `03-controls` now asserts
   exactly one control opens that panel.
 - **Screen sharing is desktop-only, and that is the PLATFORM, not a gap in the app.**
@@ -165,6 +166,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   stage, the tile packer's height budget and the island's band all reflow on every
   keyboard. `11-mobile-fit` stubs `visualViewport` to exercise it, since an emulated
   device can't raise a keyboard.
+- **More on a phone is a short grouped list with pages inside the sheet.** Rows,
+  not tiles (an eighteen-tile grid read as busy): actions, then Audio & video and
+  Backgrounds & effects (chevron rows showing their state), then the view switches,
+  then Host controls and Settings. A chevron opens a page IN the sheet with Back in
+  the header, never a dialog on top. Host switches (Lock call, Waiting room, Chat
+  history, End for everyone) live on the Host controls page; tests reach them via
+  `helpers.openHostControls`. Below 360px, where the bar drops reactions, a
+  reactions row returns to the top of the list.
 - **Background blur is a one-tap toggle on your own tile, and the processor is
   shared by context.** There is no effects carousel any more — it was a horizontal
   lens strip built for a gallery of effects that no longer exists (image backgrounds
