@@ -245,6 +245,12 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   will admit and leave a one-line note; both go through `/api/knock-update`, gated
   by the same claim key as knock-status and only while the request is pending, and
   live in the sealed queue, so only a host's `WaitingRoomBanner` reads them.
+- **A ring checks who it's sealed to.** `lib/devicePins` remembers each contact's
+  device keys in this browser (per signed-in account). First ring: remember. A new
+  device: ring it and say so. A KNOWN device with a different key: `KeyChangeDialog`
+  (app-level, since Home navigates into the room while the ring goes out) asks
+  before ringing. Incoming rings show the name you saved for the contact the server
+  stamped as `from` (DEPLOY.md §4g), never only the caller's typed name.
 - **`ConnectionQuality` is a bandwidth heuristic, not connection state.** It reports
   `Lost` for a packet-loss spike and the value sticks until the next update. Only
   `ConnectionState` (Reconnecting / SignalReconnecting) may be called "lost" in the UI
