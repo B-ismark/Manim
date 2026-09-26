@@ -98,11 +98,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   gesture** on the stage any more: the view chip is the route, and a gesture would
   have to fight the gallery's own scroll.
 - **A phone's chat keeps the call in view** (`lib/chatCompanion`, one geometry for
-  the stage and the sheet). Upright the sheet docks below a 180px strip of people
-  (wide cameras trimmed to 4:3, tall ones kept tall); sideways it's a full-height
-  right panel with the speaker, in their true shape, on the left. The sheet is
-  non-modal there (a swipe along the strip must not close it), and the control
-  bar goes `inert` for as long as it's open. Tablets keep the docked panel.
+  the stage and the sheet). Upright it's half and half: the sheet takes the bottom
+  half (never less than 300px of chat, so a short phone or a raised keyboard gives
+  the speaker less, and below 140px the speaker steps aside altogether) and the
+  speaker, in their true shape, fills the top half with a "+N" chip for everyone
+  else; sideways it's a full-height right panel with the speaker on the left. The
+  sheet is non-modal there (a tap on the speaker must not close it), and the
+  control bar goes `inert` for as long as it's open. Tablets keep the docked panel.
 - **The control island must fit its viewport, and every control stays 44px.** Six 44px
   controls plus gaps and padding is 318px of the 343px available at 375px — there is
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
@@ -112,9 +114,10 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   button on the bar.** One used to sit there, and the popover it opened was
   `AudioDevicePanel`: the same component, same props, that the caret two controls to
   its left already opens. Not a similar panel — the same one. Meet/Teams/Zoom all hang
-  output off the mic's caret for this reason. Touch is the case that needs its own
-  control (`AudioRouteButton` → the island's tray) because there are no carets there
-  at all. Don't re-add the desktop button: it also cost 52px of a bar whose width is
+  output off the mic's caret for this reason. Touch has no carets at all, so
+  there speaker choice is More → Audio & video (a page in the sheet whose row names
+  the current route). The phone bar is mic, camera, reactions + hand, chat, More,
+  leave: reactions took the slot the touch audio-output button and its tray had. Don't re-add the desktop button: it also cost 52px of a bar whose width is
   the scarce resource `lib/panelDock` is built around, and `03-controls` now asserts
   exactly one control opens that panel.
 - **Screen sharing is desktop-only, and that is the PLATFORM, not a gap in the app.**
@@ -165,6 +168,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   stage, the tile packer's height budget and the island's band all reflow on every
   keyboard. `11-mobile-fit` stubs `visualViewport` to exercise it, since an emulated
   device can't raise a keyboard.
+- **More on a phone is a short grouped list with pages inside the sheet.** Rows,
+  not tiles (an eighteen-tile grid read as busy): actions, then Audio & video and
+  Backgrounds & effects (chevron rows showing their state), then the view switches,
+  then Host controls and Settings. A chevron opens a page IN the sheet with Back in
+  the header, never a dialog on top. Host switches (Lock call, Waiting room, Chat
+  history, End for everyone) live on the Host controls page; tests reach them via
+  `helpers.openHostControls`. Below 360px, where the bar drops reactions, a
+  reactions row returns to the top of the list.
 - **Background blur is a one-tap toggle on your own tile, and the processor is
   shared by context.** There is no effects carousel any more — it was a horizontal
   lens strip built for a gallery of effects that no longer exists (image backgrounds

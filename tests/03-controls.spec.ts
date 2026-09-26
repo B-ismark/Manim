@@ -58,20 +58,35 @@ test.describe('In-call controls', () => {
     await expect(page.getByRole('button', { name: 'Gallery' })).toBeVisible()
   })
 
-  test('desktop: reactions picker opens and a reaction can be sent', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name !== 'desktop', 'reaction picker is inline on desktop only')
+  // On the bar on both: a phone got it third, in the slot audio output left.
+  test('the bar’s reactions picker opens, sends a reaction, and raises a hand', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
-    await page.getByRole('button', { name: 'Reactions and raise hand' }).click()
+    await revealChrome(page)
+    const trigger = page.getByRole('button', { name: /^Reactions and raise hand/ })
+    await activate(page, trigger)
     const firstEmoji = page.getByRole('button', { name: /^React / }).first()
     await expect(firstEmoji).toBeVisible()
-    await firstEmoji.click()
+    await activate(page, firstEmoji)
+    await revealChrome(page)
+    await activate(page, trigger)
+    await activate(page, page.getByRole('dialog').getByRole('button', { name: 'Raise hand' }))
+    await expect(trigger).toHaveAccessibleName(/your hand is raised/)
     // No crash; reactions overlay is transient — just assert the app is still alive.
     await expect(page.getByRole('button', { name: 'Leave call' })).toBeVisible()
   })
 
-  test('Audio & video device dialog opens from More', async ({ page }) => {
+  test('Audio & video opens from More (a dialog on a laptop, a page in the sheet on a phone)', async ({ page }) => {
     await join(page, uniqueRoom(), 'Ada')
     await openMore(page)
+    if (await isTouch(page)) {
+      await page.getByRole('button', { name: /^Audio & video/ }).tap()
+      await expect(page.getByRole('dialog', { name: 'Audio & video' })).toBeVisible()
+      await expect(page.getByRole('switch', { name: 'Noise suppression' })).toBeVisible()
+      // Back returns to the list, in the same sheet.
+      await page.getByRole('button', { name: 'Back' }).tap()
+      await expect(page.getByRole('button', { name: 'Self view' })).toBeVisible()
+      return
+    }
     await page.getByRole('button', { name: 'Audio & video' }).click()
     const dialog = page.getByRole('dialog', { name: 'Audio & video' })
     await expect(dialog).toBeVisible()
@@ -91,40 +106,40 @@ test.describe('In-call controls', () => {
    *
    * The two platforms take different routes now, which is the point of the split
    * below rather than an inconvenience:
-   *  - TOUCH has one dedicated control, `Audio output: <device>`,
-   *    opening the island's own tray. There are no device carets on touch at all
-   *    (11-mobile-fit guards that), so this is the route.
+   *  - TOUCH reaches it through More → Audio & video, a page inside the sheet
+   *    whose row names the route ("AirPods") before you open it. The bar's own
+   *    audio output button gave its slot to reactions, and there are no device
+   *    carets on touch at all (11-mobile-fit guards that).
    *  - DESKTOP reaches the same `AudioDevicePanel` through the mic's caret, and
    *    only through it. A second bar button used to open that identical panel;
    *    that button is what got removed, so this also pins the removal — if it ever
    *    comes back, "exactly one control opens this" starts failing.
    */
-  test('the audio panel opens from the bar, from exactly one control', async ({ page }) => {
+  test('the audio panel opens from exactly one control', async ({ page }) => {
     const sink = attachErrorSink(page)
     await join(page, uniqueRoom(), 'Ada')
     await revealChrome(page)
     const touch = await isTouch(page)
 
-    // Anchored `^Audio output`, always: the tray/panel lists the OUTPUT DEVICES,
-    // and Chromium's fakes are called "Fake Default Audio Output", which an
-    // unanchored substring happily matches.
-    const trigger = touch
-      ? page.getByRole('button', { name: /^Audio output/ })
-      : page.getByRole('button', { name: 'Audio options' })
-    await expect(trigger).toBeVisible()
-    await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-
-    await activate(page, trigger)
-    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    if (touch) {
+      await openMore(page)
+      await page.getByRole('button', { name: /^Audio & video/ }).tap()
+    } else {
+      const trigger = page.getByRole('button', { name: 'Audio options' })
+      await expect(trigger).toBeVisible()
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      await trigger.click()
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    }
     // The Bluetooth toggle is the one row that's always present — the device
     // pickers hide themselves when the platform lists no devices of that kind.
     await expect(page.getByRole('switch', { name: 'Auto-connect Bluetooth' })).toBeVisible()
 
-    // ONE control named for audio output, panel open or not. On touch that's the
-    // tray trigger; on desktop it's zero — the panel's own speaker row is called
-    // "Speaker", deliberately, so a screen-reader user never meets two
-    // identically-named controls doing different things.
-    await expect(page.getByRole('button', { name: /^Audio output/ })).toHaveCount(touch ? 1 : 0)
+    // No control named for audio output on either platform: the panel's own
+    // speaker list is headed "Speaker" / "Play sound through", so a screen-reader
+    // user never meets two identically-named controls doing different things.
+    // Anchored, because Chromium's fakes are called "Fake Default Audio Output".
+    await expect(page.getByRole('button', { name: /^Audio output/ })).toHaveCount(0)
 
     expect(appErrors(sink)).toEqual([])
   })

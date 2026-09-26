@@ -14,7 +14,7 @@ import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
 import { prettyRoom } from '@/lib/roomName'
 import { markEnd } from '@/lib/callEnd'
-import { userIdOf } from '@/lib/identity'
+import { useMyOtherSeats } from '@/lib/sameAccount'
 import { displayNameOf } from '@/lib/participantName'
 import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
@@ -187,13 +187,14 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
     [roomToken, isPrimaryHost, coHosts, room.name],
   )
 
-  const myUserId = userIdOf(localParticipant)
-
-  // The same signed-in user is present on another device (guests are device-bound,
-  // so this only fires for a real shared account).
+  // The same signed-in user is present on another device, by the server's
+  // signature (lib/sameAccount): a userId in metadata alone can be written by
+  // anyone, and would put a stranger's "switch to this device" banner in front
+  // of you. Guests carry no claim, so this only fires for a real shared account.
+  const otherSeats = useMyOtherSeats()
   const sameNameOther = useMemo(
-    () => Boolean(myUserId) && participants.some((p) => !p.isLocal && userIdOf(p) === myUserId),
-    [participants, myUserId],
+    () => participants.some((p) => !p.isLocal && !!p.sid && otherSeats.has(p.sid)),
+    [participants, otherSeats],
   )
 
   const doLeave = useCallback(async () => {
