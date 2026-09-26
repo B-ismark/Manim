@@ -86,7 +86,7 @@ async function handleApi(request, env, url) {
     if (path === 'push' && method === 'POST') return json(await handlePushRing(env, await bodyOf()))
     return new Response('Not found', { status: 404 })
   } catch {
-    return json({ status: 500, body: { error: 'server error' } })
+    return json({ status: 500, body: { error: 'Something went wrong on our side. Try again in a moment.' } })
   }
 }
 

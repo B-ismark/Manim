@@ -4,7 +4,7 @@ import { Button, Dialog, Island, Popover, Avatar } from '@/components/primitives
 import { GoogleIcon, CameraIcon, CloseIcon } from '@/components/icons'
 import { SettingsLauncher } from '@/islands/Settings'
 import { ContactsLauncher } from '@/islands/Contacts'
-import { SetupStatusButton, SetupBanner } from '@/islands/SetupStatus'
+import { SetupStatusButton, SetupBanner, showSetup } from '@/islands/SetupStatus'
 import { SiteFooter } from '@/islands/SiteFooter'
 import { authEnabled } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
@@ -38,6 +38,22 @@ function randomRoom(): string {
   let suffix = ''
   for (let i = 0; i < 13; i++) suffix += CODE_ALPHABET[bytes[i + 2] % CODE_ALPHABET.length]
   return `${pick(a, 0)}-${pick(b, 1)}-${suffix}`
+}
+
+
+/**
+ * What a failed sign-in step says. Supabase's own text is written for developers
+ * ("Token has expired or is invalid", "For security purposes, you can only request
+ * this after 42 seconds"), so only the one case a person can act on — sending too
+ * many emails — gets its own line; everything else gets the step's fallback.
+ */
+function signInError(ex: unknown, fallback: string): string {
+  const m = ex instanceof Error ? ex.message : ''
+  if (/rate limit|security purposes|too many/i.test(m)) {
+    return 'Too many sign-in emails — wait a minute and try again'
+  }
+  if (/not configured/i.test(m)) return 'Sign-in isn’t available right now'
+  return fallback
 }
 
 export function Landing() {
@@ -171,7 +187,9 @@ export function Landing() {
     // the moment toSlug learned about non-Latin names.
     const slug = toSlug(roomName) || randomRoom()
     const secrets = newRoomSecrets()
-    void ringUser(c.email, slug, myName || 'Someone', secrets)
+    void ringUser(c.email, slug, myName || 'Someone', secrets).then((err) => {
+      if (err) toast(err.replace(/\.$/, ''), 'danger')
+    })
     // Shows an "Invited · waiting" row in the in-call People panel; it clears when
     // they join (their display name matches), so it doubles as a waiting indicator.
     addInvite(c.name)
@@ -189,7 +207,7 @@ export function Landing() {
         {authEnabled ? <AccountMenu /> : <span />}
         <div className="flex items-center gap-2">
           {signedIn && <ContactsLauncher onCall={callContact} />}
-          <SetupStatusButton />
+          {showSetup() && <SetupStatusButton />}
           <SettingsLauncher />
         </div>
       </header>
@@ -466,7 +484,7 @@ function SignIn() {
     try {
       await signInWithGoogle()
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Google sign-in failed')
+      setErr(signInError(ex, 'Couldn’t sign in with Google — try again'))
     }
   }
 
@@ -478,7 +496,7 @@ function SignIn() {
       setSent(true)
       setCooldown(60)
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Sign-in failed')
+      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again'))
     }
   }
 
@@ -490,7 +508,7 @@ function SignIn() {
       await signInWithEmail(value.trim())
       setCooldown(60)
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : 'Could not resend')
+      setErr(signInError(ex, 'Couldn’t send the sign-in email — try again'))
     }
   }
 
@@ -503,7 +521,7 @@ function SignIn() {
     try {
       await verifyEmailOtp(value.trim(), code.trim())
     } catch (ex) {
-      setErr(ex instanceof Error ? ex.message : "That code didn't work — check it and try again.")
+      setErr(signInError(ex, 'That code didn’t work — check it or send a new one'))
     } finally {
       setVerifying(false)
     }

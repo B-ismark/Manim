@@ -506,9 +506,11 @@ deploy`) automatically, to 100%. Your app is live at
 subdomain — rename it under Workers & Pages → account settings, or add a custom
 domain in the Worker → Settings → Domains & Routes).
 
-Verify config at runtime from the Landing page **Setup** menu — it reports which
+Verify config at runtime from the Landing page **Setup** menu — open the site with
+`?setup` on the address (`https://…/?setup`); visitors never see it. It reports which
 of LiveKit / accounts / email / GIFs are live (green) or missing (with the env
-var to set). A red banner appears if calls aren't configured.
+var to set). A red banner appears if calls aren't configured (for visitors it just
+says calls aren't available right now).
 
 ## Local development
 `npm run dev` runs Vite (5173) + the Express dev server (3001) which mirrors the

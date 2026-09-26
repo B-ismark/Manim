@@ -138,7 +138,7 @@ export function ParticipantsPanel() {
     try {
       await setRoomFlags({ room: room.name, token: roomToken, coHosts: next })
     } catch {
-      /* surfaced via thrown error elsewhere */
+      toast(on ? 'Couldn’t make them a co-host — try again' : 'Couldn’t remove them as co-host — try again', 'danger')
     }
   }
 
@@ -153,7 +153,7 @@ export function ParticipantsPanel() {
       await moderate({ room: room.name, token: roomToken, target: target.identity, action: 'remove' })
       toast(`Removed ${target.name}`, 'neutral')
     } catch {
-      /* surfaced elsewhere */
+      toast(`Couldn’t remove ${target.name} — try again`, 'danger')
     }
   }
 
@@ -462,7 +462,7 @@ function ParticipantRow({
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid, source: 'microphone' })
       toast(`Muted ${name}`, 'neutral')
     } catch {
-      /* surfaced elsewhere; ignore here */
+      toast(`Couldn’t mute ${name} — try again`, 'danger')
     }
   }
 
@@ -471,9 +471,9 @@ function ParticipantRow({
     if (!trackSid || !token) return
     try {
       await moderate({ room, token, target: participant.identity, action: 'mute', trackSid, source: 'camera' })
-      toast(`Turned off ${name}'s video`, 'neutral')
+      toast(`Turned off ${name}’s camera`, 'neutral')
     } catch {
-      /* ignore */
+      toast(`Couldn’t turn off ${name}’s camera — try again`, 'danger')
     }
   }
 

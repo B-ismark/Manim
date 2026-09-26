@@ -102,13 +102,13 @@ function SettingsContent() {
     const file = e.target.files?.[0]
     e.target.value = '' // allow re-picking the same file
     if (!file) return
-    if (!file.type.startsWith('image/')) return toast('Pick an image file.', 'danger')
-    if (file.size > 8 * 1024 * 1024) return toast('Image is too large (max 8MB).', 'danger')
+    if (!file.type.startsWith('image/')) return toast('Choose an image file', 'danger')
+    if (file.size > 8 * 1024 * 1024) return toast('That image is over 8 MB — choose a smaller one', 'danger')
     setUploading(true)
     try {
       await uploadAvatar(file)
     } catch (ex) {
-      toast(ex instanceof Error ? ex.message : 'Upload failed.', 'danger')
+      toast(ex instanceof Error ? ex.message : 'Couldn’t upload your photo — try again', 'danger')
     } finally {
       setUploading(false)
     }
@@ -138,7 +138,7 @@ function SettingsContent() {
                   </Button>
                 )}
               </div>
-              <p className="text-xs text-ink-subtle">JPG, PNG or WebP, up to 8MB.</p>
+              <p className="text-xs text-ink-subtle">JPG, PNG or WebP, up to 8 MB.</p>
             </>
           ) : (
             <p className="text-xs text-ink-subtle">Sign in to add a profile photo.</p>
@@ -236,9 +236,9 @@ function DeleteAccount({ onDelete }: { onDelete: () => Promise<void> }) {
     setBusy(true)
     try {
       await onDelete()
-      toast('Your account and data were deleted.', 'info')
+      toast('Your account and data were deleted', 'info')
     } catch (ex) {
-      toast(ex instanceof Error ? ex.message : 'Could not delete your account.', 'danger')
+      toast(ex instanceof Error ? ex.message : 'Couldn’t delete your account — try again', 'danger')
       setBusy(false)
       setConfirming(false)
     }

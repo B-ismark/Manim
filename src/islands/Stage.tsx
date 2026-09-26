@@ -1764,7 +1764,7 @@ function Tile({
     try {
       await moderate({ room: room.name, token: roomToken, target: p.identity, action: 'mute', trackSid, source: 'microphone' })
     } catch {
-      toast(`Couldn't mute ${name}`, 'danger')
+      toast(`Couldn’t mute ${name} — try again`, 'danger')
     }
   }
   const myOtherDevice = isMyOtherDevice(p, myUserId)

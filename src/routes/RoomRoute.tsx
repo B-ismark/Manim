@@ -48,24 +48,23 @@ function notifyAdmitted(room: string) {
 const CallRoom = lazy(() => import('@/islands/CallRoom'))
 
 /**
- * Turn a raw LiveKit connection-error / disconnect string into something a user
- * can act on. The headline offender was "Client initiated disconnect" surfacing
- * verbatim when a mobile join was torn down (e.g. a duplicate session or the tab
- * backgrounding mid-connect) — meaningless to the user. Map the known ones; pass
- * anything genuinely unexpected through unchanged.
+ * Turn a failed join into something a user can act on. The server's own `error`
+ * (an `ApiError` carrying a body) is written as UI copy, so it passes through.
+ * Everything else is a LiveKit or browser string — "Client initiated disconnect",
+ * "could not createOffer…", "WebSocket error" — meaningless to the person reading
+ * it, so the known ones are mapped and the rest get one generic line (the raw text
+ * still goes to `reportError`).
  */
-function friendlyJoinError(raw: string): string {
+function friendlyJoinError(e: unknown, raw: string): string {
+  if (e instanceof ApiError && e.fromServer) return raw
   const m = raw.toLowerCase()
   if (m.includes('client initiated') || m.includes('duplicate identity')) {
-    return 'Connection closed — tap Join to reconnect.'
-  }
-  if (m.includes('timeout') || m.includes('could not establish') || m.includes('failed to connect')) {
-    return 'Couldn’t reach the call. Check your connection and tap Join to retry.'
+    return 'Connection closed. Join again to reconnect.'
   }
   if (m.includes('permission') || m.includes('notallowed') || m.includes('denied')) {
-    return 'Allow camera and microphone access, then tap Join.'
+    return 'Allow camera and microphone access, then join again.'
   }
-  return raw
+  return 'Couldn’t reach the call. Check your connection and join again.'
 }
 
 /**
@@ -75,7 +74,10 @@ function friendlyJoinError(raw: string): string {
  * mobile user on a spotty connection had to manually re-tap Join. We auto-retry
  * just these classes with a short backoff before falling back to the manual card.
  */
-function isTransientJoinError(raw: string): boolean {
+function isTransientJoinError(e: unknown, raw: string): boolean {
+  // A gateway error page (502/504, Cloudflare's 52x) has no JSON body: the Worker
+  // never answered, so trying again is the right move.
+  if (e instanceof ApiError) return !e.fromServer && e.status >= 502
   const m = raw.toLowerCase()
   return (
     m.includes('timeout') ||
@@ -200,7 +202,7 @@ export function RoomRoute() {
           setWaitingId(res.requestId)
           setConnecting(false)
         } else {
-          setError('Could not join this room.')
+          setError('Couldn’t join this call. Try again.')
           setConnecting(false)
         }
         return
@@ -237,16 +239,16 @@ export function RoomRoute() {
           setConnecting(false)
           return
         }
-        const raw = e instanceof Error ? e.message : 'Failed to join'
-        if (isTransientJoinError(raw) && attempt < JOIN_MAX_ATTEMPTS) {
+        const raw = e instanceof Error ? e.message : String(e)
+        if (isTransientJoinError(e, raw) && attempt < JOIN_MAX_ATTEMPTS) {
           // Stay on the JoiningScreen (connecting && !error) and tell the user we're
           // retrying rather than flashing an error card between attempts.
-          toast('Connection hiccup — reconnecting…', 'info')
+          toast('Connection dropped — trying again…', 'info')
           await delay(JOIN_BACKOFF_MS[attempt - 1])
           continue
         }
         reportError(e, { context: 'join', room, attempt })
-        setError(friendlyJoinError(raw))
+        setError(friendlyJoinError(e, raw))
         setConnecting(false)
         return
       }
@@ -365,7 +367,7 @@ export function RoomRoute() {
           onLeave={leave}
           onError={(e) => {
             reportError(e, { context: 'livekit-room', room })
-            setError(friendlyJoinError(e.message))
+            setError(friendlyJoinError(e, e.message))
             setToken(null)
             setConnecting(false)
           }}

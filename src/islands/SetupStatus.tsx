@@ -6,6 +6,20 @@ import { useIsTouch } from '@/lib/useIsTouch'
 import { cn } from '@/lib/cn'
 
 /**
+ * Whether to show the operator-facing Setup surfaces (the header button and the
+ * env-var hints). They name build vars and Worker secrets, which mean nothing to
+ * a visitor, so production keeps them behind `?setup` for whoever runs the app.
+ */
+export function showSetup(): boolean {
+  if (import.meta.env.DEV) return true
+  try {
+    return new URLSearchParams(window.location.search).has('setup')
+  } catch {
+    return false
+  }
+}
+
+/**
  * Single visible "what's configured" surface. Lists every integration with a
  * green/grey dot and, for anything off, the env var that turns it on. Optional
  * features degrade silently elsewhere — this is the one place that says why.
@@ -115,11 +129,20 @@ export function SetupBanner() {
       <div className="flex items-start gap-3">
         <span className="mt-1 size-2 shrink-0 rounded-full bg-danger" aria-hidden />
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">Video calls aren’t configured</p>
-          <p className="mt-0.5 text-xs text-ink-muted">
-            Set VITE_LIVEKIT_URL plus the LIVEKIT_API_KEY / LIVEKIT_API_SECRET runtime
-            Secrets on the Worker, then redeploy. See the Setup menu for details.
-          </p>
+          {showSetup() ? (
+            <>
+              <p className="text-sm font-medium">Video calls aren’t configured</p>
+              <p className="mt-0.5 text-xs text-ink-muted">
+                Set VITE_LIVEKIT_URL plus the LIVEKIT_API_KEY / LIVEKIT_API_SECRET runtime
+                Secrets on the Worker, then redeploy. See the Setup menu for details.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-medium">Calls aren’t available right now</p>
+              <p className="mt-0.5 text-xs text-ink-muted">We’re working on it. Try again later.</p>
+            </>
+          )}
         </div>
         <button
           type="button"

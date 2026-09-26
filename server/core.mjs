@@ -312,20 +312,20 @@ export async function handleMe(env, body) {
 export async function handleKnock(env, body) {
   const { apiKey, apiSecret, roomService } = services(env)
   const { room, name, deviceId, host, accessToken, secret, seat, hasKey } = body ?? {}
-  if (!room || !name) return { status: 400, body: { error: 'room and name are required' } }
-  if (!apiKey || !apiSecret) return { status: 500, body: { error: 'LIVEKIT keys not set' } }
+  if (!room || !name) return { status: 400, body: { error: 'Enter your name to join.' } }
+  if (!apiKey || !apiSecret) return { status: 500, body: { error: 'Calls aren’t available right now. Try again later.' } }
   // Bound what lands in the identity and in room metadata (the waiting-room queue
   // stores names, and LiveKit caps metadata size — a few huge names would make
   // every later knock's metadata write fail). `#` would make the identity's
   // name#device split ambiguous.
   if (typeof room !== 'string' || room.length > MAX_ROOM_LEN || typeof name !== 'string') {
-    return { status: 400, body: { error: 'Invalid room or name' } }
+    return { status: 400, body: { error: 'This call link isn’t valid. Check it and try again.' } }
   }
   if (name.length > MAX_NAME_LEN || /[#\u0000-\u001f\u007f]/.test(name) || !name.trim()) {
-    return { status: 400, body: { error: 'Please use a shorter name without special characters.' } }
+    return { status: 400, body: { error: 'Use a shorter name, without # or other special characters.' } }
   }
   if (deviceId != null && (typeof deviceId !== 'string' || deviceId.length > 64 || /[#\u0000-\u001f\u007f]/.test(deviceId))) {
-    return { status: 400, body: { error: 'Invalid device' } }
+    return { status: 400, body: { error: 'Couldn’t join from this browser. Reload the page and try again.' } }
   }
 
   const identity = `${name}#${deviceId || 'web'}`
@@ -344,7 +344,7 @@ export async function handleKnock(env, body) {
     return {
       status: 410,
       body: {
-        error: 'This meeting link is no longer valid. Start a new meeting to keep talking.',
+        error: 'This call link is no longer valid. Start a new call to keep talking.',
         code: 'link_expired',
       },
     }
@@ -430,7 +430,7 @@ export async function handleKnock(env, body) {
     return {
       status: 403,
       body: {
-        error: 'This beta is invite-only — only approved hosts can start a call. Ask to be added to the allowlist.',
+        error: 'Only approved accounts can start calls during the beta. You can still join calls you’re invited to.',
         code: 'not_in_beta',
       },
     }
@@ -442,7 +442,7 @@ export async function handleKnock(env, body) {
   if (!isHost && !alreadyIn && participants.length >= roomCap(env)) {
     return {
       status: 403,
-      body: { error: 'This room is full (beta limit reached). Try again later.', code: 'room_full' },
+      body: { error: 'This call is full. Try again later.', code: 'room_full' },
     }
   }
 
@@ -463,7 +463,7 @@ export async function handleKnock(env, body) {
       return {
         status: 410,
         body: {
-          error: 'This meeting link has expired. Start a new meeting to keep talking.',
+          error: 'This call link has expired. Start a new call to keep talking.',
           code: 'link_expired',
         },
       }
@@ -471,7 +471,7 @@ export async function handleKnock(env, body) {
   }
 
   if (!isHost && !alreadyIn && flags.locked) {
-    return { status: 403, body: { error: 'This room is locked by the host.' } }
+    return { status: 403, body: { error: 'The host has locked this call.' } }
   }
 
   // Join-secret gate. Once a room records a secretHash (set by its creator from the
@@ -492,7 +492,7 @@ export async function handleKnock(env, body) {
         status: 403,
         body: {
           error:
-            'This room needs its invite link. Open the original link again (in full) — a shortened or re-typed address drops the part that lets you in.',
+            'This link is incomplete. Open the original invite link again — shortened or retyped links don’t work.',
           code: 'need_link',
         },
       }

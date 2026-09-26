@@ -1,3 +1,6 @@
+/** What every failed resize says: the fix is always to try another file. */
+const UNREADABLE = 'Couldn’t read that image — try a JPG, PNG or WebP'
+
 /**
  * Downscale + re-encode an image File to a small square blob for use as an avatar.
  * Keeps stored avatars tiny (a 256px webp is a few KB) regardless of the source
@@ -13,7 +16,7 @@ export async function squareDownscale(file: File, size = 256): Promise<Blob> {
   canvas.width = size
   canvas.height = size
   const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('Canvas not supported')
+  if (!ctx) throw new Error(UNREADABLE)
   ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size)
   if ('close' in bitmap) bitmap.close()
 
@@ -21,7 +24,7 @@ export async function squareDownscale(file: File, size = 256): Promise<Blob> {
     // webp is broadly supported in evergreen browsers and ~30% smaller than jpeg.
     canvas.toBlob(resolve, 'image/webp', 0.85),
   )
-  if (!blob) throw new Error('Could not encode image')
+  if (!blob) throw new Error(UNREADABLE)
   return blob
 }
 
@@ -38,7 +41,7 @@ async function loadBitmap(file: File): Promise<ImageBitmap | HTMLImageElement> {
     const img = new Image()
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve()
-      img.onerror = () => reject(new Error('Could not read image'))
+      img.onerror = () => reject(new Error(UNREADABLE))
       img.src = url
     })
     return img
