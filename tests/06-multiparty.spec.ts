@@ -6,6 +6,7 @@ import {
   join,
   newParticipant,
   openChat,
+  openHostControls,
   openMore,
   uniqueRoom,
 } from './helpers'
@@ -136,7 +137,7 @@ test.describe('Multi-party', () => {
     // Host turns the waiting room on (More → Waiting room toggle), then closes the menu
     // by TAPPING its X — on mobile More is a modal bottom-sheet whose scrim would
     // otherwise block the admit banner (phones have no Esc key).
-    await openMore(page)
+    await openHostControls(page)
     await page.getByRole('button', { name: 'Waiting room' }).click()
     await closePanel(page)
 

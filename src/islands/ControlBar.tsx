@@ -19,6 +19,7 @@ import {
   CameraIcon,
   CameraOffIcon,
   ChatIcon,
+  ChevronLeftIcon,
   ChevronUpIcon,
   FullscreenIcon,
   ExitFullscreenIcon,
@@ -43,12 +44,11 @@ import {
   SoundOnIcon,
   AnnotateIcon,
   CheckIcon,
-  CloseIcon,
   ChevronRightIcon,
 } from '@/components/icons'
 import { DeviceSettings, DeviceRow, useSwitchDevice } from '@/islands/DeviceMenu'
-import { EffectsDialog } from '@/islands/BackgroundEffects'
-import { SettingsDialog } from '@/islands/Settings'
+import { BackgroundEffects, EffectsDialog } from '@/islands/BackgroundEffects'
+import { SettingsContent, SettingsDialog } from '@/islands/Settings'
 import { REACTION_EMOJI } from '@/features/reactions/useReactions'
 import type { BackgroundBlurControls } from '@/features/effects/useBackgroundBlur'
 import type { NoiseFilterControls } from '@/features/effects/useNoiseFilter'
@@ -184,10 +184,6 @@ export function ControlBar({
   // A closed call leaves nothing open behind it for the next one.
   useEffect(() => () => setMoreOpen(false), [setMoreOpen])
   const moreRef = useRef<HTMLButtonElement>(null)
-  // The audio tray. Not a Radix layer, so the DOM-based auto-hide guard in
-  // useStageChrome can't see it — it needs the explicit hold below or the island
-  // would slide out of the thumb zone taking an open tray with it.
-  const [audioTrayOpen, setAudioTrayOpen] = useState(false)
   const touch = useIsTouch()
   // A desktop window narrower than the full bar — 400% zoom on a 1280px screen is
   // 320 CSS px (WCAG reflow). It used to run off both edges, taking Mute and End
@@ -204,16 +200,7 @@ export function ControlBar({
   const twoCol = useRailTwoCol()
   const companion = useChatCompanion()
   const companionOpen = companion.mode !== 'none'
-  // Seven 44px reaction buttons need 332px beside the X. A narrow sideways panel
-  // (an SE on its side is 367px wide) can't spare that, so there they stay in the
-  // body, as upright; squeezing them would break the 44px floor.
-  const reactionsInHeader = rail && companion.mode === 'side' && companion.panelW >= 420
   const compact = touch || narrowBar
-  // A modal and the tray must not be up together — the modal would scrim the tray
-  // it was opened from.
-  useEffect(() => {
-    if (modal) setAudioTrayOpen(false)
-  }, [modal])
   const { supported: canFullscreen, isFullscreen, toggleFullscreen } = useFullscreen()
   // Screen share needs getDisplayMedia — absent on iOS Safari (and iOS Chrome,
   // which is WebKit underneath). Hide the control there instead of offering a
@@ -311,6 +298,11 @@ export function ControlBar({
   // sees the sheet in the DOM; nothing here has to report it.
   const setMore = setMoreOpen
   const closeMore = () => setMore(false)
+  // Which page of the phone's More sheet is showing. Every open starts at the top.
+  const [morePage, setMorePage] = useState<'main' | 'av' | 'effects' | 'settings' | 'host'>('main')
+  useEffect(() => {
+    if (!moreOpen) setMorePage('main')
+  }, [moreOpen])
 
   // Desktop keyboard shortcuts (Architecture-Plan §8.6). Ignored on touch and
   // while typing / holding a modifier, so they never fight text entry or browser
@@ -595,21 +587,25 @@ export function ControlBar({
   )
 
   /**
-   * More on a phone: ONE grid of identical tiles, no section headings.
+   * More on a phone: a short list, with the deep stuff one level down.
    *
-   * The list it replaces had five kinds of element (round emoji, a segmented
-   * switch, captioned circles, a flat list and headings between them), which is
-   * what read as clutter. Now reactions share the top row, the view switch sits
-   * under them, and everything else is the same tile. What a tile does is carried
-   * by its corner: an on/off switch shows a small toggle (and the tile turns accent
-   * when it's on), a tile that opens something shows an arrow, and a plain action
-   * shows neither. Three across upright; four in the sideways panel, which is the
-   * same width as the chat panel so the call beside it doesn't move.
+   * It was one grid of eighteen identical tiles, and the owner's word for it was
+   * "busy": every choice asked for the same attention, so none of them stood out.
+   * Now it's the list every phone settings screen uses (iOS Settings, WhatsApp,
+   * Teams' own More), grouped in rounded cards: what you do (share, mini player,
+   * full screen), where things are (Audio & video, Backgrounds & effects), what you
+   * see (self view, videos first, save data), and the host's and your own
+   * settings. Anything with more than one choice behind it is a row with a chevron
+   * that opens a page INSIDE the sheet, with Back in the header, rather than a
+   * dialog stacked on top, so you never lose your place or the call.
    *
-   * Same order and names as the desktop menu, so the two can't drift apart.
+   * Reactions left for the bar. Below 360px, where the bar can't fit them, a
+   * reactions row stays at the top of this list instead.
+   *
+   * Same names as the desktop menu, so the two can't drift apart.
    */
   const reactionRow = (
-    <div className="flex items-center justify-between gap-1" role="group" aria-label="Reactions">
+    <div className="flex flex-wrap items-center justify-between gap-1" role="group" aria-label="Reactions">
       {REACTION_EMOJI.map((e) => (
         <IconButton
           key={e}
@@ -635,49 +631,53 @@ export function ControlBar({
       />
     </div>
   )
-  const moreTouch = (
-    <div className={cn('flex flex-col px-3 pb-3', rail ? 'gap-2' : 'gap-3')}>
-      {!reactionsInHeader && reactionRow}
-      <div className="flex h-11 shrink-0 rounded-full bg-sunken p-1" role="group" aria-label="View layout">
-        {(
-          [
-            { value: 'speaker', label: 'Speaker', icon: <SpeakerLayoutIcon /> },
-            { value: 'grid', label: 'Gallery', icon: <GridIcon /> },
-          ] as const
-        ).map((opt) => {
-          const active = layout === opt.value
-          return (
-            <button
-              key={opt.value}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setLayout(opt.value)}
-              className={cn(
-                'flex flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-colors [&_svg]:size-4',
-                active ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted',
-              )}
-            >
-              {opt.icon}
-              {opt.label}
-            </button>
-          )
-        })}
-      </div>
-      <div className={cn('grid gap-2', rail ? 'grid-cols-4' : 'grid-cols-3')}>
+  const { label: routeLabel } = useAudioRoute()
+  const viewSwitch = (
+    <div className="flex h-11 shrink-0 rounded-full bg-sunken p-1" role="group" aria-label="View layout">
+      {(
+        [
+          { value: 'speaker', label: 'Speaker', icon: <SpeakerLayoutIcon /> },
+          { value: 'grid', label: 'Gallery', icon: <GridIcon /> },
+        ] as const
+      ).map((opt) => {
+        const active = layout === opt.value
+        return (
+          <button
+            key={opt.value}
+            type="button"
+            aria-pressed={active}
+            onClick={() => setLayout(opt.value)}
+            className={cn(
+              'flex flex-1 items-center justify-center gap-1.5 rounded-full text-sm font-semibold transition-colors [&_svg]:size-4',
+              active ? 'bg-surface text-ink shadow-sm' : 'text-ink-muted',
+            )}
+          >
+            {opt.icon}
+            {opt.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+  const moreMain = (
+    <div className="flex flex-col gap-3 px-3 pb-3">
+      <div className="min-[360px]:hidden">{reactionRow}</div>
+      {viewSwitch}
+      <MoreGroup>
         {canScreenShare && (
-          <MoreTile
-            compact={rail}
+          <MoreRow
             icon={<ScreenShareIcon />}
             label={shareSlotsFull ? 'Share screen (in use)' : 'Share screen'}
+            kind="switch"
             on={screenShare.enabled}
             disabled={shareSlotsFull}
             onClick={() => screenShare.toggle()}
           />
         )}
-        <MoreTile
-            compact={rail}
+        <MoreRow
           icon={<PipIcon />}
           label="Mini player"
+          kind="switch"
           on={docPip.supported ? docPip.active : pipActive}
           onClick={() => {
             if (docPip.supported) docPip.toggle()
@@ -686,10 +686,10 @@ export function ControlBar({
           }}
         />
         {canFullscreen && (
-          <MoreTile
-            compact={rail}
+          <MoreRow
             icon={isFullscreen ? <ExitFullscreenIcon /> : <FullscreenIcon />}
             label="Full screen"
+            kind="switch"
             on={isFullscreen}
             onClick={() => {
               toggleFullscreen()
@@ -697,73 +697,92 @@ export function ControlBar({
             }}
           />
         )}
+      </MoreGroup>
+      <MoreGroup>
+        <MoreRow
+          icon={<SlidersIcon />}
+          label="Audio & video"
+          // Where sound is going, answered without opening anything: the thing
+          // the old bar button was for.
+          detail={routeLabel ?? undefined}
+          kind="link"
+          onClick={() => setMorePage('av')}
+        />
+        <MoreRow
+          icon={<EffectsIcon />}
+          label="Backgrounds & effects"
+          detail={blur.mode === 'blur' ? 'Blur' : 'Off'}
+          kind="link"
+          onClick={() => setMorePage('effects')}
+        />
+      </MoreGroup>
+      <MoreGroup>
         {/* Switches stay open on a tap, so you see the state flip. */}
-        <MoreTile compact={rail} kind="switch" icon={<EyeIcon />} label="Self view" on={!selfViewHidden} onClick={toggleSelfView} />
-        <MoreTile compact={rail} kind="switch" icon={<SortIcon />} label="Videos first" on={videosFirst} onClick={toggleVideosFirst} />
-        <MoreTile
-            compact={rail}
-          kind="switch"
+        <MoreRow icon={<EyeIcon />} label="Self view" kind="switch" on={!selfViewHidden} onClick={toggleSelfView} />
+        <MoreRow icon={<SortIcon />} label="Videos first" kind="switch" on={videosFirst} onClick={toggleVideosFirst} />
+        <MoreRow
           icon={<CameraOffIcon />}
           label="Save data"
           name="Save data (pause incoming video)"
+          detail="Pause incoming video"
+          kind="switch"
           on={audioOnly}
           onClick={toggleAudioOnly}
         />
-        {isHost && <MoreTile compact={rail} kind="switch" icon={<LockIcon />} label="Lock call" on={locked} onClick={onToggleLock} />}
+      </MoreGroup>
+      <MoreGroup>
         {isHost && (
-          <MoreTile compact={rail} kind="switch" icon={<WaitingRoomIcon />} label="Waiting room" on={waiting} onClick={onToggleWaiting} />
+          <MoreRow icon={<LockIcon />} label="Host controls" kind="link" onClick={() => setMorePage('host')} />
         )}
-        {isHost && (
-          <MoreTile compact={rail} kind="switch" icon={<ChatIcon />} label="Chat history" on={chatHistory} onClick={onToggleChatHistory} />
-        )}
-        <MoreTile
-            compact={rail}
-          kind="link"
-          icon={<EffectsIcon />}
-          label="Effects"
-          name="Backgrounds & effects"
-          onClick={() => {
-            setModal('effects')
-            closeMore()
-          }}
-        />
-        <MoreTile
-            compact={rail}
-          kind="link"
-          icon={<SlidersIcon />}
-          label="Audio & video"
-          onClick={() => {
-            setModal('devices')
-            closeMore()
-          }}
-        />
-        <MoreTile
-            compact={rail}
-          kind="link"
-          icon={<SettingsIcon />}
-          label="Settings"
-          onClick={() => {
-            setModal('settings')
-            closeMore()
-          }}
-        />
-        {/* The one thing here that can't be undone: its own red tile, last, and
-            still through the confirm dialog. */}
-        {isHost && (
-          <MoreTile
-            compact={rail}
-            danger
-            icon={<LeaveIcon />}
-            label="End call for everyone"
-            onClick={() => {
-              setModal('endConfirm')
-              closeMore()
-            }}
-          />
-        )}
-      </div>
+        <MoreRow icon={<SettingsIcon />} label="Settings" kind="link" onClick={() => setMorePage('settings')} />
+      </MoreGroup>
     </div>
   )
+  const moreHost = (
+    <div className="flex flex-col gap-3 px-3 pb-3">
+      <MoreGroup>
+        <MoreRow icon={<LockIcon />} label="Lock call" detail="No one new can join" kind="switch" on={locked} onClick={onToggleLock} />
+        <MoreRow
+          icon={<WaitingRoomIcon />}
+          label="Waiting room"
+          detail="You let people in"
+          kind="switch"
+          on={waiting}
+          onClick={onToggleWaiting}
+        />
+        <MoreRow
+          icon={<ChatIcon />}
+          label="Chat history"
+          detail="Late joiners see earlier messages"
+          kind="switch"
+          on={chatHistory}
+          onClick={onToggleChatHistory}
+        />
+      </MoreGroup>
+      {/* The one thing here that can't be undone: its own group, red, and still
+          through the confirm dialog. */}
+      <MoreGroup>
+        <MoreRow
+          danger
+          icon={<LeaveIcon />}
+          label="End call for everyone"
+          onClick={() => {
+            setModal('endConfirm')
+            closeMore()
+          }}
+        />
+      </MoreGroup>
+    </div>
+  )
+  const MORE_PAGES = {
+    main: { title: 'More', body: moreMain },
+    av: { title: 'Audio & video', body: <div className="px-0 pb-3"><AudioVideoPage noise={noise} /></div> },
+    effects: { title: 'Backgrounds & effects', body: <div className="px-1 pb-3"><BackgroundEffects controls={blur} /></div> },
+    settings: { title: 'Settings', body: <div className="px-3 pb-3"><SettingsContent /></div> },
+    host: { title: 'Host controls', body: moreHost },
+  } as const
+  const morePageNow = MORE_PAGES[morePage]
+  const moreTouch = morePageNow.body
 
   /** The island's control row. Rendered bare when collapsed, and as the tray's
    *  last row when the audio tray is open — same buttons, same order, one place. */
@@ -877,35 +896,20 @@ export function ControlBar({
           )}
         </div>
 
-        {/* Audio routing — TOUCH ONLY, and the control users hunt for most on mobile.
-            The button STATES the route it's on ("AirPods") rather than showing a
-            generic speaker glyph, so "where is my audio going?" is answered without
-            opening anything, and it opens the island's own tray.
+        {/* Reactions and raise hand — on the phone's bar, third, where the audio
+            output button used to sit (speaker choice moved into More → Audio &
+            video, where the rest of the device choices already were). A hand is
+            the one thing people reach for mid-conversation, and two taps into More
+            was too far for it. Meet and Teams on a phone keep it on the bar.
 
-            There is deliberately no desktop counterpart. A speaker button used to
-            sit here on `!touch` as well, opening a popover — and that popover was
-            `AudioDevicePanel`, the very same component the mic caret two controls to
-            the left already opens. Not a similar panel: the same one, same props,
-            mic row and speaker row and Bluetooth and noise. So the bar carried two
-            controls that did exactly one thing, which is also the ambiguity
-            AudioDevicePanel's own comments were working around. Every desktop app
-            we compare against (Meet, Teams, Zoom) hangs speaker choice off the mic's
-            caret for this reason. Touch is the case that genuinely needs its own
-            control: there are no carets there at all.
-
-            Removing it also gives the desktop bar back 52px (measured: 614 -> 562),
-            which is not spare
-            change — lib/panelDock's whole `xl` threshold exists because the bar was
-            wider than the prototype measured, and its docs note the bar grows every
-            time a control is added. This is the first time one has come off. */}
+            Folded away below 360px, where six controls cannot fit: 5 x 44px plus
+            gaps and padding is 268 of the 288 available at 320px, and adding a
+            sixth makes 318. More keeps a reactions row for exactly that width. A
+            <span> wrapper, because `hidden` on a component with its own base
+            display class is inert (see the device carets above). */}
         {touch && (
-          // Folded away below 360px, where six controls cannot fit: 5 x 44px plus
-          // gaps and padding is 268 of the 288 available at 320px, and adding a
-          // sixth makes 318. More -> "Audio & video" reaches every one of these
-          // devices there. A <span> wrapper, because `hidden` on a component with
-          // its own base display class is inert (see the device carets below).
           <span className="hidden min-[360px]:inline-flex">
-            <AudioRouteButton open={audioTrayOpen} onToggle={() => setAudioTrayOpen((o) => !o)} />
+            <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} grid />
           </span>
         )}
 
@@ -986,12 +990,10 @@ export function ControlBar({
           </span>
         </Tooltip>
 
-        {/* Reactions (desktop inline; folded into More on touch). One button —
-            it also carries raise-hand. Layout switching lives in More / top chip. */}
-        {!narrowBar && (
-          <span className="hidden pointer-fine:inline-flex">
-            <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
-          </span>
+        {/* Reactions on a laptop. One button — it also carries raise-hand. On
+            touch it sits third on the bar instead (above). */}
+        {!narrowBar && !touch && (
+          <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
         )}
 
         {/* More — bottom sheet on mobile (thumb-reachable), popover on desktop.
@@ -1012,22 +1014,31 @@ export function ControlBar({
               open={moreOpen}
               onOpenChange={setMore}
               side="bottom"
-              title="More"
               flush
               // Sideways it's the same right-hand panel as chat (lib/chatCompanion),
               // with the reactions in its top row beside the X when they fit.
               dock={companion.mode === 'side' ? { width: companion.panelW } : undefined}
+              title={morePageNow.title}
               headerContent={
-                reactionsInHeader ? (
-                  reactionRow
-                ) : (
+                morePage === 'main' ? (
                   <span aria-hidden className="px-1 text-lg font-semibold">
                     More
+                  </span>
+                ) : (
+                  // A page inside the sheet, not a dialog on top: Back returns to
+                  // the list and the call stays where it was.
+                  <span className="flex items-center gap-1">
+                    <IconButton label="Back" icon={<ChevronLeftIcon />} className="rounded-full" onClick={() => setMorePage('main')} />
+                    <span aria-hidden className="truncate text-lg font-semibold">
+                      {morePageNow.title}
+                    </span>
                   </span>
                 )
               }
             >
-              <div className="min-h-0 flex-1 overflow-y-auto no-scrollbar">{moreTouch}</div>
+              <div key={morePage} className="mn-pop min-h-0 flex-1 overflow-y-auto overscroll-contain no-scrollbar">
+                {moreTouch}
+              </div>
             </Sheet>
           </>
         ) : (
@@ -1177,67 +1188,19 @@ export function ControlBar({
         className={cn(
           'rounded-control',
           'transition-transform duration-[var(--dur-base)] ease-[var(--ease-island)]',
-          // With the tray open the island becomes a COLUMN whose LAST ROW is the
-          // control bar. That is the whole point: there is no second element to
-          // lose track of, so a picker outliving its anchor stops being a bug to
-          // fix and becomes a state that cannot be constructed.
-          //
-          // On the rail the same idea turns sideways: the tray opens to the LEFT of
-          // the column, and the column stays where the thumb left it.
           rail
-            ? audioTrayOpen
-              ? 'flex max-h-full w-[min(26rem,calc(100vw-2rem))] flex-row-reverse overflow-hidden'
-              : twoCol
-                ? // Three rows, filled column by column: mic/camera/audio, then
-                  // chat/More/Leave — Leave still lands in the bottom trailing corner.
-                  'grid grid-flow-col grid-rows-3 place-items-center gap-1.5 px-2 py-2'
-                : 'flex max-h-full flex-col items-center gap-1.5 overflow-y-auto px-2 py-2 no-scrollbar'
-            : audioTrayOpen
-              ? 'flex w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden'
-              : 'flex items-center gap-1.5 px-3 py-2 sm:gap-2',
+            ? twoCol
+              ? // Three rows, filled column by column: mic/camera/reactions, then
+                // chat/More/Leave — Leave still lands in the bottom trailing corner.
+                'grid grid-flow-col grid-rows-3 place-items-center gap-1.5 px-2 py-2'
+              : 'flex max-h-full flex-col items-center gap-1.5 overflow-y-auto px-2 py-2 no-scrollbar'
+            : 'flex items-center gap-1.5 px-3 py-2 sm:gap-2',
           // Only interactive while shown — otherwise the off-screen bar still
           // caught taps/focus.
           chromeVisible ? 'pointer-events-auto' : 'pointer-events-none',
         )}
       >
-        {audioTrayOpen && rail && (
-          <div className="min-w-0 flex-1 overflow-y-auto no-scrollbar">
-            <AudioTray
-              noise={noise}
-              onClose={() => setAudioTrayOpen(false)}
-              onAllDevices={() => {
-                setAudioTrayOpen(false)
-                setModal('devices')
-              }}
-            />
-          </div>
-        )}
-        {audioTrayOpen && !rail && (
-          <AudioTray
-            noise={noise}
-            onClose={() => setAudioTrayOpen(false)}
-            onAllDevices={() => {
-              setAudioTrayOpen(false)
-              setModal('devices')
-            }}
-          />
-        )}
-        {audioTrayOpen ? (
-          <div
-            className={cn(
-              'flex items-center gap-1.5 bg-sunken',
-              rail
-                ? twoCol
-                  ? 'grid grid-flow-col grid-rows-3 place-items-center border-l border-line px-2 py-2'
-                  : 'flex-col overflow-y-auto border-l border-line px-2 py-2 no-scrollbar'
-                : 'border-t border-line px-3 py-2',
-            )}
-          >
-            {barRow}
-          </div>
-        ) : (
-          barRow
-        )}
+        {barRow}
       </Island>
     </div>
   )
@@ -1271,7 +1234,7 @@ function ShortcutsDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 }
 
 /**
- * Inline reaction picker (desktop). Emoji grid plus a raise/lower-hand toggle —
+ * Inline reaction picker (the bar's Reactions button, laptop and phone). Emoji plus a raise/lower-hand toggle —
  * hand is just a sticky reaction, so it lives here rather than as its own bar
  * button. Active state reflects a raised hand so the bar shows the cue.
  */
@@ -1279,10 +1242,13 @@ function ReactionButton({
   onPick,
   handRaised,
   onToggleHand,
+  grid = false,
 }: {
   onPick: (emoji: string) => void
   handRaised: boolean
   onToggleHand: () => void
+  /** Two rows of four on a phone: one row of eight is 380px, wider than the screen. */
+  grid?: boolean
 }) {
   const [open, setOpen] = useState(false)
   return (
@@ -1301,19 +1267,20 @@ function ReactionButton({
         />
       }
     >
-      <div className="flex items-center gap-1">
+      <div className={grid ? 'grid grid-cols-4 gap-1' : 'flex items-center gap-1'}>
         {REACTION_EMOJI.map((e) => (
           <IconButton
             key={e}
             label={`React ${e}`}
             icon={<span className="text-xl">{e}</span>}
+            className={grid ? 'rounded-full' : undefined}
             onClick={() => {
               onPick(e)
               setOpen(false)
             }}
           />
         ))}
-        <span className="mx-0.5 h-7 w-px bg-line" aria-hidden />
+        {!grid && <span className="mx-0.5 h-7 w-px bg-line" aria-hidden />}
         <IconButton
           label={handRaised ? 'Lower hand' : 'Raise hand'}
           icon={<HandIcon />}
@@ -1445,9 +1412,6 @@ function CameraDevicePanel() {
   )
 }
 
-/** Ties the tray to its trigger for assistive tech (aria-controls/expanded). */
-const AUDIO_TRAY_ID = 'mn-audio-tray'
-
 /** Minimum height for a row you tap with a thumb. WCAG 2.5.8 asks 24px and the
  *  old menu rows cleared that at ~36px, but both platform guidelines want more —
  *  44px on iOS, 48dp on Android — and these rows exist only for thumbs. */
@@ -1470,101 +1434,26 @@ function useAudioRoute(): { label: string | null; canRoute: boolean } {
 }
 
 /**
- * Touch trigger for the audio tray. A plain 44px icon button — NOT the labelled
- * chip the prototype drew.
+ * More → Audio & video on a phone: every device choice, as flat lists.
  *
- * The chip was meant to answer "where is my audio going?" without opening
- * anything, and it's a good idea that does not fit. Measured at 375px: the island
- * has 343px to work with, six 44px controls plus gaps and padding come to 318, and
- * a 104px chip in place of one of them makes 378 — 35px over, spilling off both
- * screen edges. Controls don't compress to absorb it (`size-11` fixes both axes),
- * they just hang off. The route name moved into the tray's header instead, which is
- * one tap away rather than zero, and the bar keeps its thumb targets.
+ * One level, nothing nests. Every mobile path to a device used to be a picker
+ * inside a picker: a popover holding select-style rows that each opened another
+ * popover, `side="top"` on both, no max-height and no scroll container. Radix
+ * flips a panel that doesn't fit, so on a short phone the inner one resolved
+ * DOWNWARD off a control 40px from the bottom of the screen. A page of rows can't.
  *
- * The accessible name still carries the route, so a screen-reader user gets the
- * label the chip would have shown without needing the pixels.
+ * Output first, because that's the decision a phone user is making ("put it on
+ * the headset"). It used to have its own button on the bar; that slot went to
+ * reactions, and the route's name now shows on the row that leads here. Absent
+ * where the platform can't route (iOS Safari) rather than shown empty.
  */
-function AudioRouteButton({ open, onToggle }: { open: boolean; onToggle: () => void }) {
-  const { label, canRoute } = useAudioRoute()
+function AudioVideoPage({ noise }: { noise: NoiseFilterControls }) {
+  const { canRoute } = useAudioRoute()
   return (
-    <IconButton
-      // Named for what the platform can actually do: iOS Safari exposes no
-      // audiooutput devices and no setSinkId, so there is no route to promise.
-      label={
-        canRoute && label
-          ? `Audio output: ${label}`
-          : open
-            ? 'Close audio settings'
-            : 'Audio settings'
-      }
-      icon={<SoundOnIcon />}
-      tone="neutral"
-      active={open}
-      // The tray is a disclosure, not a dialog — the call stays operable beside it —
-      // so it needs expanded/controls rather than modal semantics.
-      aria-expanded={open}
-      aria-controls={AUDIO_TRAY_ID}
-      onClick={onToggle}
-    />
-  )
-}
-
-/**
- * The audio tray — the island's body while it's open.
- *
- * One flat level. Every mobile path to a device used to be a picker inside a
- * picker: a popover holding select-style rows that each opened another popover,
- * `side="top"` on both, no max-height and no scroll container. Radix flips a panel
- * that doesn't fit, so on a short phone the inner one resolved DOWNWARD off a
- * control sitting 40px from the bottom of the screen — the "awkward drop-down".
- * Nothing here nests, so nothing can flip.
- *
- * Rows are routes first, because that's the decision a phone user is making
- * ("put it on the headset"), with the raw device string as the second line for the
- * machines that have five of them. The long tail is a door, not a nested menu:
- * "All devices" opens the full Audio & video dialog.
- *
- * No Video segment, despite the prototype showing Audio/Video tabs. Camera
- * selection on touch is a FLIP, on the self-view tile — that's what every
- * reference app does, and a camera list here would re-add the picker whose leak
- * onto phones started this. A specific camera is still reachable via All devices.
- */
-function AudioTray({
-  noise,
-  onClose,
-  onAllDevices,
-}: {
-  noise: NoiseFilterControls
-  onClose: () => void
-  onAllDevices: () => void
-}) {
-  const { canRoute, label } = useAudioRoute()
-  return (
-    <div
-      id={AUDIO_TRAY_ID}
-      // Holds the touch chrome up while it's open (RoomView overlayOpen).
-      data-chrome-hold
-      role="group"
-      aria-label="Audio settings"
-      className="flex max-h-[min(60dvh,26rem)] flex-col overflow-y-auto no-scrollbar"
-    >
-      <div className="flex items-center gap-2 px-3 pb-1 pt-2.5">
-        <h2 className="text-sm font-semibold">Audio</h2>
-        {/* The route the collapsed chip would have named, where there IS room for
-            it. See AudioRouteButton for why it isn't on the bar. */}
-        {canRoute && label && (
-          <span className="min-w-0 truncate text-xs text-ink-muted">{label}</span>
-        )}
-        <span className="flex-1" />
-        <IconButton label="Close audio settings" size="sm" icon={<CloseIcon />} onClick={onClose} />
-      </div>
-
-      {/* Output. Absent entirely where the platform can't route (iOS Safari) rather
-          than shown as an empty section. */}
+    <div className="flex flex-col">
       {canRoute && <DeviceRouteList kind="audiooutput" heading="Play sound through" />}
-
       <DeviceRouteList kind="audioinput" heading="Microphone" />
-
+      <DeviceRouteList kind="videoinput" heading="Camera" />
       <div className="border-t border-line">
         <ToggleRow
           label="Noise suppression"
@@ -1575,19 +1464,6 @@ function AudioTray({
         />
         <BluetoothToggle touch />
       </div>
-
-      <button
-        type="button"
-        onClick={onAllDevices}
-        className={cn(
-          'flex w-full items-center gap-3 border-t border-line px-3 text-left text-sm',
-          'hover:bg-sunken [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-ink-muted',
-          TOUCH_ROW,
-        )}
-      >
-        <SlidersIcon />
-        <span className="flex-1">All devices</span>
-      </button>
     </div>
   )
 }
@@ -1624,7 +1500,7 @@ function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: st
                   TOUCH_ROW,
                 )}
               >
-                <SoundOnIcon />
+                {kind === 'videoinput' ? <CameraIcon /> : kind === 'audioinput' ? <MicIcon /> : <SoundOnIcon />}
                 <span className="min-w-0 flex-1 truncate text-sm">{d.label || 'Unnamed device'}</span>
                 {active && <CheckIcon />}
               </button>
@@ -1677,81 +1553,79 @@ function BluetoothToggle({ touch = false }: { touch?: boolean }) {
   )
 }
 
-/** Quick-action tile in the More grid: round icon over a small label. */
+/** One rounded card of rows in the phone's More list (iOS inset-grouped style). */
+function MoreGroup({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-[18px] bg-sunken [&>*+*]:border-t [&>*+*]:border-line">
+      {children}
+    </div>
+  )
+}
+
 /**
- * One tile of the phone's More grid. `kind` says what a press does, and the
- * tile's corner says it back: a switch shows a small toggle (accent tile when
- * on), a link shows an arrow, an action shows nothing. `name` is for the few
- * whose short label needs its longer, established name for assistive tech; it
- * always begins with the visible label, so voice control can still say it.
+ * One row of the phone's More list. `kind` says what a tap does and the row's end
+ * says it back: a switch shows a toggle, a link shows a chevron (and opens a page
+ * in the sheet), an action shows nothing. `detail` is the quiet second word on the
+ * right (where sound goes, whether blur is on) or, for a switch, a line under the
+ * label. `name` is for the few whose short label needs its longer, established
+ * name for assistive tech; it always begins with the visible label.
  */
-function MoreTile({
+function MoreRow({
   icon,
   label,
   name,
+  detail,
   kind = 'action',
   on,
   disabled,
   danger,
-  compact,
   onClick,
 }: {
   icon: ReactNode
   label: string
   name?: string
-  compact?: boolean
+  detail?: string
   kind?: 'action' | 'switch' | 'link'
   on?: boolean
   disabled?: boolean
   danger?: boolean
   onClick: () => void
 }) {
-  const lit = Boolean(on) && kind !== 'link'
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       aria-label={name}
-      aria-pressed={kind === 'link' || danger ? undefined : Boolean(on)}
+      aria-pressed={kind === 'switch' ? Boolean(on) : undefined}
       data-danger={danger || undefined}
       className={cn(
-        'relative flex flex-col items-start justify-between rounded-[18px] text-left text-[13px] font-semibold leading-tight transition-colors [&_svg]:size-5',
-        danger
-          ? 'bg-danger/10 text-danger-text hover:bg-danger/15'
-          : lit
-            ? // Straight accent over the sheet, not accent-soft: that one is mixed
-              // with the warm surface and came out pink, a shade away from the
-              // red End tile two rows down.
-              'bg-accent/15 text-accent-text'
-            : 'bg-sunken text-ink hover:bg-line',
-        // Sideways the sheet is 390px tall and a host's grid is three rows; the
-        // same tile with a slightly tighter pad is what keeps the last row on screen.
-        compact ? 'gap-1.5 p-2.5' : 'min-h-[4.5rem] gap-2 p-3',
+        'flex min-h-[3.25rem] w-full items-center gap-3 px-3.5 py-2 text-left text-[15px] transition-colors',
+        '[&>svg]:size-5 [&>svg]:shrink-0',
+        danger ? 'font-semibold text-danger-text active:bg-danger/10' : 'text-ink active:bg-line [&>svg]:text-ink-muted',
         disabled && 'pointer-events-none opacity-40',
       )}
     >
-      <span className="flex w-full items-start justify-between">
-        {icon}
-        {kind === 'switch' && (
-          <span
-            aria-hidden
-            className={cn(
-              'relative h-4 w-7 shrink-0 rounded-full transition-colors',
-              on ? 'bg-accent' : 'bg-line-strong',
-            )}
-          >
-            <span
-              className={cn(
-                'absolute top-0.5 size-3 rounded-full bg-white shadow-sm transition-[left]',
-                on ? 'left-3.5' : 'left-0.5',
-              )}
-            />
-          </span>
-        )}
-        {kind === 'link' && <ChevronRightIcon aria-hidden className="!size-4 text-ink-muted" />}
+      {icon}
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate">{label}</span>
+        {detail && kind === 'switch' && <span className="truncate text-xs text-ink-muted">{detail}</span>}
       </span>
-      <span>{label}</span>
+      {detail && kind === 'link' && <span className="max-w-[40%] truncate text-sm text-ink-muted">{detail}</span>}
+      {kind === 'switch' && (
+        <span
+          aria-hidden
+          className={cn('relative h-6 w-10 shrink-0 rounded-full transition-colors', on ? 'bg-accent' : 'bg-line-strong')}
+        >
+          <span
+            className={cn(
+              'absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-[left]',
+              on ? 'left-[1.125rem]' : 'left-0.5',
+            )}
+          />
+        </span>
+      )}
+      {kind === 'link' && <ChevronRightIcon aria-hidden className="size-4 shrink-0 text-ink-muted" />}
     </button>
   )
 }

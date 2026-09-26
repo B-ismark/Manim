@@ -74,10 +74,10 @@ const CHROME_HIDE_MS = 4000
  * cannot be forgotten.
  */
 function overlayOpen(): boolean {
-  // `data-chrome-hold` is for the one layer that isn't a Radix one: the audio tray
-  // lives INSIDE the island. It used to be the reason a second mechanism existed
-  // (a setChromeHold callback the control bar had to remember to call); marking
-  // the element puts it under the same single check.
+  // `data-chrome-hold` is for a layer that isn't a Radix one. The audio tray that
+  // lived INSIDE the island was the case (it moved into More → Audio & video);
+  // anything like it marks itself rather than growing a second mechanism (a
+  // setChromeHold callback a control would have to remember to call).
   return !!document.querySelector('[role="dialog"], [role="menu"], [data-chrome-hold]')
 }
 

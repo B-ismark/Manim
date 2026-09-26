@@ -317,10 +317,9 @@ export async function activate(page: Page, control: Locator): Promise<void> {
  */
 export async function openEndCallMenu(page: Page): Promise<Locator> {
   if (await isTouch(page)) {
-    // A row in the sheet, not a menuitem — the sheet is not a menu.
-    const row = page.getByRole('button', { name: 'End call for everyone' })
-    await pressChrome(page, page.getByRole('button', { name: 'More options' }), row)
-    return row
+    // A row on More's Host controls page, not a menuitem — the sheet is not a menu.
+    await openHostControls(page)
+    return page.getByRole('button', { name: 'End call for everyone' })
   }
   const item = page.getByRole('menuitem', { name: 'End call for everyone' })
   await pressChrome(page, page.getByRole('button', { name: 'End call for everyone' }), item)
@@ -396,6 +395,19 @@ export async function openMore(page: Page): Promise<void> {
     page.getByRole('button', { name: 'More options' }),
     page.getByRole('group', { name: 'View layout' }),
   )
+}
+
+/**
+ * Open More at the host's switches (Lock call, Waiting room, Chat history). On a
+ * phone they're a page inside the sheet, one row down (Host controls); on a
+ * laptop they're in the menu itself.
+ */
+export async function openHostControls(page: Page): Promise<void> {
+  await openMore(page)
+  if (await isTouch(page)) {
+    await page.getByRole('button', { name: 'Host controls' }).tap()
+    await page.getByRole('button', { name: 'Back' }).waitFor()
+  }
 }
 
 /** Open the chat side panel and return the message composer. */

@@ -9,7 +9,7 @@ import {
   newParticipant,
   openChat,
   openMessageActions,
-  openMore,
+  openHostControls,
   replyToMessage,
   uniqueRoom,
 } from './helpers'
@@ -237,7 +237,7 @@ test.describe('Chat history setting', () => {
     // Host turns it off from More; the next late joiner gets nothing and is told so.
     // On a phone the chat sheet is modal and covers the bar, so close it first.
     if (await isTouch(page)) await closePanel(page)
-    await openMore(page)
+    await openHostControls(page)
     await page.getByRole('button', { name: 'Chat history' }).click()
     await expect(page.getByText('People who join from now on won’t see earlier messages')).toBeVisible()
 
