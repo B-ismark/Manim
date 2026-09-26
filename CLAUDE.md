@@ -78,6 +78,8 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
     bottom; anything parked down there ends up half underneath it (it did, for months).
   - Gallery tile density comes from viewport WIDTH at a 132px legibility floor
     (`lib/tileGrid.ts`): 2 columns on every current phone, 3 from ~430px and on tablets.
+    A phone on its SIDE is the exception: there one 3:4 tile is taller than the whole
+    stage, so columns are added (down to the same floor) until a row fits.
   - There is deliberately **no user-facing density control.** More → View carried
     gallery-size chips (Auto / 4 / 9 / 16); every value they produced was clamped to
     the same fit-to-viewport answer `gridCapacity` computes, so they either did
@@ -95,6 +97,12 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   tiles you. Desktop has no floating card at all. There is deliberately **no swipe
   gesture** on the stage any more: the view chip is the route, and a gesture would
   have to fight the gallery's own scroll.
+- **A phone's chat keeps the call in view** (`lib/chatCompanion`, one geometry for
+  the stage and the sheet). Upright the sheet docks below a 180px strip of people
+  (wide cameras trimmed to 4:3, tall ones kept tall); sideways it's a full-height
+  right panel with the speaker, in their true shape, on the left. The sheet is
+  non-modal there (a swipe along the strip must not close it), and the control
+  bar goes `inert` for as long as it's open. Tablets keep the docked panel.
 - **The control island must fit its viewport, and every control stays 44px.** Six 44px
   controls plus gaps and padding is 318px of the 343px available at 375px — there is
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
@@ -128,6 +136,16 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   can't be scrolled clear of it. Emulators can't report an inset, so
   `11-mobile-fit` forces one onto the `[data-safe-area-probe]` element and the island
   together; that seam is the only way this class of bug is visible in a browser test.
+  - **The bands are live, not fixed** (`lib/chromeBands`). On touch, when the chrome
+    auto-hides, `useChromeHidden` collapses both bands (`useIslandBand`, `useTopBand`)
+    to a hairline and the tiles glide into the room (`TileRows` places tiles
+    absolutely in ONE keyed list — per-row wrappers remounted a video that changed
+    row). A phone on its side (`useRail`, compact height < 480) turns the island into
+    a right-edge column: the bottom band goes, `useRailBand` reserves the right side
+    for the gallery, and the view chip moves top-left. While hidden and muted a
+    `MutedPill` stays (top-centre upright, bottom-left sideways with its own strip).
+    A test that measures against the bar must `revealChrome` first — a faded bar
+    reserves nothing, by design.
 - **A `hidden` class is INERT on any component with a base display class.** `cn()` is a
   plain joiner, so the className lands after the component's own `inline-flex`,
   Tailwind emits `.hidden` first, specificity ties and source order wins. Gate with a

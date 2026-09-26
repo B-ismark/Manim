@@ -38,6 +38,21 @@ export interface SheetProps {
    */
   expandable?: boolean
   className?: string
+  /**
+   * Content for the header row, beside the close button (the chat panel's
+   * Chat / People switch). One row instead of a title row above a tab row: on a
+   * phone those two rows plus a notice were ~280px of chrome before the first
+   * message. The title stays, for assistive tech only.
+   */
+  headerContent?: ReactNode
+  /**
+   * A phone keeping the call in view beside the panel (lib/chatCompanion): `top`
+   * pins the sheet's top edge below the stage's strip of people; `width` makes it
+   * a full-height panel down the right of a phone on its side. Either way it is
+   * non-modal with no scrim — the stage beside it is live, and a tap on it (a
+   * swipe along the strip) must not close the chat.
+   */
+  dock?: { top: number } | { width: number }
 }
 
 // pb safe-area keeps the bottom-sheet content (e.g. chat input) above the iOS
@@ -86,10 +101,14 @@ export function Sheet({
   side = 'responsive',
   flush = false,
   hideTitle = false,
-  modal = true,
-  expandable = false,
+  modal: modalProp = true,
+  expandable: expandableProp = false,
   className,
+  headerContent,
+  dock,
 }: SheetProps) {
+  const modal = modalProp && !dock
+  const expandable = expandableProp && !dock
   // Drag state lives here so it resets each open. `frac` is the live height as a
   // fraction of the viewport; null means "use the CSS default" (desktop / not yet
   // dragged). Only meaningful for the mobile bottom layout.
@@ -171,9 +190,11 @@ export function Sheet({
    */
   const kb = useKeyboardInset()
   const keyboardStyle =
-    kb > 0 && side !== 'right'
+    kb > 0 && (side !== 'right' || dock)
       ? { bottom: kb, maxHeight: `calc(100dvh - ${kb}px - 1rem)` }
       : undefined
+
+  const dockStyle = dock ? ('top' in dock ? { top: dock.top } : { width: dock.width }) : undefined
 
   const onCloseAutoFocus = useReturnFocus(open)
 
@@ -192,10 +213,15 @@ export function Sheet({
           aria-modal={modal ? 'true' : undefined}
           // Keyboard offset last: it must win over the dragged detent's
           // `maxHeight: 'none'`, or a dragged-open sheet ignores the clamp.
-          style={{ ...draggableStyle, ...keyboardStyle }}
+          style={{ ...draggableStyle, ...dockStyle, ...keyboardStyle }}
+          data-dock={dock ? ('top' in dock ? 'strip' : 'side') : undefined}
           className={cn(
             'fixed z-50 flex flex-col bg-surface text-ink shadow-raised focus:outline-none',
-            sideClass[side],
+            dock
+              ? 'top' in dock
+                ? 'inset-x-0 bottom-0 rounded-t-island pb-[env(safe-area-inset-bottom)] transition-[top] duration-200 ease-out'
+                : 'inset-y-0 right-0 rounded-l-island pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]'
+              : sideClass[side],
             // When a drag height is applied, neutralise it at the desktop breakpoint.
             draggableStyle && 'md:!h-auto',
             // The max-height half is dropped while a keyboard offset is in force:
@@ -223,17 +249,30 @@ export function Sheet({
               <span aria-hidden className="h-1 w-9 rounded-full bg-line-strong" />
             </div>
           )}
-          <header className="flex shrink-0 items-center gap-2 border-b border-line px-3 py-2.5">
-            {hideTitle ? (
+          <header
+            className={cn(
+              'flex shrink-0 items-center gap-2',
+              headerContent ? 'px-3 pb-1 pt-2.5' : 'border-b border-line px-3 py-2.5',
+            )}
+          >
+            {hideTitle || headerContent ? (
               <RD.Title asChild>
                 <VisuallyHidden>{title}</VisuallyHidden>
               </RD.Title>
             ) : (
               <RD.Title className="text-sm font-semibold">{title}</RD.Title>
             )}
+            {headerContent && <div className="min-w-0 flex-1">{headerContent}</div>}
             <RD.Close
               aria-label="Close panel"
-              className="ml-auto grid place-items-center rounded-control p-1.5 text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent pointer-coarse:size-11 pointer-coarse:-my-1.5"
+              className={cn(
+                'ml-auto grid shrink-0 place-items-center rounded-control text-ink-muted hover:bg-sunken hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                // Beside a switch it's a round 44px button of its own, level with
+                // the switch, rather than a bare glyph floating at the row's end.
+                headerContent
+                  ? 'size-11 bg-sunken text-ink hover:bg-line'
+                  : 'p-1.5 pointer-coarse:size-11 pointer-coarse:-my-1.5',
+              )}
             >
               <svg viewBox="0 0 24 24" className="size-5" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />

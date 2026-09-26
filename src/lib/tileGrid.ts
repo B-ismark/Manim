@@ -100,16 +100,24 @@ export function gridCapacity(
 ): { cols: number; perPage: number } {
   const key = coarse ? 'coarse' : 'fine'
   const gap = GAP[key]
-  const cols = tileColumns(width, coarse)
-  const maxPerPage = coarse ? cols * cols : 20
+  let cols = tileColumns(width, coarse)
   // Before the first measure, fall back to a sane page so we don't flash a huge
   // mount of every tile.
   if (width < 2 || height < 2) {
     return { cols, perPage: coarse ? 4 : 9 }
   }
-  const tileW = (width - gap * (cols - 1)) / cols
-  const tileH = tileW / NOMINAL_ASPECT[key]
+  const tileOf = (c: number) => (width - gap * (c - 1)) / c / NOMINAL_ASPECT[key]
+  // A phone on its side: at the width-derived column count a single 3:4 tile is
+  // taller than the whole stage, so every cell showed half a face and scrolled to
+  // the other half. Add columns (never below the legibility floor) until one row
+  // fits. Portrait never gets here — a phone's height always clears one row.
+  if (coarse) {
+    const byFloor = Math.floor((width + gap) / (MIN_TILE_W.coarse + gap))
+    while (cols < byFloor && tileOf(cols) > height) cols++
+  }
+  const tileH = tileOf(cols)
   const rows = Math.max(1, Math.floor((height + gap) / (tileH + gap)))
+  const maxPerPage = coarse ? cols * cols : 20
   return { cols, perPage: Math.max(1, Math.min(cols * rows, maxPerPage)) }
 }
 

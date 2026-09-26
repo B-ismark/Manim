@@ -12,7 +12,7 @@ import { ReactionsOverlay } from '@/islands/ReactionsOverlay'
 import { HandoffBanner, CompanionBanner } from '@/islands/HandoffBanner'
 import { WaitingRoomBanner } from '@/islands/WaitingRoomBanner'
 import { ConnectionBanner } from '@/islands/ConnectionBanner'
-import { CallStatusBar } from '@/islands/CallStatusBar'
+import { CallStatusBar, MutedPill } from '@/islands/CallStatusBar'
 import { CallAnnouncer } from '@/islands/CallAnnouncer'
 import { StageTopBar } from '@/islands/StageTopBar'
 import { PinCoachmark } from '@/islands/PinCoachmark'
@@ -44,9 +44,14 @@ import { useSharePresence } from '@/lib/useSharePresence'
 import { parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
-import { markEnd } from '@/lib/callEnd'
+import { markEnd, notePerson } from '@/lib/callEnd'
+import { displayNameOf } from '@/lib/participantName'
+import { userIdOf } from '@/lib/identity'
+import { pushRecent } from '@/features/calls/recentSync'
 import { useRecentRoomsStore } from '@/store/useRecentRoomsStore'
 import { cn } from '@/lib/cn'
+import { useChromeHidden } from '@/lib/chromeBands'
+import { useChatCompanion } from '@/lib/chatCompanion'
 import { addBreadcrumb, reportError } from '@/lib/report'
 
 /** Idle delay before the touch chrome slides out of the thumb zone. */
@@ -91,7 +96,7 @@ function overlayOpen(): boolean {
  *   nor within 4s of the user touching it.
  * Desktop keeps controls always visible (hover model) and ignores gestures.
  */
-function useStageChrome() {
+function useStageChrome(suppressed: boolean) {
   // Touch-UX (auto-hide / gestures) keys off pointer type, matching the compact
   // bar and portrait tiles — so wide foldables behave consistently.
   const mobile = useMemo(() => isTouch(), [])
@@ -132,6 +137,21 @@ function useStageChrome() {
     return () => window.clearTimeout(hideTimer.current)
   }, [mobile, scheduleHide])
 
+  // A phone's chat keeps the call in view (lib/chatCompanion) and the bars step
+  // aside for it; closing the chat brings them back, on a fresh countdown.
+  const wasSuppressed = useRef(suppressed)
+  useEffect(() => {
+    if (wasSuppressed.current && !suppressed) show()
+    wasSuppressed.current = suppressed
+  }, [suppressed, show])
+  const shown = visible && !suppressed
+
+  // Tell the stage, so its tiles grow into the room the bars leave (chromeBands).
+  useEffect(() => {
+    useChromeHidden.setState({ hidden: mobile && !shown })
+    return () => useChromeHidden.setState({ hidden: false })
+  }, [mobile, shown])
+
   const onPointerDown = useCallback((e: PointerEvent) => {
     down.current = { x: e.clientX, y: e.clientY, t: e.timeStamp }
   }, [])
@@ -140,7 +160,7 @@ function useStageChrome() {
     (e: PointerEvent) => {
       const d = down.current
       down.current = null
-      if (!d || !mobile) return
+      if (!d || !mobile || suppressed) return
       // Ignore interactions on real controls (buttons) or the draggable self-view.
       if ((e.target as HTMLElement).closest('button, a, input, [data-no-stage-gesture]')) return
       const dx = e.clientX - d.x
@@ -153,10 +173,10 @@ function useStageChrome() {
         scheduleHide()
       }
     },
-    [mobile, scheduleHide],
+    [mobile, scheduleHide, suppressed],
   )
 
-  return { chromeVisible: visible, show, stageHandlers: { onPointerDown, onPointerUp } }
+  return { chromeVisible: shown, show, stageHandlers: { onPointerDown, onPointerUp } }
 }
 
 // The chat/participants panel is only needed once opened — defer its chunk.
@@ -171,6 +191,17 @@ const SOLO_TIMEOUT_MS = 5 * 60 * 1000
  * Stay button that restarts the clock (someone waiting for a late guest shouldn't
  * be thrown out). The timers reset the moment anyone else is present.
  */
+/** Note everyone who's in the call, for the end-of-call summary (lib/callEnd). */
+function useNotePeople() {
+  const participants = useParticipants({ updateOnlyOn: [] })
+  useEffect(() => {
+    // Keyed by account, not name: the identity's prefix IS the display name, so
+    // two guests both called "Guest" would have been one face.
+    for (const p of participants)
+      notePerson(userIdOf(p) || p.identity, displayNameOf(p.identity, p.name, ''))
+  }, [participants])
+}
+
 function useSoloAutoLeave(onLeave: () => void) {
   // Head-count only, so joins and leaves: the default also fires on every
   // speaking, quality and mute change, and this is the component the whole call
@@ -262,13 +293,16 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   const recordRecent = useRecentRoomsStore((s) => s.record)
   useEffect(() => {
     if (!everConnected || !roomSlug) return
-    recordRecent({
+    const entry = {
       slug: roomSlug,
       name: prettyRoom(roomSlug),
       ts: Date.now(),
       secret: linkSecrets.secret,
       e2ee: linkSecrets.e2ee,
-    })
+    }
+    recordRecent(entry)
+    // And on the account, so your other devices list it too (keys sealed).
+    void pushRecent(entry)
   }, [everConnected, roomSlug, linkSecrets, recordRecent])
   // Desktop auto-PiP: float the app into a Document-PiP window when the tab is
   // backgrounded. Mobile PiP is manual only (a tile in More) — gesture-less
@@ -381,6 +415,10 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     switchToThisDevice,
   } = useSessionControl(onLeave, e2eeActive)
   const panel = useRoomStore((s) => s.panel)
+  // A call that ends without Leave (dropped, removed, ended by the host) must not
+  // hand its open chat to the next one: on a phone that would start the rejoined
+  // call in the chat view with the bar inert.
+  useEffect(() => () => useRoomStore.getState().setPanel(null), [])
   const companion = useRoomStore((s) => s.companion)
   const setCompanion = useRoomStore((s) => s.setCompanion)
   // Warm the side-panel chunk as soon as we're in the call, so tapping chat/people
@@ -391,7 +429,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useEffect(() => {
     void import('@/islands/SidePanel')
   }, [])
-  const { chromeVisible, show: keepChromeUp, stageHandlers } = useStageChrome()
+  const chatCompanion = useChatCompanion().mode !== 'none'
+  const { chromeVisible, show: keepChromeUp, stageHandlers } = useStageChrome(chatCompanion)
   // Same source Stage derives its layout from, so the pill and the stage can't
   // disagree about whose screen is on show.
   const { presenting, annotatingOwnShare, ownShareShown, sharingMonitor } = useSharePresence()
@@ -407,6 +446,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   useMediaSessionControls(doLeave)
   // End a forgotten call left running alone.
   useSoloAutoLeave(doLeave)
+  useNotePeople()
   // Advertise this call to the user's other signed-in devices (quick-join). Carry
   // the link secrets so the other device can reconstruct the full invite link and
   // pass the join-secret gate — the presence channel is owner-only (Realtime RLS).
@@ -478,6 +518,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           sameNameOther && <HandoffBanner onSwitch={switchToThisDevice} />
         )}
         <CallStatusBar encrypted={e2eeActive} visible={chromeVisible} />
+        <MutedPill chromeVisible={chromeVisible} />
         {presenting && (
           <PresentingIndicator
             annotating={annotatingOwnShare}

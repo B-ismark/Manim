@@ -3,7 +3,7 @@ import { mediaErrorMessage } from '@/lib/mediaErrors'
 import { MAX_NAME_LEN } from '@/lib/displayName'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { Button, IconButton, Island, Toggle } from '@/components/primitives'
-import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon } from '@/components/icons'
+import { CameraIcon, CameraOffIcon, CheckIcon, ChevronLeftIcon, LockIcon, MicIcon, MicOffIcon, ShareIcon, SoundOnIcon } from '@/components/icons'
 import { useAppStore, rememberPrejoin } from '@/store/useAppStore'
 import { prettyRoom } from '@/lib/roomName'
 import { useShareLink } from '@/lib/useShareLink'
@@ -12,6 +12,9 @@ import { useToastClearance } from '@/lib/toastClearance'
 import { cn } from '@/lib/cn'
 import { APP_NAME } from '@/lib/legal'
 import { countUsage, surface } from '@/lib/usage'
+import { useIsTouch } from '@/lib/useIsTouch'
+import { useKeyboardInset } from '@/lib/keyboardInset'
+import { OtherDeviceInlineOffer } from '@/islands/OtherDeviceCallBanner'
 
 /** Bounds on the preview box's shape. Real cameras live inside 9:16 (portrait phone)
  *  … 16:9 (laptop); anything outside is a bogus or freak mode, and letting it through
@@ -34,7 +37,15 @@ export interface PreJoinProps {
  * Device check + name entry before entering. Sets expectations and lets the
  * user pick mic/cam/quality before consuming any media bandwidth.
  */
-export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
+export function PreJoin(props: PreJoinProps) {
+  // Phone and desktop render different trees; a pointer change while this screen
+  // is open (a tablet's keyboard docked, DevTools' device toggle) remounts it, so
+  // the preview and the measured box bind to the new elements.
+  const coarse = useIsTouch()
+  return <PreJoinScreen key={coarse ? 'touch' : 'fine'} {...props} coarse={coarse} />
+}
+
+function PreJoinScreen({ room, onJoin, encrypted = false, coarse }: PreJoinProps & { coarse: boolean }) {
   const navigate = useNavigate()
   const { copied, share } = useShareLink()
   const displayName = useAppStore((s) => s.displayName)
@@ -48,7 +59,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   // The preview box takes the camera's REAL shape (see PREVIEW_* below). Starts at
   // 4:3 — the most common webcam mode, and a middle ground that barely moves when
   // the true ratio lands, instead of the 16:9→4:3 lurch a landscape default gives.
-  const [previewAspect, setPreviewAspect] = useState(4 / 3)
+  // On a phone the front camera is portrait, so start at 3:4 there instead.
+  const [previewAspect, setPreviewAspect] = useState(() => (coarse ? 3 / 4 : 4 / 3))
   // Mirror like a selfie only when the camera faces you. A rear or external
   // camera mirrored shows the world (and any text in it) backwards — the stage
   // tile already follows this rule via `selfFacing`; the preview didn't.
@@ -284,6 +296,246 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
     }
   }
 
+  // The software keyboard shrinks the VISUAL viewport only, so on a phone Join
+  // sat under it while you typed your name. Lift the screen's bottom edge by the
+  // keyboard's overlap (lib/keyboardInset), the way Sheet does.
+  const keyboard = useKeyboardInset()
+  const toggleMic = () => {
+    setPrejoin({ micEnabled: !prejoin.micEnabled })
+    rememberPrejoin({ micEnabled: !prejoin.micEnabled })
+  }
+  const toggleCamera = () => {
+    setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
+    rememberPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
+  }
+  const nameField = (
+    <input
+      value={displayName}
+      onChange={(e) => setDisplayName(e.target.value)}
+      onKeyDown={(e) => {
+        // Enter = the primary action (Join), the expected keyboard flow.
+        if (e.key === 'Enter' && canJoin) {
+          e.preventDefault()
+          join()
+        }
+      }}
+      // The only thing Join needs; says so while the button is disabled.
+      placeholder="Enter your name to join"
+      maxLength={MAX_NAME_LEN}
+      dir="auto"
+      aria-label="Your name"
+      enterKeyHint="go"
+      autoComplete="name"
+      className={cn(
+        'shrink-0 rounded-field bg-sunken text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent',
+        coarse ? 'h-12 px-4' : 'h-11 px-3.5 sm:text-sm',
+      )}
+    />
+  )
+  const assurances = (
+    <p className="flex items-center gap-1.5 text-xs text-ink-subtle [&_svg]:size-3.5 [&_svg]:text-success">
+      {/* E2EE is keyed by the invite link (#e), not a typed passphrase — a
+          strong random key everyone gets automatically by opening the link.
+          Shown as a read-only assurance rather than asking for input. */}
+      {encrypted && (
+        <>
+          <LockIcon />
+          {/* "Encrypted link", not "Encrypted": this screen can only vouch
+              that the link carries a key. Encryption starts at connect,
+              and it covers audio and video, not chat. */}
+          <span>Encrypted link</span>
+          <span aria-hidden className="opacity-50">
+            ·
+          </span>
+        </>
+      )}
+      {/* Turn the (unstated) no-recording fact into trust, and disclose what
+          the camera/mic are for — the audit's L3. */}
+      <span>{APP_NAME} doesn’t record calls</span>
+      <span aria-hidden className="opacity-50">
+        ·
+      </span>
+      <Link to="/privacy" className="underline underline-offset-2 hover:text-ink">
+        Privacy
+      </Link>
+    </p>
+  )
+  const lowBandwidthToggle = (
+    <Toggle
+      checked={prejoin.lowBandwidth}
+      onCheckedChange={(v) =>
+        setPrejoin({ lowBandwidth: v, cameraEnabled: v ? false : prejoin.cameraEnabled })
+      }
+      label="Low-bandwidth"
+    />
+  )
+  const shareButton = (
+    // Share the invite before joining — host can pull people in from the green
+    // room. The current URL already carries the invite secret + E2EE key in its
+    // #fragment, so it's the full link.
+    <IconButton
+      label={copied ? 'Invite link copied' : 'Share invite link'}
+      icon={copied ? <CheckIcon /> : <ShareIcon />}
+      tone="neutral"
+      className="shrink-0"
+      onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
+    />
+  )
+  const preview = (
+    <video
+      ref={videoRef}
+      data-testid="prejoin-preview"
+      autoPlay
+      muted
+      playsInline
+      // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
+      // the frame is shown whole rather than trimmed to fit.
+      // Not a media player: no PiP / cast buttons on a live preview
+      // (lib/mediaGuards covers the context menu for every feed).
+      disablePictureInPicture
+      disableRemotePlayback
+      className={cn('size-full object-contain', previewFacesUser && '[transform:scaleX(-1)]')}
+    />
+  )
+
+  if (coarse) {
+    // PHONES — direction B ("Card", like Meet on Android/iPhone).
+    //
+    // The desktop card, shrunk, gave every row its height first and the preview
+    // whatever was left: a sliver on a small phone and nothing at all on its side.
+    // Here the order is reversed. The preview is the flexible region with a floor
+    // it never drops below, mic and camera live INSIDE it (so they cost no rows),
+    // the permission ask is a button in the preview itself, and the form below is
+    // just name, Join and one line of fine print. On its side the phone becomes two
+    // columns: you on the left, everything else on the right.
+    const off = !cameraOn
+    return (
+      <main
+        style={keyboard ? { height: `calc(100dvh - ${keyboard}px)` } : undefined}
+        className={cn(
+          'flex h-dvh flex-col overflow-hidden bg-surface',
+          'pt-[env(safe-area-inset-top)] pb-[max(0.75rem,env(safe-area-inset-bottom))]',
+          'pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)]',
+          'landscape:grid landscape:grid-cols-[minmax(0,1fr)_minmax(17rem,22rem)] landscape:grid-rows-[auto_minmax(0,1fr)]',
+        )}
+      >
+        {/* Back + title: in the toasts' band, so they queue under it (lib/toastClearance). */}
+        <div
+          ref={headerRef}
+          className="flex shrink-0 items-center gap-1 px-2 py-1.5 landscape:col-start-2 landscape:row-start-1 landscape:pt-2"
+        >
+          <IconButton
+            label="Back"
+            icon={<ChevronLeftIcon />}
+            tone="neutral"
+            className="shrink-0 bg-transparent"
+            onClick={() => navigate('/')}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-ink-subtle">Joining</p>
+            <h1 className="truncate text-lg font-semibold leading-tight">{prettyRoom(room)}</h1>
+          </div>
+          {shareButton}
+        </div>
+
+        <div
+          ref={stageRef}
+          className={cn(
+            // The floor gives way only while the keyboard is up: then the name and
+            // Join are what you're using, and the preview shrinks to make room.
+            'flex flex-1 items-center justify-center px-4 pt-1',
+            keyboard ? 'min-h-0' : 'min-h-[15rem]',
+            'landscape:col-start-1 landscape:row-span-2 landscape:row-start-1 landscape:min-h-0 landscape:py-3 landscape:pl-3 landscape:pr-0',
+          )}
+        >
+          <div
+            className="relative overflow-hidden rounded-[1.5rem] bg-sunken"
+            style={{ width: previewBox.w, height: previewBox.h }}
+          >
+            {cameraOn && preview}
+            {off && (
+              <div className="absolute inset-0 grid place-items-center px-4 text-center">
+                <div>
+                  <div
+                    aria-hidden
+                    className="mx-auto grid size-20 place-items-center rounded-full bg-accent-soft text-3xl font-semibold text-accent-text"
+                  >
+                    {initialsOf(displayName)}
+                  </div>
+                  <p className="mt-2 text-sm text-ink-muted">
+                    {prejoin.lowBandwidth ? 'Audio-only / low bandwidth' : 'Camera off'}
+                  </p>
+                </div>
+              </div>
+            )}
+            {showPriming && (
+              <div className="absolute inset-0 grid place-items-center bg-sunken p-5 text-center">
+                <div className="max-w-[16rem]">
+                  <p className="text-sm text-ink">
+                    We’ll ask for camera and microphone access so others can see and hear you.
+                  </p>
+                  <Button variant="accent" className="mt-3" disabled={priming} onClick={requestAccess}>
+                    {priming ? 'Requesting…' : 'Allow camera & microphone'}
+                  </Button>
+                </div>
+              </div>
+            )}
+            {/* Legibility over any frame: a soft scrim under the controls. */}
+            {!off && !showPriming && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-28 bg-gradient-to-t from-black/45 to-transparent"
+              />
+            )}
+            <div className="absolute left-3 top-3 flex max-w-[calc(100%-5rem)] items-center gap-2 rounded-control bg-overlay px-2.5 py-1.5 text-xs font-medium text-white">
+              {permission !== 'prompt' && permission !== 'denied' ? (
+                <MicLevelBars micEnabled={prejoin.micEnabled} />
+              ) : null}
+              <span className="truncate">{displayName.trim() || 'You'}</span>
+            </div>
+            <IconButton
+              label="Test speaker"
+              icon={<SoundOnIcon />}
+              tone="overlay"
+              className="absolute right-3 top-3"
+              onClick={playTestTone}
+            />
+            <div className="absolute inset-x-0 bottom-3 flex justify-center gap-4">
+              <IconButton
+                label={prejoin.micEnabled ? 'Mute microphone' : 'Unmute microphone'}
+                icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
+                tone={prejoin.micEnabled ? 'overlay' : 'danger'}
+                size="lg"
+                onClick={toggleMic}
+              />
+              <IconButton
+                label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
+                icon={prejoin.cameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
+                tone={prejoin.cameraEnabled ? 'overlay' : 'danger'}
+                size="lg"
+                disabled={prejoin.lowBandwidth}
+                onClick={toggleCamera}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex shrink-0 flex-col gap-2.5 px-4 pt-4 landscape:col-start-2 landscape:row-start-2 landscape:justify-center landscape:overflow-y-auto landscape:pt-1">
+          {error && <p className="text-sm text-danger-text">{error}</p>}
+          <OtherDeviceInlineOffer excludeRoom={room} />
+          {nameField}
+          <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
+            Join now
+          </Button>
+          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
+            {assurances}
+            {lowBandwidthToggle}
+          </div>
+        </div>
+      </main>
+    )
+  }
+
   return (
     // The card fills the viewport height (capped, so it doesn't sprawl on a big
     // desktop) and lays out as a column: fixed chrome, fixed footer, and the preview
@@ -313,16 +565,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               <p className="text-xs font-medium text-ink-subtle">Joining</p>
               <h1 className="truncate text-xl font-semibold short:text-lg">{prettyRoom(room)}</h1>
             </div>
-            {/* Share the invite before joining — host can pull people in from the
-                green room. The current URL already carries the invite secret + E2EE
-                key in its #fragment, so it's the full link. */}
-            <IconButton
-              label={copied ? 'Invite link copied' : 'Share invite link'}
-              icon={copied ? <CheckIcon /> : <ShareIcon />}
-              tone="neutral"
-              className="mt-0.5 shrink-0"
-              onClick={() => void share({ title: APP_NAME, text: `Join my call on ${APP_NAME}` })}
-            />
+            {shareButton}
           </div>
         </div>
 
@@ -343,23 +586,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
             style={{ width: previewBox.w, height: previewBox.h }}
           >
             {cameraOn ? (
-              <video
-                ref={videoRef}
-                data-testid="prejoin-preview"
-                autoPlay
-                muted
-                playsInline
-                // contain, not cover: if the ratio is ever clamped (a freak ultrawide)
-                // the frame is shown whole rather than trimmed to fit.
-                // Not a media player: no PiP / cast buttons on a live preview
-                // (lib/mediaGuards covers the context menu for every feed).
-                disablePictureInPicture
-                disableRemotePlayback
-                className={cn(
-                  'size-full object-contain',
-                  previewFacesUser && '[transform:scaleX(-1)]',
-                )}
-              />
+              preview
             ) : (
               <div className="grid size-full place-items-center px-4 text-center text-sm text-ink-subtle">
                 {prejoin.lowBandwidth ? 'Audio-only / low bandwidth' : 'Camera off'}
@@ -396,10 +623,7 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               icon={prejoin.micEnabled ? <MicIcon /> : <MicOffIcon />}
               tone={prejoin.micEnabled ? 'neutral' : 'danger'}
               active={!prejoin.micEnabled}
-              onClick={() => {
-                setPrejoin({ micEnabled: !prejoin.micEnabled })
-                rememberPrejoin({ micEnabled: !prejoin.micEnabled })
-              }}
+              onClick={toggleMic}
             />
             <IconButton
               label={prejoin.cameraEnabled ? 'Turn off camera' : 'Turn on camera'}
@@ -407,35 +631,16 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               tone={prejoin.cameraEnabled ? 'neutral' : 'danger'}
               active={!prejoin.cameraEnabled}
               disabled={prejoin.lowBandwidth}
-              onClick={() => {
-                setPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
-                rememberPrejoin({ cameraEnabled: !prejoin.cameraEnabled })
-              }}
+              onClick={toggleCamera}
             />
             {permission !== 'prompt' && permission !== 'denied' && (
               <MicSpeakerTest micEnabled={prejoin.micEnabled} />
             )}
           </div>
 
+          <OtherDeviceInlineOffer excludeRoom={room} />
           {/* Row 2 — who you are, then the way in. */}
-          <input
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            onKeyDown={(e) => {
-              // Enter = the primary action (Join), the expected keyboard flow.
-              if (e.key === 'Enter' && canJoin) {
-                e.preventDefault()
-                join()
-              }
-            }}
-            // The only thing Join needs; says so while the button is disabled.
-            placeholder="Enter your name to join"
-            maxLength={MAX_NAME_LEN}
-            dir="auto"
-            aria-label="Your name"
-            autoComplete="name"
-            className="h-11 shrink-0 rounded-field bg-sunken px-3.5 text-base outline-none sm:text-sm placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
-          />
+          {nameField}
 
           <Button variant="accent" size="lg" block disabled={!canJoin} onClick={join}>
             Join now
@@ -445,39 +650,8 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
               keeps a real labelled switch (it is a control), but it shares its line with
               the encryption and no-recording facts instead of owning three rows. */}
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5">
-            <p className="flex items-center gap-1.5 text-xs text-ink-subtle [&_svg]:size-3.5 [&_svg]:text-success">
-              {/* E2EE is keyed by the invite link (#e), not a typed passphrase — a
-                  strong random key everyone gets automatically by opening the link.
-                  Shown as a read-only assurance rather than asking for input. */}
-              {encrypted && (
-                <>
-                  <LockIcon />
-                  {/* "Encrypted link", not "Encrypted": this screen can only vouch
-                      that the link carries a key. Encryption starts at connect,
-                      and it covers audio and video, not chat. */}
-                  <span>Encrypted link</span>
-                  <span aria-hidden className="opacity-50">
-                    ·
-                  </span>
-                </>
-              )}
-              {/* Turn the (unstated) no-recording fact into trust, and disclose what
-                  the camera/mic are for — the audit's L3. */}
-              <span>{APP_NAME} doesn’t record calls</span>
-              <span aria-hidden className="opacity-50">
-                ·
-              </span>
-              <Link to="/privacy" className="underline underline-offset-2 hover:text-ink">
-                Privacy
-              </Link>
-            </p>
-            <Toggle
-              checked={prejoin.lowBandwidth}
-              onCheckedChange={(v) =>
-                setPrejoin({ lowBandwidth: v, cameraEnabled: v ? false : prejoin.cameraEnabled })
-              }
-              label="Low-bandwidth"
-            />
+            {assurances}
+            {lowBandwidthToggle}
           </div>
         </div>
       </Island>
@@ -485,9 +659,32 @@ export function PreJoin({ room, onJoin, encrypted = false }: PreJoinProps) {
   )
 }
 
-/** A live mic level bar + a speaker test tone, so users can verify audio before
- *  joining (the camera already previews). Uses Web Audio; cleans up fully. */
-function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
+/** Up to two letters for the camera-off avatar. */
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean)
+  return (parts.map((p) => [...p][0]).join('').slice(0, 2) || '?').toUpperCase()
+}
+
+/** A short 440 Hz tone through the default output, so users can check their speaker. */
+function playTestTone() {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const ctx = new Ctx()
+    const osc = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.frequency.value = 440
+    gain.gain.value = 0.08
+    osc.connect(gain).connect(ctx.destination)
+    osc.start()
+    osc.stop(ctx.currentTime + 0.35)
+    osc.onended = () => void ctx.close().catch(() => {})
+  } catch {
+    /* Web Audio unavailable */
+  }
+}
+
+/** Live mic input level, 0..1, while `micEnabled`. Uses Web Audio; cleans up fully. */
+function useMicLevel(micEnabled: boolean): number {
   const [level, setLevel] = useState(0)
 
   useEffect(() => {
@@ -499,6 +696,9 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
     let ctx: AudioContext | null = null
     let stream: MediaStream | null = null
     let cancelled = false
+    // Absent on an insecure origin (a phone hitting the dev server over the LAN):
+    // calling through undefined threw straight into the error boundary.
+    if (!navigator.mediaDevices?.getUserMedia) return
     navigator.mediaDevices
       .getUserMedia({ audio: true })
       .then((s) => {
@@ -538,23 +738,32 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
     }
   }, [micEnabled])
 
-  function testSpeaker() {
-    try {
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-      const ctx = new Ctx()
-      const osc = ctx.createOscillator()
-      const gain = ctx.createGain()
-      osc.frequency.value = 440
-      gain.gain.value = 0.08
-      osc.connect(gain).connect(ctx.destination)
-      osc.start()
-      osc.stop(ctx.currentTime + 0.35)
-      osc.onended = () => void ctx.close().catch(() => {})
-    } catch {
-      /* Web Audio unavailable */
-    }
-  }
+  return level
+}
 
+/** Phone: four bars in the name tag, the way Meet shows you're being heard. */
+function MicLevelBars({ micEnabled }: { micEnabled: boolean }) {
+  const level = useMicLevel(micEnabled)
+  return (
+    <span aria-hidden className="flex h-3 items-end gap-[2px]">
+      {[0.15, 0.35, 0.6, 0.85].map((t, i) => (
+        <span
+          key={i}
+          className={cn(
+            'w-[3px] rounded-full bg-current transition-[height,opacity] duration-75',
+            level > t ? 'opacity-100' : 'opacity-40',
+          )}
+          style={{ height: `${35 + i * 20}%` }}
+        />
+      ))}
+    </span>
+  )
+}
+
+/** Desktop: a live mic level bar + a speaker test tone, so users can verify audio
+ *  before joining (the camera already previews). */
+function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
+  const level = useMicLevel(micEnabled)
   return (
     <>
       <div className="h-1.5 min-w-8 flex-1 overflow-hidden rounded-full bg-sunken">
@@ -563,7 +772,7 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
           style={{ width: `${Math.round(level * 100)}%` }}
         />
       </div>
-      <Button type="button" variant="neutral" size="sm" className="shrink-0" onClick={testSpeaker}>
+      <Button type="button" variant="neutral" size="sm" className="shrink-0" onClick={playTestTone}>
         Test speaker
       </Button>
     </>

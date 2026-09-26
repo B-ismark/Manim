@@ -54,6 +54,17 @@ export function deviceKeyRegistered(): Promise<void> {
   return Promise.race([registration, new Promise<void>((r) => setTimeout(r, 3000))])
 }
 
+/**
+ * Publish this browser's key again, even if it was published this session. For
+ * when another device can't open what it was sent: the row may never have landed
+ * (a slow first attempt, which presence stopped waiting for after 3s) or may have
+ * been removed since. An upsert of the same key is harmless.
+ */
+export function refreshDeviceKey(sb: SupabaseClient, userId: string): Promise<void> {
+  registeredFor = null
+  return registerDeviceKey(sb, userId)
+}
+
 /** Remove this browser's published key (before sign-out, while the session is valid). */
 export async function unregisterDeviceKey(sb: SupabaseClient, userId: string): Promise<void> {
   stopped = true
@@ -63,9 +74,9 @@ export async function unregisterDeviceKey(sb: SupabaseClient, userId: string): P
 }
 
 /** Postgres / PostgREST codes for "that function or table isn't there yet". */
-const NOT_DEPLOYED = new Set(['PGRST202', '42883', '42P01', 'PGRST205'])
+export const NOT_DEPLOYED = new Set(['PGRST202', '42883', '42P01', 'PGRST205'])
 
-async function devicesOf(sb: SupabaseClient, userId: string): Promise<DeviceKey[]> {
+export async function devicesOf(sb: SupabaseClient, userId: string): Promise<DeviceKey[]> {
   let { data, error } = await sb.rpc('get_device_keys', { target_id: userId })
   // A blip isn't "they have no devices": one retry before giving up on sealing.
   if (error && !NOT_DEPLOYED.has(error.code)) ({ data, error } = await sb.rpc('get_device_keys', { target_id: userId }))

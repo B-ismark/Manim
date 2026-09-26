@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react'
 
 interface DragState {
   startX: number
@@ -69,28 +69,31 @@ export function cornerPosition(
  */
 export function useDraggable(
   margin = 8,
-  opts: { initial?: Corner; reserveBottom?: number } = {},
+  opts: { initial?: Corner; reserveBottom?: number; reserveRight?: number } = {},
 ) {
-  const { initial = 'br', reserveBottom = 0 } = opts
+  const { initial = 'br', reserveBottom = 0, reserveRight = 0 } = opts
   const [corner, setCorner] = useState<Corner>(initial)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
   const drag = useRef<DragState | null>(null)
   /** Set once the user actually drags, so an un-dragged card keeps its CSS anchor. */
   const moved = useRef(false)
+  /** The element last dragged, so a rotation can re-park it in its corner. */
+  const elRef = useRef<HTMLElement | null>(null)
 
   const boundsFor = useCallback(
     (el: HTMLElement) => ({
       left: margin,
       top: margin,
-      right: window.innerWidth - margin,
+      right: window.innerWidth - margin - reserveRight,
       bottom: window.innerHeight - margin - reserveBottom,
       w: el.offsetWidth,
       h: el.offsetHeight,
     }),
-    [margin, reserveBottom],
+    [margin, reserveBottom, reserveRight],
   )
 
   const onPointerDown = useCallback((e: PointerEvent<HTMLElement>) => {
+    elRef.current = e.currentTarget
     const rect = e.currentTarget.getBoundingClientRect()
     drag.current = { startX: e.clientX, startY: e.clientY, originX: rect.left, originY: rect.top }
     e.currentTarget.setPointerCapture(e.pointerId)
@@ -135,6 +138,41 @@ export function useDraggable(
     },
     [boundsFor],
   )
+
+  // A dragged card holds PIXELS, and pixels don't survive a rotation: a card parked
+  // bottom-right on a portrait phone (y ≈ 580) sat below a 390px landscape screen.
+  // Re-derive the position from the corner it was snapped to whenever the viewport
+  // changes; the corner is what the user chose, the pixels were only its answer.
+  const dragged = pos !== null
+  useEffect(() => {
+    if (!dragged) return
+    const repark = () => {
+      const el = elRef.current
+      if (!el || drag.current) return
+      const b = boundsFor(el)
+      setPos(cornerPosition(corner, b, b))
+    }
+    // Once now, and again after the card's own width transition has settled: its
+    // size mid-transition is the OLD one, and parking by it overshoots the edge.
+    let settle: ReturnType<typeof setTimeout> | undefined
+    const onResize = () => {
+      repark()
+      clearTimeout(settle)
+      settle = setTimeout(repark, 450)
+    }
+    // And whenever the bounds themselves move. On touch they're live — the bars
+    // fading hands the card the island's band, and coming back takes it away — so
+    // a card dragged into a corner while the bars were hidden would otherwise sit
+    // under the island (or the rail) the moment they returned.
+    onResize()
+    window.addEventListener('resize', onResize)
+    window.addEventListener('orientationchange', onResize)
+    return () => {
+      clearTimeout(settle)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('orientationchange', onResize)
+    }
+  }, [dragged, corner, boundsFor])
 
   const style: CSSProperties | undefined = pos
     ? { left: pos.x, top: pos.y, right: 'auto', bottom: 'auto' }

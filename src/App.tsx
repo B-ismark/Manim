@@ -4,6 +4,7 @@ import { TooltipProvider } from '@/components/primitives'
 import { Landing } from '@/routes/Landing'
 import { Privacy, Terms } from '@/routes/Legal'
 import { IncomingCallBanner } from '@/islands/IncomingCallBanner'
+import { OtherDeviceCallBanner } from '@/islands/OtherDeviceCallBanner'
 import { ErrorBoundary, clearChunkReloadGuard } from '@/islands/ErrorBoundary'
 import { Toasts } from '@/islands/Toasts'
 
@@ -26,6 +27,7 @@ export function App() {
       <ErrorBoundary>
         <Toasts />
         <IncomingCallBanner />
+        <OtherDeviceCallBanner />
         <Routes>
           <Route path="/" element={<Landing />} />
           <Route path="/privacy" element={<Privacy />} />

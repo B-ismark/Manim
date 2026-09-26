@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { isTouch } from '@/lib/device'
+import { useChatCompanion } from '@/lib/chatCompanion'
 
 const SEEN_KEY = 'mn.coach.pin'
 
@@ -14,6 +15,7 @@ const SEEN_KEY = 'mn.coach.pin'
  */
 export function PinCoachmark() {
   const [show, setShow] = useState(false)
+  const companion = useChatCompanion().mode !== 'none'
 
   useEffect(() => {
     if (!isTouch()) return
@@ -40,7 +42,10 @@ export function PinCoachmark() {
     }
   }
 
-  if (!show) return null
+  // Stood down (not dismissed) while a phone's chat is open: the stage it points
+  // at is replaced by the people strip, and the strip and sheet sit under this
+  // column, so the hint fading out would jerk the whole chat up by its height.
+  if (!show || companion) return null
 
   // Positioned by TopStack — see the layer scale there.
   //

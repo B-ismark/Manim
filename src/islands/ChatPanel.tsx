@@ -11,6 +11,7 @@ import {
   GifIcon,
   MoreIcon,
   PeopleIcon,
+  LockIcon,
   PinIcon,
   ReactionIcon,
   ReplyIcon,
@@ -367,10 +368,6 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <p className="shrink-0 border-b border-line px-3 py-1.5 text-center text-[11px] text-ink-subtle">
-        Messages are visible only to people in this call.
-      </p>
-
       {pinned.length > 0 && (
         <div className="shrink-0 space-y-1.5 border-b border-line px-3 py-2">
           {pinned.map((p) => (
@@ -455,7 +452,7 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
       )}
 
       <form
-        className="relative flex shrink-0 flex-col gap-1.5 border-t border-line p-3"
+        className="relative flex shrink-0 flex-col border-t border-line px-3 py-2"
         onSubmit={(e) => {
           e.preventDefault()
           submit()
@@ -502,140 +499,145 @@ export function ChatPanel({ chat }: { chat: ChatApi }) {
           className="hidden"
           onChange={(e) => onPickFiles(e.target.files)}
         />
-        <textarea
-          dir="auto"
-          ref={inputRef}
-          value={draft}
-          onChange={(e) => {
-            onDraftChange(e.target.value)
-            syncMention(e.target)
-          }}
-          onKeyUp={(e) => syncMention(e.currentTarget)}
-          onClick={(e) => syncMention(e.currentTarget)}
-          onBlur={() => setMention(null)}
-          onKeyDown={onComposerKeyDown}
-          rows={1}
-          placeholder="Message — @ to mention"
-          aria-label="Message"
-          role="combobox"
-          aria-expanded={showMentions}
-          aria-controls="mention-listbox"
-          aria-autocomplete="list"
-          aria-activedescendant={showMentions ? `mention-opt-${mentionIdx}` : undefined}
-          className={cn(
-            // Cap relative to viewport on phones so a multi-line draft doesn't
-            // crowd out the timeline when the on-screen keyboard is up.
-            'max-h-[20dvh] min-h-9 w-full resize-none rounded-field bg-sunken px-3 py-2 text-base sm:max-h-28 sm:text-sm',
-            'placeholder:text-ink-subtle outline-none focus-visible:ring-2 focus-visible:ring-accent',
-          )}
-        />
-        {/* Toolbar under a full-width input (Teams/Slack): options on the left, send
-            on the right. Keeps every composer option while giving the textarea the
-            whole width to type in. */}
-        <div className="flex items-center gap-1">
+        {/* One line, the way messaging apps lay it out: attach, then a pill that
+            holds the text with emoji and GIF inside it, then send — at thumb
+            height on a phone. It used to be a full-width field over a toolbar
+            row, a second row of chrome for three small buttons. */}
+        <div className="flex items-end gap-2">
           <IconButton
             type="button"
-            size="sm"
+            size={narrow ? 'md' : 'sm'}
             label="Attach a file"
             icon={<AttachIcon />}
-            className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
+            className="shrink-0 rounded-full"
             onClick={() => fileInputRef.current?.click()}
           />
-          {/* Emoji insert (distinct from reacting to a message): popover on desktop,
-              bottom sheet on touch — same pattern as the GIF picker. */}
-          {narrow ? (
-            <>
-              <IconButton
-                type="button"
-                size="sm"
-                label="Add emoji"
-                icon={<ReactionIcon />}
-                active={emojiOpen}
-                aria-haspopup="dialog"
-                aria-expanded={emojiOpen}
-                className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
-                onClick={() => setEmojiOpen(true)}
-              />
-              <Sheet open={emojiOpen} onOpenChange={setEmojiOpen} side="bottom" title="Add emoji">
-                <EmojiPicker
-                  onSelect={(e) => {
-                    insertEmoji(e)
-                    setEmojiOpen(false)
-                  }}
-                />
-              </Sheet>
-            </>
-          ) : (
-            <Popover
-              open={emojiOpen}
-              onOpenChange={setEmojiOpen}
-              side="top"
-              align="start"
-              trigger={
-                <IconButton type="button" size="sm" label="Add emoji" icon={<ReactionIcon />} active={emojiOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
-              }
-            >
-              <div className="w-[22rem]">
-                <EmojiPicker
-                  onSelect={(e) => {
-                    insertEmoji(e)
-                    setEmojiOpen(false)
-                  }}
-                />
-              </div>
-            </Popover>
-          )}
-          {gifEnabled &&
-            (narrow ? (
+          <div className="flex min-w-0 flex-1 items-end rounded-[22px] bg-sunken focus-within:ring-2 focus-within:ring-accent sm:rounded-[18px]">
+          <textarea
+            dir="auto"
+            ref={inputRef}
+            value={draft}
+            onChange={(e) => {
+              onDraftChange(e.target.value)
+              syncMention(e.target)
+            }}
+            onKeyUp={(e) => syncMention(e.currentTarget)}
+            onClick={(e) => syncMention(e.currentTarget)}
+            onBlur={() => setMention(null)}
+            onKeyDown={onComposerKeyDown}
+            rows={1}
+            placeholder={narrow ? 'Message' : 'Message — Enter to send'}
+            aria-label="Message"
+            role="combobox"
+            aria-expanded={showMentions}
+            aria-controls="mention-listbox"
+            aria-autocomplete="list"
+            aria-activedescendant={showMentions ? `mention-opt-${mentionIdx}` : undefined}
+            className={cn(
+              // Cap relative to viewport on phones so a multi-line draft doesn't
+              // crowd out the timeline when the on-screen keyboard is up.
+              'max-h-[20dvh] min-h-11 min-w-0 flex-1 resize-none bg-transparent py-2.5 pl-4 pr-1 text-base sm:max-h-28 sm:min-h-9 sm:py-2 sm:text-sm',
+              // The field's ring is drawn by its pill (focus-within), so the emoji
+              // and GIF buttons sit inside the outline rather than beside it.
+              'placeholder:text-ink-subtle outline-none',
+            )}
+          />
+            {/* Emoji insert (distinct from reacting to a message): popover on desktop,
+                bottom sheet on touch — same pattern as the GIF picker. */}
+            {narrow ? (
               <>
                 <IconButton
                   type="button"
-                  size="sm"
-                  label="Send a GIF"
-                  icon={<GifIcon />}
-                  active={gifOpen}
+                  size={narrow ? 'md' : 'sm'}
+                  label="Add emoji"
+                  icon={<ReactionIcon />}
+                  active={emojiOpen}
                   aria-haspopup="dialog"
-                  aria-expanded={gifOpen}
-                  className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]"
-                  onClick={() => setGifOpen(true)}
+                  aria-expanded={emojiOpen}
+                  className="bg-transparent text-ink-muted hover:bg-line hover:text-ink [&_svg]:size-5"
+                  onClick={() => setEmojiOpen(true)}
                 />
-                <Sheet open={gifOpen} onOpenChange={setGifOpen} side="bottom" title="Send a GIF">
-                  <GifPicker
-                    onSelect={(url) => {
-                      sendText(url)
-                      setGifOpen(false)
+                <Sheet open={emojiOpen} onOpenChange={setEmojiOpen} side="bottom" title="Add emoji">
+                  <EmojiPicker
+                    onSelect={(e) => {
+                      insertEmoji(e)
+                      setEmojiOpen(false)
                     }}
                   />
                 </Sheet>
               </>
             ) : (
               <Popover
-                open={gifOpen}
-                onOpenChange={setGifOpen}
+                open={emojiOpen}
+                onOpenChange={setEmojiOpen}
                 side="top"
                 align="start"
                 trigger={
-                  <IconButton type="button" size="sm" label="Send a GIF" icon={<GifIcon />} active={gifOpen} className="bg-transparent text-ink hover:bg-sunken [&_svg]:size-[18px]" />
+                  <IconButton type="button" size={narrow ? 'md' : 'sm'} label="Add emoji" icon={<ReactionIcon />} active={emojiOpen} className="bg-transparent text-ink-muted hover:bg-line hover:text-ink [&_svg]:size-5" />
                 }
               >
-                <div className="w-72">
-                  <GifPicker
-                    onSelect={(url) => {
-                      sendText(url)
-                      setGifOpen(false)
+                <div className="w-[22rem]">
+                  <EmojiPicker
+                    onSelect={(e) => {
+                      insertEmoji(e)
+                      setEmojiOpen(false)
                     }}
                   />
                 </div>
               </Popover>
-            ))}
-          <span className="flex-1" aria-hidden />
+            )}
+            {gifEnabled &&
+              (narrow ? (
+                <>
+                  <IconButton
+                    type="button"
+                    size={narrow ? 'md' : 'sm'}
+                    label="Send a GIF"
+                    icon={<GifIcon />}
+                    active={gifOpen}
+                    aria-haspopup="dialog"
+                    aria-expanded={gifOpen}
+                    className="bg-transparent text-ink-muted hover:bg-line hover:text-ink [&_svg]:size-5"
+                    onClick={() => setGifOpen(true)}
+                  />
+                  <Sheet open={gifOpen} onOpenChange={setGifOpen} side="bottom" title="Send a GIF">
+                    <GifPicker
+                      onSelect={(url) => {
+                        sendText(url)
+                        setGifOpen(false)
+                      }}
+                    />
+                  </Sheet>
+                </>
+              ) : (
+                <Popover
+                  open={gifOpen}
+                  onOpenChange={setGifOpen}
+                  side="top"
+                  align="start"
+                  trigger={
+                    <IconButton type="button" size={narrow ? 'md' : 'sm'} label="Send a GIF" icon={<GifIcon />} active={gifOpen} className="bg-transparent text-ink-muted hover:bg-line hover:text-ink [&_svg]:size-5" />
+                  }
+                >
+                  <div className="w-72">
+                    <GifPicker
+                      onSelect={(url) => {
+                        sendText(url)
+                        setGifOpen(false)
+                      }}
+                    />
+                  </div>
+                </Popover>
+              ))}
+          </div>
           <IconButton
             type="submit"
-            size="sm"
+            size={narrow ? 'md' : 'sm'}
             tone="accent"
             label="Send message"
             icon={<SendIcon />}
             disabled={!draft.trim()}
+            className="shrink-0 rounded-full"
           />
         </div>
       </form>
@@ -686,12 +688,13 @@ const MessageList = memo(function MessageList({
   const isPinned = (id: string) => pinned.some((p) => p.id === id)
   return (
     <>
-      <HistoryNote className="pb-2 text-center" />
+      <HistoryNote className="pb-3 text-center" />
       {items.map((item, i) => (
         <MessageRow
           key={item.id}
           item={item}
           grouped={continuesGroup(items[i - 1], item)}
+          lastOfRun={!items[i + 1] || !continuesGroup(item, items[i + 1])}
           sameMinuteAsPrev={
             !!items[i - 1] && timeOf(items[i - 1].timestamp) === timeOf(item.timestamp)
           }
@@ -711,15 +714,23 @@ const MessageList = memo(function MessageList({
 })
 
 /**
- * Who else will read this: chat is replayed to people who join later unless the
- * host turned that off (features/chat/chatHistory). Said once, quietly, at the top
- * of the conversation, because nobody expected it and it was never disclosed.
+ * Who can read this, said once, quietly, at the top of the conversation: only the
+ * people in the call, and whether people who join later will see what came before
+ * (chat is replayed to latecomers unless the host turned that off —
+ * features/chat/chatHistory). That second half surprised people and was never
+ * disclosed. It used to be two lines in two places (a bordered notice above the
+ * list and a note inside it); one line with a padlock says both.
  */
 function HistoryNote({ className }: { className?: string }) {
   const on = useChatHistoryOn()
   return (
-    <p className={cn('text-xs text-ink-subtle', className)}>
-      {on ? 'People who join later can see earlier messages.' : 'People who join later won’t see earlier messages.'}
+    <p className={cn('flex items-center justify-center gap-1.5 text-xs text-ink-subtle [&_svg]:size-3.5 [&_svg]:shrink-0', className)}>
+      <LockIcon aria-hidden />
+      <span>
+        {on
+          ? 'Only people in this call see messages, including people who join later.'
+          : 'Only people in this call see messages. People who join later won’t see earlier ones.'}
+      </span>
     </p>
   )
 }
@@ -727,6 +738,7 @@ function HistoryNote({ className }: { className?: string }) {
 function MessageRow({
   item,
   grouped,
+  lastOfRun,
   sameMinuteAsPrev,
   pinned,
   reactions,
@@ -741,6 +753,8 @@ function MessageRow({
   item: ChatItem
   /** True when this continues the previous sender's run — avatar/header collapse. */
   grouped: boolean
+  /** Nothing from the same sender follows — the avatar sits on this bubble. */
+  lastOfRun: boolean
   /** The previous row already printed this exact clock time. */
   sameMinuteAsPrev: boolean
   pinned: boolean
@@ -824,6 +838,7 @@ function MessageRow({
     settleSwipe()
   }
 
+  const mine = item.isLocal
   const replyTo = item.kind === 'text' ? item.replyTo : undefined
   // Highlight the whole row when you were tagged, so a mention is scannable in a
   // busy timeline (Slack/Teams convention).
@@ -856,11 +871,12 @@ function MessageRow({
       onPointerLeave={onRowPointerLeave}
       onContextMenu={narrow ? (e) => e.preventDefault() : undefined}
       className={cn(
-        'group relative flex gap-2.5 rounded-field transition-colors',
+        // Bubbles, the messaging-app shape everyone already reads: yours on the
+        // right in the accent, everyone else's on the left, a run from one person
+        // under one name with their avatar on its last bubble.
+        'group relative flex items-end gap-2',
+        mine && 'justify-end',
         grouped ? 'mt-0.5' : 'mt-3 first:mt-0',
-        mentionsMe && '-mx-1.5 border-l-2 border-accent bg-accent-soft/40 py-1 pl-2 pr-1.5',
-        // Active-action highlight wins over the mention tint so the target is clear.
-        actionsActive && '-mx-1.5 bg-sunken px-1.5 py-1 ring-2 ring-accent',
       )}
     >
       {/* Reply affordance revealed as you swipe the bubble left (touch). */}
@@ -873,14 +889,15 @@ function MessageRow({
           <ReplyIcon />
         </span>
       )}
-      {grouped ? (
-        // Keep the bubble aligned with the grouped run (matches Avatar sm = size-8).
-        <div className="w-8 shrink-0" aria-hidden />
-      ) : (
-        <Avatar name={item.fromName} size="sm" />
-      )}
+      {!mine &&
+        (lastOfRun ? (
+          <Avatar name={item.fromName} size="sm" className={hasReactions ? 'mb-7' : undefined} />
+        ) : (
+          // Keep the run's bubbles aligned (matches Avatar sm = size-8).
+          <div className="w-8 shrink-0" aria-hidden />
+        ))}
       <div
-        className="min-w-0 flex-1"
+        className={cn('flex min-w-0 flex-col', mine ? 'items-end' : 'items-start', editing ? 'w-full' : 'max-w-[82%]')}
         style={
           narrow
             ? { transform: `translateX(${swipeX}px)`, transition: press.current.swiping ? 'none' : 'transform .15s ease-out' }
@@ -888,8 +905,14 @@ function MessageRow({
         }
       >
         {!grouped && (
-          <div className="flex items-baseline gap-2">
-            <span className="truncate text-sm font-medium">{item.isLocal ? 'You' : item.fromName}</span>
+          <div className={cn('mb-1 flex items-baseline gap-2 px-1', mine && 'flex-row-reverse')}>
+            {/* Your own run carries no name — the side it's on says who — but a
+                screen reader has no side, so it still hears "You". */}
+            {mine ? (
+              <span className="sr-only">You</span>
+            ) : (
+              <span className="truncate text-[13px] font-semibold">{item.fromName}</span>
+            )}
             {/* Only when it has actually changed. Four groups inside one minute
                 printed "09:52 PM" four times, which is four chances to read a
                 number that carries no new information. */}
@@ -913,43 +936,8 @@ function MessageRow({
           </div>
         )}
 
-        {/* Quoted message this one replies to — a compact card with an accent rail
-            so the threaded context reads at a glance. When the original is linkable
-            (its id rode along in the reply), the card is a button that scrolls back
-            to it; otherwise it stays a static quote. */}
-        {replyTo &&
-          (() => {
-            const rail = <span aria-hidden className="w-0.5 shrink-0 self-stretch bg-accent/60" />
-            const body = (
-              <div className="min-w-0 flex-1 py-1 text-left">
-                <p className="flex items-center gap-1 text-[11px] font-medium text-ink-muted [&_svg]:size-3">
-                  <ReplyIcon />
-                  {replyTo.name}
-                </p>
-                <p className="truncate text-xs text-ink-subtle">{replyTo.text}</p>
-              </div>
-            )
-            const cls = 'mt-1 flex w-full items-stretch gap-2 overflow-hidden rounded-field bg-sunken/70 pr-2'
-            return replyTo.id ? (
-              <button
-                type="button"
-                onClick={() => onJumpTo(replyTo.id!)}
-                className={cn(cls, 'transition-colors hover:bg-sunken')}
-                aria-label={`Go to the message from ${replyTo.name} that this replies to`}
-              >
-                {rail}
-                {body}
-              </button>
-            ) : (
-              <div className={cls}>
-                {rail}
-                {body}
-              </div>
-            )
-          })()}
-
         {editing && item.kind === 'text' ? (
-          <div className="mt-0.5 flex flex-col gap-1.5">
+          <div className="flex w-full flex-col gap-1.5">
             <textarea
               dir="auto"
               value={editDraft}
@@ -994,14 +982,44 @@ function MessageRow({
               </span>
             </div>
           </div>
-        ) : item.kind === 'text' ? (
-          looksLikeImageUrl(item.text) ? (
+        ) : item.kind === 'text' && looksLikeImageUrl(item.text) ? (
+          <div className={cn('rounded-[18px]', actionsActive && 'ring-2 ring-accent ring-offset-2 ring-offset-surface')}>
             <ImageBubble src={item.text} />
-          ) : (
-            <p dir="auto" className="mt-0.5 whitespace-pre-wrap break-words text-sm text-ink">{renderRichText(item.text, myIdentity)}</p>
-          )
+          </div>
+        ) : item.kind === 'text' ? (
+          <div
+            className={cn(
+              'max-w-full rounded-[18px] px-3.5 py-2 transition-shadow',
+              // The corners that face the rest of the run tighten, so a run reads
+              // as one block and a new sender visibly starts a new one.
+              mine
+                ? cn('bg-accent text-accent-ink', grouped && 'rounded-tr-md', !lastOfRun && 'rounded-br-md')
+                : cn('bg-sunken text-ink', grouped && 'rounded-tl-md', !lastOfRun && 'rounded-bl-md'),
+              // You were tagged: tinted and outlined, so it stands out on a scroll
+              // past (Slack/Teams do the same to the row).
+              mentionsMe && !mine && 'bg-accent-soft ring-[1.5px] ring-inset ring-accent/45',
+              // The message an open action menu applies to.
+              actionsActive && 'ring-2 ring-accent ring-offset-2 ring-offset-surface',
+              // On the accent bubble every accent-coloured piece of rich text
+              // (links, other people's mentions, code) would vanish into it.
+              mine &&
+                '[&_.text-accent]:text-accent-ink [&_a]:text-accent-ink [&_a:hover]:text-accent-ink [&_code]:bg-white/20 [&_.bg-accent]:bg-white/25',
+            )}
+          >
+            {replyTo && <ReplyQuote reply={replyTo} onAccent={mine} onJumpTo={onJumpTo} />}
+            <p
+              dir="auto"
+              // `anywhere`, not `break-word`: a pasted link has no break points, and
+              // only `anywhere` lets it wrap inside a bubble sized to its content.
+              className="whitespace-pre-wrap text-[15px] leading-snug [overflow-wrap:anywhere] sm:text-sm"
+            >
+              {renderRichText(item.text, myIdentity)}
+            </p>
+          </div>
         ) : (
-          <FileMessage file={item} />
+          <div className={cn('max-w-full rounded-field', actionsActive && 'ring-2 ring-accent ring-offset-2 ring-offset-surface')}>
+            <FileMessage file={item} />
+          </div>
         )}
 
         <ReactionChips
@@ -1196,6 +1214,54 @@ function MessageRow({
           </Sheet>
         </>
       )}
+    </div>
+  )
+}
+
+/**
+ * The message a reply quotes, inside the reply's bubble: a compact card with an
+ * accent rail, so the thread reads at a glance. When the original is linkable
+ * (its id rode along in the reply) the card is a button that scrolls back to it.
+ * On your own accent bubble it goes translucent white, since the usual sunken card
+ * and muted ink would disappear into the accent.
+ */
+function ReplyQuote({
+  reply,
+  onAccent,
+  onJumpTo,
+}: {
+  reply: ReplyRef
+  onAccent: boolean
+  onJumpTo: (id: string) => void
+}) {
+  const rail = <span aria-hidden className={cn('w-0.5 shrink-0 self-stretch', onAccent ? 'bg-accent-ink/70' : 'bg-accent/60')} />
+  const body = (
+    <div className="min-w-0 flex-1 py-1 text-left">
+      <p className={cn('flex items-center gap-1 text-[11px] font-medium [&_svg]:size-3', onAccent ? 'text-accent-ink' : 'text-ink-muted')}>
+        <ReplyIcon />
+        {reply.name}
+      </p>
+      <p className={cn('truncate text-xs', onAccent ? 'text-accent-ink/85' : 'text-ink-subtle')}>{reply.text}</p>
+    </div>
+  )
+  const cls = cn(
+    'mb-1 mt-0.5 flex w-full items-stretch gap-2 overflow-hidden rounded-lg pr-2',
+    onAccent ? 'bg-white/15' : 'bg-surface/70',
+  )
+  return reply.id ? (
+    <button
+      type="button"
+      onClick={() => onJumpTo(reply.id!)}
+      className={cn(cls, 'transition-colors', onAccent ? 'hover:bg-white/25' : 'hover:bg-surface')}
+      aria-label={`Go to the message from ${reply.name} that this replies to`}
+    >
+      {rail}
+      {body}
+    </button>
+  ) : (
+    <div className={cls}>
+      {rail}
+      {body}
     </div>
   )
 }

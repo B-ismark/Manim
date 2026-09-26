@@ -38,7 +38,7 @@ import { useBlurControls } from '@/features/effects/BlurContext'
 import { useBlockStore } from '@/store/useBlockStore'
 import { useShareLink } from '@/lib/useShareLink'
 import { DRAG_SLOP, useDraggable } from '@/lib/useDraggable'
-import { useIslandBand } from '@/lib/chromeBands'
+import { useChromeHidden, useIslandBand, useRail, useRailBand, useTopBand } from '@/lib/chromeBands'
 import { isMyOtherDevice, useMyUserId } from '@/lib/identity'
 import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
@@ -48,6 +48,7 @@ import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
 import { toast } from '@/store/useToastStore'
 import { useElementSize } from '@/lib/useElementSize'
+import { STRIP_H, useChatCompanion, type CompanionLayout } from '@/lib/chatCompanion'
 import { useElementFullscreen } from '@/lib/useFullscreen'
 import { ChevronLeftIcon, ChevronRightIcon } from '@/components/icons'
 import { AnnotationOverlay } from '@/islands/AnnotationOverlay'
@@ -207,11 +208,14 @@ export const Stage = memo(function Stage() {
     .map(shareId)
     .join('|')
   const tileKeyList = visible.map(tileKey).join('|')
+  const chatCompanionOn = useChatCompanion().mode !== 'none'
   useEffect(() => {
     prunePresentation(shareIdKey ? shareIdKey.split('|') : [], tileKeyList ? tileKeyList.split('|') : [])
   }, [shareIdKey, tileKeyList, prunePresentation])
 
-  if (participants.length <= 1 && visible.length <= 1) {
+  // Alone, with a phone's chat open, the companion strip shows you (TouchStage)
+  // rather than the solo screen half-hidden behind the sheet.
+  if (participants.length <= 1 && visible.length <= 1 && !(coarse && chatCompanionOn)) {
     return <SoloStage selfTrack={visible[0]} />
   }
 
@@ -397,6 +401,12 @@ function StageViewSwitcher({
   onSelect: (v: TouchView) => void
 }) {
   const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  // A control, so it goes with the rest of the chrome. The self-view card stays:
+  // it's you, not a button, and it's what tells you your camera is still on.
+  const hidden = useChromeHidden((s) => s.hidden)
+  // Sideways there's no bar under it and height is the scarce axis, so it moves up
+  // into the top band's empty left end instead of taking a row off the tiles.
+  const rail = useRail()
   const meta: Record<TouchView, { label: string; icon: ReactNode }> = {
     speaker: { label: 'Speaker', icon: <SpeakerLayoutIcon /> },
     gallery: { label: 'Gallery', icon: <GridIcon /> },
@@ -408,15 +418,27 @@ function StageViewSwitcher({
     // status banners, and this is a control anchored to a corner (the same category
     // as StageTopBar's participants chip, at the same layer).
     <div
-      className="absolute left-2 z-20"
-      style={{
-        bottom: selfCardBottom + lift,
-      }}
+      className={cn(
+        'absolute left-2 z-20 transition-opacity duration-[var(--dur-base)]',
+        // A gallery keeps a top band, so the chip sits in it. A single feed or a
+        // share fills the stage, and its top-left corner is the tile's own 44px
+        // cluster (a host's "Mute <name>", the hand badge) at y 16..60 — a chip
+        // parked there took the host's tap. It drops just below that cluster.
+        rail &&
+          (view === 'gallery'
+            ? 'top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]'
+            : 'top-[calc(max(1rem,env(safe-area-inset-top))+3.25rem)]'),
+        hidden && 'pointer-events-none opacity-0',
+      )}
+      // Faded, not removed from the accessibility tree: a screen-reader user can't
+      // see the bars go and must still reach it, exactly like the island.
+      style={rail ? undefined : { bottom: selfCardBottom + lift }}
       data-no-stage-gesture
     >
       <DropdownMenu
-        // Opens upward: there is a whole stage above it and a control bar below.
-        side="top"
+        // Opens away from the edge it's parked on: up from above the bar, down
+        // from the top band when the phone is on its side.
+        side={rail ? 'bottom' : 'top'}
         align="start"
         trigger={
           <StageChip aria-label={`View: ${current.label}. Change view`}>
@@ -462,12 +484,19 @@ function ScrollGallery({
   tracks,
   cols,
   gap,
+  cellAspect = 3 / 4,
+  extraBottom = 0,
 }: {
   tracks: TrackReferenceOrPlaceholder[]
   cols: number
   gap: number
+  /** Width/height of a cell. 3:4 unless that would be taller than the stage. */
+  cellAspect?: number
+  /** More room under the last row (the view chip's band — see VIEW_CHIP_BAND). */
+  extraBottom?: number
 }) {
-  const islandBandPx = useIslandBand()
+  const islandBandPx = useIslandBand() + extraBottom
+  const topBand = useTopBand()
   return (
     <div
       // Scrolls INTERNALLY — the page itself never scrolls (see CLAUDE.md). The
@@ -478,15 +507,15 @@ function ScrollGallery({
       // under the timer and the last one down past the island, which is how a
       // scroller should behave — nothing is permanently unreachable, and at rest
       // nothing is hidden.
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+      style={{ paddingTop: topBand, paddingBottom: islandBandPx }}
     >
       <div className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap }}>
         {tracks.map((t) => (
           // 3:4 cells: touch senders are overwhelmingly portrait phones, and a
           // uniform cell is what makes the scroll calm — a mixed-aspect packer
           // re-flows the whole column every time one person rotates.
-          <div key={tileKey(t)} className="aspect-[3/4]">
-            <Tile trackRef={t} fill boxAspect={3 / 4} />
+          <div key={tileKey(t)} style={{ aspectRatio: cellAspect }}>
+            <Tile trackRef={t} fill boxAspect={cellAspect} />
           </div>
         ))}
       </div>
@@ -534,6 +563,8 @@ function TouchStage({
   shareLeads: boolean
 }) {
   const islandBandPx = useIslandBand()
+  const topBand = useTopBand()
+  const railBand = useRailBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const layout = useRoomStore((s) => s.layout)
   const setLayout = useRoomStore((s) => s.setLayout)
@@ -620,14 +651,38 @@ function TouchStage({
   // island's band is reserved), and against the UNDOCKED width — a phone never
   // docks a panel, but a large touch tablet does, and deciding capacity from the
   // narrowed stage is what used to page people out on every chat toggle.
-  const galleryH = Math.max(1, size.height - islandBandPx - TOPSTACK_BAND)
-  const realCap = gridCapacity(size.width, galleryH, true)
-  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true)
+  // The view chip sits in the band just above the island (portrait, bars showing):
+  // a gallery that ran into that band put the chip over the last row's name tag.
+  const chromeHidden = useChromeHidden((s) => s.hidden)
+  const rail = useRail()
+  const chipBand = view === 'gallery' && !chromeHidden && !rail ? VIEW_CHIP_BAND : 0
+  const galleryH = Math.max(1, size.height - islandBandPx - chipBand - topBand)
+  // The layout DECISION — columns, per page, pack or scroll — is made from the room
+  // the tiles have with the bars UP, and holds while they're away. Deciding it from
+  // the live bands flipped a 3-4 person gallery between the packed rows and the
+  // scroller every time the bars hid or came back: two different trees, so every
+  // video remounted (a black flash) and the scroll position reset under the thumb.
+  // Only the packed box (TileRows' height) spends the room the bars give back.
+  const upIsland = useIslandBand(0, true)
+  const upTop = useTopBand(true)
+  const upRail = useRailBand(0, true)
+  const upChip = view === 'gallery' && !rail ? VIEW_CHIP_BAND : 0
+  // `size` is measured inside the rail padding, so give back what the live band took.
+  const decideW = Math.max(1, size.width - (view === 'gallery' ? upRail - railBand : 0))
+  const decideH = Math.max(1, size.height - upIsland - upChip - upTop)
+  const realCap = gridCapacity(decideW, decideH, true)
+  const undockedCap = gridCapacity(useCapacityWidth(decideW), decideH, true)
   const cols = realCap.cols
   const perPage = Math.max(realCap.perPage, undockedCap.perPage)
   // Everyone fits → pack them to FILL the stage (three people get big tiles, not
   // three small ones with a void underneath). They don't → uniform scrolling cells.
   const galleryFits = gallery.length <= perPage
+  // On a phone held sideways even the legibility floor can leave a 3:4 cell a
+  // little taller than the stage; widen the cell just enough that one row always
+  // shows whole faces rather than scrolling between halves. Bars-up too, so the
+  // scroller's cells don't resize under the thumb as the bars come and go.
+  const cellW = (decideW - gap * (cols - 1)) / cols
+  const scrollCellAspect = decideH > 1 ? Math.max(3 / 4, cellW / decideH) : 3 / 4
 
   const stripShowing = view === 'content' && rosterOpen && rosterFits(size, bucketAspect(bigAspect))
   // Lift the self-view clear of the roster strip — they both want the band above the
@@ -641,10 +696,27 @@ function TouchStage({
   const selfIsTiled = view === 'gallery' || (view === 'speaker' && focus === localCam)
   const showSelfCard = Boolean(localCam) && !selfViewHidden && !selfIsTiled
 
+  // A phone with chat open keeps the call in view beside it (lib/chatCompanion).
+  // The stage's own view steps out of the way — unmounted, not just covered, so
+  // nobody's video decodes twice — but the measured box stays, so its size is
+  // current when the chat closes.
+  const companion = useChatCompanion()
+  const companionOn = companion.mode !== 'none'
+  const companionPrimary = shareLeads && share ? share : focus && !isLocalCam(focus) ? focus : roster[0] ?? localCam
+  const companionOthers = roster.filter((t) => t !== companionPrimary)
+
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col p-2">
+    <div
+      className="relative flex min-h-0 flex-1 flex-col p-2"
+      // Sideways the controls are a rail on the right, so the tiles give way on
+      // that side instead of the bottom. Only the gallery: a single feed or a
+      // share stays full-bleed with the rail on glass, as it does with the bar.
+      // Not transitioned: the TILES glide (TileRows), and easing the padding as
+      // well re-packed them on every frame of it, so they overshot the edge.
+      style={view === 'gallery' && railBand ? { paddingRight: railBand } : undefined}
+    >
       <div ref={ref} className="relative flex min-h-0 flex-1 flex-col content-center items-center justify-center gap-2">
-        {view === 'content' && share && shareSid ? (
+        {companionOn ? null : view === 'content' && share && shareSid ? (
           <div ref={bigRef} className="relative size-full">
             <Tile
               trackRef={share}
@@ -681,7 +753,7 @@ function TouchStage({
             // measured box would paint one size and then jump to another.
             <div
               className="flex min-h-0 w-full flex-1 flex-col items-center justify-center gap-2"
-              style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+              style={{ paddingTop: topBand, paddingBottom: islandBandPx + chipBand }}
             >
               <TileRows
                 tracks={gallery}
@@ -694,7 +766,13 @@ function TouchStage({
               />
             </div>
           ) : (
-            <ScrollGallery tracks={gallery} cols={cols} gap={gap} />
+            <ScrollGallery
+              tracks={gallery}
+              cols={cols}
+              gap={gap}
+              cellAspect={scrollCellAspect}
+              extraBottom={chipBand}
+            />
           )
         ) : (
           focus && <FocusTile trackRef={focus} />
@@ -705,7 +783,17 @@ function TouchStage({
           doesn't want the height (in portrait a landscape share is width-bound, so
           the space under it is slack rather than a budget). Self is deliberately
           NOT in it — during a share the floating card is still your self-view. */}
-      {view === 'content' && (
+      {companionOn && (
+        <ChatCompanionStage
+          layout={companion}
+          primary={companionPrimary}
+          others={companionOthers}
+          aspects={aspects}
+          onAspect={reportAspect}
+        />
+      )}
+
+      {view === 'content' && !companionOn && (
         <RosterStrip
           tracks={roster}
           open={rosterOpen}
@@ -716,9 +804,11 @@ function TouchStage({
         />
       )}
 
-      {showSelfCard && localCam && <SelfViewCard trackRef={localCam} lift={selfLift} />}
+      {showSelfCard && localCam && !companionOn && <SelfViewCard trackRef={localCam} lift={selfLift} />}
 
-      <StageViewSwitcher view={view} hasShare={Boolean(share)} lift={selfLift} onSelect={pickView} />
+      {!companionOn && (
+        <StageViewSwitcher view={view} hasShare={Boolean(share)} lift={selfLift} onSelect={pickView} />
+      )}
     </div>
   )
 }
@@ -760,6 +850,9 @@ function TileRows({
   tileProps?: (t: TrackReferenceOrPlaceholder) => TileOverrides
 }) {
   const measured = width > 2 && height > 2
+  // Touch only: a desktop re-pack follows a window being dragged, where a lag
+  // behind the pointer reads as sluggish rather than smooth.
+  const glide = useIsTouch()
   // Snap to buckets at pack time (raw ratios stored) so a stream nudging across a
   // boundary doesn't thrash the layout.
   const rows = useMemo(() => {
@@ -794,24 +887,51 @@ function TileRows({
     )
   }
 
+  // Every tile placed absolutely inside one box, rather than a flex row per row.
+  // Rows used to be separate elements, so a tile the packer moved to another row
+  // was a different element: its video unmounted and re-attached, and it jumped.
+  // One keyed list of positioned tiles means a re-pack (the touch chrome fading,
+  // someone joining, a rotation) is just new coordinates, and on touch they glide
+  // there with the same easing the bars slide on.
+  let boxH = 0
+  const placed: Array<{ tref: TrackReferenceOrPlaceholder; x: number; y: number; w: number; h: number }> = []
+  for (const row of rowTiles) {
+    const rowW = row.reduce((sum, c) => sum + c.w, 0) + gap * (row.length - 1)
+    const rowH = Math.max(0, ...row.map((c) => c.h))
+    let x = (width - rowW) / 2
+    for (const c of row) {
+      placed.push({ tref: c.tref, x, y: boxH + (rowH - c.h) / 2, w: c.w, h: c.h })
+      x += c.w + gap
+    }
+    boxH += rowH + gap
+  }
+  boxH = Math.max(0, boxH - gap)
+
   return (
-    <>
-      {rowTiles.map((row, ri) => (
-        <div key={ri} className="flex shrink-0 justify-center" style={{ gap }}>
-          {row.map(({ tref, w, h }) => (
-            <div key={tileKey(tref)} className="min-h-0" style={{ width: w, height: h }}>
-              <Tile
-                trackRef={tref}
-                fill
-                boxAspect={h > 0 ? w / h : undefined}
-                onAspect={(r) => onAspect(tileKey(tref), r)}
-                {...tileProps?.(tref)}
-              />
-            </div>
-          ))}
+    // `w-full`, not the measured width: that measure lands a frame after a layout
+    // change, and a box one frame too wide, centred, threw the first column off
+    // the left edge for that frame.
+    <div data-tile-rows className="relative w-full shrink-0" style={{ height: boxH }}>
+      {placed.map(({ tref, x, y, w, h }) => (
+        <div
+          key={tileKey(tref)}
+          className={cn(
+            'absolute',
+            glide &&
+              'transition-[left,top,width,height] duration-[var(--dur-slow)] ease-[var(--ease-island)] motion-reduce:transition-none',
+          )}
+          style={{ left: x, top: y, width: w, height: h }}
+        >
+          <Tile
+            trackRef={tref}
+            fill
+            boxAspect={h > 0 ? w / h : undefined}
+            onAspect={(r) => onAspect(tileKey(tref), r)}
+            {...tileProps?.(tref)}
+          />
         </div>
       ))}
-    </>
+    </div>
   )
 }
 
@@ -825,6 +945,7 @@ function TileRows({
  */
 function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
+  const topBand = useTopBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const [page, setPage] = useState(0)
   const videosFirst = useRoomStore((s) => s.videosFirst)
@@ -914,12 +1035,12 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
-    // Both chrome bands reserved — see ISLAND_BAND and TOPSTACK_BAND. This layout
+    // Both chrome bands reserved — see useIslandBand and useTopBand. This layout
     // had NEITHER: its top row rendered behind the call timer and its bottom row
     // ran underneath the floating control island, at every desktop viewport.
     <div
       className="relative flex min-h-0 flex-1 flex-col px-2 sm:px-3"
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+      style={{ paddingTop: topBand, paddingBottom: islandBandPx }}
     >
       <div
         ref={ref}
@@ -1004,10 +1125,18 @@ const TILED_GUTTER = 12
 const SELF_CARD_GUTTER = 16
 
 /**
+ * What the view chip takes out of a portrait gallery: it sits SELF_CARD_GUTTER above
+ * the island and is 44px tall, so a last row has to stop that far up (the stage's own
+ * 8px padding supplies the gap). Only while the chip is showing — it fades with the
+ * rest of the chrome, and the tiles take the room back.
+ */
+const VIEW_CHIP_BAND = SELF_CARD_GUTTER + 44
+
+/**
  * Vertical band TopStack's first row occupies: its 16px inset plus a 44px pill plus
  * a gutter.
  *
- * The mirror image of ISLAND_BAND, and it exists for the same reason. The call
+ * The mirror image of the island band, and it exists for the same reason. The call
  * timer is always up there, centred, and any layout whose content reaches the top
  * edge puts something underneath it: the speaker filmstrip rendered its middle
  * thumbnails behind the timer, and the desktop gallery's top row did the same. A
@@ -1020,7 +1149,8 @@ const SELF_CARD_GUTTER = 16
  * are transient and can stack; reserving for every combination would give every
  * layout a permanent empty third. They overlay, as overlays do.
  */
-const TOPSTACK_BAND = 68
+// The number itself, and how it collapses while the touch chrome is hidden, live
+// in lib/chromeBands (`useTopBand`) beside the island's band.
 
 /** Strip height on touch — a 3:4 thumbnail wide enough to recognise a face. */
 const STRIP_TILE_H = 80
@@ -1142,6 +1272,191 @@ function RosterStrip({
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The call beside a phone's open chat (lib/chatCompanion) — so chatting doesn't
+ * mean losing sight of the people you're chatting with.
+ *
+ * Upright it's one row of people above the sheet, speaker first, swiped sideways.
+ * The row has one height and each person's WIDTH follows their camera: a laptop's
+ * 16:9 at full height would be one person per screen, so it's trimmed to 4:3 (a
+ * little off each side, where laptop cameras rarely have anything) while a
+ * phone's tall picture stays tall. Faces then come out the same size whoever is
+ * on what. The trim is only here; the gallery keeps everyone's true shape.
+ *
+ * Sideways the panel takes the right and this gets the left, for whoever is
+ * talking, in their true shape. A wide speaker fills the width and everyone else
+ * is a "+N" chip (two wide tiles won't stack in 390px). A tall speaker is a
+ * column, which leaves room beside it, so the next two people fill that instead
+ * of empty space.
+ *
+ * You're left out unless there's nobody else: your own face is what the chat
+ * doesn't need. A share, when it leads the stage, leads here too.
+ */
+const COMPANION_MOUNT_CAP = 8
+
+function ChatCompanionStage({
+  layout,
+  primary,
+  others,
+  aspects,
+  onAspect,
+}: {
+  layout: Exclude<CompanionLayout, { mode: 'none' }>
+  primary: TrackReferenceOrPlaceholder | undefined
+  others: TrackReferenceOrPlaceholder[]
+  aspects: Record<string, number>
+  onAspect: (key: string, ratio: number) => void
+}) {
+  const setPanel = useRoomStore((s) => s.setPanel)
+  const aspectOf = (t: TrackReferenceOrPlaceholder) => aspects[tileKey(t)] ?? 16 / 9
+  const tile = (t: TrackReferenceOrPlaceholder, box: number) => (
+    <Tile trackRef={t} fill boxAspect={box} onAspect={(r) => onAspect(tileKey(t), r)} />
+  )
+  const people = primary ? [primary, ...others] : others
+  // Everyone in the call, you included — "+3 in the call" beside one speaker in a
+  // call of four.
+  const headcount = useParticipants().length
+
+  if (layout.mode === 'strip') {
+    if (!layout.stripShown) return null
+    const shown = people.slice(0, people.length > COMPANION_MOUNT_CAP ? COMPANION_MOUNT_CAP - 1 : COMPANION_MOUNT_CAP)
+    const overflow = people.length - shown.length
+    // A share keeps its own shape (clamped so a tall one still reads); a camera is
+    // trimmed to 4:3 if it's wide and left tall if it's tall.
+    const shape = (t: TrackReferenceOrPlaceholder) => {
+      const a = aspectOf(t)
+      if (isScreenShare(t)) return Math.min(16 / 9, Math.max(3 / 4, a))
+      return a > 1 ? 4 / 3 : Math.max(9 / 16, a)
+    }
+    return (
+      <div
+        data-no-stage-gesture
+        data-chat-companion="strip"
+        role="group"
+        aria-label="People in the call"
+        className="absolute inset-x-0 z-10 flex snap-x scroll-px-2 gap-2 overflow-x-auto px-2 no-scrollbar"
+        style={{ top: layout.stripTop, height: STRIP_H }}
+      >
+        {shown.map((t) => (
+          <div
+            key={tileKey(t)}
+            className="h-full shrink-0 snap-start transition-[width] duration-200 ease-out"
+            style={{ width: Math.round(STRIP_H * shape(t)) }}
+          >
+            {tile(t, shape(t))}
+          </div>
+        ))}
+        {overflow > 0 && (
+          <div className="h-full shrink-0" style={{ width: Math.round(STRIP_H * 0.75) }}>
+            <OverflowTile count={overflow} onClick={() => setPanel('people')} />
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <CompanionSide
+      panelW={layout.panelW}
+      primary={primary}
+      others={others}
+      people={headcount}
+      aspectOf={aspectOf}
+      tile={tile}
+    />
+  )
+}
+
+/** Sideways: the room left of the panel. Its own component so it measures its box
+ *  on mount — a phone turned while chatting arrives here from the strip. */
+function CompanionSide({
+  panelW,
+  primary,
+  others,
+  people,
+  aspectOf,
+  tile,
+}: {
+  panelW: number
+  primary: TrackReferenceOrPlaceholder | undefined
+  others: TrackReferenceOrPlaceholder[]
+  people: number
+  aspectOf: (t: TrackReferenceOrPlaceholder) => number
+  tile: (t: TrackReferenceOrPlaceholder, box: number) => ReactNode
+}) {
+  const setPanel = useRoomStore((s) => s.setPanel)
+  const bottomBand = useIslandBand()
+  const { ref, size } = useElementSize<HTMLDivElement>()
+  const gap = 8
+  const chipH = 32
+  const aw = size.width
+  const ah = size.height
+  const a = primary ? aspectOf(primary) : 16 / 9
+  const tall = a < 1
+  const beside = tall ? others.slice(0, 2) : []
+  const rest = Math.max(0, people - 1 - beside.length)
+  let bigW = 0
+  let bigH = 0
+  let sideW = 0
+  if (aw > 0 && ah > 0) {
+    if (tall) {
+      bigH = ah
+      bigW = Math.min(bigH * Math.max(9 / 16, a), beside.length ? aw * 0.6 : aw)
+      bigH = bigW / Math.max(9 / 16, a)
+      sideW = beside.length ? aw - bigW - gap : 0
+    } else {
+      const room = ah - (rest > 0 ? chipH + gap : 0)
+      bigW = Math.min(aw, room * a)
+      bigH = bigW / a
+    }
+  }
+  const smallH = beside.length ? Math.min((ah - (rest > 0 ? chipH + gap : 0) - gap * (beside.length - 1)) / beside.length, sideW * 0.75) : 0
+  const chip = rest > 0 && (
+    <button
+      type="button"
+      onClick={() => setPanel('people')}
+      className="h-8 shrink-0 self-center rounded-full bg-overlay px-3 text-sm font-medium text-white backdrop-blur"
+    >
+      +{rest} in the call
+    </button>
+  )
+  return (
+    <div
+      ref={ref}
+      data-chat-companion="side"
+      className="absolute left-[max(0.5rem,env(safe-area-inset-left))] top-[max(0.5rem,env(safe-area-inset-top))] z-10"
+      style={{ right: panelW + gap, bottom: bottomBand }}
+    >
+      {primary && bigW > 0 && (
+        <div className="flex size-full items-center justify-center" style={{ gap }}>
+          {tall ? (
+            <>
+              <div className="shrink-0" style={{ width: bigW, height: bigH }}>
+                {tile(primary, bigW / bigH)}
+              </div>
+              {beside.length > 0 && (
+                <div className="flex shrink-0 flex-col justify-center" style={{ width: sideW, gap }}>
+                  {beside.map((t) => (
+                    <div key={tileKey(t)} style={{ height: smallH }}>
+                      {tile(t, sideW / smallH)}
+                    </div>
+                  ))}
+                  {chip}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-start" style={{ gap }}>
+              <div style={{ width: bigW, height: bigH }}>{tile(primary, a)}</div>
+              {chip}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1309,6 +1624,7 @@ function Filmstrip({
  */
 function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
+  const topBand = useTopBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const pinned = useRoomStore((s) => s.pinned)
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
@@ -1332,7 +1648,7 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
     // up there and was landing squarely on the middle thumbnails.
     <div
       className="relative flex min-h-0 flex-1 px-2 sm:px-3"
-      style={{ paddingTop: TOPSTACK_BAND, paddingBottom: islandBandPx }}
+      style={{ paddingTop: topBand, paddingBottom: islandBandPx }}
     >
       <div ref={ref} className="relative min-h-0 flex-1">
         {size.width > 2 && size.height > 2 && (
@@ -1387,6 +1703,7 @@ function ContentStage({
   featuredSid: string
 }) {
   const islandBandPx = useIslandBand(TILED_GUTTER)
+  const topBand = useTopBand()
   const { ref, size } = useElementSize<HTMLDivElement>()
   const spotlightKey = useRoomStore((s) => s.spotlightKey)
   const setSpotlight = useRoomStore((s) => s.setSpotlight)
@@ -1420,7 +1737,7 @@ function ContentStage({
   // height — that is the entire argument for a right-hand rail, so paying for the
   // chip out of the share's height instead would give the rail back with one hand
   // and take the content with the other.
-  const L = contentLayout(size.width, size.height, ordered.length, gap, TOPSTACK_BAND)
+  const L = contentLayout(size.width, size.height, ordered.length, gap, topBand)
   const { shown, overflow } = splitVisible(ordered, L.capacity)
 
   /** Tapping a person in the strip spotlights them; tapping the share re-features it. */
@@ -1522,7 +1839,17 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
   const { copied, copy } = useShareLink()
   const coarse = useIsTouch()
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28">
+    <div
+      className={cn(
+        'flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-2 pb-24 sm:gap-5 sm:p-4 sm:pb-28',
+        // (`short` too: a phone, not a tablet, whose landscape has height to spare.)
+        // A phone on its side is ~360px tall: a card stacked over the invite
+        // overflowed it, and `justify-center` split the overflow so the top of
+        // your own video went off-screen. Side by side instead, card sized by
+        // the height it actually has.
+        coarse && 'landscape:short:flex-row landscape:short:gap-6 landscape:short:pt-4 landscape:short:pb-24',
+      )}
+    >
       {/* Touch (phones): a tall portrait card that fills the available height
           (Meet/Gmail self-view), invite below. Desktop (mouse): a constrained
           landscape card — full height would waste the wide canvas. */}
@@ -1532,7 +1859,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           // Touch: a tall portrait card, but height-capped so the invite below
           // stays on-screen (flex-1 ate the whole viewport and pushed it off).
           coarse
-            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh]'
+            ? 'aspect-[3/4] w-full max-w-[18rem] max-h-[55dvh] landscape:short:h-full landscape:short:max-h-none landscape:short:w-auto landscape:short:max-w-none'
             : 'aspect-video w-full max-w-3xl max-h-[55dvh]',
         )}
       >
@@ -1544,7 +1871,7 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
           </div>
         )}
       </div>
-      <div className="shrink-0 text-center">
+      <div className={cn('shrink-0 text-center', coarse && 'landscape:short:text-left')}>
         <p className="text-sm font-medium">You’re the only one here</p>
         <p className="mt-1 text-xs text-ink-muted">Invite someone to join this call.</p>
         <Button variant="accent" className="mt-3" onClick={copy}>
@@ -1588,11 +1915,15 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
 function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceholder; lift?: number }) {
   const islandBandPx = useIslandBand()
   const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  const upCardBottom = useIslandBand(SELF_CARD_GUTTER, true)
+  const upTop = useTopBand(true)
+  // Sideways, the controls are a rail down the right edge: the card parks beside it.
+  const railBand = useRailBand()
   // Extra clearance for whatever else is claiming the band above the island (the
   // roster strip, during a share). It moves the CSS anchor and the drag floor
   // together — those two disagreeing is how the card ended up parked underneath
   // the control island in the first place.
-  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: islandBandPx + lift })
+  const { style, handlers } = useDraggable(16, { initial: 'br', reserveBottom: islandBandPx + lift, reserveRight: railBand })
   const [expanded, setExpanded] = useState(false)
   // Tap to expand, drag to move — one pointer, two gestures, so the tap has to be
   // told apart from the drag. useDraggable's own 6px threshold decides whether a
@@ -1608,6 +1939,15 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
       data-no-stage-gesture
       style={{
         bottom: selfCardBottom + lift,
+        ...(railBand ? { right: railBand + 16 } : {}),
+        // Width from the viewport's WIDTH alone made a 3:4 card taller than a phone
+        // on its side (expanded: 427px on a 390px screen), so its top went off the
+        // screen. Also cap it by the height actually left between the island's band
+        // (measured, safe area included) and the TopStack band above.
+        // Sized from the bars-UP bands, so the card keeps its size as the bars come
+        // and go (only its position follows them) and never grows past the room it
+        // will have once they're back.
+        maxWidth: `min(${expanded ? '20rem' : '11rem'}, calc((100dvh - ${upCardBottom + lift + upTop}px) * 0.75))`,
         ...style,
       }}
       {...handlers}
@@ -1629,7 +1969,8 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
         // so it reads the same on a 320px phone and a 430px one. Expanded is a look
         // at yourself; collapsed is a glance that leaves the call visible behind it.
         'aspect-[3/4] overflow-hidden rounded-tile shadow-raised ring-1 ring-white/10',
-        expanded ? 'w-[62vw] max-w-[20rem]' : 'w-[33vw] max-w-[11rem]',
+        // (The height cap is the inline maxWidth above.)
+        expanded ? 'w-[62vw]' : 'w-[33vw]',
       )}
     >
       {/* No `boxAspect`: this crops to fill rather than letterboxing. A phone

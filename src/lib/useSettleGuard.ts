@@ -1,9 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react'
 
-/** The reflow the guard waits out — matches `--dur-base`. */
-const REFLOW_MS = 220
-/** How long a destructive control stays guarded after the reflow settles. */
-const SETTLE_MS = 350
 /** Pointer travel that counts as "the user aimed this", and disarms the guard. */
 const MOVE_PX = 8
 
@@ -21,9 +17,16 @@ const MOVE_PX = 8
  * nothing about the geometry announces when that headroom has been spent. The
  * first pass at this fix was sized against a bar measured at 560px when the real
  * one is 614px, and the 54px difference was the entire margin. So the invariant
- * lives here instead — arm whenever a reflow moves the bar, and for a short
- * window afterwards a destructive control ignores a pointer click unless the
- * pointer has since travelled `MOVE_PX`.
+ * lives here instead — arm whenever a reflow moves the bar, and from then on a
+ * destructive control ignores a pointer click until the pointer has travelled
+ * `MOVE_PX`.
+ *
+ * No time limit. It used to disarm itself ~570ms after the move, which covered a
+ * quick double-click and nothing else: open chat, pause a second, click the same
+ * spot to close it, and you had left the call — the original bug, merely delayed.
+ * A pointer that hasn't moved since the bar did hasn't aimed at anything, however
+ * long it has been sitting there. (Since the bar started centring under the
+ * videos this is the ONLY protection at the docking widths — lib/panelDock.)
  *
  * Two things are deliberately never guarded. Keyboard and assistive-tech
  * activation carry no pointer position, so a reflow cannot mis-aim them. And
@@ -36,7 +39,6 @@ const MOVE_PX = 8
 export function useSettleGuard(shift: number) {
   const last = useRef<{ x: number; y: number } | null>(null)
   const origin = useRef<{ x: number; y: number } | null>(null)
-  const until = useRef(0)
 
   // One passive listener doing both jobs: remember where the pointer is, so
   // arming has a baseline to compare against, and disarm the moment it travels.
@@ -48,7 +50,6 @@ export function useSettleGuard(shift: number) {
       const o = origin.current
       if (o && Math.hypot(e.clientX - o.x, e.clientY - o.y) >= MOVE_PX) {
         origin.current = null
-        until.current = 0
       }
     }
     window.addEventListener('pointermove', onPointer, { passive: true })
@@ -72,14 +73,12 @@ export function useSettleGuard(shift: number) {
     // and no baseline to measure travel from. Leave it disarmed.
     if (!last.current) return
     origin.current = last.current
-    until.current = Date.now() + REFLOW_MS + SETTLE_MS
   }, [shift])
 
   return useCallback((e: { detail: number }) => {
-    if (!origin.current || Date.now() >= until.current) return false
+    if (!origin.current) return false
     if (e.detail === 0) return false // keyboard / AT activation — never mis-aimed
     origin.current = null
-    until.current = 0
     return true
   }, [])
 }

@@ -51,6 +51,10 @@ interface RoomState {
    */
   companion: boolean
   panel: PanelTab
+  /** The More surface is open. Here rather than in the control bar because a phone
+   *  held sideways gives More the same right-hand panel as chat, with the call
+   *  beside it (lib/chatCompanion), so the stage has to know too. */
+  moreOpen: boolean
   /** Unread chat count while the chat panel is closed (cleared on open). */
   unread: number
   /** Facing mode of the local camera. Front ('user') is mirrored like a selfie;
@@ -114,6 +118,7 @@ interface RoomState {
    *  changes something, whichever way the surface-type default pointed. */
   toggleOwnShareShown: (currentlyShown: boolean) => void
   setPanel: (panel: PanelTab) => void
+  setMoreOpen: (open: boolean) => void
   bumpUnread: (by?: number) => void
   setSelfFacing: (facing: 'user' | 'environment') => void
 }
@@ -132,6 +137,7 @@ export const useRoomStore = create<RoomState>((set) => ({
   stickyShareId: null,
   companion: false,
   panel: null,
+  moreOpen: false,
   unread: 0,
   selfFacing: 'user',
   selfViewHidden: false,
@@ -212,5 +218,6 @@ export const useRoomStore = create<RoomState>((set) => ({
     ),
   toggleOwnShareShown: (currentlyShown) => set({ showOwnShareOverride: !currentlyShown }),
   setPanel: (panel) => set((s) => ({ panel, unread: panel === 'chat' ? 0 : s.unread })),
+  setMoreOpen: (moreOpen) => set({ moreOpen }),
   bumpUnread: (by = 1) => set((s) => ({ unread: s.unread + by })),
 }))

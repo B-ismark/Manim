@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { cn } from '@/lib/cn'
 
-type Size = 'sm' | 'md' | 'lg' | 'xl'
+type Size = 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 
 const sizeClass: Record<Size, string> = {
+  // A face in a stack (the end-of-call "who was there"): one letter fits, two don't.
+  xs: 'size-6 text-[11px]',
   sm: 'size-8 text-xs',
   md: 'size-11 text-sm',
   lg: 'size-16 text-lg',
@@ -68,7 +70,7 @@ export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
       )}
       style={{ backgroundColor: `oklch(0.6 0.13 ${hue})` }}
     >
-      {initials(name)}
+      {size === 'xs' ? chars(initials(name), 1) : initials(name)}
     </span>
   )
 }

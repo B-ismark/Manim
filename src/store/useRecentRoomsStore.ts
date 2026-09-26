@@ -3,8 +3,10 @@ import { create } from 'zustand'
 /**
  * A meeting the user was recently in, for one-tap rejoin from the home page. The
  * join secret + E2EE key are stored alongside the slug so rejoin reconstructs the
- * full invite link. This persists locally only — the same #fragment is already in
- * the browser's history, so it's no new exposure on the user's own device.
+ * full invite link. Locally the secrets sit in the clear — the same #fragment is
+ * already in the browser's history, so it's no new exposure on the user's own
+ * device. A signed-in account also syncs the list across its devices, with the
+ * secrets sealed to those devices (features/calls/recentSync).
  */
 export interface RecentRoom {
   slug: string
@@ -59,6 +61,13 @@ interface State {
   /** Record (or refresh) a room — most-recent first, deduped by slug, capped. */
   record: (room: RecentRoom) => void
   remove: (slug: string) => void
+  /**
+   * Fold in the account's list from another device (features/calls/recentSync).
+   * Newest timestamp wins per room; secrets from either side are kept when the
+   * other side has none, so a row this device couldn't open never erases a link
+   * it already had.
+   */
+  merge: (remote: RecentRoom[]) => void
 }
 
 export const useRecentRoomsStore = create<State>((set) => ({
@@ -72,6 +81,29 @@ export const useRecentRoomsStore = create<State>((set) => ({
   remove: (slug) =>
     set((s) => {
       const next = s.rooms.filter((r) => r.slug !== slug)
+      save(next)
+      return { rooms: next }
+    }),
+  merge: (remote) =>
+    set((s) => {
+      const fresh = Date.now() - TTL_MS
+      const bySlug = new Map(s.rooms.map((r) => [r.slug, r]))
+      for (const r of remote) {
+        if (r.ts < fresh) continue
+        const mine = bySlug.get(r.slug)
+        if (!mine) {
+          bySlug.set(r.slug, r)
+          continue
+        }
+        const newer = r.ts > mine.ts ? r : mine
+        const other = newer === r ? mine : r
+        bySlug.set(r.slug, {
+          ...newer,
+          secret: newer.secret ?? other.secret,
+          e2ee: newer.e2ee ?? other.e2ee,
+        })
+      }
+      const next = [...bySlug.values()].sort((a, b) => b.ts - a.ts).slice(0, MAX)
       save(next)
       return { rooms: next }
     }),

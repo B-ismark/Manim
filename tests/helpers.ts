@@ -33,9 +33,14 @@ export function attachErrorSink(page: Page): ErrorSink {
  * the URL, so there is nothing narrower to match on. It cannot hide a broken call
  * either — the media and signal paths fail as ERR_CONNECTION_* or as SDK errors, and
  * the specs that care assert on participants and the encryption badge besides.
+ *
+ * `ERR_CERT_AUTHORITY_INVALID` is the same beacon behind a TLS-intercepting proxy:
+ * the proxy opens the tunnel but presents its own certificate, which the test
+ * browser doesn't trust. The app's own endpoints are localhost (or a dev server) in
+ * every run that could hit this, so it can only be that third-party request.
  */
 const ENV_NOISE_RE =
-  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called|ERR_TUNNEL_CONNECTION_FAILED/i
+  /favicon|ResizeObserver|giphy|Failed to load resource.*40[34]|abort handler called|ERR_TUNNEL_CONNECTION_FAILED|ERR_CERT_AUTHORITY_INVALID/i
 
 /** Transient connection / media-pipeline errors that LiveKit emits during normal
  *  teardown (leave) and on the unhappy paths we DON'T assert in a given spec. These
@@ -227,8 +232,9 @@ export async function revealChrome(page: Page) {
     // stage anyway would just toggle whatever IS there.
     if (!box) return
     // The WHOLE box inside the viewport, not just its top edge: hidden is a 150%
-    // translate, so a partially-visible bar is one that is still moving.
-    if (box.y >= 0 && box.y + box.height <= vp.height) return
+    // translate, so a partially-visible bar is one that is still moving. Both axes:
+    // a phone on its side hides the bar as a rail, sliding RIGHT.
+    if (box.y >= 0 && box.y + box.height <= vp.height && box.x >= 0 && box.x + box.width <= vp.width) return
     await page.touchscreen.tap(Math.round(vp.width / 2), 4)
     await page.waitForTimeout(300)
   }
@@ -368,6 +374,8 @@ export async function selectStageView(
   await expect(async () => {
     if (wanted.test((await chip.getAttribute('aria-label')) ?? '')) return
     if (!(await page.getByRole('menu').isVisible().catch(() => false))) {
+      // The chip fades with the touch chrome (and won't take a tap while faded).
+      await revealChrome(page)
       await chip.tap({ timeout: 4000 })
     }
     await page.getByRole('menuitem', { name: view, exact: true }).tap({ timeout: 4000 })
@@ -378,14 +386,15 @@ export async function selectStageView(
 /**
  * Open the More surface — a bottom sheet on touch, a popover on desktop.
  *
- * "Quick actions" is the heading of its body on both platforms, which makes it the
- * signal that the surface is actually up rather than merely asked for.
+ * The Speaker / Gallery switch is in its body on both platforms (the phone's
+ * tile grid has no headings to wait on), which makes it the signal that the
+ * surface is actually up rather than merely asked for.
  */
 export async function openMore(page: Page): Promise<void> {
   await pressChrome(
     page,
     page.getByRole('button', { name: 'More options' }),
-    page.getByText('Quick actions', { exact: true }),
+    page.getByRole('group', { name: 'View layout' }),
   )
 }
 

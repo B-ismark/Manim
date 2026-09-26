@@ -181,6 +181,20 @@ describe('gridCapacity', () => {
     }
   })
 
+  it('adds columns on a phone held sideways, down to the legibility floor', () => {
+    // Stage height after the island + TopStack bands on a 360-390px landscape phone.
+    // Portrait stays 2-3 columns; sideways used to stay 3, so one 3:4 tile was
+    // ~360px tall on a ~200px stage and every face was cut in half.
+    for (const [vw, h] of [[844, 200], [863, 195], [932, 240]] as const) {
+      const w = stageW(vw)
+      const { cols, perPage } = gridCapacity(w, h, true)
+      const tileW = (w - 8 * (cols - 1)) / cols
+      expect(cols, `${vw}px`).toBeGreaterThanOrEqual(5)
+      expect(perPage, `${vw}px`).toBeGreaterThanOrEqual(cols)
+      expect(tileW, `${vw}px: legibility floor`).toBeGreaterThanOrEqual(132)
+    }
+  })
+
   it('caps a desktop page at 20', () => {
     expect(gridCapacity(DESK.w, DESK.h, false).perPage).toBeLessThanOrEqual(20)
   })

@@ -1,9 +1,9 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
-import { Island, Button } from '@/components/primitives'
-import { LockIcon } from '@/components/icons'
+import { Avatar, Island, Button } from '@/components/primitives'
+import { BanIcon, LeaveIcon, LockIcon, PeopleIcon, ShareIcon } from '@/components/icons'
 import { roomDeviceId } from '@/lib/roomDevice'
-import { takeEnd, type EndReason } from '@/lib/callEnd'
+import { resetPeople, takeEnd, takePeople, type EndReason } from '@/lib/callEnd'
 import { PreJoin } from '@/islands/PreJoin'
 import { JoiningScreen } from '@/islands/JoiningScreen'
 import { useAppStore } from '@/store/useAppStore'
@@ -159,7 +159,7 @@ export function RoomRoute() {
   // The end-of-call screen, for the call that just ended here. Keyed by room so a
   // move to another call (merge, answering a ring) never shows it: the route has
   // already changed when the old call disconnects.
-  const [ended, setEnded] = useState<{ room: string; reason: EndReason } | null>(null)
+  const [ended, setEnded] = useState<{ room: string; reason: EndReason; ms: number; people: string[] } | null>(null)
   const roomNow = useRef(room)
   roomNow.current = room
   // Set once the call CONNECTS, not when a token arrives: a connect that fails
@@ -397,6 +397,8 @@ export function RoomRoute() {
   }, [room, autojoin, displayName, handleJoin])
 
   function leave(reason?: EndReason) {
+    // Read before countLeft zeroes it: the end screen says how long you were in.
+    const ms = joinedAt.current ? Date.now() - joinedAt.current : 0
     countLeft()
     const why = takeEnd(reason ?? 'left')
     const was = callRoom.current
@@ -408,7 +410,7 @@ export function RoomRoute() {
     setCompanion(false)
     // Called twice per ending (LiveKit's disconnect, then the app's own onLeave);
     // the first one decides.
-    if (was && was === roomNow.current) setEnded({ room: was, reason: why })
+    if (was && was === roomNow.current) setEnded({ room: was, reason: why, ms, people: takePeople() })
   }
 
   // Proven flow: once we hold a token, LiveKitRoom mounts and RoomView shows its
@@ -433,6 +435,7 @@ export function RoomRoute() {
             callRoom.current = roomNow.current
             if (!joinedAt.current) {
               joinedAt.current = Date.now()
+              resetPeople()
               countUsage(
                 'joined',
                 !companion && prejoin.cameraEnabled && !prejoin.lowBandwidth ? 'cam_on' : 'cam_off',
@@ -460,6 +463,8 @@ export function RoomRoute() {
       <CallEnded
         room={room}
         reason={ended.reason}
+        ms={ended.ms}
+        people={ended.people}
         onRejoin={() => {
           setEnded(null)
           void handleJoin()
@@ -542,41 +547,111 @@ const ENDED_COPY: Record<EndReason, { title: string; body: string; rejoin: boole
   dropped: { title: 'You were disconnected', body: 'Check your connection, then rejoin.', rejoin: true },
 }
 
+/** Each ending keeps its own picture, so the badge says it before the words do. */
+function EndedBadge({ reason }: { reason: EndReason }) {
+  if (reason === 'removed') return <BanIcon />
+  if (reason === 'moved') return <ShareIcon />
+  if (reason === 'alone') return <PeopleIcon />
+  if (reason === 'dropped')
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M2 8.8a15 15 0 0 1 4.2-2.6M9.8 5.1A15 15 0 0 1 22 8.8M5 12.5a10 10 0 0 1 5.2-2.4M16.4 11a10 10 0 0 1 2.6 1.5M8.5 16a5 5 0 0 1 7 0M12 20h.01M3 3l18 18" />
+      </svg>
+    )
+  return <LeaveIcon />
+}
+
+function timeInCall(ms: number): string | null {
+  if (ms < 30_000) return null
+  if (ms < 60_000) return 'You were in for under a minute'
+  const min = Math.round(ms / 60_000)
+  if (min < 60) return `You were in for ${min} min`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return `You were in for ${h} h${m ? ` ${m} min` : ''}`
+}
+
 /**
  * The end of a call: what happened, in words, and the one or two things you can do
- * next (Meet and Teams do the same). It used to drop you on the home page with
- * no explanation, or at best an 8-second Rejoin toast.
+ * next (Meet and Teams do the same).
+ *
+ * It wears the join screen's frame: a small "Call ended" over the call's name at
+ * the top-left, where "Joining" sat on the way in, so a call begins and ends on
+ * the same page. Under it, a summary of what just happened — the reason, how long
+ * you were in, and who was there. On a phone the buttons sit full-width at the
+ * bottom, under the thumb, where Join was; on a laptop they sit under the card.
+ * Rejoin only where it can work (ENDED_COPY).
  */
 function CallEnded({
   room,
   reason,
+  ms,
+  people,
   onRejoin,
   onHome,
 }: {
   room: string
   reason: EndReason
+  ms: number
+  people: string[]
   onRejoin: () => void
   onHome: () => void
 }) {
   const copy = ENDED_COPY[reason]
+  const time = timeInCall(ms)
+  const shown = people.slice(0, 4)
   return (
-    <main className="grid min-h-dvh place-items-center p-4">
-      <Island pad="lg" className="w-full max-w-sm text-center">
-        <h1 className="text-lg font-semibold">{copy.title}</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          <span className="font-medium text-ink">{prettyRoom(room)}</span> · {copy.body}
-        </p>
-        <div className="mt-5 flex flex-col gap-2">
+    <main className="flex min-h-dvh flex-col items-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(1rem,env(safe-area-inset-top))] md:justify-center">
+      <div className="flex w-full max-w-md flex-1 flex-col md:flex-none">
+        <header className="px-1 pt-4 md:pt-0">
+          <p className="text-xs font-medium text-ink-subtle">Call ended</p>
+          <h1 className="truncate text-2xl font-semibold leading-tight">{prettyRoom(room)}</h1>
+        </header>
+        <section className="mt-5 rounded-island bg-surface p-5 shadow-raised">
+          <span className="grid size-12 place-items-center rounded-2xl bg-sunken text-ink [&_svg]:size-6">
+            <EndedBadge reason={reason} />
+          </span>
+          <h2 className="mt-4 text-xl font-semibold">{copy.title}</h2>
+          <p className="mt-1 text-sm text-ink-muted">{copy.body}</p>
+          {(time || people.length > 0) && (
+            <ul className="mt-4 flex flex-wrap gap-2 text-sm" aria-label="Summary">
+              {time && (
+                <li className="flex h-9 items-center gap-2 rounded-full bg-sunken px-3">
+                  <svg viewBox="0 0 24 24" className="size-4 text-ink-muted" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+                    <circle cx="12" cy="12" r="9" />
+                    <path d="M12 7v5l3 2" />
+                  </svg>
+                  {time}
+                </li>
+              )}
+              {people.length > 0 && (
+                <li className="flex h-9 items-center gap-2 rounded-full bg-sunken pl-1.5 pr-3">
+                  <span aria-hidden className="flex -space-x-1">
+                    {shown.map((n, i) => (
+                      <Avatar key={`${n}-${i}`} name={n} size="xs" className="rounded-full ring-2 ring-sunken" />
+                    ))}
+                  </span>
+                  <span title={people.join(', ')}>
+                    {people.length === 1 ? 'Just you' : `${people.length} people`}
+                  </span>
+                  <span className="sr-only">: {people.join(', ')}</span>
+                </li>
+              )}
+            </ul>
+          )}
+        </section>
+        <div className="mt-auto flex flex-col gap-2 pt-6 md:mt-6 md:pt-0">
           {copy.rejoin && (
-            <Button variant="accent" block onClick={onRejoin}>
+            <Button variant="accent" size="lg" block onClick={onRejoin}>
               Rejoin
             </Button>
           )}
-          <Button variant={copy.rejoin ? 'neutral' : 'accent'} block onClick={onHome}>
+          <Button variant={copy.rejoin ? 'neutral' : 'accent'} size="lg" block onClick={onHome}>
             Go home
           </Button>
+          <p className="pt-1 text-center text-xs text-ink-subtle">We don’t record calls</p>
         </div>
-      </Island>
+      </div>
     </main>
   )
 }
