@@ -1,4 +1,5 @@
-import { useRef, type ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
+import { useChromeHidden } from '@/lib/chromeBands'
 import { useToastClearance } from '@/lib/toastClearance'
 
 /**
@@ -33,6 +34,18 @@ import { useToastClearance } from '@/lib/toastClearance'
 export function TopStack({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
   useToastClearance(ref)
+  // Report how tall the column is, so a stage whose bars have faded keeps its top
+  // row clear of whatever pill is still up (lib/chromeBands' useTopBand).
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => useChromeHidden.setState({ topRowsH: el.getBoundingClientRect().height }))
+    ro.observe(el)
+    return () => {
+      ro.disconnect()
+      useChromeHidden.setState({ topRowsH: 0 })
+    }
+  }, [])
   return (
     <div
       ref={ref}

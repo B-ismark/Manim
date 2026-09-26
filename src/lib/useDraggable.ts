@@ -160,6 +160,11 @@ export function useDraggable(
       clearTimeout(settle)
       settle = setTimeout(repark, 450)
     }
+    // And whenever the bounds themselves move. On touch they're live — the bars
+    // fading hands the card the island's band, and coming back takes it away — so
+    // a card dragged into a corner while the bars were hidden would otherwise sit
+    // under the island (or the rail) the moment they returned.
+    onResize()
     window.addEventListener('resize', onResize)
     window.addEventListener('orientationchange', onResize)
     return () => {

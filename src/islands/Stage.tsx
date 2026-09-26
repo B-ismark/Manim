@@ -416,7 +416,14 @@ function StageViewSwitcher({
     <div
       className={cn(
         'absolute left-2 z-20 transition-opacity duration-[var(--dur-base)]',
-        rail && 'top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]',
+        // A gallery keeps a top band, so the chip sits in it. A single feed or a
+        // share fills the stage, and its top-left corner is the tile's own 44px
+        // cluster (a host's "Mute <name>", the hand badge) at y 16..60 — a chip
+        // parked there took the host's tap. It drops just below that cluster.
+        rail &&
+          (view === 'gallery'
+            ? 'top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))]'
+            : 'top-[calc(max(1rem,env(safe-area-inset-top))+3.25rem)]'),
         hidden && 'pointer-events-none opacity-0',
       )}
       // Faded, not removed from the accessibility tree: a screen-reader user can't
@@ -646,8 +653,21 @@ function TouchStage({
   const rail = useRail()
   const chipBand = view === 'gallery' && !chromeHidden && !rail ? VIEW_CHIP_BAND : 0
   const galleryH = Math.max(1, size.height - islandBandPx - chipBand - topBand)
-  const realCap = gridCapacity(size.width, galleryH, true)
-  const undockedCap = gridCapacity(useCapacityWidth(size.width), galleryH, true)
+  // The layout DECISION — columns, per page, pack or scroll — is made from the room
+  // the tiles have with the bars UP, and holds while they're away. Deciding it from
+  // the live bands flipped a 3-4 person gallery between the packed rows and the
+  // scroller every time the bars hid or came back: two different trees, so every
+  // video remounted (a black flash) and the scroll position reset under the thumb.
+  // Only the packed box (TileRows' height) spends the room the bars give back.
+  const upIsland = useIslandBand(0, true)
+  const upTop = useTopBand(true)
+  const upRail = useRailBand(0, true)
+  const upChip = view === 'gallery' && !rail ? VIEW_CHIP_BAND : 0
+  // `size` is measured inside the rail padding, so give back what the live band took.
+  const decideW = Math.max(1, size.width - (view === 'gallery' ? upRail - railBand : 0))
+  const decideH = Math.max(1, size.height - upIsland - upChip - upTop)
+  const realCap = gridCapacity(decideW, decideH, true)
+  const undockedCap = gridCapacity(useCapacityWidth(decideW), decideH, true)
   const cols = realCap.cols
   const perPage = Math.max(realCap.perPage, undockedCap.perPage)
   // Everyone fits → pack them to FILL the stage (three people get big tiles, not
@@ -655,9 +675,10 @@ function TouchStage({
   const galleryFits = gallery.length <= perPage
   // On a phone held sideways even the legibility floor can leave a 3:4 cell a
   // little taller than the stage; widen the cell just enough that one row always
-  // shows whole faces rather than scrolling between halves.
-  const cellW = (size.width - gap * (cols - 1)) / cols
-  const scrollCellAspect = galleryH > 1 ? Math.max(3 / 4, cellW / galleryH) : 3 / 4
+  // shows whole faces rather than scrolling between halves. Bars-up too, so the
+  // scroller's cells don't resize under the thumb as the bars come and go.
+  const cellW = (decideW - gap * (cols - 1)) / cols
+  const scrollCellAspect = decideH > 1 ? Math.max(3 / 4, cellW / decideH) : 3 / 4
 
   const stripShowing = view === 'content' && rosterOpen && rosterFits(size, bucketAspect(bigAspect))
   // Lift the self-view clear of the roster strip — they both want the band above the
@@ -1683,8 +1704,9 @@ function SoloStage({ selfTrack }: { selfTrack?: TrackReferenceOrPlaceholder }) {
  */
 function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceholder; lift?: number }) {
   const islandBandPx = useIslandBand()
-  const topBand = useTopBand()
   const selfCardBottom = useIslandBand(SELF_CARD_GUTTER)
+  const upCardBottom = useIslandBand(SELF_CARD_GUTTER, true)
+  const upTop = useTopBand(true)
   // Sideways, the controls are a rail down the right edge: the card parks beside it.
   const railBand = useRailBand()
   // Extra clearance for whatever else is claiming the band above the island (the
@@ -1712,7 +1734,10 @@ function SelfViewCard({ trackRef, lift = 0 }: { trackRef: TrackReferenceOrPlaceh
         // on its side (expanded: 427px on a 390px screen), so its top went off the
         // screen. Also cap it by the height actually left between the island's band
         // (measured, safe area included) and the TopStack band above.
-        maxWidth: `min(${expanded ? '20rem' : '11rem'}, calc((100dvh - ${selfCardBottom + lift + topBand}px) * 0.75))`,
+        // Sized from the bars-UP bands, so the card keeps its size as the bars come
+        // and go (only its position follows them) and never grows past the room it
+        // will have once they're back.
+        maxWidth: `min(${expanded ? '20rem' : '11rem'}, calc((100dvh - ${upCardBottom + lift + upTop}px) * 0.75))`,
         ...style,
       }}
       {...handlers}

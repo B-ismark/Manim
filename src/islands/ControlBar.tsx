@@ -61,7 +61,7 @@ import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScree
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useMediaQuery } from '@/lib/useMediaQuery'
-import { useRail } from '@/lib/chromeBands'
+import { useRail, useRailTwoCol } from '@/lib/chromeBands'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
@@ -196,6 +196,8 @@ export function ControlBar({
   const narrowBar = useMediaQuery('(max-width: 679px)') && !touch
   // A phone on its side: the bar becomes a column down the right edge (chromeBands).
   const rail = useRail()
+  // A rail too short for one column wraps into two (lib/chromeBands).
+  const twoCol = useRailTwoCol()
   const compact = touch || narrowBar
   // A modal and the tray must not be up together — the modal would scrim the tray
   // it was opened from.
@@ -900,7 +902,8 @@ export function ControlBar({
         </Dialog>
         </ReturnFocusContext.Provider>
 
-        <div className={cn(rail ? 'my-1 h-px w-7' : 'mx-1 h-7 w-px', 'bg-line')} aria-hidden />
+        {/* No divider in the two-column rail: it would take a grid cell of its own. */}
+        {!twoCol && <div className={cn(rail ? 'my-1 h-px w-7' : 'mx-1 h-7 w-px', 'bg-line')} aria-hidden />}
 
         {isHost && !compact ? (
           // Split control: leaving (call continues) is the primary action; ending
@@ -993,7 +996,11 @@ export function ControlBar({
           rail
             ? audioTrayOpen
               ? 'flex max-h-full w-[min(26rem,calc(100vw-2rem))] flex-row-reverse overflow-hidden'
-              : 'flex max-h-full flex-col items-center gap-1.5 overflow-y-auto px-2 py-2 no-scrollbar'
+              : twoCol
+                ? // Three rows, filled column by column: mic/camera/audio, then
+                  // chat/More/Leave — Leave still lands in the bottom trailing corner.
+                  'grid grid-flow-col grid-rows-3 place-items-center gap-1.5 px-2 py-2'
+                : 'flex max-h-full flex-col items-center gap-1.5 overflow-y-auto px-2 py-2 no-scrollbar'
             : audioTrayOpen
               ? 'flex w-[min(28rem,calc(100vw-2rem))] flex-col overflow-hidden'
               : 'flex items-center gap-1.5 px-3 py-2 sm:gap-2',
@@ -1028,7 +1035,11 @@ export function ControlBar({
           <div
             className={cn(
               'flex items-center gap-1.5 bg-sunken',
-              rail ? 'flex-col overflow-y-auto border-l border-line px-2 py-2 no-scrollbar' : 'border-t border-line px-3 py-2',
+              rail
+                ? twoCol
+                  ? 'grid grid-flow-col grid-rows-3 place-items-center border-l border-line px-2 py-2'
+                  : 'flex-col overflow-y-auto border-l border-line px-2 py-2 no-scrollbar'
+                : 'border-t border-line px-3 py-2',
             )}
           >
             {barRow}

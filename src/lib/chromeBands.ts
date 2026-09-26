@@ -109,9 +109,14 @@ export function useSafeAreaBottom(): number {
  * brings the bars back and the tiles step aside again. Always false on desktop,
  * whose chrome never hides.
  */
-export const useChromeHidden = create<{ hidden: boolean; mutedCorner: boolean }>(() => ({
+export const useChromeHidden = create<{ hidden: boolean; mutedCorner: boolean; topRowsH: number }>(() => ({
   hidden: false,
   mutedCorner: false,
+  // Height of whatever TopStack is still showing (TopStack measures itself). The
+  // timer pill leaves with the bars, but a Muted pill, a reconnect banner or a
+  // "not encrypted" pill stays — and a hairline band would put the top row's
+  // corner controls underneath it.
+  topRowsH: 0,
 }))
 
 /**
@@ -149,11 +154,35 @@ export function useRail(): boolean {
   return touch && sideways
 }
 
-/** The island's band on this device, ready to spend as padding. */
-export function useIslandBand(extra = 0): number {
+/**
+ * A rail too short for one column. Six 44px controls, their gaps, the divider and
+ * the padding need ~341px; a 360px-wide Android phone in landscape Chrome has
+ * ~280-300px once the browser's own bars are taken, and a scrolling column hid
+ * Leave with no sign there was more. Below this the rail wraps into two columns
+ * (three rows each), so everything stays reachable at full size.
+ */
+export const RAIL_TWO_COL_QUERY = '(max-height: 351px)'
+/** What the second column adds: one 44px control and the 6px gap before it. */
+export const RAIL_SECOND_COL = 50
+
+export function useRailTwoCol(): boolean {
+  const short = useMediaQuery(RAIL_TWO_COL_QUERY)
+  return useRail() && short
+}
+
+/**
+ * The island's band on this device, ready to spend as padding.
+ *
+ * `shown` asks for the band as it is with the bars UP, whatever they are doing now.
+ * That's what a layout DECISION (how many per page, how many columns, scroll or
+ * pack) must be made from: deciding it from the live band flipped a 3-4 person
+ * gallery between two different trees every time the bars came and went, which
+ * remounts every video. The live band only sizes the box the tiles glide into.
+ */
+export function useIslandBand(extra = 0, shown = false): number {
   const safe = useSafeAreaBottom()
-  const hidden = useChromeHidden((s) => s.hidden)
-  const mutedCorner = useChromeHidden((s) => s.mutedCorner)
+  const hidden = useChromeHidden((s) => s.hidden) && !shown
+  const mutedCorner = useChromeHidden((s) => s.mutedCorner) && !shown
   const rail = useRail()
   // Sideways with the bars away, the "Muted" pill sits in the bottom-left corner,
   // exactly where the bottom-left tile carries its name tag. Keep it a strip.
@@ -167,12 +196,14 @@ export function useIslandBand(extra = 0): number {
  * column at `right: max(1rem, safe-area-right)` — the same geometry as the bottom
  * bar, turned on its side — and the band collapses with it when the chrome hides.
  */
-export function useRailBand(extra = 0): number {
+export function useRailBand(extra = 0, shown = false): number {
   const safe = useSafeArea('right')
-  const hidden = useChromeHidden((s) => s.hidden)
+  const hidden = useChromeHidden((s) => s.hidden) && !shown
   const rail = useRail()
+  const twoCol = useRailTwoCol()
   if (!rail) return 0
-  return hidden ? Math.max(0, safe) : Math.max(ISLAND_INSET, safe) + ISLAND_H + extra
+  if (hidden) return Math.max(0, safe)
+  return Math.max(ISLAND_INSET, safe) + ISLAND_H + (twoCol ? RAIL_SECOND_COL : 0) + extra
 }
 
 /**
@@ -180,8 +211,14 @@ export function useRailBand(extra = 0): number {
  * `top: max(1rem, safe-area-top)`, so the band follows the notch the same way the
  * island's follows the home indicator.
  */
-export function useTopBand(): number {
+export function useTopBand(shown = false): number {
   const safe = useSafeArea('top')
-  const hidden = useChromeHidden((s) => s.hidden)
-  return hidden ? Math.max(HIDDEN_BAND, safe) : Math.max(ISLAND_INSET, safe) + TOPSTACK_BAND - ISLAND_INSET
+  const hidden = useChromeHidden((s) => s.hidden) && !shown
+  const rows = useChromeHidden((s) => s.topRowsH)
+  const up = Math.max(ISLAND_INSET, safe) + TOPSTACK_BAND - ISLAND_INSET
+  if (!hidden) return up
+  // Hidden, but a pill is still up: stop just under it rather than under the timer.
+  // Never MORE than the bars-up band: a stack of banners overlays there (they're
+  // transient), and hiding the bars mustn't be what shrinks the tiles.
+  return rows > 0 ? Math.min(up, Math.max(ISLAND_INSET, safe) + rows + HIDDEN_BAND) : Math.max(HIDDEN_BAND, safe)
 }

@@ -656,13 +656,16 @@ test.describe('Mobile fit (no page scroll)', () => {
       const measure = () =>
         page.evaluate(() => {
           const bar = document.querySelector('button[aria-label="Leave call"]')!.closest('.fixed') as HTMLElement
+          // The island itself: the `.fixed` wrapper is a full-height strip, so its
+          // shape says nothing about whether the controls are really a column.
+          const island = document.querySelector('[role="region"][aria-label="Call controls"]')!.getBoundingClientRect()
           const tiles = Array.from(document.querySelectorAll('[data-tile-rows] [role="group"][aria-label]')).map((e) =>
             e.getBoundingClientRect(),
           )
           const pill = document.querySelector('[data-testid="muted-pill"]')?.getBoundingClientRect() ?? null
           const r = bar.getBoundingClientRect()
           return {
-            bar: { left: r.left, right: r.right, width: r.width, height: r.height },
+            bar: { left: r.left, right: r.right, width: island.width, height: island.height },
             rail: bar.hasAttribute('data-rail'),
             area: Math.max(0, ...tiles.map((t) => t.width * t.height)),
             right: Math.max(0, ...tiles.map((t) => t.right)),
@@ -691,6 +694,77 @@ test.describe('Mobile fit (no page scroll)', () => {
       expect(hidden.pill!.left, 'bottom-left when sideways').toBeLessThan(40)
       expect(hidden.pill!.bottom, 'bottom-left when sideways').toBeGreaterThan(hidden.vh - 60)
       expect(hidden.bottom, 'the tiles leave the pill its strip').toBeLessThanOrEqual(hidden.pill!.top + 1)
+    } finally {
+      await Promise.all(peers.map((p) => closeContext(p.context)))
+    }
+  })
+
+  test('a short sideways phone wraps the rail into two columns, and Leave stays reachable', async ({ page }) => {
+    // A 360px-wide Android phone in landscape Chrome: ~290px of height once the
+    // browser's own bars are taken. One column needs ~341px, and a scrolling column
+    // hid Leave with no sign there was more. Emulators have no browser chrome, so
+    // the height has to be set by hand.
+    await join(page, uniqueRoom(), 'Solo')
+    await page.setViewportSize({ width: 740, height: 290 })
+    await revealChrome(page)
+    await page.waitForTimeout(400)
+    const fit = await page.evaluate(() => {
+      const island = document.querySelector('[role="region"][aria-label="Call controls"]')!
+      return {
+        vh: innerHeight,
+        island: island.getBoundingClientRect().height,
+        // Rendered controls only (a hidden menu trigger has no box).
+        controls: Array.from(island.querySelectorAll('button')).filter((b) => b.getBoundingClientRect().height > 0).map((b) => {
+          const r = b.getBoundingClientRect()
+          return { name: b.getAttribute('aria-label'), top: r.top, bottom: r.bottom, h: r.height }
+        }),
+      }
+    })
+    expect(fit.island, 'the island fits the height').toBeLessThanOrEqual(fit.vh)
+    expect(fit.controls.length).toBeGreaterThanOrEqual(5)
+    for (const c of fit.controls) {
+      expect(c.h, `${c.name} stays 44px`).toBeGreaterThanOrEqual(44)
+      expect(c.top, `${c.name} on screen`).toBeGreaterThanOrEqual(0)
+      expect(c.bottom, `${c.name} on screen`).toBeLessThanOrEqual(fit.vh)
+    }
+    await expect(page.getByRole('button', { name: 'Leave call' })).toBeInViewport({ ratio: 1 })
+  })
+
+  test('the gallery keeps its layout while the bars come and go', async ({ page, browser }) => {
+    // 4 people at 390x664 (an iPhone in Safari) is the case that used to flip: the
+    // bars-up room pages 2 per screen (scroller), the bars-down room fits 4 (packed
+    // rows), so every fade swapped trees and remounted every video.
+    await page.setViewportSize({ width: 390, height: 664 })
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peers = await Promise.all(
+      ['Guest1', 'Guest2', 'Guest3'].map((n) => newParticipant(browser, room, n)),
+    )
+    try {
+      await selectStageView(page, 'Gallery')
+      // A tile's group, not its <video>: a tile that remounts takes its video with it,
+      // and a guest's camera may not have started yet.
+      const TILE = '[role="main"] [role="group"][aria-label*="muted"], main [role="group"][aria-label*="muted"]'
+      await expect(page.locator(TILE)).toHaveCount(4, { timeout: 30_000 })
+      await revealChrome(page)
+      const mode = () => page.evaluate(() => (document.querySelector('[data-tile-rows]') ? 'rows' : 'scroll'))
+      const up = await mode()
+      await page.evaluate((sel) => {
+        for (const v of Array.from(document.querySelectorAll(sel))) (v as HTMLElement & { __kept?: boolean }).__kept = true
+      }, TILE)
+      // Let the bars fade (4s without a touch).
+      await expect
+        .poll(() => page.getByRole('button', { name: 'Leave call' }).evaluate((b) => getComputedStyle(b.closest('.fixed')!).opacity), {
+          timeout: 15_000,
+        })
+        .toBe('0')
+      await page.waitForTimeout(600)
+      expect(await mode(), 'same layout with the bars away').toBe(up)
+      const kept = await page.evaluate(
+        (sel) => Array.from(document.querySelectorAll(sel)).filter((v) => (v as HTMLElement & { __kept?: boolean }).__kept).length,
+        TILE,
+      )
+      expect(kept, 'no tile remounted as the bars faded').toBe(4)
     } finally {
       await Promise.all(peers.map((p) => closeContext(p.context)))
     }

@@ -4,7 +4,7 @@ import { ExitFullscreenIcon, PeopleIcon } from '@/components/icons'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { cn } from '@/lib/cn'
-import { useRail } from '@/lib/chromeBands'
+import { useRail, useRailTwoCol } from '@/lib/chromeBands'
 
 /**
  * Top-right action cluster (WhatsApp / Meet convention). Holds the participants
@@ -20,6 +20,7 @@ export function StageTopBar({ visible }: { visible: boolean }) {
   const { isFullscreen, exitFullscreen } = useFullscreen()
   // Sideways the controls are a column down the right edge; step left of it.
   const rail = useRail()
+  const twoCol = useRailTwoCol()
 
   const showParticipants = panel === null
   if (!showParticipants && !isFullscreen) return null
@@ -28,7 +29,12 @@ export function StageTopBar({ visible }: { visible: boolean }) {
     <div
       className={cn(
         'fixed top-[max(1rem,calc(env(safe-area-inset-top)+0.5rem))] z-20 flex items-center gap-2',
-        rail ? 'right-[calc(max(1rem,env(safe-area-inset-right))+4.25rem)]' : 'right-4',
+        rail
+          ? twoCol
+            ? // Clear of the two-column rail: 110px of island plus the gutter.
+              'right-[calc(max(1rem,env(safe-area-inset-right))+7.375rem)]'
+            : 'right-[calc(max(1rem,env(safe-area-inset-right))+4.25rem)]'
+          : 'right-4',
         'transition-[transform,opacity] duration-[var(--dur-base)] ease-[var(--ease-island)]',
         !visible && 'pointer-events-none -translate-y-[150%] opacity-0',
       )}
