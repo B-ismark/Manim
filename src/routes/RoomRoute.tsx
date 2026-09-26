@@ -24,7 +24,7 @@ import { addBreadcrumb, reportError } from '@/lib/report'
 function notifyAdmitted(room: string) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
   try {
-    const n = new Notification("You're in — tap to join", {
+    const n = new Notification("You’re in — tap to join", {
       body: `${prettyRoom(room)} is ready for you.`,
       tag: 'mn-admit',
     })
@@ -165,7 +165,8 @@ export function RoomRoute() {
   const handleJoin = useCallback(async () => {
     setError(null)
     if (!LIVEKIT_URL) {
-      setError('No media server configured. Set VITE_LIVEKIT_URL in .env (LiveKit Cloud ws URL), then restart the dev server.')
+      console.warn('No media server configured: set VITE_LIVEKIT_URL in .env, then restart the dev server.')
+      setError('Calls aren’t set up here yet.')
       return
     }
     setConnecting(true)
@@ -438,12 +439,12 @@ function ExpiredLink({ room, onHome }: { room: string; onHome: () => void }) {
         </span>
         <h1 className="mt-4 text-lg font-semibold">This link has expired</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          The invite for <span className="font-medium text-ink">{prettyRoom(room)}</span> hasn't been
-          used in a while, so it's no longer active. Start a new meeting and share its fresh link — or
+          The invite for <span className="font-medium text-ink">{prettyRoom(room)}</span> hasn’t been
+          used in a while, so it’s no longer active. Start a new call and share its link — or
           ask whoever invited you for a current one.
         </p>
         <Button variant="accent" className="mt-5" onClick={onHome}>
-          Start a new meeting
+          Start a new call
         </Button>
       </Island>
     </main>
@@ -471,7 +472,7 @@ function NeedFullLink({ room, onHome }: { room: string; onHome: () => void }) {
           server. Ask whoever invited you for the full link.
         </p>
         <Button variant="accent" className="mt-5" onClick={onHome}>
-          Back to home
+          Go home
         </Button>
       </Island>
     </main>
@@ -497,9 +498,9 @@ function AlreadyOnDevicePrompt({
   return (
     <div className="fixed inset-0 z-40 grid place-items-center bg-black/50 p-4 backdrop-blur-sm">
       <Island pad="lg" className="w-full max-w-sm">
-        <h2 className="text-lg font-semibold">You're already in this call</h2>
+        <h2 className="text-lg font-semibold">You’re already in this call</h2>
         <p className="mt-1 text-sm text-ink-muted">
-          You're in this call on another device. Join here too (muted, to avoid echo), or move the
+          You’re in this call on another device. Join here too (muted, to avoid echo), or move the
           call to this device.
         </p>
         <div className="mt-5 flex flex-col gap-2">
@@ -548,19 +549,19 @@ function WaitingRoom({ room, onCancel }: { room: string; onCancel: () => void })
       <Island pad="lg" className="w-full max-w-sm text-center">
         <h1 className="text-lg font-semibold">Waiting to be let in</h1>
         <p className="mt-1 text-sm text-ink-muted">
-          The host has been notified. You'll join {prettyRoom(room)} as soon as they admit you.
+          The host has been notified. You’ll join {prettyRoom(room)} as soon as they admit you.
         </p>
         <p className="mt-1 text-xs text-ink-subtle tabular-nums">
           Waiting {Math.floor(waited / 60)}:{String(waited % 60).padStart(2, '0')}
         </p>
         {supported && perm === 'default' && (
           <Button variant="neutral" className="mt-4" onClick={() => void arm()}>
-            Notify me when I'm let in
+            Notify me when I’m let in
           </Button>
         )}
         {supported && perm === 'granted' && (
           <p className="mt-4 text-xs text-ink-subtle">
-            We'll notify you the moment you're admitted — you can switch to another app.
+            We’ll notify you the moment you’re admitted — you can switch to another app.
           </p>
         )}
         <div className="mt-4">

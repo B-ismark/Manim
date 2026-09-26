@@ -173,7 +173,7 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
   useEffect(() => {
     if (armed.current === canDraw) return
     armed.current = canDraw
-    announce(canDraw ? 'Annotation on. Draw on the shared screen.' : 'Annotation off.')
+    announce(canDraw ? 'Annotation on. Draw on the shared screen.' : 'Annotation off')
   }, [canDraw, announce])
 
   return (

@@ -13,6 +13,10 @@ describe('prettyRoom', () => {
   it('leaves numeric segments of generated codes intact', () => {
     expect(prettyRoom('calm-otter-417')).toBe('Calm Otter 417')
   })
+  it('drops the random code a new meeting appends, as the link preview does', () => {
+    expect(prettyRoom('swift-falcon-kq7mz3xhp2rtd')).toBe('Swift Falcon')
+    expect(prettyRoom('kq7mz3xhp2rtd')).toBe('Kq7mz3xhp2rtd')
+  })
 
   it('collapses repeated separators', () => {
     expect(prettyRoom('a--b__c')).toBe('A B C')

@@ -35,7 +35,7 @@ export interface IconButtonProps extends ButtonHTMLAttributes<HTMLButtonElement>
 
 /** Round, icon-only control. Backbone of the control bar and toolbars. */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconButton(
-  { label, icon, tone = 'neutral', size = 'md', active = false, className, type = 'button', ...rest },
+  { label, icon, tone = 'neutral', size = 'md', active, className, type = 'button', ...rest },
   ref,
 ) {
   return (
@@ -43,6 +43,8 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(functio
       ref={ref}
       type={type}
       aria-label={label}
+      // Only a real toggle is pressed or not: without `active`, a plain action
+      // ("Close panel", "Send message") was announced as "toggle button, not pressed".
       aria-pressed={active}
       title={label}
       className={cn(

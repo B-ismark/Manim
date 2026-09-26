@@ -38,7 +38,7 @@ export function ContactsDialog({ open, onOpenChange, onCall, onAddToCall }: Cont
       open={open}
       onOpenChange={onOpenChange}
       title="Contacts"
-      description="Call people you've saved, and manage requests."
+      description="Call people you’ve saved, and manage requests."
     >
       <ContactsBody
         active={open}
@@ -231,17 +231,17 @@ function ContactsBody({
               onClick={() => void refresh()}
               className="font-medium text-ink-muted hover:text-ink"
             >
-              Retry
+              Try again
             </button>
           </div>
         )}
         {accepted.length === 0 ? (
           <Empty
-            title={loading ? 'Loading…' : error ? "Couldn't load contacts" : 'No contacts yet'}
+            title={loading ? 'Loading…' : error ? "Couldn’t load contacts" : 'No contacts yet'}
             hint={
               error
-                ? 'Check your connection and retry.'
-                : "Add someone by email in the Add tab. They'll appear here once they accept."
+                ? 'Check your connection and try again.'
+                : "Add someone by email in the Add tab. They’ll appear here once they accept."
             }
           />
         ) : (
@@ -285,7 +285,7 @@ function ContactsBody({
         {incoming.length === 0 && outgoing.length === 0 ? (
           <Empty
             title="No requests"
-            hint="Incoming requests to add you — and ones you've sent — show up here."
+            hint="Incoming requests to add you — and ones you’ve sent — show up here."
           />
         ) : (
           <div className="flex flex-col gap-4">
@@ -339,7 +339,7 @@ function CallNameDialog({
       open={contact !== null}
       onOpenChange={(o) => !o && onClose()}
       title={`Call ${contact?.name ?? ''}`}
-      description="Name the meeting (optional), then start the call."
+      description="Name the call (optional), then start it."
     >
       <form
         onSubmit={(e) => {
@@ -351,8 +351,8 @@ function CallNameDialog({
         <input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Meeting name (optional) — e.g. Design sync"
-          aria-label="Meeting name"
+          placeholder="Call name (optional) — e.g. Design sync"
+          aria-label="Call name"
           autoComplete="off"
           autoFocus
           className="h-11 rounded-field bg-sunken px-3.5 text-base outline-none placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent sm:text-sm"
@@ -385,7 +385,7 @@ function RemoveConfirmDialog({
       open={contact !== null}
       onOpenChange={(o) => !o && onClose()}
       title={`Remove ${contact?.name ?? ''}?`}
-      description="You'll be removed from each other's contacts. You can send a new request later."
+      description="You’ll be removed from each other’s contacts. You can send a new request later."
     >
       <div className="flex justify-end gap-2">
         <Button variant="neutral" onClick={onClose}>
@@ -513,7 +513,7 @@ function AddByEmail({ onAdded }: { onAdded: () => void }) {
         </p>
       )}
       <p className="text-xs text-ink-subtle">
-        They must accept before you're connected. Both of you can remove the contact anytime.
+        They must accept before you’re connected. Both of you can remove the contact anytime.
       </p>
     </form>
   )

@@ -98,7 +98,7 @@ export function SetupStatusButton() {
           open={open}
           onOpenChange={setOpen}
           title="Setup status"
-          description="What's configured for this app."
+          description="What’s configured for this app."
         >
           <StatusList />
         </Dialog>

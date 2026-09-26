@@ -80,7 +80,7 @@ export function GifPicker({ onSelect }: { onSelect: (url: string) => void }) {
           </button>
         ))}
         {!loading && items.length === 0 && (
-          <p className="col-span-2 py-6 text-center text-xs text-ink-subtle">No GIFs found.</p>
+          <p className="col-span-2 py-6 text-center text-xs text-ink-subtle">No GIFs found</p>
         )}
       </div>
       <p className="mt-1.5 text-center text-[10px] text-ink-subtle">Powered by GIPHY</p>

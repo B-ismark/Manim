@@ -19,9 +19,9 @@ export function CompanionBanner({
   return (
     <Island elevation="raised" pad="sm" className="pointer-events-auto flex items-center gap-3">
       <p className="text-sm text-ink">
-        Companion — audio off
+        Second device — sound off
         <span className="block text-xs text-ink-subtle">
-          You're in this call on another device.
+          You’re in this call on another device.
         </span>
       </p>
       <div className="flex shrink-0 gap-2">
@@ -29,7 +29,7 @@ export function CompanionBanner({
           Turn on sound
         </Button>
         <Button size="sm" variant="ghost" onClick={onTransfer}>
-          Transfer here
+          Transfer to this device
         </Button>
       </div>
     </Island>
@@ -50,9 +50,9 @@ export function HandoffBanner({ onSwitch }: { onSwitch: () => void }) {
   return (
     <Island elevation="raised" pad="sm" className="pointer-events-auto flex items-center gap-3">
       <p className="text-sm text-ink">
-        You're in this call on another device.
+        You’re in this call on another device.
         <span className="block text-xs text-ink-subtle">
-          Both stay connected — mute one to avoid echo if they're side by side.
+          Both stay connected — mute one to avoid echo if they’re side by side.
         </span>
       </p>
       <div className="flex shrink-0 gap-2">

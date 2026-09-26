@@ -10,6 +10,7 @@ import { useDataTopic } from '@/lib/useDataTopic'
 import { useAppStore } from '@/store/useAppStore'
 import { electHost, endRoom, handoff, setRoomFlags } from '@/lib/orchestrator'
 import { roomTo, type RoomSecrets } from '@/lib/roomLink'
+import { prettyRoom } from '@/lib/roomName'
 import { userIdOf } from '@/lib/identity'
 import { sounds } from '@/lib/sounds'
 import { toast } from '@/store/useToastStore'
@@ -82,7 +83,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   const wasCoHost = useRef(false)
   useEffect(() => {
     const nowCo = coHosts.includes(localParticipant.identity)
-    if (nowCo && !wasCoHost.current && !isPrimaryHost) toast("You're now a co-host", 'neutral')
+    if (nowCo && !wasCoHost.current && !isPrimaryHost) toast("You’re now a co-host", 'neutral')
     wasCoHost.current = nowCo
   }, [coHosts, localParticipant.identity, isPrimaryHost])
 
@@ -116,7 +117,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
   // value so the original host isn't toasted at join).
   const wasPrimary = useRef(isPrimaryHost)
   useEffect(() => {
-    if (isPrimaryHost && !wasPrimary.current) toast("You're now the host", 'neutral')
+    if (isPrimaryHost && !wasPrimary.current) toast("You’re now the host", 'neutral')
     wasPrimary.current = isPrimaryHost
   }, [isPrimaryHost])
 
@@ -177,7 +178,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       // Orientation beat: the merge auto-joins the new room and re-publishes mic/cam,
       // which is jarring with no warning. Announce the move (the toast lingers across
       // the navigation) so the participant knows why their call just changed rooms.
-      toast(`The host moved everyone to ${data.room}`, 'neutral')
+      toast(`The host moved everyone to ${prettyRoom(data.room)}`, 'neutral')
       // Carry the target room's secrets so everyone passes its join-secret gate.
       navigate(roomTo(data.room, { secret: data.k, e2ee: data.e }), { state: { autojoin: true } })
     } else if (data.type === 'report' && isHost) {
@@ -250,7 +251,7 @@ export function useSessionControl(onLeave: () => void, encryptedHere = false) {
       // Lock state lives in server-written room metadata, so on failure the UI
       // simply never flips — with no feedback. Surface + report it (E2).
       reportError(e, { context: 'toggle-lock' })
-      toast('Couldn’t change the room lock — try again', 'danger')
+      toast('Couldn’t change the call lock — try again', 'danger')
     }
   }, [room.name, roomToken, locked])
 

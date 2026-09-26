@@ -48,9 +48,9 @@ export function DeviceRow({ kind, label }: RowProps) {
               void setActiveMediaDevice(d.deviceId)
                 .then(() => {
                   remember(kind as StoredDeviceKind, d.deviceId, d.label)
-                  toast(`${label}: ${d.label || 'changed'}`, 'neutral')
+                  toast(d.label ? `${label} switched to ${d.label}` : `Switched ${label.toLowerCase()}`, 'neutral')
                 })
-                .catch(() => toast(`Couldn't switch ${label.toLowerCase()}`, 'danger'))
+                .catch(() => toast(`Couldn’t switch ${label.toLowerCase()}`, 'danger'))
             }}
           >
             <span className="truncate">{d.label || 'Unnamed device'}</span>

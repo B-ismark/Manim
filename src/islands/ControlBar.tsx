@@ -248,7 +248,7 @@ export function ControlBar({
           await target.requestPictureInPicture()
           setPipActive(true)
         } else {
-          toast("The mini player isn't available here", 'warning')
+          toast("The mini player isn’t available here", 'warning')
         }
         return
       }
@@ -261,9 +261,9 @@ export function ControlBar({
         return
       }
 
-      toast("The mini player isn't available here", 'warning')
+      toast("The mini player isn’t available here", 'warning')
     } catch {
-      toast("Couldn't open the mini player", 'warning')
+      toast("Couldn’t open the mini player", 'warning')
     }
   }, [])
 
@@ -421,7 +421,7 @@ export function ControlBar({
         {isHost && (
           <GridTile
             icon={<LockIcon />}
-            label="Lock room"
+            label="Lock call"
             active={locked}
             onClick={onToggleLock}
           />
@@ -461,7 +461,7 @@ export function ControlBar({
           {(
             [
               { value: 'speaker', label: 'Speaker', icon: <SpeakerLayoutIcon /> },
-              { value: 'grid', label: 'Grid', icon: <GridIcon /> },
+              { value: 'grid', label: 'Gallery', icon: <GridIcon /> },
             ] as const
           ).map((opt) => {
             const active = layout === opt.value
@@ -585,7 +585,7 @@ export function ControlBar({
           <Tooltip
             content={
               micFault
-                ? 'Microphone unavailable — tap to retry'
+                ? 'Microphone unavailable — try again'
                 : isMicrophoneEnabled
                   ? 'Mute'
                   : 'Unmute'
@@ -597,7 +597,7 @@ export function ControlBar({
               // describe the same thing: retrying the device.
               label={
                 micFault
-                  ? 'Microphone unavailable, retry'
+                  ? 'Microphone unavailable, try again'
                   : isMicrophoneEnabled
                     ? 'Mute microphone'
                     : 'Unmute microphone'
@@ -630,7 +630,7 @@ export function ControlBar({
                     if (!r.ok) {
                       toast(
                         r.reason === 'blocked'
-                          ? 'Microphone access is blocked in your browser settings'
+                          ? 'Microphone access is blocked — allow it from your browser’s address bar'
                           : 'Still no microphone — check that one is connected',
                         'danger',
                       )
@@ -660,7 +660,7 @@ export function ControlBar({
         </div>
 
         <div className="flex items-center gap-0.5">
-          <Tooltip content={isCameraEnabled ? 'Stop video' : 'Start video'}>
+          <Tooltip content={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}>
             <IconButton
               label={isCameraEnabled ? 'Turn off camera' : 'Turn on camera'}
               icon={isCameraEnabled ? <CameraIcon /> : <CameraOffIcon />}
@@ -730,7 +730,7 @@ export function ControlBar({
             <IconButton
               label={
                 screenShare.enabled
-                  ? 'Stop screen share'
+                  ? 'Stop sharing'
                   : shareSlotsFull
                     ? `Share screen, unavailable — ${MAX_CONCURRENT_SHARES} people are already sharing`
                     : 'Share screen'
@@ -756,7 +756,7 @@ export function ControlBar({
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
         {canAnnotate && (
-          <Tooltip content={annotateActive ? 'Stop annotating' : 'Draw on the shared screen'}>
+          <Tooltip content={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
               icon={<AnnotateIcon />}
@@ -842,7 +842,7 @@ export function ControlBar({
           open={modal === 'endConfirm'}
           onOpenChange={modalToggle('endConfirm')}
           title="End the call for everyone?"
-          description="This disconnects all participants and can't be undone. To just leave yourself, use Leave instead."
+          description="This disconnects everyone and can’t be undone. To just leave yourself, use Leave instead."
         >
           <div className="flex justify-end gap-2">
             <Button variant="neutral" onClick={() => closeModal()}>
@@ -970,9 +970,9 @@ export function ControlBar({
 
 const SHORTCUTS: Array<[string, string]> = [
   ['M', 'Mute / unmute microphone'],
-  ['V', 'Start / stop camera'],
-  ['C', 'Toggle chat'],
-  ['P', 'Toggle participants'],
+  ['V', 'Turn camera on / off'],
+  ['C', 'Show or hide chat'],
+  ['P', 'Show or hide people'],
   ['F', 'Toggle full screen'],
   ['?', 'Show this help'],
 ]
@@ -1212,7 +1212,7 @@ function AudioRouteButton({ open, onToggle }: { open: boolean; onToggle: () => v
       // audiooutput devices and no setSinkId, so there is no route to promise.
       label={
         canRoute && label
-          ? `Audio output: ${label}. Tap to change.`
+          ? `Audio output: ${label}`
           : open
             ? 'Close audio settings'
             : 'Audio settings'
@@ -1337,7 +1337,7 @@ function DeviceRouteList({ kind, heading }: { kind: MediaDeviceKind; heading: st
                 onClick={() => {
                   void setActiveMediaDevice(d.deviceId)
                     .then(() => remember(kind as StoredDeviceKind, d.deviceId, d.label))
-                    .catch(() => toast(`Couldn't switch ${heading.toLowerCase()}`, 'danger'))
+                    .catch(() => toast(`Couldn’t switch ${heading.toLowerCase()}`, 'danger'))
                 }}
                 className={cn(
                   'flex w-full items-center gap-3 px-3 text-left [&_svg]:size-5 [&_svg]:shrink-0',

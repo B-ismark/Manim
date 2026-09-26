@@ -184,7 +184,7 @@ function useSoloAutoLeave(onLeave: () => void) {
   useEffect(() => {
     if (!alone) return
     const warn = window.setTimeout(
-      () => toast('You’re alone — the call will end soon', 'neutral'),
+      () => toast('You’re the only one here — the call will end soon', 'neutral'),
       SOLO_TIMEOUT_MS - 60_000,
     )
     const end = window.setTimeout(onLeave, SOLO_TIMEOUT_MS)
@@ -324,7 +324,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
         // report it so its real-world rate is measurable (E1/E2).
         reportError(e, { context: 'e2ee-enable' })
         toast(
-          'Encryption couldn’t be turned on — this call is NOT end-to-end encrypted.',
+          'Couldn’t turn on encryption — this call isn’t end-to-end encrypted',
           'danger',
         )
       })
@@ -348,7 +348,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
       if (now - lastE2eeWarn.current < 15_000) return // throttle: errors burst per-frame
       lastE2eeWarn.current = now
       toast(
-        'Encryption mismatch — someone may be on a different invite link, so they can’t see or hear you. Re-share your link.',
+        'Encryption mismatch — someone has an old invite link and can’t see or hear you. Send them the current one',
         'danger',
       )
     }
@@ -566,7 +566,7 @@ function PipPlaceholder({ onBack }: { onBack: () => void }) {
       </div>
       <div>
         <p className="text-sm font-medium">Your call is in the mini player</p>
-        <p className="mt-1 text-xs text-ink-muted">It's playing in the floating window.</p>
+        <p className="mt-1 text-xs text-ink-muted">It’s playing in the floating window.</p>
       </div>
       <Button variant="accent" onClick={onBack}>
         Bring back to window
@@ -594,7 +594,7 @@ function RoomLockedPill({ locked, visible }: { locked: boolean; visible: boolean
   if (!locked || !visible) return null
   return (
     <span className="mn-pop pointer-events-none flex items-center gap-2 rounded-control bg-overlay px-3 py-1.5 text-xs font-medium text-white shadow-raised backdrop-blur [&_svg]:size-3.5">
-      <LockIcon /> Room locked
+      <LockIcon /> Call locked
     </span>
   )
 }

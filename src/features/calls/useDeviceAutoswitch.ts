@@ -65,10 +65,10 @@ export function useDeviceAutoswitch() {
         const name = device.label || 'device'
         addBreadcrumb('device auto-switch', { kind, reason, label: device.label })
         if (reason === 'bluetooth') {
-          toast(`Connected ${noun} to ${name}`, 'neutral')
+          toast(`Switched ${noun} to ${name}`, 'neutral')
           announce(`${name} connected — ${noun} switched`, 'polite')
         } else {
-          announce(`${noun} restored to ${name}`, 'polite')
+          announce(`${noun[0].toUpperCase()}${noun.slice(1)} switched back to ${name}`, 'polite')
         }
         return true
       } catch {

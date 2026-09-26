@@ -133,7 +133,7 @@ export function Landing() {
     const { slug, secrets } = parseTyped(room)
     if (!slug) {
       // Everything stripped (e.g. "???") — say why instead of a silent no-op.
-      if (room.trim()) toast('Meeting names need letters or numbers', 'warning')
+      if (room.trim()) toast('Call names need letters or numbers', 'warning')
       return
     }
     goTo(slug, secrets)
@@ -162,8 +162,8 @@ export function Landing() {
     if (gated && !allowed && !parsed.secrets.secret) {
       toast(
         signedIn
-          ? 'Your account isn’t approved to start meetings yet.'
-          : 'Sign in with an approved account to start a meeting',
+          ? 'Your account isn’t approved to start calls yet.'
+          : 'Sign in with an approved account to start a call',
         'warning',
       )
       return
@@ -173,7 +173,7 @@ export function Landing() {
       // Typed only symbols. Minting a random room here would silently discard
       // what they wrote and drop them into a differently-named call — say why
       // instead, matching onJoin.
-      toast('Meeting names need letters or numbers', 'warning')
+      toast('Call names need letters or numbers', 'warning')
       return
     }
     goTo(parsed.slug, parsed.secrets.secret ? parsed.secrets : newRoomSecrets())
@@ -239,8 +239,8 @@ export function Landing() {
                 <p className="text-sm font-medium">Manim is in private beta</p>
                 <p className="mt-0.5 text-xs text-ink-muted">
                   {signedIn
-                    ? 'Your account isn’t approved to start meetings yet. You can still join any call you’re invited to.'
-                    : 'Sign in with an approved account to start a meeting — or open an invite link to join one.'}
+                    ? 'Your account isn’t approved to start calls yet. You can still join any call you’re invited to.'
+                    : 'Sign in with an approved account to start a call — or open an invite link to join one.'}
                 </p>
               </div>
             </div>
@@ -267,7 +267,7 @@ export function Landing() {
               the card, which is how Whereby and Jitsi order the same pair. */}
           <form onSubmit={onJoin} className="flex flex-col gap-3 short:gap-2">
             <label htmlFor="room" className="text-sm font-medium">
-              Meeting name or code
+              Call name or invite link
             </label>
             <div className="flex gap-2">
               {/* text-base on mobile keeps the font ≥16px so iOS doesn't zoom on focus. */}
@@ -572,7 +572,7 @@ function SignIn() {
                   Enter the code we sent to <span className="font-medium text-ink">{value}</span>.
                 </>
               ) : (
-                'Sync your calls and contacts across devices.'
+                'Keep your name, photo and contacts on every device.'
               )}
             </p>
           </div>
@@ -600,7 +600,7 @@ function SignIn() {
               {err && <p className="text-sm text-danger-text">{err}</p>}
 
               <p className="text-sm text-ink-muted">
-                Didn't get it?{' '}
+                Didn’t get it?{' '}
                 <button
                   type="button"
                   onClick={() => void resend()}
@@ -646,7 +646,7 @@ function SignIn() {
               </form>
               {err && <p className="text-sm text-danger-text">{err}</p>}
               <p className="text-xs text-ink-subtle">
-                We'll email a sign-in link and a code. No password needed.
+                We’ll email a sign-in link and a code. No password needed.
               </p>
             </div>
           )}

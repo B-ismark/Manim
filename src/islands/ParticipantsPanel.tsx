@@ -159,9 +159,9 @@ export function ParticipantsPanel() {
 
   function mailtoHref(to: string): string {
     const { href, hadKey } = linkWithoutKey(window.location.href)
-    const subject = encodeURIComponent("You're invited to a Manim call")
+    const subject = encodeURIComponent("You’re invited to a Manim call")
     const note = hadKey
-      ? "\n\nThis call is end-to-end encrypted, so the encryption key isn't in this email. I'll send you the full link separately."
+      ? "\n\nThis call is end-to-end encrypted, so the encryption key isn’t in this email. I’ll send you the full link separately."
       : ''
     const body = encodeURIComponent(`Join my call:\n\n${href}${note}`)
     return `mailto:${encodeURIComponent(to)}?subject=${subject}&body=${body}`
@@ -200,7 +200,7 @@ export function ParticipantsPanel() {
       fallbackToMailto(to)
       return false
     } catch {
-      toast("Couldn't auto-send the invite — use the mail link below", 'warning')
+      // The panel says so inline, next to the mail link it offers instead.
       fallbackToMailto(to)
       return false
     }
@@ -295,7 +295,7 @@ export function ParticipantsPanel() {
     toast(
       kind === 'mic'
         ? `Muted ${n} ${n === 1 ? 'microphone' : 'microphones'}`
-        : `Stopped ${n} ${n === 1 ? 'camera' : 'cameras'}`,
+        : `Turned off ${n} ${n === 1 ? 'camera' : 'cameras'}`,
       'neutral',
     )
   }
@@ -388,7 +388,7 @@ export function ParticipantsPanel() {
             <MicOffIcon /> Mute all
           </Button>
           <Button variant="neutral" size="sm" block onClick={() => muteAll(Track.Source.Camera, 'camera')}>
-            <CameraOffIcon /> Stop video
+            <CameraOffIcon /> Turn off cameras
           </Button>
         </div>
       )}
@@ -397,7 +397,7 @@ export function ParticipantsPanel() {
         open={removeTarget !== null}
         onOpenChange={(o) => !o && setRemoveTarget(null)}
         title={`Remove ${removeTarget?.name ?? ''}?`}
-        description="They'll be disconnected from the call. They can rejoin unless you lock the room."
+        description="They’ll be disconnected from the call. They can rejoin unless you lock the room."
       >
         <div className="flex justify-end gap-2">
           <Button variant="neutral" onClick={() => setRemoveTarget(null)}>

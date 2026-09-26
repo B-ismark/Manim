@@ -6,5 +6,5 @@
 export function lookupError(error: { message?: string } | null | undefined): string {
   return error?.message?.includes('rate_limited')
     ? 'Too many lookups — try again in a few minutes.'
-    : 'Could not look up that user.'
+    : 'Couldn’t look up that person.'
 }

@@ -25,9 +25,9 @@ import { useIsTouch } from '@/lib/useIsTouch'
  */
 
 const FAULT_DETAIL: Record<MicFault['reason'], (lost: string) => string> = {
-  'no-device': (lost) => `${lost} disconnected. No other mic responded.`,
-  blocked: () => 'Microphone access is blocked in your browser settings.',
-  'acquire-failed': (lost) => `${lost} disconnected and wouldn't reconnect.`,
+  'no-device': (lost) => `${lost} disconnected. No other microphone is available.`,
+  blocked: () => 'Microphone access is blocked. Allow it from your browser’s address bar.',
+  'acquire-failed': (lost) => `${lost} disconnected and wouldn’t reconnect.`,
 }
 
 /**
@@ -82,7 +82,7 @@ export function MicUnavailableBanner() {
             align="end"
             trigger={
               <Button size="sm" variant="ghost">
-                Choose mic
+                Choose microphone
               </Button>
             }
           >

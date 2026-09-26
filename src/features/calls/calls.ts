@@ -6,6 +6,7 @@ import { useCallStore, type IncomingCall } from '@/store/useCallStore'
 import { useNotifyStore } from '@/store/useNotifyStore'
 import { toast } from '@/store/useToastStore'
 import type { RoomSecrets } from '@/lib/roomLink'
+import { prettyRoom } from '@/lib/roomName'
 
 export type { IncomingCall }
 
@@ -25,7 +26,7 @@ export async function ringUser(
    *  gate and get the E2EE key. Requires the 5-arg `ring` RPC (see DEPLOY.md §4b). */
   secrets: RoomSecrets = {},
 ): Promise<string | null> {
-  if (!supabase) return 'Calling is not configured.'
+  if (!supabase) return 'Calling isn’t available right now.'
   // Resolve via a SECURITY DEFINER RPC (single exact-match lookup) rather than a
   // table select — the profiles table is not publicly readable, to prevent email
   // harvesting. Returns the id scalar or null.
@@ -46,7 +47,7 @@ export async function ringUser(
     join_secret: secrets.secret ?? null,
     e2ee_key: secrets.e2ee ?? null,
   })
-  if (ringErr) return 'Could not place the call.'
+  if (ringErr) return 'Couldn’t place the call.'
   if (result === 'not_contact') {
     return 'You can only ring your contacts. Add them, or share the invite link instead.'
   }
@@ -78,7 +79,7 @@ function notifyIncoming(fromName: string, room: string) {
     if (!useNotifyStore.getState().enabled) return
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return
     if (typeof document !== 'undefined' && !document.hidden) return
-    const n = new Notification(`${fromName} is calling`, { body: `Room ${room}`, tag: 'mn-incoming' })
+    const n = new Notification(`${fromName} is calling`, { body: prettyRoom(room), tag: 'mn-incoming' })
     n.onclick = () => {
       window.focus()
       n.close()

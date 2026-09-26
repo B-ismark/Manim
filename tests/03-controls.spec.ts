@@ -40,7 +40,7 @@ test.describe('In-call controls', () => {
     await join(page, uniqueRoom(), 'Ada')
     await openMore(page)
     // Quick actions
-    await expect(page.getByRole('button', { name: 'Grid' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Gallery' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Speaker' })).toBeVisible()
     // Action rows
     await expect(page.getByRole('button', { name: /Hide self view|Show self view/ })).toBeVisible()
@@ -57,7 +57,7 @@ test.describe('In-call controls', () => {
       'aria-pressed',
       'true',
     )
-    await expect(page.getByRole('button', { name: 'Grid' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Gallery' })).toBeVisible()
   })
 
   test('desktop: reactions picker opens and a reaction can be sent', async ({ page }, testInfo) => {
@@ -93,7 +93,7 @@ test.describe('In-call controls', () => {
    *
    * The two platforms take different routes now, which is the point of the split
    * below rather than an inconvenience:
-   *  - TOUCH has one dedicated control, `Audio output: <device>. Tap to change.`,
+   *  - TOUCH has one dedicated control, `Audio output: <device>`,
    *    opening the island's own tray. There are no device carets on touch at all
    *    (11-mobile-fit guards that), so this is the route.
    *  - DESKTOP reaches the same `AudioDevicePanel` through the mic's caret, and

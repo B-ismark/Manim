@@ -49,10 +49,13 @@ export function toSlug(value: string): string {
 }
 
 export function prettyRoom(slug: string): string {
-  return slug
-    .replace(/[-_]+/g, ' ')
-    .trim()
-    .split(' ')
-    .map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word))
-    .join(' ')
+  const words = slug.replace(/[-_]+/g, ' ').trim().split(' ')
+  // The random code "New meeting" appends (`swift-falcon-kq7mz3xhp2rtd`) is for the
+  // URL, not for reading: "Swift Falcon" is the name, as on the link preview
+  // (server/preview.mjs drops it the same way).
+  if (words.length > 1 && GENERATED_CODE.test(words[words.length - 1])) words.pop()
+  return words.map((word) => (word ? word[0].toUpperCase() + word.slice(1) : word)).join(' ')
 }
+
+/** The CSPRNG suffix Landing's randomRoom() appends: 13 chars, no 0/o/1/l/i. */
+const GENERATED_CODE = /^[a-hjkmnp-z2-9]{13}$/

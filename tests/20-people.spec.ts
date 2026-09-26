@@ -30,7 +30,7 @@ test.describe('People panel @people', () => {
     await expect(page.locator('input[placeholder*="email" i]').first()).toBeVisible()
 
     // The audit's L4 disclosure travels with the input that collects the address.
-    await expect(page.getByText(/we'll email them an invite/i)).toBeVisible()
+    await expect(page.getByText(/we.ll email them an invite/i)).toBeVisible()
   })
 
   /**

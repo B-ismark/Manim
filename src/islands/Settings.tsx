@@ -251,8 +251,8 @@ function DeleteAccount({ onDelete }: { onDelete: () => Promise<void> }) {
           Delete account
         </Button>
         <p className="text-xs text-ink-subtle">
-          Permanently removes your profile, contacts, and notifications. Calls aren't recorded, so
-          there's no call history to delete.
+          Permanently removes your profile, contacts, and notifications. Calls aren’t recorded, so
+          there’s no call history to delete.
         </p>
       </div>
     )
@@ -261,7 +261,7 @@ function DeleteAccount({ onDelete }: { onDelete: () => Promise<void> }) {
   return (
     <div className="flex flex-col gap-2 rounded-field bg-sunken p-3">
       <p className="text-sm font-medium">Delete your account?</p>
-      <p className="text-xs text-ink-muted">This can't be undone.</p>
+      <p className="text-xs text-ink-muted">This can’t be undone.</p>
       <div className="flex gap-2">
         <Button size="sm" variant="danger" disabled={busy} onClick={() => void run()}>
           {busy ? 'Deleting…' : 'Delete account'}

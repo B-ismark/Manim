@@ -54,7 +54,7 @@ test.describe('A11y — interaction behaviours', () => {
     await join(page, room, 'Host')
     const guest = await newParticipant(browser, room, 'Target')
     try {
-      await expect(page.getByRole('button', { name: /Participants \(2\)/ })).toBeVisible({
+      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({
         timeout: 30_000,
       })
       // Host force-mutes the guest's tile (hover reveals the control).
