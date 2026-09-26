@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { barDockShift, collidingPanelWidth } from './panelDock'
+import { barDockShift, barStageShift, collidingPanelWidth, dockedStageInset } from './panelDock'
 
 /**
  * The control bar's width on desktop as host — the widest it gets, with the split
@@ -84,3 +84,32 @@ describe('barDockShift', () => {
     expect(barDockShift(1440, 0)).toBe(0)
   })
 })
+
+describe('barStageShift', () => {
+  it('centres the bar under the stage the docked panel leaves', () => {
+    for (const vw of [1024, 1280, 1440, 1728]) {
+      const shift = barStageShift(vw, BAR)
+      const barCentre = vw / 2 - shift
+      const stageCentre = (vw - dockedStageInset(vw)) / 2
+      expect(Math.abs(barCentre - stageCentre), `${vw}px`).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('leaves the bar alone where the panel overlays the stage', () => {
+    expect(barStageShift(768, BAR)).toBe(0)
+    expect(barStageShift(1023, BAR)).toBe(0)
+  })
+
+  it('never less than the collision shift, never off the left edge', () => {
+    for (const vw of [1024, 1100, 1280, 1320, 1440]) {
+      expect(barStageShift(vw, BAR)).toBeGreaterThanOrEqual(barDockShift(vw, BAR))
+      expect(vw / 2 - BAR / 2 - barStageShift(vw, BAR)).toBeGreaterThanOrEqual(12)
+    }
+    // A bar wider than the stage stops at the gutter rather than running off.
+    expect(vw1024Left(900)).toBeGreaterThanOrEqual(12)
+  })
+})
+
+function vw1024Left(barW: number) {
+  return 1024 / 2 - barW / 2 - barStageShift(1024, barW)
+}

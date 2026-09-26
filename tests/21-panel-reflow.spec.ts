@@ -9,8 +9,8 @@ import {
 } from './helpers'
 
 /**
- * Opening the chat/people panel must never park a call-ending control under a
- * pointer that hasn't moved.
+ * Opening the chat/people panel must never turn a pointer that hasn't moved into
+ * a press on a call-ending control.
  *
  * The bar used to re-centre in whatever space the docked panel left over, which
  * slid it left by half the panel's width — 160/176/200px. The Leave control sits
@@ -19,8 +19,11 @@ import {
  * was: click chat, click the same spot to close it, and you've left the call.
  * Only the 8s Rejoin toast made that survivable.
  *
- * These assertions are hit-tests, not pixel budgets, so they keep holding as the
- * bar's contents change. See lib/panelDock and docs/panel-reflow-findings.md.
+ * The bar now re-centres under the videos on purpose (lib/panelDock
+ * barStageShift), so the protection is the settle guard rather than geometry:
+ * an unaimed press is refused, an aimed one goes through. These are hit-tests,
+ * not pixel budgets, so they keep holding as the bar's contents change. See
+ * lib/panelDock and docs/panel-reflow-findings.md.
  */
 
 /** Centre of an element, in page coordinates. */
@@ -77,7 +80,7 @@ const TARGET = 11
 const NARROWED_FIT = 9
 
 test.describe('Side panel reflow', () => {
-  test('opening the panel never slides a Leave control under a resting pointer', async ({ page }) => {
+  test('a Leave control the panel slides under a resting pointer refuses the unaimed press', async ({ page }) => {
     test.skip(await isTouch(page), 'the docked panel and the hover pointer are desktop-only')
     const sink = attachErrorSink(page)
     await join(page, uniqueRoom(), 'Ada')
@@ -100,10 +103,19 @@ test.describe('Side panel reflow', () => {
       await expect(page.getByRole('combobox', { name: 'Message', exact: true })).toBeVisible()
       await barSettled(page)
 
-      expect(
-        await hitAt(page, resting.x, resting.y),
-        `at ${width}px the pointer ended up on a Leave control without moving`,
-      ).not.toBe('leave')
+      // The bar now glides to sit under the videos (lib/panelDock barStageShift),
+      // so at the docking widths Leave CAN end up under the resting pointer. What
+      // must hold is that pressing there, without having moved, doesn't leave:
+      // the settle guard refuses it and says why.
+      if ((await hitAt(page, resting.x, resting.y)) === 'leave') {
+        await page.mouse.down()
+        await page.mouse.up()
+        await expect(page.getByText('The controls just moved — press Leave again to confirm').first()).toBeVisible()
+        await expect(
+          page.getByRole('button', { name: 'Leave call', exact: true }).first(),
+          `at ${width}px an unaimed press on Leave left the call`,
+        ).toBeVisible()
+      }
 
       // ...and the panel must not have buried the bar instead: Leave still has to
       // be the topmost thing at its own centre, or it can't be pressed at all.

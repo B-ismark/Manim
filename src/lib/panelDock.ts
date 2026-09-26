@@ -101,8 +101,30 @@ export function barDockShift(vw: number, barW: number): number {
 }
 
 /**
- * How far left the control bar must move to clear the docked panel — 0 whenever
- * it already clears it, which is the common case on a real desktop.
+ * How far left the bar moves so it sits centred under the VIDEOS while the panel
+ * is docked — the middle of the stage the panel leaves, not the middle of the
+ * window. A bar centred on the window reads as belonging to the chat as much as
+ * to the call; under the videos it reads as the call's own controls (the owner's
+ * call, September 2026).
+ *
+ * This deliberately gives back what the "move only by the real overlap" rule
+ * above was protecting: the bar now glides by half the stage inset (176px at
+ * `lg`, 200px at `xl`), which can carry Leave under a pointer still resting where
+ * Chat was. `useSettleGuard` is the answer to that and is what 21-panel-reflow
+ * now asserts — a click the pointer never aimed is refused, one it did aim goes
+ * straight through. Never less than the collision shift, and never so far the
+ * bar's left edge leaves the gutter. 0 where the panel overlays (below `lg`).
+ */
+export function barStageShift(vw: number, barW: number): number {
+  const collide = barDockShift(vw, barW)
+  const inset = dockedStageInset(vw)
+  if (!inset || !barW) return collide
+  const most = Math.max(0, Math.round(vw / 2 - barW / 2 - PANEL_GUTTER))
+  return Math.max(collide, Math.min(Math.round(inset / 2), most))
+}
+
+/**
+ * How far left the control bar moves while the panel is docked (barStageShift).
  *
  * Returned as a transform rather than as wrapper padding on purpose. Padding
  * shrinks the space the bar is centred in, and the bar is a flex item: past a
@@ -119,7 +141,7 @@ export function useBarDockShift(open: boolean) {
       if (!el || !open) return setShift(0)
       // Border box. A ResizeObserver's contentRect would drop the island's px-3
       // and its border — ~26px — and under-shift by more than the margin we have.
-      setShift(barDockShift(window.innerWidth, el.getBoundingClientRect().width))
+      setShift(barStageShift(window.innerWidth, el.getBoundingClientRect().width))
     }
     measure()
     window.addEventListener('resize', measure)
