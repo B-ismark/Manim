@@ -191,8 +191,12 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   can't build at all and degrades to `none` with a reported error (by design), while
   **CI can fetch it, so CI really runs the segmenter.** A test that switches blur on
   and then keeps driving the UI passes locally and times out on CI — MediaPipe on a
-  shared two-core runner beside other browser contexts starves the page. Switch it
-  back off before touching anything else (`11-mobile-fit`).
+  shared two-core runner beside other browser contexts starves the page. Switching
+  it straight back off wasn't enough: with no GPU its WebGL runs in software and the
+  page answers nothing for ~5s at a time, so even the off tap timed out (and does
+  on any machine without a GPU — 6 runs in 6 locally). A test that isn't about the
+  processor refuses the MediaPipe fetch with `page.route` so blur degrades to none
+  at once, everywhere (`11-mobile-fit`).
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a
