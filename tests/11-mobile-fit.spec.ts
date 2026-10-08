@@ -669,8 +669,6 @@ test.describe('Mobile fit (no page scroll)', () => {
       )
       const vp = page.viewportSize()!
       await page.setViewportSize({ width: vp.height, height: vp.width })
-      await revealChrome(page)
-      await page.waitForTimeout(600) // the tiles glide into their new places
 
       const measure = () =>
         page.evaluate(() => {
@@ -695,12 +693,23 @@ test.describe('Mobile fit (no page scroll)', () => {
           }
         })
 
-      const shown = await measure()
-      expect(shown.rail, 'sideways, the island is a rail').toBe(true)
-      expect(shown.bar.height, 'a column, not a row').toBeGreaterThan(shown.bar.width)
-      expect(shown.bar.right, 'on the right edge').toBeGreaterThan(shown.vw - 40)
-      expect(shown.right, 'no tile runs under the rail').toBeLessThanOrEqual(shown.bar.left + 1)
-      expect(shown.pill, 'no pill while the mic button itself says so').toBeNull()
+      // Measured while the bar is really up, retried until it is: the 4s auto-hide
+      // runs from the mute press, and on a loaded machine it can fire between the
+      // reveal (a no-op while the bar is still showing) and the read — the bar then
+      // slides away, the tiles take its room and the Muted pill appears, all
+      // correctly, and every "shown" assertion fails for the wrong reason.
+      let shown!: Awaited<ReturnType<typeof measure>>
+      await expect(async () => {
+        await revealChrome(page)
+        await page.waitForTimeout(600) // the tiles glide into their new places
+        shown = await measure()
+        expect(shown.bar.left >= 0 && shown.bar.right <= shown.vw + 1, 'the bar is showing').toBe(true)
+        expect(shown.rail, 'sideways, the island is a rail').toBe(true)
+        expect(shown.bar.height, 'a column, not a row').toBeGreaterThan(shown.bar.width)
+        expect(shown.bar.right, 'on the right edge').toBeGreaterThan(shown.vw - 40)
+        expect(shown.right, 'no tile runs under the rail').toBeLessThanOrEqual(shown.bar.left + 1)
+        expect(shown.pill, 'no pill while the mic button itself says so').toBeNull()
+      }).toPass({ timeout: 20_000 })
 
       // Let the chrome fade (4s without a touch), then the tiles glide.
       await expect
