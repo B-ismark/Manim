@@ -7,7 +7,8 @@ import { ScreenSharePresets } from 'livekit-client'
 vi.mock('livekit-client/e2ee-worker?worker', () => ({ default: class {} }))
 
 const isMobile = vi.hoisted(() => vi.fn(() => false))
-vi.mock('@/lib/device', () => ({ isMobile }))
+const canAffordVp9 = vi.hoisted(() => vi.fn(() => true))
+vi.mock('@/lib/device', () => ({ isMobile, canAffordVp9 }))
 
 const { roomOptions } = await import('./livekit')
 
@@ -17,7 +18,10 @@ function pub(opts: { low?: boolean; e2ee?: boolean; mobile?: boolean } = {}) {
   return roomOptions(Boolean(opts.low), opts.e2ee ? 'passphrase' : undefined).publishDefaults!
 }
 
-beforeEach(() => isMobile.mockReturnValue(false))
+beforeEach(() => {
+  isMobile.mockReturnValue(false)
+  canAffordVp9.mockReturnValue(true)
+})
 
 describe('roomOptions — screen-share cost', () => {
   it('drops the share to 720p/5fps in low-bandwidth mode', () => {
@@ -83,6 +87,13 @@ describe('roomOptions — codec selection', () => {
       expect(p.videoCodec, JSON.stringify(opts)).toBe('vp8')
       expect(p.backupCodec, JSON.stringify(opts)).toBeUndefined()
     }
+  })
+
+  it('a desktop too small to encode VP9 comfortably publishes VP8', () => {
+    canAffordVp9.mockReturnValue(false)
+    const p = pub()
+    expect(p.videoCodec).toBe('vp8')
+    expect(p.backupCodec).toBeUndefined()
   })
 
   it('leaves degradationPreference to the SDK, which picks it per source', () => {

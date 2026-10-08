@@ -5,7 +5,7 @@ import {
   ExternalE2EEKeyProvider,
 } from 'livekit-client'
 import E2EEWorker from 'livekit-client/e2ee-worker?worker'
-import { isMobile } from '@/lib/device'
+import { canAffordVp9, isMobile } from '@/lib/device'
 import { setDataTagKey } from '@/lib/dataTag'
 
 /**
@@ -25,9 +25,13 @@ import { setDataTagKey } from '@/lib/dataTag'
  * source resolution a camera tile does not.
  *
  * Codec:
- * - Desktop, no E2EE → VP9 + VP8 backup. VP9 carries ~30-50% less bitrate at the
+ * - Desktop with 8+ cores, no E2EE → VP9 + VP8 backup. VP9 carries ~30-50% less bitrate at the
  *   same quality; LiveKit publishes a single SVC stream and re-publishes VP8 only
  *   while a non-VP9 subscriber (Safari/old) is present.
+ * - Smaller desktops → VP8 + simulcast. Chrome's VP9 SVC encode is software on
+ *   most machines and several times VP8's CPU; on a four-core laptop that is the
+ *   difference between a smooth call and a CPU-limited, frame-dropping one
+ *   (device.canAffordVp9).
  * - Phones / E2EE → plain VP8 + simulcast. VP9 *SVC* on mobile hardware encoders
  *   is the usual culprit behind the washed-out / tinted "discoloration" on calls
  *   (buggy HW color paths + starved SVC base layer), and it runs hot. VP8 is the
@@ -63,7 +67,7 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   const e2ee = Boolean(e2eePassphrase)
   // VP9 SVC on mobile HW encoders is the discoloration/heat offender — pin phones
   // (and every E2EE room) to color-faithful VP8 simulcast.
-  const useVp8 = e2ee || isMobile()
+  const useVp8 = e2ee || isMobile() || !canAffordVp9()
   // Capture at 720p (not 1080p) even on desktop: requesting a 1080p getUserMedia
   // makes the camera visibly slow to start — both on join and on mid-call toggle —
   // as the sensor negotiates its high mode, for quality a video tile barely shows.

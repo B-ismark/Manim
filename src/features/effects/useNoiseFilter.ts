@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
 import { Track, TrackEvent, type LocalAudioTrack } from 'livekit-client'
 import { reportError } from '@/lib/report'
+import { isLowPowerDevice } from '@/lib/device'
 
 type KrispModule = typeof import('@livekit/krisp-noise-filter')
 type KrispProcessor = ReturnType<KrispModule['KrispNoiseFilter']>
@@ -20,10 +21,19 @@ type KrispProcessor = ReturnType<KrispModule['KrispNoiseFilter']>
  * while the user is actually transmitting. The expected weight when speaking is
  * an accepted tradeoff for the cleaner audio.
  *
+ * Krisp runs only where the device can carry it. It is a real-time ML model in the
+ * mic path, and LiveKit's own guidance is to skip it on weak hardware: on a phone
+ * or a four-core laptop the browser's built-in suppressor does the job (the toggle
+ * still means "noise suppression on"), and Krisp's CPU goes to the call instead.
+ * `lightweight` forces the same for a device that turns out to be struggling mid
+ * call (useDeviceStrain) — and an attached Krisp then hands back to the browser.
+ *
  * Owned by RoomView so it persists across menu open/close.
  */
-export function useNoiseFilter() {
+export function useNoiseFilter({ lightweight = false }: { lightweight?: boolean } = {}) {
   const { localParticipant } = useLocalParticipant()
+  // Read once: whether this device should ever pay for Krisp.
+  const [krispAffordable] = useState(() => !isLowPowerDevice())
 
   // Default on — matches the previous always-on browser baseline.
   const [enabled, setEnabled] = useState(true)
@@ -94,7 +104,7 @@ export function useNoiseFilter() {
     let cancelled = false
 
     async function sync() {
-      const wantKrisp = enabled && !muted && !krispFailedRef.current
+      const wantKrisp = enabled && !muted && !krispFailedRef.current && krispAffordable && !lightweight
       if (!wantKrisp) {
         if (procRef.current) {
           try {
@@ -103,6 +113,10 @@ export function useNoiseFilter() {
             /* already off / detached */
           }
         }
+        // Krisp isn't carrying it now, so the browser filter must (applyDsp turns
+        // native noiseSuppression back on). Without this a Krisp stood down for
+        // strain left the mic with no suppression at all.
+        if (!cancelled) setUsingKrisp(false)
         return
       }
       if (!track) return
@@ -157,7 +171,7 @@ export function useNoiseFilter() {
     return () => {
       cancelled = true
     }
-  }, [enabled, muted, trackSid])
+  }, [enabled, muted, trackSid, krispAffordable, lightweight])
 
   const toggle = useCallback(() => setEnabled((v) => !v), [])
 
