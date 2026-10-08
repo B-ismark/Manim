@@ -14,8 +14,9 @@ Every connection burns monthly participant-minutes and we're close to the cap.
   creds (in-call UI absent, but landing/prejoin/static work).
 - **Allowed: the FULL suite against a LOCAL LiveKit** — the freeze protects the *cloud*
   project's minutes, and a localhost server can't touch them. Grab a
-  [`livekit-server`](https://github.com/livekit/livekit/releases) (**≥1.10** — 1.9 and
-  older 404 the `/rtc/v1` route the client uses), then:
+  [`livekit-server`](https://github.com/livekit/livekit/releases) (**≥1.12** — 1.9 and
+  older 404 the `/rtc/v1` route the client uses, and 1.10 closes the `DATA_TRACK_LOSSY`
+  channel livekit-client 2.22 opens, which every clean-error-sink spec then reports), then:
   ```bash
   livekit-server --dev            # devkey / secret on :7880
   LIVEKIT_API_KEY=devkey LIVEKIT_API_SECRET=secret \

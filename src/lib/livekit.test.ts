@@ -85,8 +85,13 @@ describe('roomOptions — codec selection', () => {
     }
   })
 
-  it('keeps maintain-resolution so text sheds frame rate, not sharpness', () => {
-    expect(pub().degradationPreference).toBe('maintain-resolution')
+  it('leaves degradationPreference to the SDK, which picks it per source', () => {
+    // Forcing 'maintain-resolution' on every track made cameras under load shed
+    // FRAMES (choppy faces, read as lag). Unset, livekit-client gives a camera
+    // 'maintain-framerate' and a screen share 'maintain-resolution'.
+    for (const opts of [{}, { mobile: true }, { e2ee: true }]) {
+      expect(pub(opts).degradationPreference, JSON.stringify(opts)).toBeUndefined()
+    }
   })
 })
 

@@ -66,11 +66,13 @@ jobs:
           done
           echo "| **total** | | **$((total / 1024))** |" >> "$GITHUB_STEP_SUMMARY"
 
-      # 1.10+ required: older 404 the /rtc/v1 route this client uses.
+      # 1.12+ is required: 1.9 and older 404 the /rtc/v1 route this client uses,
+      # and livekit-client 2.22 opens a DATA_TRACK_LOSSY channel that 1.10 closes
+      # straight away — every spec asserting a clean error sink then fails on it.
       - name: Start a local livekit-server
         run: |
           curl -fsSL -o lk.tar.gz \
-            https://github.com/livekit/livekit/releases/download/v1.10.0/livekit_1.10.0_linux_amd64.tar.gz
+            https://github.com/livekit/livekit/releases/download/v1.12.0/livekit_1.12.0_linux_amd64.tar.gz
           tar xzf lk.tar.gz livekit-server
           ./livekit-server --dev --bind 127.0.0.1 &
           for i in $(seq 1 30); do

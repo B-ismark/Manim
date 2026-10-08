@@ -86,10 +86,18 @@ export function primaryShare(
   })[0]
 }
 
-/** Pick the focused track: explicit pin > active screen share > active speaker > first. */
+/**
+ * Pick the focused track: explicit pin > active screen share > the held speaker >
+ * active speaker > first.
+ *
+ * `held` is the speaker who keeps the region through their pauses (useHeldSpeaker /
+ * lib/speakerHold). Without it the region fell back to `tracks[0]` at every breath
+ * and flipped back a moment later — each flip a black/frozen feed waking up.
+ */
 export function focusTrack(
   tracks: TrackReferenceOrPlaceholder[],
   pinned: string | null,
+  held: string | null = null,
 ): TrackReferenceOrPlaceholder | undefined {
   if (pinned) {
     const byPin =
@@ -99,6 +107,12 @@ export function focusTrack(
   }
   const screen = tracks.find((t) => t.source === Track.Source.ScreenShare)
   if (screen) return screen
+  if (held) {
+    const byHold =
+      tracks.find((t) => t.participant.identity === held && t.source === Track.Source.Camera) ??
+      tracks.find((t) => t.participant.identity === held)
+    if (byHold) return byHold
+  }
   const speaking = tracks.find((t) => t.participant.isSpeaking)
   return speaking ?? tracks[0]
 }
@@ -136,12 +150,13 @@ export function stageFocus(
   visible: TrackReferenceOrPlaceholder[],
   pinned: string | null,
   selfViewHidden = false,
+  held: string | null = null,
 ): TrackReferenceOrPlaceholder | undefined {
   const localCam = visible.find(isLocalCam)
   if (localCam && pinned && pinned === localCam.participant.identity && !selfViewHidden) {
     return localCam
   }
-  return focusTrack(visible.filter((t) => !isLocalCam(t)), pinned) ?? localCam
+  return focusTrack(visible.filter((t) => !isLocalCam(t)), pinned, held) ?? localCam
 }
 
 /** Whether a track ref currently has displayable video (mute + subscription aware). */

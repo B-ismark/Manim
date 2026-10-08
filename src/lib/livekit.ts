@@ -47,10 +47,13 @@ import { setDataTagKey } from '@/lib/dataTag'
  * Rooms made by "New meeting" or a contact call carry an E2EE key, so they are VP8
  * and do get layers; an open, typed-name room does not.
  *
- * degradationPreference 'maintain-resolution': when the encoder is constrained it
- * sheds frame RATE before resolution, keeping faces/text crisp rather than going
- * blocky+discolored — paired with simulcast layer-dropping for graceful uplink
- * degradation that never touches the capture.
+ * degradationPreference is deliberately NOT set: livekit-client picks it per
+ * source, and its answer is the right one for each — 'maintain-framerate' for a
+ * camera, 'maintain-resolution' for a screen share. We used to force
+ * 'maintain-resolution' on everything, so a camera under CPU or uplink pressure
+ * (blur, a mid-range phone, a weak link) kept every pixel and shed FRAMES instead —
+ * 5-15fps faces, which is exactly what people reported as "lag". Motion is what a
+ * face needs; a screen share is text, and sheds frames gladly to stay legible.
  *
  * Audio: DTX → near-zero bitrate during silence; RED → packet-loss resilience.
  * When an E2EE passphrase is supplied the room enables end-to-end encryption
@@ -120,8 +123,6 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
             ],
           }
         : {}),
-      // Keep the picture sharp under load; drop fps before resolution.
-      degradationPreference: 'maintain-resolution',
       // Opus discontinuous transmission: near-silent frames cost ~nothing.
       dtx: true,
       // Redundant audio encoding for loss resilience (LiveKit-recommended default).

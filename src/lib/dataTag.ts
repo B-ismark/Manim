@@ -70,15 +70,25 @@ function signed(topic: string, payload: Uint8Array): Uint8Array<ArrayBuffer> {
 }
 
 /** The bytes to send: the payload, prefixed with its tag on an encrypted call. */
-export async function sealData(room: Room, topic: string, payload: Uint8Array): Promise<Uint8Array> {
+export async function sealData(
+  room: Room,
+  topic: string,
+  payload: Uint8Array,
+): Promise<Uint8Array<ArrayBuffer>> {
   const key = keyFor(room)
-  if (!key) return payload
+  // livekit-client ≥2.22 types publishData as ArrayBuffer-backed only. Every
+  // payload here already is one; a SharedArrayBuffer view gets copied, not cast.
+  if (!key) return isArrayBacked(payload) ? payload : new Uint8Array(payload)
   const mac = new Uint8Array(await crypto.subtle.sign('HMAC', await key, signed(topic, payload)))
   const out = new Uint8Array(HEADER + payload.length)
   out.set(MAGIC, 0)
   out.set(mac.subarray(0, TAG_BYTES), MAGIC.length)
   out.set(payload, HEADER)
   return out
+}
+
+function isArrayBacked(bytes: Uint8Array): bytes is Uint8Array<ArrayBuffer> {
+  return bytes.buffer instanceof ArrayBuffer
 }
 
 function hasHeader(bytes: Uint8Array): boolean {
