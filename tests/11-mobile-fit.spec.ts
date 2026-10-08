@@ -398,18 +398,32 @@ test.describe('Mobile fit (no page scroll)', () => {
 
       // …and it still clears the control island, at either size. With the bars UP:
       // while they're faded the card drops into the room they left, on purpose.
-      await revealChrome(page)
-      await page.waitForTimeout(400)
-      const raised = (await self.boundingBox())!
-      expect(raised.width, 'still open after the bars come back').toBeGreaterThan(collapsed.width * 1.4)
-      const barTop = await page
-        .getByRole('button', { name: 'Leave call' })
-        // offsetTop, not a client rect: the island slides out of the thumb zone with
-        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
-        // hidden bar reports a top below the fold, and every "clears the bar"
-        // assertion measured against it passes for the wrong reason.
-        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
-      expect(raised.y + raised.height).toBeLessThanOrEqual(barTop + 1)
+      //
+      // Retried as one unit, and only a measurement taken with the bars STILL up
+      // counts. Tapping the card isn't a stage tap, so it doesn't restart the 4s
+      // auto-hide clock: on a slow runner that clock (armed when the call opened)
+      // can run out in the 400ms between `revealChrome` finding the bar up and the
+      // measurement — and the card, correctly, drops into the room the bar left.
+      // A retry's `revealChrome` taps the stage, which arms a fresh 4s.
+      await expect(async () => {
+        await revealChrome(page)
+        await page.waitForTimeout(400)
+        const raised = (await self.boundingBox())!
+        const bar = await page
+          .getByRole('button', { name: 'Leave call' })
+          // offsetTop, not a client rect: the island slides out of the thumb zone with
+          // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
+          // hidden bar reports a top below the fold, and every "clears the bar"
+          // assertion measured against it passes for the wrong reason.
+          .evaluate((el) => {
+            const island = el.closest('.fixed') as HTMLElement
+            const r = island.getBoundingClientRect()
+            return { top: island.offsetTop, up: r.bottom <= window.innerHeight && r.top >= 0 }
+          })
+        expect(bar.up, 'the bars are still up when measured').toBe(true)
+        expect(raised.width, 'still open after the bars come back').toBeGreaterThan(collapsed.width * 1.4)
+        expect(raised.y + raised.height).toBeLessThanOrEqual(bar.top + 1)
+      }).toPass({ timeout: 20_000 })
     } finally {
       await closeContext(peer.context)
     }
