@@ -5,7 +5,7 @@ import {
   ExternalE2EEKeyProvider,
 } from 'livekit-client'
 import E2EEWorker from 'livekit-client/e2ee-worker?worker'
-import { isMobile } from '@/lib/device'
+import { canAffordVp9, isMobile } from '@/lib/device'
 import { setDataTagKey } from '@/lib/dataTag'
 
 /**
@@ -25,9 +25,13 @@ import { setDataTagKey } from '@/lib/dataTag'
  * source resolution a camera tile does not.
  *
  * Codec:
- * - Desktop, no E2EE → VP9 + VP8 backup. VP9 carries ~30-50% less bitrate at the
+ * - Desktop with 8+ cores, no E2EE → VP9 + VP8 backup. VP9 carries ~30-50% less bitrate at the
  *   same quality; LiveKit publishes a single SVC stream and re-publishes VP8 only
  *   while a non-VP9 subscriber (Safari/old) is present.
+ * - Smaller desktops → VP8 + simulcast. Chrome's VP9 SVC encode is software on
+ *   most machines and several times VP8's CPU; on a four-core laptop that is the
+ *   difference between a smooth call and a CPU-limited, frame-dropping one
+ *   (device.canAffordVp9).
  * - Phones / E2EE → plain VP8 + simulcast. VP9 *SVC* on mobile hardware encoders
  *   is the usual culprit behind the washed-out / tinted "discoloration" on calls
  *   (buggy HW color paths + starved SVC base layer), and it runs hot. VP8 is the
@@ -47,10 +51,13 @@ import { setDataTagKey } from '@/lib/dataTag'
  * Rooms made by "New meeting" or a contact call carry an E2EE key, so they are VP8
  * and do get layers; an open, typed-name room does not.
  *
- * degradationPreference 'maintain-resolution': when the encoder is constrained it
- * sheds frame RATE before resolution, keeping faces/text crisp rather than going
- * blocky+discolored — paired with simulcast layer-dropping for graceful uplink
- * degradation that never touches the capture.
+ * degradationPreference is deliberately NOT set: livekit-client picks it per
+ * source, and its answer is the right one for each — 'maintain-framerate' for a
+ * camera, 'maintain-resolution' for a screen share. We used to force
+ * 'maintain-resolution' on everything, so a camera under CPU or uplink pressure
+ * (blur, a mid-range phone, a weak link) kept every pixel and shed FRAMES instead —
+ * 5-15fps faces, which is exactly what people reported as "lag". Motion is what a
+ * face needs; a screen share is text, and sheds frames gladly to stay legible.
  *
  * Audio: DTX → near-zero bitrate during silence; RED → packet-loss resilience.
  * When an E2EE passphrase is supplied the room enables end-to-end encryption
@@ -60,7 +67,7 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
   const e2ee = Boolean(e2eePassphrase)
   // VP9 SVC on mobile HW encoders is the discoloration/heat offender — pin phones
   // (and every E2EE room) to color-faithful VP8 simulcast.
-  const useVp8 = e2ee || isMobile()
+  const useVp8 = e2ee || isMobile() || !canAffordVp9()
   // Capture at 720p (not 1080p) even on desktop: requesting a 1080p getUserMedia
   // makes the camera visibly slow to start — both on join and on mid-call toggle —
   // as the sensor negotiates its high mode, for quality a video tile barely shows.
@@ -120,8 +127,6 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
             ],
           }
         : {}),
-      // Keep the picture sharp under load; drop fps before resolution.
-      degradationPreference: 'maintain-resolution',
       // Opus discontinuous transmission: near-silent frames cost ~nothing.
       dtx: true,
       // Redundant audio encoding for loss resilience (LiveKit-recommended default).

@@ -16,6 +16,7 @@ import {
   ScreenShareIcon,
 } from '@/components/icons'
 import { hasVideo, isLocalCam, stageFocus } from '@/lib/focusTrack'
+import { useHeldSpeaker } from '@/lib/useHeldSpeaker'
 import { displayNameOf } from '@/lib/participantName'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useIsTouch } from '@/lib/useIsTouch'
@@ -58,7 +59,8 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
   // explicitly pinned yourself. Same helper the stage uses, deliberately: this
   // window is a mirror of the stage's big region, and two surfaces answering
   // "who is in focus" from their own copy of the rule is how they drift apart.
-  const focus = stageFocus(tracks, pinned, selfViewHidden)
+  const heldSpeaker = useHeldSpeaker()
+  const focus = stageFocus(tracks, pinned, selfViewHidden, heldSpeaker)
   const p = focus?.participant
   const name = p ? displayNameOf(p.identity, p.name, '') : ''
   const selfFacing = useRoomStore((s) => s.selfFacing)

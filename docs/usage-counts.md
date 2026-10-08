@@ -1,6 +1,6 @@
 # Reading the usage counts
 
-The app counts eight anonymous events (see [analytics-proposal.md](analytics-proposal.md)
+The app counts a small, fixed set of anonymous events (see [analytics-proposal.md](analytics-proposal.md)
 for what and why). They land in Cloudflare **Workers Analytics Engine**, dataset
 `manim_usage`, kept three months. Nothing to set up: the dataset is created by the
 first count after a deploy.
@@ -19,6 +19,17 @@ Each row: `blob1` = event, `blob2` / `blob3` = its two details, `double1` = 1.
 | `join_error` | `permission` / `network` / `server` / `other` (refusals with a reason are `knock_rejected`) | phone / desktop |
 | `rating` | `good` / `bad` ("How was the call?" on the end page) | phone / desktop |
 | `rating_issue` | `audio` / `video` / `connection` / `other` (only after `bad`) | phone / desktop |
+| `call_rtt` | round trip to the LiveKit edge, ms: `lt100` `100-200` `200-300` `300plus` | edge continent: `af` `eu` `na` `sa` `as` `oc` `other` |
+| `call_loss` | incoming packets lost, %: `lt1` `1-3` `3-10` `10plus` | edge continent |
+| `call_fps` | frame rate of the video you watched: `lt10` `10-20` `20plus` | phone / desktop |
+| `call_limit` | why your camera was held back most of the call: `none` / `cpu` / `bandwidth` / `other` | phone / desktop |
+
+The four `call_*` rows are one summary per person per call, sent when they leave
+(`src/lib/callQuality.ts`; calls under ~30s send nothing). They exist to tell the
+causes of "the call lags" apart: `call_limit = cpu` with low `call_fps` is the
+device (blur, encoder), high `call_rtt` / `call_loss` is the network and distance.
+The edge continent is the LiveKit SERVER's region, never where the person is;
+`other` means a region name `edgeRegion` doesn't recognise yet.
 
 ## Run a query
 
@@ -66,3 +77,13 @@ q "SELECT blob2 AS minutes, SUM(_sample_interval * double1) AS n
 ```
 
 Local and test runs send nothing: counting is on in production builds only.
+
+**Is the lag the device or the network?** (last 14 days)
+
+```bash
+q "SELECT blob1 AS event, blob2 AS range, blob3 AS by, SUM(_sample_interval * double1) AS n
+   FROM manim_usage
+   WHERE timestamp > NOW() - INTERVAL '14' DAY
+     AND blob1 IN ('call_rtt', 'call_loss', 'call_fps', 'call_limit')
+   GROUP BY event, range, by ORDER BY event, by, range"
+```

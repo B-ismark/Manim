@@ -13,6 +13,15 @@ describe('usage counts', () => {
     expect(usageEvent('toString')).toBeNull()
     expect(usageEvent('nope')).toBeNull()
   })
+  it('call-quality summaries take ranges and the edge continent, nothing finer', () => {
+    expect(usageEvent('call_rtt', '100-200', 'eu')).toEqual({ event: 'call_rtt', a: '100-200', b: 'eu' })
+    expect(usageEvent('call_loss', '1-3', 'af')).not.toBeNull()
+    expect(usageEvent('call_fps', '10-20', 'phone')).not.toBeNull()
+    expect(usageEvent('call_limit', 'cpu', 'desktop')).not.toBeNull()
+    expect(usageEvent('call_rtt', '143', 'eu')).toBeNull()
+    expect(usageEvent('call_rtt', 'lt100', 'Germany 2')).toBeNull()
+    expect(usageEvent('call_limit', 'cpu', 'eu')).toBeNull()
+  })
   it('writes one data point, and is a no-op without the binding', () => {
     const points = []
     const env = { USAGE: { writeDataPoint: (p) => points.push(p) } }

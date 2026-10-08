@@ -34,6 +34,21 @@ export function isLowPowerDevice(): boolean {
 }
 
 /**
+ * Strong enough to ENCODE VP9 for a whole call. Chrome encodes VP9 (L3T3 SVC) in
+ * software on most machines, at several times VP8's CPU — fine on a workstation,
+ * and the thing that starves a four-core laptop into dropped frames. Below this
+ * bar the camera publishes VP8, which nearly every machine encodes in hardware.
+ * Eight logical cores is where a laptop stops being "the one fans spin up on".
+ */
+export function canAffordVp9(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const mem = (navigator as Navigator & { deviceMemory?: number }).deviceMemory
+  const cores = navigator.hardwareConcurrency
+  if (typeof mem === 'number' && mem <= 4) return false
+  return typeof cores === 'number' && cores >= 8
+}
+
+/**
  * Mark the document on a touch device that reports modest hardware, so CSS can
  * drop the frosted-glass pills. `backdrop-filter` over LIVE video re-blurs every
  * frame the video changes, which is every frame, for each pill; on a low-end

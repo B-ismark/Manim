@@ -17,6 +17,10 @@ export type UsageEvent =
   | 'join_error'
   | 'rating'
   | 'rating_issue'
+  | 'call_rtt'
+  | 'call_loss'
+  | 'call_fps'
+  | 'call_limit'
 
 export function surface(): 'phone' | 'desktop' {
   return isTouch() ? 'phone' : 'desktop'

@@ -24,7 +24,11 @@ import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { BlurProvider } from '@/features/effects/BlurContext'
+import { HeldSpeakerProvider } from '@/lib/useHeldSpeaker'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
+import { useDeviceStrain } from '@/features/effects/useDeviceStrain'
+import { useIncomingVideoCap } from '@/features/effects/useIncomingVideoCap'
+import { useAppStore } from '@/store/useAppStore'
 import { useCallSounds } from '@/features/sounds/useCallSounds'
 import { useDocumentPip } from '@/features/pip/useDocumentPip'
 import { useMediaSessionControls } from '@/features/pip/useMediaSessionControls'
@@ -42,6 +46,7 @@ import { useAudioSession } from '@/features/calls/useAudioSession'
 import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
+import { useCallQualityReport } from '@/lib/useCallQualityReport'
 import { parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
@@ -271,7 +276,28 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // LiveKit chat history is transient and would otherwise reset on remount).
   const chat = useChatMessages()
   const blur = useBackgroundBlur()
-  const noise = useNoiseFilter()
+  // One anonymous "how smoothly did it run" summary when you leave (lib/callQuality).
+  useCallQualityReport()
+  // A device that runs out of CPU mid-call steps down instead of stuttering: the
+  // camera goes to one light layer (inside useDeviceStrain), Krisp hands over to
+  // the browser's filter, incoming cameras drop to their small layer, and blur
+  // pauses with a way back. Low-bandwidth mode gets the same incoming cap.
+  const strained = useDeviceStrain()
+  const lowBandwidth = useAppStore((s) => s.prejoin.lowBandwidth)
+  useIncomingVideoCap(strained || lowBandwidth)
+  const noise = useNoiseFilter({ lightweight: strained })
+  const { mode: blurMode, useNone: blurOff, useBlur: blurOn } = blur
+  useEffect(() => {
+    if (!strained || blurMode !== 'blur') return
+    blurOff()
+    toast('Background blur paused to keep your call smooth', 'info', {
+      action: { label: 'Turn back on', onClick: blurOn },
+      duration: 10000,
+    })
+    // Only on the step down itself: turning blur back on afterwards is the
+    // person's call, and pausing it again would argue with them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strained])
   // Uplink adaptation is left entirely to simulcast + dynacast + adaptiveStream (see
   // roomOptions): on a weak uplink WebRTC simply stops sending the higher simulcast
   // layers — subscribers pull a lower one and it auto-recovers — all WITHOUT touching
@@ -488,6 +514,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     // bar's Effects dialog and the self-view tile's blur toggle have to be driving
     // the SAME processor instance, and a provider around both is what guarantees it.
     <BlurProvider controls={blur}>
+      <HeldSpeakerProvider>
       {/* Companion (same account on another device) mutes the speaker to avoid echo —
           the user hears the call on their other device. "Turn on sound" clears it. */}
       <RoomAudioRenderer muted={companion} />
@@ -598,6 +625,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           <PipPanel onLeave={doLeave} onClose={docPip.toggle} />,
           docPip.pipWindow.document.body,
         )}
+      </HeldSpeakerProvider>
     </BlurProvider>
   )
 }

@@ -1,10 +1,39 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalVideoTrack } from 'livekit-client'
+import { Track, TrackEvent, type LocalVideoTrack } from 'livekit-client'
 import { isLowPowerDevice, isMobile } from '@/lib/device'
 import { reportError } from '@/lib/report'
 
 const DEFAULT_RADIUS = 12
+
+/** Camera frame rate while blur runs. See `capFrameRate` for why it's the camera. */
+export function blurFrameRate(quality: BlurQuality, mobile: boolean): number | null {
+  if (mobile) return 15
+  return quality === 'high' ? null : 24
+}
+
+/**
+ * Cap the CAMERA's frame rate, and return how to undo it.
+ *
+ * track-processors' own `maxFps` reads like the lever and isn't one where it
+ * matters: it only throttles the canvas.captureStream FALLBACK (Safari, Firefox).
+ * On Chromium — every Android phone and most desktops — the processor pulls frames
+ * through MediaStreamTrackProcessor and segments EVERY frame the camera delivers,
+ * synchronously, on the main thread. So the only way to segment fewer frames there
+ * is to be handed fewer: ask the camera for them.
+ *
+ * `applyConstraints` REPLACES the whole constraint set, so the current one is
+ * carried over and only `frameRate` changes — passing `{ frameRate }` alone would
+ * also drop the 720p width/height and let the camera fall back to its default mode.
+ */
+async function capFrameRate(mst: MediaStreamTrack, max: number): Promise<() => Promise<void>> {
+  const before = mst.getConstraints()
+  await mst.applyConstraints({ ...before, frameRate: { max } })
+  return async () => {
+    if (mst.readyState !== 'live') return
+    await mst.applyConstraints(before)
+  }
+}
 
 /** What the camera processor is currently doing. */
 export type EffectMode = 'none' | 'blur'
@@ -13,6 +42,12 @@ export type EffectMode = 'none' | 'blur'
 // blur every single call was the most-felt instance of the persistence gap. We
 // persist the bare choice (mode/radius/quality) and re-apply it on the next join;
 // low-power gating still wins at read time, so a saved 'high' never overrides it.
+//
+// Except on a PHONE, where blur is never switched back on by itself. It is the
+// heaviest thing a phone can run in a call (a segmenter per frame on top of the
+// encoder), and one that silently came back on every join was costing people a
+// smooth call they never asked to trade. Radius and quality are still remembered,
+// so turning it back on is one tap to exactly what they had.
 const STORE_KEY = 'mn.effects'
 type PersistedEffect = { mode: EffectMode; radius: number; quality: BlurQuality }
 
@@ -43,10 +78,10 @@ function saveEffect(v: PersistedEffect) {
 
 /**
  * Quality (blur only) — trades smoothness for power. The segmenter runs on the
- * GPU delegate either way; the real lever is the processor's frame cap:
- * - `standard` — segment at a modest rate (24fps desktop). Mobile is pinned here
- *   at 15fps, where full-rate per-frame segmentation otherwise tanks performance.
- * - `high` — segment at the full 30fps for smoother, lower-latency edges; heavier.
+ * GPU delegate either way; the real lever is how many frames it has to segment:
+ * - `standard` — 24fps on desktop. Phones are pinned at 15fps whatever is chosen,
+ *   where full-rate per-frame segmentation otherwise tanks performance.
+ * - `high` — the camera's full 30fps for smoother edges; heavier.
  */
 export type BlurQuality = 'standard' | 'high'
 
@@ -82,10 +117,10 @@ export function useBackgroundBlur() {
   // True while the processor is (re)building — covers the first ~160KB MediaPipe
   // import so the preview can show a spinner instead of looking frozen.
   const [busy, setBusy] = useState(false)
-  const [mode, setMode] = useState<EffectMode>(saved.mode ?? 'none')
+  const [mode, setMode] = useState<EffectMode>(isMobile() ? 'none' : (saved.mode ?? 'none'))
   const [radius, setRadius] = useState(saved.radius ?? DEFAULT_RADIUS)
   const [quality, setQuality] = useState<BlurQuality>(() =>
-    isLowPowerDevice() ? 'standard' : (saved.quality ?? 'high'),
+    isLowPowerDevice() ? 'standard' : (saved.quality ?? 'standard'),
   )
 
   // Remember the choice for the next join. Cheap enough to write on every change.
@@ -94,7 +129,12 @@ export function useBackgroundBlur() {
   }, [mode, radius, quality])
 
   const procRef = useRef<Processor | null>(null)
+  // Undoes the camera frame-rate cap blur put on (null when none is in force).
+  const uncapRef = useRef<(() => Promise<void>) | null>(null)
   const modRef = useRef<TrackProcessorsModule | null>(null)
+  // Runs of the rebuild effect, one at a time. A run cancelled mid-build must undo
+  // what it attached, and that's only safe if no newer run is attaching beside it.
+  const runRef = useRef<Promise<void>>(Promise.resolve())
   // Latest radius read by the rebuild effect without re-triggering it.
   const radiusRef = useRef(radius)
   radiusRef.current = radius
@@ -102,6 +142,20 @@ export function useBackgroundBlur() {
   const cameraPub = localParticipant.getTrackPublication(Track.Source.Camera)
   const track = cameraPub?.track as LocalVideoTrack | undefined
   const trackSid = cameraPub?.trackSid
+
+  // A camera RESTART keeps its sid but re-acquires the device with the track's own
+  // constraints, which never held the cap — so after camera off/on, a flip or a
+  // device switch, blur kept running on an uncapped 30fps camera and the saving
+  // was quietly gone. Count restarts while blur is on and rebuild on each one.
+  const [restarts, setRestarts] = useState(0)
+  useEffect(() => {
+    if (mode === 'none' || !track) return
+    const onRestarted = () => setRestarts((n) => n + 1)
+    track.on(TrackEvent.Restarted, onRestarted)
+    return () => {
+      track.off(TrackEvent.Restarted, onRestarted)
+    }
+  }, [mode, track])
 
   useEffect(() => {
     let cancelled = false
@@ -115,23 +169,43 @@ export function useBackgroundBlur() {
         }
       }
       procRef.current = null
+      const uncap = uncapRef.current
+      uncapRef.current = null
+      await uncap?.().catch(() => {})
     }
 
     async function build(mod: TrackProcessorsModule) {
       // The segmenter runs on the GPU delegate by default in track-processors, so
-      // the real perf lever is how OFTEN we segment, not which delegate. We cap
-      // the processor's frame rate: the background is near-static, so segmenting
-      // at a lower fps is visually imperceptible but roughly halves the per-frame
-      // ML + WebGL cost — the fix for blur tanking mobile. The published camera
-      // track keeps its full resolution/fps; only the mask refresh is throttled.
+      // the real perf lever is how OFTEN we segment, not which delegate. Fewer
+      // frames in means fewer segmenter passes blocking the main thread; at 15-24fps
+      // a talking head still reads as smooth. The cap goes on BEFORE the processor
+      // takes the track, while `mediaStreamTrack` is still the camera itself.
       const seg = quality === 'high' ? { delegate: 'GPU' as const } : undefined
-      const maxFps = isMobile() ? 15 : quality === 'high' ? 30 : 24
-      const proc = mod.BackgroundBlur(radiusRef.current, seg, undefined, { maxFps })
+      const fps = blurFrameRate(quality, isMobile())
+      if (fps) {
+        try {
+          uncapRef.current = await capFrameRate(track!.mediaStreamTrack, fps)
+        } catch {
+          /* a camera that refuses the constraint just keeps its rate */
+        }
+      }
+      // Blur toggled off (or rebuilt) while the cap was applying: the newer run's
+      // stopCurrent saw nothing to undo, so this run has to undo its own work.
+      if (cancelled) {
+        await stopCurrent()
+        return
+      }
+      // maxFps still matters on the fallback path (Safari/Firefox), which ignores
+      // the camera's rate and samples on its own clock.
+      const proc = mod.BackgroundBlur(radiusRef.current, seg, undefined, { maxFps: fps ?? 30 })
       await track!.setProcessor(proc)
       procRef.current = proc
+      if (cancelled) await stopCurrent()
     }
 
     async function sync() {
+      // Superseded while queued behind an earlier run; the newer run does the work.
+      if (cancelled) return
       if (mode === 'none') {
         await stopCurrent()
         if (!cancelled) setBusy(false)
@@ -172,13 +246,13 @@ export function useBackgroundBlur() {
       }
     }
 
-    void sync()
+    runRef.current = runRef.current.then(sync).catch(() => {})
     return () => {
       cancelled = true
     }
     // radius excluded — updated live below without a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, trackSid, quality])
+  }, [mode, trackSid, quality, restarts])
 
   // Live blur-radius adjustment (no rebuild).
   useEffect(() => {

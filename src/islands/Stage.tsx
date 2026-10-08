@@ -43,6 +43,7 @@ import { useIsMyOtherDevice } from '@/lib/sameAccount'
 import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
+import { useHeldSpeaker } from '@/lib/useHeldSpeaker'
 import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
@@ -578,8 +579,9 @@ function TouchStage({
   const [bigAspect, setBigAspect] = useState(16 / 9)
   const [rosterOpen, setRosterOpen] = useState(true)
 
+  const heldSpeaker = useHeldSpeaker()
   const localCam = visible.find(isLocalCam)
-  const focus = stageFocus(visible, pinned, selfViewHidden)
+  const focus = stageFocus(visible, pinned, selfViewHidden, heldSpeaker)
 
   // Everyone the gallery tiles — INCLUDING you, and not whichever share is
   // currently full-bleed.
@@ -1601,9 +1603,12 @@ function SpeakerStage({ visible }: { visible: TrackReferenceOrPlaceholder[] }) {
   const selfViewHidden = useRoomStore((s) => s.selfViewHidden)
   const setPanel = useRoomStore((s) => s.setPanel)
 
-  // Pin wins — including a pin on yourself — then the active speaker, then your own
-  // camera so the big region is never empty. See stageFocus.
-  const focus = stageFocus(visible, pinned, selfViewHidden)
+  const heldSpeaker = useHeldSpeaker()
+
+  // Pin wins — including a pin on yourself — then the held speaker (who keeps the
+  // region through their pauses), then your own camera so the big region is never
+  // empty. See stageFocus.
+  const focus = stageFocus(visible, pinned, selfViewHidden, heldSpeaker)
 
   let rest = visible.filter((t) => t !== focus)
   if (selfViewHidden) rest = rest.filter((t) => !isLocalCam(t))

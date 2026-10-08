@@ -398,18 +398,32 @@ test.describe('Mobile fit (no page scroll)', () => {
 
       // …and it still clears the control island, at either size. With the bars UP:
       // while they're faded the card drops into the room they left, on purpose.
-      await revealChrome(page)
-      await page.waitForTimeout(400)
-      const raised = (await self.boundingBox())!
-      expect(raised.width, 'still open after the bars come back').toBeGreaterThan(collapsed.width * 1.4)
-      const barTop = await page
-        .getByRole('button', { name: 'Leave call' })
-        // offsetTop, not a client rect: the island slides out of the thumb zone with
-        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
-        // hidden bar reports a top below the fold, and every "clears the bar"
-        // assertion measured against it passes for the wrong reason.
-        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
-      expect(raised.y + raised.height).toBeLessThanOrEqual(barTop + 1)
+      //
+      // Retried as one unit, and only a measurement taken with the bars STILL up
+      // counts. Tapping the card isn't a stage tap, so it doesn't restart the 4s
+      // auto-hide clock: on a slow runner that clock (armed when the call opened)
+      // can run out in the 400ms between `revealChrome` finding the bar up and the
+      // measurement — and the card, correctly, drops into the room the bar left.
+      // A retry's `revealChrome` taps the stage, which arms a fresh 4s.
+      await expect(async () => {
+        await revealChrome(page)
+        await page.waitForTimeout(400)
+        const raised = (await self.boundingBox())!
+        const bar = await page
+          .getByRole('button', { name: 'Leave call' })
+          // offsetTop, not a client rect: the island slides out of the thumb zone with
+          // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
+          // hidden bar reports a top below the fold, and every "clears the bar"
+          // assertion measured against it passes for the wrong reason.
+          .evaluate((el) => {
+            const island = el.closest('.fixed') as HTMLElement
+            const r = island.getBoundingClientRect()
+            return { top: island.offsetTop, up: r.bottom <= window.innerHeight && r.top >= 0 }
+          })
+        expect(bar.up, 'the bars are still up when measured').toBe(true)
+        expect(raised.width, 'still open after the bars come back').toBeGreaterThan(collapsed.width * 1.4)
+        expect(raised.y + raised.height).toBeLessThanOrEqual(bar.top + 1)
+      }).toPass({ timeout: 20_000 })
     } finally {
       await closeContext(peer.context)
     }
@@ -602,22 +616,32 @@ test.describe('Mobile fit (no page scroll)', () => {
       await openMore(page)
       await page.getByRole('button', { name: 'Gallery', exact: true }).tap()
       await closePanel(page)
-      await revealChrome(page)
-      await page.waitForTimeout(500)
 
-      const barTop = await page
-        .getByRole('button', { name: 'Leave call' })
-        // offsetTop, not a client rect: the island slides out of the thumb zone with
-        // a TRANSFORM on auto-hide, which a rect includes and offsetTop doesn't. A
-        // hidden bar reports a top below the fold, and every "clears the bar"
-        // assertion measured against it passes for the wrong reason.
-        .evaluate((el) => (el.closest('.fixed') as HTMLElement).offsetTop)
-      const lowestTile = await page.evaluate(() => {
-        const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]'))
-          .filter((e) => (e as HTMLElement).offsetHeight > 40)
-        return Math.max(0, ...tiles.map((e) => e.getBoundingClientRect().bottom))
-      })
-      expect(lowestTile, 'no tile reaches into the control island band').toBeLessThanOrEqual(barTop + 1)
+      // Bar and tiles in ONE read, retried until the bar is up for it: the island
+      // hides 4s after the last touch (the panel close, not revealChrome's no-op
+      // when it was already showing), and a hidden bar collapses the band so the
+      // tiles legitimately reclaim the room — measured against the bar's resting
+      // top, that reads as a collision that isn't one.
+      await expect(async () => {
+        await revealChrome(page)
+        await page.waitForTimeout(500)
+        const m = await page.getByRole('button', { name: 'Leave call' }).evaluate((el) => {
+          const island = el.closest('.fixed') as HTMLElement
+          const r = island.getBoundingClientRect()
+          const tiles = Array.from(document.querySelectorAll('[role="group"][aria-label]'))
+            .filter((e) => (e as HTMLElement).offsetHeight > 40)
+          return {
+            // offsetTop, not a client rect: the island slides out of the thumb zone
+            // with a TRANSFORM on auto-hide, which a rect includes and offsetTop
+            // doesn't. The rect is only used to confirm it is actually on screen.
+            barTop: island.offsetTop,
+            up: r.top >= 0 && r.bottom <= window.innerHeight,
+            lowestTile: Math.max(0, ...tiles.map((e) => e.getBoundingClientRect().bottom)),
+          }
+        })
+        expect(m.up, 'the bar is showing for the measurement').toBe(true)
+        expect(m.lowestTile, 'no tile reaches into the control island band').toBeLessThanOrEqual(m.barTop + 1)
+      }).toPass({ timeout: 20_000 })
     } finally {
       await Promise.all(peers.map((p) => closeContext(p.context)))
     }
@@ -1034,6 +1058,15 @@ test.describe('Mobile fit (no page scroll)', () => {
     page,
     browser,
   }) => {
+    // No segmenter in this test. What it checks is the CONTRACT between the tile's
+    // toggle and the Effects page, not the processor, and the processor is the one
+    // thing a runner can't afford: with no GPU, MediaPipe's WebGL runs in software
+    // and leaves the page answering nothing for ~5s at a time — the off tap then
+    // times out after "done scrolling" (it did on CI, and on main 6 runs in 6
+    // locally). Refusing the model and WASM fetch makes the build fail at once,
+    // the degrade-to-none path the steps below already handle, on every runner
+    // alike instead of only on the ones that can't reach the CDN.
+    await page.route(/cdn\.jsdelivr\.net\/npm\/@mediapipe|mediapipe-models/, (r) => r.abort())
     const room = uniqueRoom()
     await join(page, room, 'Host')
     // A peer, because solo renders SoloStage — the floating self-view card (which

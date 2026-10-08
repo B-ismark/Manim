@@ -133,6 +133,34 @@ describe('stageFocus', () => {
   })
 })
 
+describe('held speaker', () => {
+  const a = ref({ identity: 'a' })
+  const b = ref({ identity: 'b', speaking: true })
+  const me = ref({ identity: 'me', isLocal: true })
+
+  it('keeps the held speaker even while someone else is speaking', () => {
+    expect(focusTrack([a, b], null, 'a')).toBe(a)
+  })
+
+  it('a pin still outranks the held speaker', () => {
+    expect(focusTrack([a, b], 'b', 'a')).toBe(b)
+  })
+
+  it('a screen share still outranks the held speaker', () => {
+    const share = ref({ identity: 'b', source: Track.Source.ScreenShare })
+    expect(focusTrack([a, share], null, 'a')).toBe(share)
+  })
+
+  it('a held identity that has gone falls through to the active speaker', () => {
+    expect(focusTrack([a, b], null, 'gone')).toBe(b)
+  })
+
+  it('stageFocus passes the hold through, and still never picks you', () => {
+    expect(stageFocus([me, a, b], null, false, 'a')).toBe(a)
+    expect(stageFocus([me, a], null, false, 'me')).toBe(a)
+  })
+})
+
 describe('hasVideo', () => {
   it('true for a subscribed, unmuted remote publication', () => {
     expect(hasVideo(ref({ identity: 'a', subscribed: true, muted: false }))).toBe(true)
