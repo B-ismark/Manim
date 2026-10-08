@@ -94,29 +94,52 @@ async function sample(room: Room, prev: Map<string, Counters>): Promise<QualityS
   }
 
   // Their side: loss across everything you receive, and the frame rate of the
-  // videos actually flowing (a paused, off-screen tile decodes nothing and is
-  // left out, or it would drag the number to zero for no reason).
+  // videos that SHOULD be flowing. A tile that's off-screen or paused by
+  // adaptiveStream (`isEnabled` false) or muted decodes nothing by design and is
+  // left out; any other video that decoded nothing is a frozen feed — the very lag
+  // this measures — and counts as 0fps.
   const fps: number[] = []
   for (const p of room.remoteParticipants.values()) {
     for (const pub of p.trackPublications.values()) {
       const t = pub.track
       if (!(t instanceof RemoteVideoTrack) && !(t instanceof RemoteAudioTrack)) continue
-      const st = await t.getReceiverStats()
+      const st = await inbound(t)
       if (!st) continue
       const key = pub.trackSid
       const before = prev.get(key)
-      const frames = st.type === 'video' ? st.framesDecoded : undefined
-      prev.set(key, { at: now, frames, received: st.packetsReceived, lost: st.packetsLost })
+      prev.set(key, { at: now, ...st })
       if (!before) continue
-      out.received += Math.max(0, (st.packetsReceived ?? 0) - (before.received ?? 0))
-      out.lost += Math.max(0, (st.packetsLost ?? 0) - (before.lost ?? 0))
-      if (frames !== undefined && before.frames !== undefined) {
-        const df = frames - before.frames
+      out.received += Math.max(0, (st.received ?? 0) - (before.received ?? 0))
+      out.lost += Math.max(0, (st.lost ?? 0) - (before.lost ?? 0))
+      const flowing = t instanceof RemoteVideoTrack && pub.isEnabled && !pub.isMuted
+      if (flowing && st.frames !== undefined && before.frames !== undefined) {
+        const df = Math.max(0, st.frames - before.frames)
         const dt = (now - before.at) / 1000
-        if (df > 0 && dt > 0) fps.push(df / dt)
+        if (dt > 0) fps.push(df / dt)
       }
     }
   }
+  // Tracks that have gone (a departure, an unpublish) don't keep their counters.
+  const live = new Set<string>()
+  for (const p of room.remoteParticipants.values()) for (const sid of p.trackPublications.keys()) live.add(sid)
+  for (const sid of prev.keys()) if (!live.has(sid)) prev.delete(sid)
   if (fps.length) out.recvFps = fps.reduce((a, b) => a + b, 0) / fps.length
+  return out
+}
+
+/**
+ * The receive counters, straight from the track's inbound-rtp report. Not
+ * `getReceiverStats()`: for AUDIO livekit-client leaves out packetsReceived and
+ * packetsLost, so loss on a call with every camera off — every low-bandwidth
+ * call — would never have been counted.
+ */
+async function inbound(t: RemoteVideoTrack | RemoteAudioTrack): Promise<Omit<Counters, 'at'> | null> {
+  const stats = await t.receiver?.getStats()
+  if (!stats) return null
+  let out: Omit<Counters, 'at'> | null = null
+  stats.forEach((v: { type?: string; packetsReceived?: number; packetsLost?: number; framesDecoded?: number }) => {
+    if (v.type !== 'inbound-rtp') return
+    out = { received: v.packetsReceived, lost: v.packetsLost, frames: v.framesDecoded }
+  })
   return out
 }

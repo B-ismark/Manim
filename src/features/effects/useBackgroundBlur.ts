@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLocalParticipant } from '@livekit/components-react'
-import { Track, type LocalVideoTrack } from 'livekit-client'
+import { Track, TrackEvent, type LocalVideoTrack } from 'livekit-client'
 import { isLowPowerDevice, isMobile } from '@/lib/device'
 import { reportError } from '@/lib/report'
 
@@ -132,6 +132,9 @@ export function useBackgroundBlur() {
   // Undoes the camera frame-rate cap blur put on (null when none is in force).
   const uncapRef = useRef<(() => Promise<void>) | null>(null)
   const modRef = useRef<TrackProcessorsModule | null>(null)
+  // Runs of the rebuild effect, one at a time. A run cancelled mid-build must undo
+  // what it attached, and that's only safe if no newer run is attaching beside it.
+  const runRef = useRef<Promise<void>>(Promise.resolve())
   // Latest radius read by the rebuild effect without re-triggering it.
   const radiusRef = useRef(radius)
   radiusRef.current = radius
@@ -139,6 +142,20 @@ export function useBackgroundBlur() {
   const cameraPub = localParticipant.getTrackPublication(Track.Source.Camera)
   const track = cameraPub?.track as LocalVideoTrack | undefined
   const trackSid = cameraPub?.trackSid
+
+  // A camera RESTART keeps its sid but re-acquires the device with the track's own
+  // constraints, which never held the cap — so after camera off/on, a flip or a
+  // device switch, blur kept running on an uncapped 30fps camera and the saving
+  // was quietly gone. Count restarts while blur is on and rebuild on each one.
+  const [restarts, setRestarts] = useState(0)
+  useEffect(() => {
+    if (mode === 'none' || !track) return
+    const onRestarted = () => setRestarts((n) => n + 1)
+    track.on(TrackEvent.Restarted, onRestarted)
+    return () => {
+      track.off(TrackEvent.Restarted, onRestarted)
+    }
+  }, [mode, track])
 
   useEffect(() => {
     let cancelled = false
@@ -172,14 +189,23 @@ export function useBackgroundBlur() {
           /* a camera that refuses the constraint just keeps its rate */
         }
       }
+      // Blur toggled off (or rebuilt) while the cap was applying: the newer run's
+      // stopCurrent saw nothing to undo, so this run has to undo its own work.
+      if (cancelled) {
+        await stopCurrent()
+        return
+      }
       // maxFps still matters on the fallback path (Safari/Firefox), which ignores
       // the camera's rate and samples on its own clock.
       const proc = mod.BackgroundBlur(radiusRef.current, seg, undefined, { maxFps: fps ?? 30 })
       await track!.setProcessor(proc)
       procRef.current = proc
+      if (cancelled) await stopCurrent()
     }
 
     async function sync() {
+      // Superseded while queued behind an earlier run; the newer run does the work.
+      if (cancelled) return
       if (mode === 'none') {
         await stopCurrent()
         if (!cancelled) setBusy(false)
@@ -220,13 +246,13 @@ export function useBackgroundBlur() {
       }
     }
 
-    void sync()
+    runRef.current = runRef.current.then(sync).catch(() => {})
     return () => {
       cancelled = true
     }
     // radius excluded — updated live below without a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode, trackSid, quality])
+  }, [mode, trackSid, quality, restarts])
 
   // Live blur-radius adjustment (no rebuild).
   useEffect(() => {

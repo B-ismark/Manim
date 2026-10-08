@@ -115,8 +115,10 @@ export function useNoiseFilter({ lightweight = false }: { lightweight?: boolean 
         }
         // Krisp isn't carrying it now, so the browser filter must (applyDsp turns
         // native noiseSuppression back on). Without this a Krisp stood down for
-        // strain left the mic with no suppression at all.
-        if (!cancelled) setUsingKrisp(false)
+        // strain left the mic with no suppression at all. Not while merely muted:
+        // nothing is being sent, and flipping the native filter there cost two mic
+        // applyConstraints on every mute and unmute.
+        if (!cancelled && !muted) setUsingKrisp(false)
         return
       }
       if (!track) return

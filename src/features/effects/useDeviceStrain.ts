@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useRoomContext } from '@livekit/components-react'
-import { ParticipantEvent, type LocalVideoTrack } from 'livekit-client'
+import { ParticipantEvent, Track, type LocalTrackPublication, type LocalVideoTrack } from 'livekit-client'
 import { addBreadcrumb } from '@/lib/report'
 
 /** How long the CPU limit has to last before the call steps down for it. */
@@ -24,6 +24,11 @@ export const STRAIN_CONFIRM_MS = 6000
  *
  * On confirmation the camera is also switched to `prioritizePerformance()`
  * (one 360p/15fps layer), the encoder-side half of the same step down.
+ *
+ * Cameras only. The SDK raises the same event for a screen share, and stepping a
+ * share down to 360p makes its text unreadable for everyone for the rest of the
+ * share — a far worse trade than a share that drops frames. A share's encoder
+ * limit is left to its own `maintain-resolution` preference.
  */
 export function useDeviceStrain(): boolean {
   const room = useRoomContext()
@@ -35,8 +40,8 @@ export function useDeviceStrain(): boolean {
     let timer: ReturnType<typeof setTimeout> | undefined
     let done = false
 
-    const onConstrained = (track: LocalVideoTrack) => {
-      if (timer || done) return
+    const onConstrained = (track: LocalVideoTrack, pub: LocalTrackPublication) => {
+      if (timer || done || pub.source !== Track.Source.Camera) return
       timer = setTimeout(async () => {
         timer = undefined
         try {

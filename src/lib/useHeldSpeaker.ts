@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { createContext, createElement, useContext, useEffect, useState, type ReactNode } from 'react'
 import { useRoomContext } from '@livekit/components-react'
 import { RoomEvent } from 'livekit-client'
 import { NO_HOLD, nextCheckIn, nextSpeakerHold, type SpeakerHold } from '@/lib/speakerHold'
@@ -12,7 +12,7 @@ import { NO_HOLD, nextCheckIn, nextSpeakerHold, type SpeakerHold } from '@/lib/s
  * when the holder actually changes. You are never a candidate: the stage never
  * picks you automatically (stageFocus), so your own voice must not move it either.
  */
-export function useHeldSpeaker(): string | null {
+function useHeldSpeakerSource(): string | null {
   const room = useRoomContext()
   const [held, setHeld] = useState<string | null>(null)
 
@@ -43,4 +43,21 @@ export function useHeldSpeaker(): string | null {
   }, [room])
 
   return held
+}
+
+const HeldSpeakerContext = createContext<string | null>(null)
+
+/**
+ * ONE hold for the whole call. The stage, the speaker stage and the mini player all
+ * read it; each running its own would start from nobody at mount, so opening the
+ * mini player (or the desktop stage remounting on a layout change) showed someone
+ * other than the stage's holder and let the next voice take it with no dwell.
+ */
+export function HeldSpeakerProvider({ children }: { children: ReactNode }) {
+  const held = useHeldSpeakerSource()
+  return createElement(HeldSpeakerContext.Provider, { value: held }, children)
+}
+
+export function useHeldSpeaker(): string | null {
+  return useContext(HeldSpeakerContext)
 }

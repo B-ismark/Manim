@@ -24,6 +24,7 @@ import { usePublishMeetingPresence } from '@/features/calls/usePresence'
 import { useReactions } from '@/features/reactions/useReactions'
 import { useBackgroundBlur } from '@/features/effects/useBackgroundBlur'
 import { BlurProvider } from '@/features/effects/BlurContext'
+import { HeldSpeakerProvider } from '@/lib/useHeldSpeaker'
 import { useNoiseFilter } from '@/features/effects/useNoiseFilter'
 import { useDeviceStrain } from '@/features/effects/useDeviceStrain'
 import { useIncomingVideoCap } from '@/features/effects/useIncomingVideoCap'
@@ -513,6 +514,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
     // bar's Effects dialog and the self-view tile's blur toggle have to be driving
     // the SAME processor instance, and a provider around both is what guarantees it.
     <BlurProvider controls={blur}>
+      <HeldSpeakerProvider>
       {/* Companion (same account on another device) mutes the speaker to avoid echo —
           the user hears the call on their other device. "Turn on sound" clears it. */}
       <RoomAudioRenderer muted={companion} />
@@ -623,6 +625,7 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
           <PipPanel onLeave={doLeave} onClose={docPip.toggle} />,
           docPip.pipWindow.document.body,
         )}
+      </HeldSpeakerProvider>
     </BlurProvider>
   )
 }
