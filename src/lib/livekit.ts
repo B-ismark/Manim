@@ -42,14 +42,15 @@ import { setDataTagKey } from '@/lib/dataTag'
  *   Do NOT "optimise" phones onto VP9 without reproducing the discoloration first:
  *   that is the bug this pin exists for, and it is invisible to every gate here.
  *
- * A consequence worth stating plainly, because the two share paths are NOT alike:
- * `screenShareSimulcastLayers` only ever applies to the VP8 publishers. For an SVC
- * codec LiveKit forces `scalabilityMode: 'L1T3'` on a screen share ("vp9 svc with
- * screenshare cannot encode multiple spatial layers") and returns from the SVC
- * branch of `computeVideoEncodings` before it ever reads that option — so a desktop
- * VP9 share is ONE spatial layer, full resolution, however small it is drawn.
- * Rooms made by "New meeting" or a contact call carry an E2EE key, so they are VP8
- * and do get layers; an open, typed-name room does not.
+ * Screen shares are ALWAYS VP8 (useScreenShare passes it per publish), whatever
+ * the camera uses. A VP9 share was the worst of both: for an SVC codec LiveKit
+ * forces `scalabilityMode: 'L1T3'` on a share ("vp9 svc with screenshare cannot
+ * encode multiple spatial layers"), so it was ONE full-resolution layer that every
+ * viewer had to take, however weak their link or small their tile — and it also
+ * forces the share's `contentHint` to 'motion', so under pressure it shed
+ * SHARPNESS to keep frames, the wrong way round for text. VP8 shares simulcast the
+ * ladder below, so a weak viewer gets 360p or 720p and a strong one the original,
+ * at about half the measured uplink (991 kbps against 1952).
  *
  * degradationPreference is deliberately NOT set: livekit-client picks it per
  * source, and its answer is the right one for each — 'maintain-framerate' for a
@@ -112,14 +113,13 @@ export function roomOptions(lowBandwidth: boolean, e2eePassphrase?: string): Roo
         ? ScreenSharePresets.h720fps5
         : ScreenSharePresets.h1080fps15
       ).encoding,
-      // VP8 publishers ONLY, and only when simulcasting — an SVC codec never
-      // reads this (see the header: a VP9 share is pinned to L1T3, one spatial
-      // layer), and low-bandwidth turns simulcast off above. Where it does apply
-      // it replaces LiveKit's single default lower layer (half resolution) with a
-      // proper ladder, so adaptiveStream can hand a grid-sized tile 360p instead
-      // of 540p and dynacast can stop what nobody subscribes to. Measured at
-      // 991 kbps against 1952 for the single-layer VP9 path.
-      ...(useVp8 && !lowBandwidth
+      // Shares are always VP8 (see the header), so this applies to every share
+      // except in low-bandwidth, which turns simulcast off above. It replaces
+      // LiveKit's single default lower layer (half resolution) with a proper
+      // ladder, so adaptiveStream can hand a grid-sized tile 360p instead of 540p
+      // and dynacast can stop what nobody subscribes to. Measured at 991 kbps
+      // against 1952 for the single-layer VP9 path shares used to take.
+      ...(!lowBandwidth
         ? {
             screenShareSimulcastLayers: [
               ScreenSharePresets.h360fps15,

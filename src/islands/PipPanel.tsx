@@ -16,6 +16,7 @@ import {
   ScreenShareIcon,
 } from '@/components/icons'
 import { hasVideo, isLocalCam, stageFocus } from '@/lib/focusTrack'
+import { ROSTER_EVENTS } from '@/lib/rosterEvents'
 import { useHeldSpeaker } from '@/lib/useHeldSpeaker'
 import { displayNameOf } from '@/lib/participantName'
 import { useRoomStore } from '@/store/useRoomStore'
@@ -41,7 +42,7 @@ import { toggleDevice } from '@/lib/deviceToggle'
  * units, so they track the real bubble size however Chromium feels about vh.
  */
 export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: () => void }) {
-  const participants = useParticipants()
+  const participants = useParticipants({ updateOnlyOn: [] }) // a count
   const { localParticipant, isMicrophoneEnabled, isCameraEnabled } = useLocalParticipant()
   const screenShare = useScreenShare()
   const pinned = useRoomStore((s) => s.pinned)
@@ -52,7 +53,7 @@ export function PipPanel({ onLeave, onClose }: { onLeave: () => void; onClose?: 
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
-    { onlySubscribed: false },
+    { onlySubscribed: false, updateOnlyOn: ROSTER_EVENTS },
   )
 
   // Prefer a remote/screen focus; only show self when alone — or when you have

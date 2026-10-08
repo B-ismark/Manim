@@ -195,8 +195,10 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   it straight back off wasn't enough: with no GPU its WebGL runs in software and the
   page answers nothing for ~5s at a time, so even the off tap timed out (and does
   on any machine without a GPU — 6 runs in 6 locally). A test that isn't about the
-  processor refuses the MediaPipe fetch with `page.route` so blur degrades to none
-  at once, everywhere (`11-mobile-fit`).
+  processor HOLDS the MediaPipe fetch with a `page.route` that never answers: blur
+  stays switched on with nothing segmenting, on every runner alike, so the on-state
+  can be asserted (`11-mobile-fit`). Refusing the fetch instead degrades blur to
+  none ~300ms later, too soon to look at anything while it's on.
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a

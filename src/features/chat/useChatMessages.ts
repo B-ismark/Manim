@@ -12,6 +12,7 @@ import { plainText } from '@/features/chat/mentions'
 import { sounds } from '@/lib/sounds'
 import { displayNameOf } from '@/lib/participantName'
 import { toast, useToastStore } from '@/store/useToastStore'
+import { MAX_UPLOAD_BYTES } from '@/features/chat/limits'
 import { useChatHistoryOn } from '@/features/chat/chatHistory'
 import { useMyOtherSeats } from '@/lib/sameAccount'
 
@@ -234,6 +235,17 @@ export function useChatMessages() {
     const handler: ByteStreamHandler = (reader, { identity }) => {
       const info = reader.info
       const id = info.id
+      // The sender's own guard caps what this app sends; this one caps what any
+      // other client can put in front of you. Over the cap — or with no declared
+      // size, which this app's sendFile never omits and which the library then
+      // reads without any limit — the file is never shown or assembled into a blob.
+      // (The SFU still delivers the chunks; a receiver can't refuse a byte stream.)
+      if (info.size === undefined || info.size > MAX_UPLOAD_BYTES) {
+        const stop = new AbortController()
+        reader.withAbortSignal(stop.signal).readAll().catch(() => {})
+        stop.abort()
+        return
+      }
       const sender = room.getParticipantByIdentity(identity)
       const item: FileItem = {
         kind: 'file',
@@ -821,6 +833,7 @@ export function useChatMessages() {
       } catch {
         setFiles((prev) => prev.filter((f) => f.id !== localId))
         URL.revokeObjectURL(url)
+        toast(`Couldn't send ${file.name}. Try again.`, 'warning')
       }
     },
     [localParticipant],

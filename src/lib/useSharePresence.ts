@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useTracks } from '@livekit/components-react'
 import { Track } from 'livekit-client'
+import { ROSTER_EVENTS } from '@/lib/rosterEvents'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { useRoomStore } from '@/store/useRoomStore'
@@ -64,7 +65,9 @@ export interface SharePresence {
  * was showing something else.
  */
 export function useSharePresence(): SharePresence {
-  const shares = useTracks([Track.Source.ScreenShare], { onlySubscribed: false })
+  // ROSTER_EVENTS, like every roster: Stage, RoomView and the control bar all call
+  // this, so a default-events list here redrew all three on every breath anyone took.
+  const shares = useTracks([Track.Source.ScreenShare], { onlySubscribed: false, updateOnlyOn: ROSTER_EVENTS })
   const presenting = shares.some((t) => t.participant.isLocal)
   const remoteSharing = shares.some((t) => !t.participant.isLocal)
   const active = useAnnotateStore((s) => s.active)

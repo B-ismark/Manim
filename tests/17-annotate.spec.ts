@@ -468,18 +468,26 @@ test.describe('Annotation over a shared screen @annotate', () => {
     await startScreenShare(page)
     await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
 
-    /** The share as the viewer sees it: its size, and how far it has played. */
+    /** The share as the viewer sees it: how far it has played.
+     *
+     *  Found as the video under the ink canvas (the canvas is the share tile's
+     *  sibling) — not by pixel size. Shares simulcast (lib/livekit), so the viewer
+     *  can be on the 360p or 720p layer and switch between them; and a 1280x720
+     *  match also hit the presenter's camera, which is the same size as the fake
+     *  share, so `before` and `after` could be two different elements. */
     const shareState = (p: Page) =>
-      p.evaluate(
-        ([w, h]) => {
-          const v = Array.from(document.querySelectorAll('video')).find(
-            (el) => el.videoWidth === w && el.videoHeight === h,
-          )
-          return v ? { t: v.currentTime, paused: v.paused, ready: v.readyState } : null
-        },
-        [SHARE_W, SHARE_H],
-      )
+      p.evaluate(() => {
+        let el: Element | null = document.querySelector('[data-testid="annotation-canvas"]')
+        let v: HTMLVideoElement | null = null
+        while (el && !v) {
+          el = el.parentElement
+          v = el?.querySelector('video') ?? null
+        }
+        return v && v.videoWidth ? { t: v.currentTime, paused: v.paused, ready: v.readyState } : null
+      })
 
+    // Decoding first: a simulcast share's first layer can take a moment to land.
+    await expect.poll(() => shareState(viewer), { timeout: 20_000 }).not.toBeNull()
     await viewer.waitForTimeout(1500)
     const before = await shareState(viewer)
     expect(before, 'the viewer has the share before any ink').not.toBeNull()
@@ -618,10 +626,9 @@ test.describe('Annotation over a shared screen @annotate', () => {
     test.skip(await isTouch(page), 'the desktop share button is the one under test')
     const room = uniqueRoom('annot')
 
-    // Two shares is the cap. Note which path this test is on: uniqueRoom() has no
-    // E2EE key, so this is an open room → desktop VP9 → SVC L1T3, one spatial
-    // layer. The share-simulcast ladder does NOT apply here; a third share really
-    // would be a full-resolution stream behind a thumbnail nobody can read.
+    // Two shares is the cap. Shares simulcast (always VP8, lib/livekit), so a third
+    // would cost its viewers the 360p layer — but a third share is still a
+    // thumbnail nobody can read, and its presenter's uplink pays for every layer.
     const first = await addSharer(browser, room, 'Zed')
     const second = await addSharer(browser, room, 'Ada', 640, 480)
 
