@@ -42,6 +42,7 @@ import { useAudioSession } from '@/features/calls/useAudioSession'
 import { AudioBlockedBanner, MicUnavailableBanner } from '@/islands/AudioBanners'
 import { isTouch } from '@/lib/device'
 import { useSharePresence } from '@/lib/useSharePresence'
+import { useCallQualityReport } from '@/lib/useCallQualityReport'
 import { parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { prettyRoom } from '@/lib/roomName'
@@ -271,6 +272,8 @@ export function RoomView({ onLeave }: { onLeave: () => void }) {
   // LiveKit chat history is transient and would otherwise reset on remount).
   const chat = useChatMessages()
   const blur = useBackgroundBlur()
+  // One anonymous "how smoothly did it run" summary when you leave (lib/callQuality).
+  useCallQualityReport()
   const noise = useNoiseFilter()
   // Uplink adaptation is left entirely to simulcast + dynacast + adaptiveStream (see
   // roomOptions): on a weak uplink WebRTC simply stops sending the higher simulcast

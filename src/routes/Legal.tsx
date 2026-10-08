@@ -170,7 +170,8 @@ export function Privacy() {
         <Heading>Usage counts</Heading>
         <P>
           To see where people get stuck, {APP_NAME} counts a few anonymous events, such as “a call
-          was joined” and roughly how long it lasted, in ranges. These counts don’t use cookies and
+          was joined”, roughly how long it lasted and how smoothly it ran (connection delay and video
+          frame rate), in ranges. These counts don’t use cookies and
           don’t include your name, account, device, IP address or call names, so they can’t be
           linked to you. They’re stored by Cloudflare for three months.
         </P>

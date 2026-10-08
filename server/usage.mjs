@@ -10,6 +10,8 @@
 
 const SURFACE = ['phone', 'desktop']
 const DURATION = ['lt1', '1-5', '5-15', '15-30', '30-60', '60plus']
+// The LiveKit edge's continent — the SERVER's region, never where the person is.
+const EDGE = ['af', 'eu', 'na', 'sa', 'as', 'oc', 'other']
 
 /** event → the allowed values for its first and second detail. */
 export const EVENTS = {
@@ -40,6 +42,12 @@ export const EVENTS = {
   // more from a fixed list. Not tied to the call, the person or anything they said.
   rating: [['good', 'bad'], SURFACE],
   rating_issue: [['audio', 'video', 'connection', 'other'], SURFACE],
+  // How smoothly a call ran, one summary per person per call (src/lib/callQuality):
+  // is lag the network (distance, loss) or the device (cpu)? Ranges only.
+  call_rtt: [['lt100', '100-200', '200-300', '300plus'], EDGE],
+  call_loss: [['lt1', '1-3', '3-10', '10plus'], EDGE],
+  call_fps: [['lt10', '10-20', '20plus'], SURFACE],
+  call_limit: [['none', 'cpu', 'bandwidth', 'other'], SURFACE],
 }
 
 /** The event as it may be stored, or null if anything about it is off-list. */
