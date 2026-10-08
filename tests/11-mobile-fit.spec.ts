@@ -669,8 +669,6 @@ test.describe('Mobile fit (no page scroll)', () => {
       )
       const vp = page.viewportSize()!
       await page.setViewportSize({ width: vp.height, height: vp.width })
-      await revealChrome(page)
-      await page.waitForTimeout(600) // the tiles glide into their new places
 
       const measure = () =>
         page.evaluate(() => {
@@ -695,12 +693,23 @@ test.describe('Mobile fit (no page scroll)', () => {
           }
         })
 
-      const shown = await measure()
-      expect(shown.rail, 'sideways, the island is a rail').toBe(true)
-      expect(shown.bar.height, 'a column, not a row').toBeGreaterThan(shown.bar.width)
-      expect(shown.bar.right, 'on the right edge').toBeGreaterThan(shown.vw - 40)
-      expect(shown.right, 'no tile runs under the rail').toBeLessThanOrEqual(shown.bar.left + 1)
-      expect(shown.pill, 'no pill while the mic button itself says so').toBeNull()
+      // Measured while the bar is really up, retried until it is: the 4s auto-hide
+      // runs from the mute press, and on a loaded machine it can fire between the
+      // reveal (a no-op while the bar is still showing) and the read — the bar then
+      // slides away, the tiles take its room and the Muted pill appears, all
+      // correctly, and every "shown" assertion fails for the wrong reason.
+      let shown!: Awaited<ReturnType<typeof measure>>
+      await expect(async () => {
+        await revealChrome(page)
+        await page.waitForTimeout(600) // the tiles glide into their new places
+        shown = await measure()
+        expect(shown.bar.left >= 0 && shown.bar.right <= shown.vw + 1, 'the bar is showing').toBe(true)
+        expect(shown.rail, 'sideways, the island is a rail').toBe(true)
+        expect(shown.bar.height, 'a column, not a row').toBeGreaterThan(shown.bar.width)
+        expect(shown.bar.right, 'on the right edge').toBeGreaterThan(shown.vw - 40)
+        expect(shown.right, 'no tile runs under the rail').toBeLessThanOrEqual(shown.bar.left + 1)
+        expect(shown.pill, 'no pill while the mic button itself says so').toBeNull()
+      }).toPass({ timeout: 20_000 })
 
       // Let the chrome fade (4s without a touch), then the tiles glide.
       await expect
@@ -1035,44 +1044,30 @@ test.describe('Mobile fit (no page scroll)', () => {
    * chrome-hold rule went with it.
    *
    * Asserted here: the toggle is wired in BOTH directions, and the tile and the
-   * Effects dialog read the same state. What is deliberately NOT asserted is the
-   * dialog agreeing while blur is actually RUNNING — and the reason is worth
-   * recording, because the obvious version of this test fails in CI:
+   * Effects page read the same state — while blur is ON, which is the state a
+   * mirrored store would get wrong (both reading 'off' proves nothing; it is
+   * where they start).
    *
-   * `@livekit/track-processors` pulls the MediaPipe WASM from a CDN. On a sandboxed
-   * or offline runner it can't, so blur degrades to 'none' ~300ms later (the
-   * documented path in useBackgroundBlur) and everything stays cheap. **On CI the
-   * fetch succeeds**, so the segmenter really runs — and MediaPipe on a shared
-   * two-core runner, alongside two other browser contexts, starved the page badly
-   * enough that `openMore` timed out on both the first attempt and the retry. So
-   * the processor is switched back off before this test touches any other UI. The
-   * single-instance property is also structural: one `useBackgroundBlur`, reached
-   * through one `BlurProvider`.
-   *
-   * The arming check uses a MutationObserver rather than a polled
-   * `toHaveAttribute` because on the degrade path the pressed state lives for only
-   * ~300ms, which a poll can miss; the observer sees every value the attribute
-   * ever held, so it reads the same on both kinds of runner.
+   * Without the segmenter. `@livekit/track-processors` pulls the MediaPipe model
+   * and WASM from a CDN, and where that fetch succeeds (CI) the segmenter really
+   * runs: with no GPU its WebGL is software-rendered and the page answers nothing
+   * for ~5s at a time, so a tap times out after "done scrolling" (CI, and main 6
+   * runs in 6 on a GPU-less machine). Refusing the fetch instead lets blur degrade
+   * to 'none' ~300ms later — too soon to look at the Effects page while it's on.
+   * So the fetch is HELD: the build waits on it forever, nothing segments, and
+   * blur stays switched on for exactly as long as the test needs it to be.
    */
   test('the self-view tile toggles background blur, in step with the More menu', async ({
     page,
     browser,
   }) => {
-    // No segmenter in this test. What it checks is the CONTRACT between the tile's
-    // toggle and the Effects page, not the processor, and the processor is the one
-    // thing a runner can't afford: with no GPU, MediaPipe's WebGL runs in software
-    // and leaves the page answering nothing for ~5s at a time — the off tap then
-    // times out after "done scrolling" (it did on CI, and on main 6 runs in 6
-    // locally). Refusing the model and WASM fetch makes the build fail at once,
-    // the degrade-to-none path the steps below already handle, on every runner
-    // alike instead of only on the ones that can't reach the CDN.
-    await page.route(/cdn\.jsdelivr\.net\/npm\/@mediapipe|mediapipe-models/, (r) => r.abort())
+    // Never answered — see above. The page is torn down with the request pending.
+    await page.route(/cdn\.jsdelivr\.net\/npm\/@mediapipe|mediapipe-models/, () => {})
     const room = uniqueRoom()
     await join(page, room, 'Host')
     // A peer, because solo renders SoloStage — the floating self-view card (which
     // carries these controls in speaker view) only exists once someone else is in.
     const peer = await newParticipant(browser, room, 'Guest1')
-    const BLUR_TOGGLE = /^(Blur my background|Turn off background blur)$/
     try {
       const self = page.getByRole('group', { name: /^Your video/ })
       await expect(self).toBeVisible({ timeout: 45_000 })
@@ -1080,65 +1075,35 @@ test.describe('Mobile fit (no page scroll)', () => {
       // The tile's tools need a PUBLISHED camera (`hasVideo`), which lands a beat
       // after the card itself — so wait for the control rather than the card.
       const blurOn = page.getByRole('button', { name: 'Blur my background' })
+      const blurOff = page.getByRole('button', { name: 'Turn off background blur' })
       await expect(blurOn).toBeVisible({ timeout: 30_000 })
       await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
 
-      // Watch the toggle before touching it. The label states the ACTION, so it
-      // changes with the state — this matches either one.
-      await page.evaluate((pattern) => {
-        const re = new RegExp(pattern)
-        const btn = Array.from(document.querySelectorAll('button')).find((b) =>
-          re.test(b.getAttribute('aria-label') ?? ''),
-        )
-        if (!btn) throw new Error('blur toggle not found')
-        const seen: (string | null)[] = [btn.getAttribute('aria-pressed')]
-        ;(window as unknown as { __blurSeen: (string | null)[] }).__blurSeen = seen
-        new MutationObserver(() => seen.push(btn.getAttribute('aria-pressed'))).observe(btn, {
-          attributes: true,
-          attributeFilter: ['aria-pressed'],
-        })
-      }, BLUR_TOGGLE.source)
-
+      // Tile → state.
       await blurOn.tap()
-      // One tick, only so React has certainly flushed the state change before the
-      // read. The observer accumulates history, so WHEN we read doesn't matter —
-      // only that the mutation has happened by then.
-      await page.waitForTimeout(500)
-      const seen = await page.evaluate(
-        () => (window as unknown as { __blurSeen: (string | null)[] }).__blurSeen,
-      )
-      expect(seen, 'tapping the tile control armed blur').toContain('true')
+      await expect(blurOff, 'tapping the tile control armed blur').toHaveAttribute('aria-pressed', 'true')
 
-      // Switch it straight back off, and get the processor off this runner before
-      // anything else is driven. Located by the OFF label rather than tapping the
-      // same button again: on a runner that can't build the processor the state has
-      // already degraded by now, and a blind second tap would turn blur back ON.
-      const blurOff = page.getByRole('button', { name: 'Turn off background blur' })
-      if (await blurOff.isVisible().catch(() => false)) await blurOff.tap()
-      await expect(blurOn, 'the toggle returns to its off state').toBeVisible({ timeout: 20_000 })
-      await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
-
-      // The tile and the Effects dialog read the same state — the invariant
-      // `BlurProvider` exists for, and what a store mirroring the hook would break.
+      // State → Effects page, while ON.
+      const none = page.getByRole('button', { name: 'None', exact: true })
+      const blur = page.getByRole('button', { name: 'Blur', exact: true })
       await openMore(page)
       await page.getByRole('button', { name: /Backgrounds & effects/ }).tap()
-      await expect(page.getByRole('button', { name: 'None', exact: true })).toHaveAttribute(
-        'aria-pressed',
-        'true',
-      )
-      await expect(page.getByRole('button', { name: 'Blur', exact: true })).toHaveAttribute(
-        'aria-pressed',
-        'false',
-      )
+      await expect(blur, 'Effects shows the blur the tile switched on').toHaveAttribute('aria-pressed', 'true')
+      await expect(none).toHaveAttribute('aria-pressed', 'false')
+
+      // Effects page → tile: switch it off from the menu.
+      await none.tap()
+      await expect(none).toHaveAttribute('aria-pressed', 'true')
+      await expect(blur).toHaveAttribute('aria-pressed', 'false')
       // On a phone Effects is a page inside the More sheet. The sheet is modal and
       // aria-hides the stage, so the tile control below is unreachable until it's
       // actually shut.
       await closePanel(page)
       await expect(page.getByRole('dialog')).toBeHidden()
 
-      // …and the tile still offers blur, so the round trip left nothing stuck.
       await revealChrome(page)
-      await expect(page.getByRole('button', { name: 'Blur my background' })).toBeVisible()
+      await expect(blurOn, 'the tile follows the menu back to off').toBeVisible()
+      await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
     } finally {
       await closeContext(peer.context)
     }

@@ -6,6 +6,8 @@ import {
   useLocalParticipant,
   useRoomContext,
   useRoomInfo,
+  useIsSpeaking,
+  useSpeakingParticipants,
 } from '@livekit/components-react'
 import { Track } from 'livekit-client'
 import type { TrackReferenceOrPlaceholder } from '@livekit/components-react'
@@ -44,6 +46,8 @@ import { displayNameOf } from '@/lib/participantName'
 import { useIsTouch } from '@/lib/useIsTouch'
 import { isLocalCam, isScreenShare, primaryShare, shareId, stageFocus, tileKey } from '@/lib/focusTrack'
 import { useHeldSpeaker } from '@/lib/useHeldSpeaker'
+import { ROSTER_EVENTS } from '@/lib/rosterEvents'
+import { useFlipTiles, type TileBox } from '@/lib/useFlipTiles'
 import { contentLayout, orderUsers, speakerLayout, splitVisible, type StripLayout } from '@/lib/shareLayout'
 import { bucketAspect, fitMixedRows, gridCapacity } from '@/lib/tileGrid'
 import { dockedStageInset, useViewportWidth } from '@/lib/panelDock'
@@ -125,8 +129,8 @@ function useCapacityWidth(measured: number): number {
 
 /**
  * Memoised: Stage takes no props, so the only things that should redraw it are its
- * own subscriptions (tracks, layout, speaking). RoomView re-renders on chat,
- * reactions, the chrome's show/hide and more — none of which the stage shows.
+ * own subscriptions (tracks, layout). RoomView re-renders on chat, reactions, the
+ * chrome's show/hide and more — none of which the stage shows.
  */
 export const Stage = memo(function Stage() {
   const layout = useRoomStore((s) => s.layout)
@@ -134,31 +138,33 @@ export const Stage = memo(function Stage() {
   const demotedShares = useRoomStore((s) => s.demotedShares)
   const stickyShareId = useRoomStore((s) => s.stickyShareId)
   const prunePresentation = useRoomStore((s) => s.prunePresentation)
-  const participants = useParticipants()
+  // A count: joins and leaves are always delivered, whatever `updateOnlyOn` says.
+  const participants = useParticipants({ updateOnlyOn: [] })
   const blocked = useBlockStore((s) => s.blocked)
   const visibleTracks = useTracks(
     [
       { source: Track.Source.Camera, withPlaceholder: true },
       { source: Track.Source.ScreenShare, withPlaceholder: false },
     ],
-    { onlySubscribed: false },
+    { onlySubscribed: false, updateOnlyOn: ROSTER_EVENTS },
   ).filter((t) => t.participant.isLocal || !blocked.includes(t.participant.identity))
   // `.filter` hands back a NEW array every render, which made every useMemo
   // downstream keyed on `tracks` (the gallery order, the packer's rows…) recompute
   // on EVERY Stage render, whatever caused it. Keep the previous array while it
   // holds the same entries in the same order. Participant and publication are live,
   // mutable LiveKit objects, so a kept entry still reads current state at render
-  // time — but two memos downstream read mutable fields and were only ever correct
+  // time — but a memo downstream reads a mutable field and was only ever correct
   // because the array churned: the "videos first" sorts (`hasLiveVideo` →
-  // `publication.isMuted`) and the off-page speaker jump (`isSpeaking`). Those two
-  // fields ride in the key so those memos still refresh exactly when they must.
+  // `publication.isMuted`). That field rides in the key so those memos still
+  // refresh exactly when they must. (`isSpeaking` used to ride too; nothing here
+  // follows the voice any more — see ROSTER_EVENTS.)
   const tracksKey = visibleTracks
     .map(
       (t) =>
         // sid, not just identity: a rejoin under the same name#device is a NEW
         // participant object, and a camera-off placeholder has no trackSid to differ.
         `${t.participant.sid}|${t.participant.identity}|${t.source}|${t.publication?.trackSid ?? ''}|` +
-        `${t.publication?.isMuted ? 1 : 0}${t.participant.isSpeaking ? 1 : 0}`,
+        `${t.publication?.isMuted ? 1 : 0}`,
     )
     .join(',')
   // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on content, see above
@@ -871,6 +877,29 @@ function TileRows({
     return rows.map((row) => row.map((cell) => ({ tref: tracks[i++], ...cell })))
   }, [rows, tracks])
 
+  // Every tile placed absolutely inside one box, rather than a flex row per row.
+  // Rows used to be separate elements, so a tile the packer moved to another row
+  // was a different element: its video unmounted and re-attached, and it jumped.
+  // One keyed list of positioned tiles means a re-pack (the touch chrome fading,
+  // someone joining, a rotation) is just new coordinates, and on touch they glide
+  // there with the same easing the bars slide on — as a transform (useFlipTiles).
+  const { placed, boxH } = useMemo(() => {
+    let y = 0
+    const out: Array<TileBox & { tref: TrackReferenceOrPlaceholder }> = []
+    for (const row of rowTiles ?? []) {
+      const rowW = row.reduce((sum, c) => sum + c.w, 0) + gap * (row.length - 1)
+      const rowH = Math.max(0, ...row.map((c) => c.h))
+      let x = (width - rowW) / 2
+      for (const c of row) {
+        out.push({ key: tileKey(c.tref), tref: c.tref, x, y: y + (rowH - c.h) / 2, w: c.w, h: c.h })
+        x += c.w + gap
+      }
+      y += rowH + gap
+    }
+    return { placed: out, boxH: Math.max(0, y - gap) }
+  }, [rowTiles, gap, width])
+  const flipRef = useFlipTiles(placed, glide)
+
   if (!rowTiles) {
     // Pre-measure fallback: one column of 16:9 boxes. Never a blank stage.
     return (
@@ -889,41 +918,13 @@ function TileRows({
     )
   }
 
-  // Every tile placed absolutely inside one box, rather than a flex row per row.
-  // Rows used to be separate elements, so a tile the packer moved to another row
-  // was a different element: its video unmounted and re-attached, and it jumped.
-  // One keyed list of positioned tiles means a re-pack (the touch chrome fading,
-  // someone joining, a rotation) is just new coordinates, and on touch they glide
-  // there with the same easing the bars slide on.
-  let boxH = 0
-  const placed: Array<{ tref: TrackReferenceOrPlaceholder; x: number; y: number; w: number; h: number }> = []
-  for (const row of rowTiles) {
-    const rowW = row.reduce((sum, c) => sum + c.w, 0) + gap * (row.length - 1)
-    const rowH = Math.max(0, ...row.map((c) => c.h))
-    let x = (width - rowW) / 2
-    for (const c of row) {
-      placed.push({ tref: c.tref, x, y: boxH + (rowH - c.h) / 2, w: c.w, h: c.h })
-      x += c.w + gap
-    }
-    boxH += rowH + gap
-  }
-  boxH = Math.max(0, boxH - gap)
-
   return (
     // `w-full`, not the measured width: that measure lands a frame after a layout
     // change, and a box one frame too wide, centred, threw the first column off
     // the left edge for that frame.
     <div data-tile-rows className="relative w-full shrink-0" style={{ height: boxH }}>
-      {placed.map(({ tref, x, y, w, h }) => (
-        <div
-          key={tileKey(tref)}
-          className={cn(
-            'absolute',
-            glide &&
-              'transition-[left,top,width,height] duration-[var(--dur-slow)] ease-[var(--ease-island)] motion-reduce:transition-none',
-          )}
-          style={{ left: x, top: y, width: w, height: h }}
-        >
+      {placed.map(({ key, tref, x, y, w, h }) => (
+        <div key={key} ref={flipRef(key)} className="absolute" style={{ left: x, top: y, width: w, height: h }}>
           <Tile
             trackRef={tref}
             fill
@@ -1028,13 +1029,6 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   const { aspects, report: reportAspect } = useTileAspects()
   const gap = 12
 
-  // If someone is speaking on a page you're not looking at, offer a one-tap jump
-  // (no auto-jump — that's jarring). Manual + clearly labelled.
-  const speakingPage = useMemo(() => {
-    const i = ordered.findIndex((t) => t.participant.isSpeaking)
-    return i >= 0 ? Math.floor(i / perPage) : -1
-  }, [ordered, perPage])
-  const speakerOffPage = paged && speakingPage >= 0 && speakingPage !== current
 
   return (
     // Both chrome bands reserved — see useIslandBand and useTopBand. This layout
@@ -1090,15 +1084,7 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
             <span className="rounded-control bg-overlay px-3 py-1 text-sm font-medium tabular-nums text-white backdrop-blur">
               {current + 1} / {pageCount}
             </span>
-            {speakerOffPage && (
-              <button
-                type="button"
-                onClick={() => setPage(speakingPage)}
-                className="flex items-center gap-1.5 rounded-control bg-accent px-3 py-1 text-sm font-medium text-accent-ink"
-              >
-                <SpeakingBars /> Speaking
-              </button>
-            )}
+            <SpeakerOffPage ordered={ordered} perPage={perPage} current={current} onJump={setPage} />
           </div>
         </>
       )}
@@ -1106,6 +1092,38 @@ function GridStage({ tracks }: { tracks: TrackReferenceOrPlaceholder[] }) {
   )
 }
 
+/**
+ * If someone is speaking on a page you're not looking at, offer a one-tap jump (no
+ * auto-jump — that's jarring). Manual + clearly labelled.
+ *
+ * Its own component so it alone follows the voice: the gallery around it doesn't
+ * redraw every time someone draws breath (see ROSTER_EVENTS).
+ */
+function SpeakerOffPage({
+  ordered,
+  perPage,
+  current,
+  onJump,
+}: {
+  ordered: TrackReferenceOrPlaceholder[]
+  perPage: number
+  current: number
+  onJump: (page: number) => void
+}) {
+  const speakers = useSpeakingParticipants()
+  const i = ordered.findIndex((t) => speakers.includes(t.participant))
+  const page = i >= 0 ? Math.floor(i / perPage) : -1
+  if (page < 0 || page === current) return null
+  return (
+    <button
+      type="button"
+      onClick={() => onJump(page)}
+      className="flex items-center gap-1.5 rounded-control bg-accent px-3 py-1 text-sm font-medium text-accent-ink"
+    >
+      <SpeakingBars /> Speaking
+    </button>
+  )
+}
 
 /*
  * How much of the bottom edge the control island claims is `useIslandBand()` — see
@@ -1313,7 +1331,7 @@ function ChatCompanionStage({
   )
   // Everyone in the call, you included — "+3 in the call" beside one speaker in a
   // call of four.
-  const headcount = useParticipants().length
+  const headcount = useParticipants({ updateOnlyOn: [] }).length
 
   if (layout.mode === 'top' && !layout.stageShown) return null
   return (
@@ -2062,7 +2080,8 @@ function Tile({
   const audioOnly = useRoomStore((s) => s.audioOnly)
   const hasVideo =
     !!pub && !pub.isMuted && (p.isLocal || !!pub.isSubscribed) && (isScreen || !audioOnly)
-  const speaking = p.isSpeaking
+  // Its own subscription: the stage no longer redraws on speaking (ROSTER_EVENTS).
+  const speaking = useIsSpeaking(p)
   const micOff = !p.isMicrophoneEnabled
   const handRaised = useHandRaised(p)
 

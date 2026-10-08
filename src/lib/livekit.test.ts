@@ -37,25 +37,18 @@ describe('roomOptions — screen-share cost', () => {
     expect(pub().screenShareEncoding).toEqual(ScreenSharePresets.h1080fps15.encoding)
   })
 
-  it('gives VP8 publishers a share ladder so a thumbnail can take 360p', () => {
-    for (const opts of [{ e2ee: true }, { mobile: true }]) {
+  it('gives every share a ladder so a thumbnail can take 360p — the VP9 desktop too', () => {
+    // Shares publish as VP8 on every path (useScreenShare overrides the codec per
+    // publish), so the ladder applies to the desktop whose CAMERA is VP9 as well.
+    // It used to be left off there because a VP9 share is pinned to one L1T3 layer
+    // that LiveKit never reads it for — the reason shares stopped being VP9.
+    for (const opts of [{ e2ee: true }, { mobile: true }, {}]) {
       const layers = pub(opts).screenShareSimulcastLayers
       expect(layers, JSON.stringify(opts)).toEqual([
         ScreenSharePresets.h360fps15,
         ScreenSharePresets.h720fps15,
       ])
     }
-  })
-
-  it('omits the ladder on the VP9 path, where LiveKit would ignore it anyway', () => {
-    // Not an oversight — an assertion of the asymmetry. For an SVC codec on a
-    // ScreenShare track livekit-client forces scalabilityMode 'L1T3' ("vp9 svc
-    // with screenshare cannot encode multiple spatial layers") and returns from
-    // the SVC branch of computeVideoEncodings before reading this option. Setting
-    // it here would read as protection that does not exist.
-    const desktop = pub()
-    expect(desktop.videoCodec).toBe('vp9')
-    expect(desktop.screenShareSimulcastLayers).toBeUndefined()
   })
 
   it('keeps the ladder within the three simulcast rids LiveKit can address', () => {

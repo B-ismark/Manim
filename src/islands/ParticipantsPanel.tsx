@@ -59,6 +59,7 @@ import { cn } from '@/lib/cn'
 import { linkWithoutKey, parseRoomHash } from '@/lib/roomLink'
 import { resolveRoomSecrets } from '@/lib/roomKeys'
 import { publishTagged } from '@/lib/useDataTopic'
+import { ROSTER_EVENTS } from '@/lib/rosterEvents'
 
 function displayName(p: Participant): string {
   return displayNameOf(p.identity, p.name)
@@ -66,7 +67,8 @@ function displayName(p: Participant): string {
 
 /** Roster with live state (speaking / mic / hand / connection) and per-row actions. */
 export function ParticipantsPanel() {
-  const participants = useParticipants()
+  // Each row follows its own speaking state (useIsSpeaking), so the list doesn't.
+  const participants = useParticipants({ updateOnlyOn: ROSTER_EVENTS })
   const { localParticipant } = useLocalParticipant()
   // Your other devices, by the server's signature (metadata alone can be edited).
   const otherSeats = useMyOtherSeats()

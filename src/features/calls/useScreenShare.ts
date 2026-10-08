@@ -179,7 +179,13 @@ export function useScreenShare(): ScreenShareControl {
       }
       void (async () => {
         try {
-          await localParticipant.setScreenShareEnabled(on, on ? captureOptions() : undefined)
+          // VP8, whatever the camera publishes: a VP9 share is one full-size layer
+          // every viewer must take (lib/livekit's header has the whole story).
+          await localParticipant.setScreenShareEnabled(
+            on,
+            on ? captureOptions() : undefined,
+            on ? { videoCodec: 'vp8' } : undefined,
+          )
         } catch (err) {
           if (isUserCancel(err)) {
             addBreadcrumb('screen share picker dismissed')

@@ -1,7 +1,15 @@
 /* Upload + media thresholds for chat (shared by composer guard and renderer). */
 
-/** Hard cap per file — larger uploads are rejected (data channel is P2P, keep it sane). */
-export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024 // 25 MB
+/**
+ * Hard cap per file — larger uploads are rejected.
+ *
+ * A file travels over the call's own data channel, through the same SFU link and
+ * the same congestion control as everyone's audio and video. 25 MB of it was
+ * minutes of competing traffic on a weak uplink — the call lagged for everyone
+ * while one file went across. 5 MB covers a photo, a screenshot or a PDF; anything
+ * bigger is a job for a link to a drive.
+ */
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 // 5 MB
 /** Images at or below this size preview inline; larger images show as a download card. */
 export const IMAGE_INLINE_MAX_BYTES = 5 * 1024 * 1024 // 5 MB
 /** Reject empty files. */

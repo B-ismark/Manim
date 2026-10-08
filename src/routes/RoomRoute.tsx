@@ -19,6 +19,7 @@ import { prettyRoom } from '@/lib/roomName'
 import { addBreadcrumb, reportError } from '@/lib/report'
 import { countUsage, durationRange, joinErrorClass, surface } from '@/lib/usage'
 import { clearTrouble, formatElapsed, troubleSince, useElapsed, useOnline } from '@/lib/connectionTrouble'
+import { warmConnection } from '@/lib/warmConnection'
 
 /**
  * Fire a local OS notification when the host admits a *backgrounded* guest. The
@@ -111,6 +112,11 @@ export function RoomRoute() {
   // Room names are lowercase (toSlug), so a hand-typed /r/Team opened a different,
   // empty room from /r/team. Go to the real one, keeping the link's secrets.
   const lowerRoom = room.normalize('NFC').toLowerCase()
+
+  // Pay the media server's DNS + TLS while the join screen is up, not after Join.
+  useEffect(() => {
+    if (LIVEKIT_URL) warmConnection(LIVEKIT_URL)
+  }, [])
   useEffect(() => {
     if (room === lowerRoom) return
     navigate(
@@ -239,8 +245,12 @@ export function RoomRoute() {
       try {
         // Send the Supabase session token (if signed in), NOT a client-asserted
         // userId — the server derives the trusted account id from it. Absent → guest.
-        const accessToken = (await (await getSupabase())?.auth.getSession())?.data.session?.access_token
-        const device = await roomDeviceId(deviceId, room)
+        // Independent of the device id, so the two are fetched together: the
+        // session can mean loading the Supabase chunk, and the knock waits on both.
+        const [accessToken, device] = await Promise.all([
+          getSupabase().then(async (sb) => (await sb?.auth.getSession())?.data.session?.access_token),
+          roomDeviceId(deviceId, room),
+        ])
         const seat = seatFor(room, `${displayName}#${device}`)
         const res = await knock({ room, name: displayName, deviceId: device, accessToken, secret, seat, hasKey: Boolean(e2ee) })
         rememberSeat(room, res.identity, res.seat)

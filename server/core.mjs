@@ -359,12 +359,6 @@ export async function handleKnock(env, body) {
   }
 
   const identity = `${name}#${deviceId || 'web'}`
-  // SERVER-DERIVED account — never the client-supplied `userId` (which a client can
-  // set to any value, including a victim's, to spoof identity in handoff). A valid
-  // Supabase session → the verified { id, email }; otherwise null (guest).
-  const account = await verifySupabaseUser(env, accessToken)
-  const userId = account?.id || ''
-  const email = account?.email || ''
 
   // Link epoch — reject pre-cutover invite links so the beta starts clean. A legacy
   // link's secret carries no epoch prefix; a superseded one carries an old epoch.
@@ -380,6 +374,32 @@ export async function handleKnock(env, body) {
     }
   }
 
+  // Every network read the knock needs, issued together. They are independent —
+  // Supabase (who you are), LiveKit (the room's flags and who's in it) and KV (the
+  // link's activity record) — and the join used to pay for them one after another:
+  // three or four round trips, from wherever this Worker runs, before the call could
+  // even start connecting. Now it pays for the slowest one.
+  //
+  // The link record is read only for a link-shared room (it carries a secret), and
+  // every legitimate entrant there reads it anyway to stamp the link's activity, so
+  // reading it early costs nothing extra on the path that matters.
+  const kv = roomKv(env)
+  const linkRoom = Boolean(kv) && Boolean(secret)
+  const linkRead = linkRoom ? kv.get(`room:${room}`, 'json').catch(() => null) : Promise.resolve(null)
+  // SERVER-DERIVED account — never the client-supplied `userId` (which a client can
+  // set to any value, including a victim's, to spoof identity in handoff). A valid
+  // Supabase session → the verified { id, email }; otherwise null (guest).
+  // Read room flags in the same breath so host election keys off the recorded
+  // hostId, not just a (racy) participant count. The recorded host reclaims host on
+  // reconnect; a brand-new room with no host yet is claimed by its first occupant.
+  const [account, flags, participants] = await Promise.all([
+    verifySupabaseUser(env, accessToken),
+    roomService ? getRoomFlags(roomService, room) : null,
+    roomService ? listParticipants(roomService, room) : [],
+  ])
+  const userId = account?.id || ''
+  const email = account?.email || ''
+
   if (!roomService) {
     // Degraded mode = no LiveKit configured (local UI-first dev). Host status is
     // unverifiable here and the host HTTP endpoints are disabled anyway (they all
@@ -391,15 +411,6 @@ export async function handleKnock(env, body) {
     return { status: 200, body: { ...minted, host: devHost } }
   }
 
-  // Read room flags FIRST so host election keys off the recorded hostId, not just
-  // a (racy) participant count. The recorded host reclaims host on reconnect; a
-  // brand-new room with no host yet is claimed by its first occupant.
-  // Independent reads — issue them together so the join path pays for one round-trip
-  // instead of two.
-  const [flags, participants] = await Promise.all([
-    getRoomFlags(roomService, room),
-    listParticipants(roomService, room),
-  ])
   const alreadyIn = participants.some((p) => p.identity === identity)
   // Is this same signed-in account ALREADY in the room on a DIFFERENT device? (Guests
   // are device-bound — a different device is a different guest userId — so this only
@@ -486,21 +497,9 @@ export async function handleKnock(env, body) {
   // "expired" only when it ALSO has no live participants (a long-running call isn't
   // expired just because the last join was a while ago). An active room can't be
   // dead, so skip the check when anyone is in it.
-  const kv = roomKv(env)
-  const linkRoom = kv && Boolean(secret)
-  // Read at most once per knock: the expiry check and the activity stamp below
-  // both need it.
-  let linkRec
-  const readLinkRec = async () => {
-    if (linkRec === undefined) {
-      try {
-        linkRec = await kv.get(`room:${room}`, 'json')
-      } catch {
-        linkRec = null
-      }
-    }
-    return linkRec
-  }
+  // Read once, up top with the other reads: the expiry check and the activity
+  // stamp below both need it.
+  const readLinkRec = () => linkRead
   if (linkRoom && participants.length === 0) {
     const rec = await readLinkRec()
     if (rec && Date.now() - (rec.lastJoinTs || 0) > LINK_TTL_MS) {

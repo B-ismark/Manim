@@ -234,8 +234,8 @@ test.describe('Screen-share bandwidth @heavy', () => {
   test.setTimeout(3 * 60_000)
   test.describe.configure({ mode: 'serial' })
 
-  test('share uplink — open room (VP9 / SVC L1T3)', async ({ browser }) => {
-    report(await measure(browser, 'open room (VP9 / SVC L1T3)', {}))
+  test('share uplink — open room (VP8 + ladder; camera on VP9)', async ({ browser }) => {
+    report(await measure(browser, 'open room (VP8 + ladder; camera on VP9)', {}))
   })
 
   test('share uplink — E2EE room (VP8 + ladder)', async ({ browser }) => {
