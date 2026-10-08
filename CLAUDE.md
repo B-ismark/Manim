@@ -199,6 +199,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   stays switched on with nothing segmenting, on every runner alike, so the on-state
   can be asserted (`11-mobile-fit`). Refusing the fetch instead degrades blur to
   none ~300ms later, too soon to look at anything while it's on.
+  **Those downloads run under a stall watchdog BEFORE the camera is touched**
+  (`lib/blurAssets`): track-processors fetched them inside `processor.init`, which
+  LiveKit runs holding the camera track's lock with no timeout, so a stalled CDN
+  left blur busy forever and the camera stuck until reload. No byte for 20s → blur
+  falls back to none and reports. A held-fetch test therefore pins
+  `globalThis.__MN_BLUR_STALL_MS` (high to keep blur on, low to exercise the stall).
+  The model reaches MediaPipe as a blob URL, which is why the CSP's `connect-src`
+  carries `blob:`.
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a

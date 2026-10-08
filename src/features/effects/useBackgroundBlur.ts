@@ -3,6 +3,7 @@ import { useLocalParticipant } from '@livekit/components-react'
 import { Track, TrackEvent, type LocalVideoTrack } from 'livekit-client'
 import { isLowPowerDevice, isMobile } from '@/lib/device'
 import { reportError } from '@/lib/report'
+import { AssetStallError, prepareBlurAssets, type BlurAssetPaths } from '@/lib/blurAssets'
 
 const DEFAULT_RADIUS = 12
 
@@ -86,7 +87,7 @@ function saveEffect(v: PersistedEffect) {
 export type BlurQuality = 'standard' | 'high'
 
 type TrackProcessorsModule = typeof import('@livekit/track-processors')
-type Processor = ReturnType<TrackProcessorsModule['BackgroundBlur']>
+type Processor = ReturnType<TrackProcessorsModule['BackgroundProcessor']>
 
 /**
  * Client-side background blur via @livekit/track-processors (MediaPipe, WebGL).
@@ -159,6 +160,9 @@ export function useBackgroundBlur() {
 
   useEffect(() => {
     let cancelled = false
+    // Cancels this run's asset download when it's superseded or blur goes off.
+    const abort = new AbortController()
+    const superseded = new Error('superseded')
 
     async function stopCurrent() {
       if (procRef.current && track) {
@@ -174,7 +178,7 @@ export function useBackgroundBlur() {
       await uncap?.().catch(() => {})
     }
 
-    async function build(mod: TrackProcessorsModule) {
+    async function build(mod: TrackProcessorsModule, assetPaths: BlurAssetPaths) {
       // The segmenter runs on the GPU delegate by default in track-processors, so
       // the real perf lever is how OFTEN we segment, not which delegate. Fewer
       // frames in means fewer segmenter passes blocking the main thread; at 15-24fps
@@ -197,7 +201,17 @@ export function useBackgroundBlur() {
       }
       // maxFps still matters on the fallback path (Safari/Firefox), which ignores
       // the camera's rate and samples on its own clock.
-      const proc = mod.BackgroundBlur(radiusRef.current, seg, undefined, { maxFps: fps ?? 30 })
+      const proc = mod.BackgroundProcessor(
+        {
+          mode: 'background-blur',
+          blurRadius: radiusRef.current,
+          segmenterOptions: seg,
+          assetPaths,
+          maxFps: fps ?? 30,
+        },
+        // The name the deprecated BackgroundBlur() factory gave it.
+        'background-blur',
+      )
       await track!.setProcessor(proc)
       procRef.current = proc
       if (cancelled) await stopCurrent()
@@ -222,10 +236,15 @@ export function useBackgroundBlur() {
           setMode('none')
           return
         }
+        // Download first, under a stall watchdog, while the camera is untouched (and
+        // any running blur keeps running). See lib/blurAssets for why init can't be
+        // trusted to: a stalled fetch there wedges the camera track's lock.
+        const assetPaths = await prepareBlurAssets(abort.signal)
+        if (cancelled) return
         await stopCurrent()
         if (cancelled) return
         try {
-          await build(mod)
+          await build(mod, assetPaths)
         } catch {
           // GPU delegate (or this effect) failed → drop to standard blur so the
           // control degrades gracefully instead of leaving a broken processor.
@@ -239,8 +258,9 @@ export function useBackgroundBlur() {
         // Module import or processor construction failed for real — the user loses
         // blur with no idea why. Degrade to 'none', and report it (E2) so a device
         // class that can never build the processor is visible, not silent.
+        if (e === superseded) return
         if (!cancelled) setMode('none')
-        reportError(e, { context: 'blur-processor', quality })
+        reportError(e, { context: 'blur-processor', quality, stalled: e instanceof AssetStallError })
       } finally {
         if (!cancelled) setBusy(false)
       }
@@ -249,6 +269,7 @@ export function useBackgroundBlur() {
     runRef.current = runRef.current.then(sync).catch(() => {})
     return () => {
       cancelled = true
+      abort.abort(superseded)
     }
     // radius excluded — updated live below without a rebuild.
     // eslint-disable-next-line react-hooks/exhaustive-deps
