@@ -18,6 +18,11 @@
   sentryLoaderUrl) plus the SDK bundle it pulls in
   (browser.sentry-cdn.com) for crash reports when VITE_SENTRY_DSN is set; the
   reports themselves go to *.ingest.sentry.io, already inside connect-src.
+  connect-src allows blob: because blur hands MediaPipe its segmenter model as a
+  blob URL it downloaded itself under a stall watchdog (lib/blurAssets), and
+  MediaPipe reads it with fetch(); 'self' does not match blob: URLs, so without
+  it blur fails on the deployed site only. Same reasoning as script-src: only
+  script already on the page can mint one.
   NOTE: verify against the DEPLOYED artifact — tune if a console CSP violation
   appears (neither path runs under the local vite dev server).
 */
@@ -33,5 +38,5 @@ export const CSP = [
   "style-src 'self' 'unsafe-inline'",
   "script-src 'self' 'wasm-unsafe-eval' blob: https://cdn.jsdelivr.net/npm/@mediapipe/ https://js.sentry-cdn.com https://js-de.sentry-cdn.com https://browser.sentry-cdn.com",
   "worker-src 'self' blob:",
-  "connect-src 'self' https: wss:",
+  "connect-src 'self' blob: https: wss:",
 ].join('; ')

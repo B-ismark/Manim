@@ -1063,6 +1063,11 @@ test.describe('Mobile fit (no page scroll)', () => {
   }) => {
     // Never answered — see above. The page is torn down with the request pending.
     await page.route(/cdn\.jsdelivr\.net\/npm\/@mediapipe|mediapipe-models/, () => {})
+    // And the stall watchdog (lib/blurAssets) pushed well past the test, so a slow
+    // runner can't have it give up — and switch blur off — mid-assertion.
+    await page.addInitScript(() => {
+      ;(globalThis as { __MN_BLUR_STALL_MS?: number }).__MN_BLUR_STALL_MS = 600_000
+    })
     const room = uniqueRoom()
     await join(page, room, 'Host')
     // A peer, because solo renders SoloStage — the floating self-view card (which
@@ -1104,6 +1109,53 @@ test.describe('Mobile fit (no page scroll)', () => {
       await revealChrome(page)
       await expect(blurOn, 'the tile follows the menu back to off').toBeVisible()
       await expect(blurOn).toHaveAttribute('aria-pressed', 'false')
+    } finally {
+      await closeContext(peer.context)
+    }
+  })
+
+  /**
+   * A blur download that stalls gives up instead of wedging the camera.
+   *
+   * MediaPipe's runtime and model come from a CDN, and track-processors fetched
+   * them inside `processor.init` — which LiveKit runs holding the camera track's
+   * change lock, with no timeout. A stalled download left blur "busy" forever and
+   * the camera stuck behind it until reload. lib/blurAssets now downloads them
+   * first under a watchdog. Held fetch + a 1.5s watchdog: blur must fall back to
+   * off by itself, the camera must still turn off and on, and blur must be
+   * switchable on again afterwards.
+   */
+  test('a stalled blur download falls back to off and leaves the camera usable', async ({ page, browser }) => {
+    await page.route(/cdn\.jsdelivr\.net\/npm\/@mediapipe|mediapipe-models/, () => {})
+    await page.addInitScript(() => {
+      ;(globalThis as { __MN_BLUR_STALL_MS?: number }).__MN_BLUR_STALL_MS = 1_500
+    })
+    const room = uniqueRoom()
+    await join(page, room, 'Host')
+    const peer = await newParticipant(browser, room, 'Guest1')
+    try {
+      const blurOn = page.getByRole('button', { name: 'Blur my background' })
+      const blurOff = page.getByRole('button', { name: 'Turn off background blur' })
+      await expect(blurOn).toBeVisible({ timeout: 45_000 })
+
+      await blurOn.tap()
+      await expect(blurOff, 'tapping armed blur').toHaveAttribute('aria-pressed', 'true')
+      // The watchdog fires and blur stands itself down — no reload, no tap.
+      await expect(blurOn, 'a stalled download switches blur back off').toHaveAttribute('aria-pressed', 'false', {
+        timeout: 15_000,
+      })
+
+      // The camera was never handed to the stalled build, so it still answers.
+      await revealChrome(page)
+      await page.getByRole('button', { name: 'Turn off camera' }).tap()
+      await revealChrome(page)
+      await page.getByRole('button', { name: 'Turn on camera' }).tap()
+      await expect(blurOn, 'the camera came back and published again').toBeVisible({ timeout: 30_000 })
+
+      // And blur can be tried again (it stalls again here, by design of the route).
+      await blurOn.tap()
+      await expect(blurOff, 'blur can be re-armed').toHaveAttribute('aria-pressed', 'true')
+      await expect(blurOn).toHaveAttribute('aria-pressed', 'false', { timeout: 15_000 })
     } finally {
       await closeContext(peer.context)
     }
