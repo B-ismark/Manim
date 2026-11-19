@@ -31,18 +31,35 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         output: {
           // Split the heavy, rarely-changing vendor code into long-lived cacheable
           // chunks so app edits don't bust the whole bundle. livekit is the biggest
           // dependency by far; React + Radix are stable too.
-          // NOTE: @livekit/track-processors is intentionally NOT listed — it (and
+          // Vite 8 bundles with Rolldown, which has no object-form `manualChunks`
+          // (the Rollup shape this used to be): groups match module paths instead,
+          // and pull each match's dependencies in with it (the default), as the
+          // object form did. React outranks livekit so components-react's own
+          // `import 'react'` can't drag React into the livekit chunk.
+          // NOTE: @livekit/track-processors is intentionally NOT matched — it (and
           // its ~160KB MediaPipe payload) is dynamically imported only when blur is
-          // first enabled (see useBackgroundBlur). Naming it here would force it
-          // into the eagerly-loaded room chunk and defeat that lazy boundary.
-          manualChunks: {
-            livekit: ['livekit-client', '@livekit/components-react'],
-            react: ['react', 'react-dom', 'react-router-dom'],
+          // first enabled (see useBackgroundBlur). Capturing it here would force it
+          // into the eagerly-loaded room chunk and defeat that lazy boundary. The
+          // livekit pattern names its two packages exactly for that reason, so a
+          // broader `@livekit/` match must never replace it.
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react',
+                test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'livekit',
+                test: /[\\/]node_modules[\\/](livekit-client|@livekit[\\/]components-react)[\\/]/,
+                priority: 10,
+              },
+            ],
           },
         },
       },
