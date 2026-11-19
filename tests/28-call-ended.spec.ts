@@ -14,7 +14,7 @@ test.describe('Call ended', () => {
     await join(page, room, 'Kofi')
     const peer = await newParticipant(browser, room, 'Ama')
     try {
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeAttached({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeAttached({ timeout: 30_000 })
       // The rating and the time chip both wait for 30 seconds in the call.
       await page.waitForTimeout(31_000)
       const left = page.getByRole('heading', { name: 'You left the call' })

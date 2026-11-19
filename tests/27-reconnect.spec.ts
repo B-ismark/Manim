@@ -17,7 +17,7 @@ test.describe('Reconnecting', () => {
     await join(page, room, 'Kofi')
     const peer = await newParticipant(browser, room, 'Ama')
     try {
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeAttached({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeAttached({ timeout: 30_000 })
       await page.context().setOffline(true)
 
       const banner = page.getByText(/^Reconnecting… \d+:\d\d$/)
@@ -31,7 +31,7 @@ test.describe('Reconnecting', () => {
 
       await page.context().setOffline(false)
       await expect(page.getByRole('region', { name: 'Call controls' })).toBeAttached({ timeout: 60_000 })
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeAttached({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeAttached({ timeout: 30_000 })
       await expect(banner).toHaveCount(0)
     } finally {
       await page.context().setOffline(false)

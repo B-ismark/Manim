@@ -1537,7 +1537,7 @@ function OverflowTile({ count, onClick }: { count: number; onClick: () => void }
       type="button"
       onClick={onClick}
       className="grid size-full place-items-center rounded-tile bg-sunken text-ink ring-1 ring-line transition-colors hover:bg-line [&_svg]:size-5"
-      aria-label={`View all people (${count} more)`}
+      aria-label={`+${count} more, view all people`}
     >
       <span className="flex flex-col items-center gap-1 text-sm font-medium">
         <PeopleIcon />

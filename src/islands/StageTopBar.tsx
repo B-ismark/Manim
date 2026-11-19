@@ -45,7 +45,7 @@ export function StageTopBar({ visible }: { visible: boolean }) {
         </StageChip>
       )}
       {showParticipants && (
-        <StageChip onClick={() => setPanel('people')} aria-label={`People (${participants.length})`}>
+        <StageChip onClick={() => setPanel('people')} aria-label={`People, ${participants.length}`}>
           <PeopleIcon />
           {participants.length}
         </StageChip>

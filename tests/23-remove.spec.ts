@@ -11,8 +11,8 @@ test('a removed guest can’t knock back in, even under another name', async ({ 
   await join(page, room, 'Host')
   const guest = await newParticipant(browser, room, 'Mallory')
   try {
-    await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({ timeout: 30_000 })
-    await page.getByRole('button', { name: /People \(2\)/ }).click()
+    await expect(page.getByRole('button', { name: /People, 2$/ })).toBeVisible({ timeout: 30_000 })
+    await page.getByRole('button', { name: /People, 2$/ }).click()
     await page.getByRole('button', { name: 'Actions for Mallory' }).click()
     await page.getByRole('menuitem', { name: 'Remove from call' }).click()
     await page.getByRole('dialog', { name: /Remove Mallory/ }).getByRole('button', { name: 'Remove' }).click()

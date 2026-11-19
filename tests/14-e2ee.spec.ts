@@ -28,10 +28,10 @@ test.describe('E2EE — encrypted call', () => {
 
     try {
       // Both sides negotiate media (so the encryption pipeline didn't break the call).
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeVisible({
         timeout: 30_000,
       })
-      await expect(guest.page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({
+      await expect(guest.page.getByRole('button', { name: /People, 2$/ })).toBeVisible({
         timeout: 30_000,
       })
 
@@ -66,7 +66,7 @@ test.describe('E2EE — encrypted call', () => {
     const guest = await newParticipant(browser, room, 'Bob', '#e=key-beta')
 
     try {
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeVisible({
         timeout: 30_000,
       })
       // The decrypt failure (needs real frames to flow) is surfaced, not swallowed.
@@ -108,7 +108,7 @@ test.describe('E2EE — encrypted call', () => {
       await expect(guest.getByRole('heading', { name: 'This call is encrypted' })).toBeVisible({ timeout: 20_000 })
       await expect(guest.getByRole('button', { name: /microphone/i })).toHaveCount(0)
       // Alice is still alone: the keyless knock never became a seat.
-      await expect(page.getByRole('button', { name: /People \(1\)/ })).toBeVisible()
+      await expect(page.getByRole('button', { name: /People, 1$/ })).toBeVisible()
     } finally {
       await closeContext(context)
     }
@@ -125,7 +125,7 @@ test.describe('E2EE — encrypted call', () => {
     await join(page, room, 'Alice', hash)
     const guest = await newParticipant(browser, room, 'Bob', hash)
     try {
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeVisible({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeVisible({ timeout: 30_000 })
       await expectChromeVisible(page, page.getByLabel('End-to-end encrypted'))
       const composer = await openChat(page)
       await composer.fill('sealed hello')

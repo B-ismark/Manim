@@ -72,11 +72,11 @@ test.describe('Capacity', () => {
     })
 
     // Read the participant count the host's chip reports.
-    const chip = page.getByRole('button', { name: /People \(\d+\)/ })
+    const chip = page.getByRole('button', { name: /People, \d+$/ })
     let reportedCount = joined
     try {
       const label = await chip.getAttribute('aria-label', { timeout: 5000 })
-      const m = label?.match(/\((\d+)\)/)
+      const m = label?.match(/(\d+)$/)
       if (m) reportedCount = Number(m[1])
     } catch {
       /* chip may be hidden; fall back to joined */
