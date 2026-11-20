@@ -23,6 +23,16 @@ export function initials(name: string): string {
   return (chars(parts[0], 1) + chars(parts[parts.length - 1], 1)).toUpperCase()
 }
 
+/**
+ * Lightness of the initials' background. White initials need 4.5:1 (WCAG AA,
+ * small text). At 0.6 the cyan–teal hues fell to 3.57:1 — axe flagged it once
+ * People was scanned with a "Benjamín" in it. 0.52 is the brightest that clears
+ * 4.5 on EVERY hue at this chroma (worst 4.87:1, hue ~191); Avatar.test.ts
+ * re-computes all 360 so a tweak can't quietly drop below.
+ */
+export const AVATAR_L = 0.52
+export const AVATAR_C = 0.13
+
 /** Deterministic hue from name so a person keeps the same color. */
 function hueFromName(name: string): number {
   let h = 0
@@ -68,7 +78,7 @@ export function Avatar({ name, src, size = 'md', className }: AvatarProps) {
         sizeClass[size],
         className,
       )}
-      style={{ backgroundColor: `oklch(0.6 0.13 ${hue})` }}
+      style={{ backgroundColor: `oklch(${AVATAR_L} ${AVATAR_C} ${hue})` }}
     >
       {size === 'xs' ? chars(initials(name), 1) : initials(name)}
     </span>

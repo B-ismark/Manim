@@ -216,7 +216,7 @@ export function Landing() {
     })
     // Shows an "Invited · waiting" row in the in-call People panel; it clears when
     // they join (their display name matches), so it doubles as a waiting indicator.
-    addInvite(c.name)
+    addInvite(c.name, 'ring')
     toast(`Ringing ${c.name}…`, 'info')
     countUsage('new_call', surface())
     goTo(slug, secrets, 'new')
