@@ -47,15 +47,6 @@ user could not say aloud to voice control.
 - [ ] Confirm crash reports arrive: the DSN and scrubbing rule are set (Sept 2026);
       run DEPLOY.md §3c step 6 in a browser without an ad blocker (they block
       Sentry's loader, which is also why some visitors will never report).
-- [ ] Run the new SQL (Sept 2026 batch): the `avatar read own` policy (§3a), the
-      push `seen_at` column and trigger (§4c), the nightly clean-up jobs (§4d), and
-      the device keys for sealed rings (§4e, after §4c), recent calls on every
-      device (§4f) and who really called (§4g, which drops the old 3-argument
-      `ring()`). Until §4e runs, rings work the old way; until §4g runs, an
-      incoming ring shows the name the caller typed.
-- [ ] After the deploy, check the served site: a file under `/assets/` answers with the
-      COOP/COEP/CSP headers, and a call page
-      still reports `crossOriginIsolated` true in the console.
 
 ## Areas not yet audited
 
