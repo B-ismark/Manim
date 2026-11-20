@@ -287,4 +287,8 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 Work landing on a feature branch but never reaching `main` is a recurring failure.
 - **Finish = merged.** When a task is done and gates pass, merge to `main` (fast-forward
   or PR) and push. Don't leave the only copy on a feature branch.
+- **Adversarial review before every merge** (owner's standing rule). Review the whole
+  branch diff against `origin/main` as an adversary — line by line, every removed
+  behaviour, every caller of a changed function, every CLAUDE.md rule — and fix what
+  it finds (or say why not) BEFORE merging. Re-run the affected gates after the fixes.
 - Check before ending: `npm run unmerged` (lists commits on HEAD not yet on `origin/main`).

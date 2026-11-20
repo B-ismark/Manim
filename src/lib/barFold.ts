@@ -39,9 +39,9 @@ export function nextFoldLevel(level: number, barW: number, avail: number, max = 
 const BAR_GUTTER = 32
 
 /**
- * Measures the bar and returns its fold level. On a resize (or when `contentKey`
- * changes — a share starts and Annotate appears) it starts again from 0 and
- * folds upward inside layout effects, so every intermediate state is resolved
+ * Measures the bar and returns its fold level. When the window widens (or
+ * `contentKey` changes — a share starts and Annotate appears) it starts again
+ * from 0 and folds upward inside layout effects, so every intermediate state is resolved
  * before the browser paints: no flash of an overflowing bar.
  */
 export function useBarFold(ref: RefObject<HTMLElement | null>, enabled: boolean, contentKey: string): number {
@@ -53,10 +53,16 @@ export function useBarFold(ref: RefObject<HTMLElement | null>, enabled: boolean,
   useEffect(() => {
     if (!enabled) return
     let raf = 0
+    let lastW = window.innerWidth
     const onResize = () => {
       cancelAnimationFrame(raf)
       raf = requestAnimationFrame(() => {
-        setLevel(0)
+        const w = window.innerWidth
+        // Only a WIDER window can let a folded control back. A narrower one can
+        // only fold further, so it just re-measures — unfolding there would mount
+        // and unmount every folded control on each frame of a drag.
+        if (w > lastW) setLevel(0)
+        lastW = w
         setEpoch((e) => e + 1)
       })
     }

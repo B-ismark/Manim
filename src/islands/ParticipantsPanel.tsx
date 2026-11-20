@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   useLocalParticipant,
   useParticipants,
@@ -76,6 +76,24 @@ export function ParticipantsPanel() {
     ...handOrder.flatMap((id) => participants.filter((p) => p.identity === id)),
     ...participants.filter((p) => !handOrder.includes(p.identity)),
   ]
+  // Re-sorting MOVES rows in the DOM, and moving the row that holds focus drops
+  // it to <body> — a host tabbing through the list would be thrown back to the
+  // top of the page whenever someone raised or lowered a hand. Note what holds
+  // focus inside the list as this render starts (the DOM hasn't moved yet) and
+  // put it back after the commit if the move dropped it.
+  const listRef = useRef<HTMLUListElement>(null)
+  const focusBefore = useRef<Element | null>(null)
+  const order = byHand.map((p) => p.identity).join('\n')
+  if (typeof document !== 'undefined') {
+    const active = document.activeElement
+    focusBefore.current = active && listRef.current?.contains(active) ? active : null
+  }
+  useLayoutEffect(() => {
+    const el = focusBefore.current
+    if (el instanceof HTMLElement && el.isConnected && document.activeElement !== el) {
+      el.focus({ preventScroll: true })
+    }
+  }, [order])
   const { localParticipant } = useLocalParticipant()
   // Your other devices, by the server's signature (metadata alone can be edited).
   const otherSeats = useMyOtherSeats()
@@ -352,7 +370,9 @@ export function ParticipantsPanel() {
 
         <p className="mt-3 text-xs font-medium text-ink-subtle">{participants.length} in call</p>
       </div>
-      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 no-scrollbar">
+      <ul
+        ref={listRef}
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 no-scrollbar">
         {byHand.map((p) => (
           <ParticipantRow
             key={p.identity}

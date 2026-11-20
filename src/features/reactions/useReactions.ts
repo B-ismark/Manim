@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   useLocalParticipant,
   useParticipantAttribute,
-  useParticipants,
+  useRoomContext,
 } from '@livekit/components-react'
 import { useDataTopic } from '@/lib/useDataTopic'
 import { RoomEvent, type Participant } from 'livekit-client'
@@ -18,8 +18,10 @@ export const HAND_ATTR = 'mn.hand'
  * called on in order — the "1 ✋, 2 ✋" Teams puts on tiles. A SEPARATE attribute
  * rather than a timestamp in HAND_ATTR, because everything else (sounds, the
  * announcer, clients still on an older build) reads HAND_ATTR as `=== '1'`.
- * Clocks across machines can disagree by a second or so; for a queue of raised
- * hands that is close enough.
+ * Best-effort ordering: it is the raiser's own clock, so a skewed clock (or a
+ * client writing a small number on purpose) moves that hand up the queue. Fine
+ * for "who asked first"; a server-stamped time would be needed to make it
+ * authoritative.
  */
 export const HAND_AT_ATTR = 'mn.handAt'
 
@@ -121,16 +123,40 @@ export function handQueue(people: ReadonlyArray<{ identity: string; attributes?:
     .map((p) => p.id)
 }
 
-const HAND_EVENTS = [
-  RoomEvent.ParticipantAttributesChanged,
-  RoomEvent.ParticipantConnected,
-  RoomEvent.ParticipantDisconnected,
-]
-
-/** This participant's place in the raised-hand queue (1-based), or null when their hand is down. */
+/**
+ * This participant's place in the raised-hand queue (1-based), or null when
+ * their hand is down.
+ *
+ * Subscribes to the room ONLY while given a participant — tiles pass one only
+ * while that person's hand is up. A `useParticipants` here re-rendered every
+ * tile on the stage, video and all, on every join, leave and attribute change
+ * (the whole-stage redraw lib/rosterEvents exists to avoid).
+ */
 export function useHandPosition(participant?: Participant): number | null {
-  const people = useParticipants({ updateOnlyOn: HAND_EVENTS })
-  if (!participant) return null
-  const i = handQueue(people).indexOf(participant.identity)
-  return i < 0 ? null : i + 1
+  const room = useRoomContext()
+  const [position, setPosition] = useState<number | null>(null)
+  const identity = participant?.identity
+  useEffect(() => {
+    if (!identity) {
+      setPosition(null)
+      return
+    }
+    const read = () => {
+      const people = [room.localParticipant, ...room.remoteParticipants.values()]
+      const i = handQueue(people).indexOf(identity)
+      setPosition(i < 0 ? null : i + 1)
+    }
+    read()
+    room
+      .on(RoomEvent.ParticipantAttributesChanged, read)
+      .on(RoomEvent.ParticipantConnected, read)
+      .on(RoomEvent.ParticipantDisconnected, read)
+    return () => {
+      room
+        .off(RoomEvent.ParticipantAttributesChanged, read)
+        .off(RoomEvent.ParticipantConnected, read)
+        .off(RoomEvent.ParticipantDisconnected, read)
+    }
+  }, [room, identity])
+  return identity ? position : null
 }

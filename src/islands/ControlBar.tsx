@@ -186,6 +186,9 @@ export function ControlBar({
   // A closed call leaves nothing open behind it for the next one.
   useEffect(() => () => setMoreOpen(false), [setMoreOpen])
   const moreRef = useRef<HTMLButtonElement>(null)
+  // Where Audio & video returns focus: the mic arrow when it was opened from
+  // there, otherwise the More button (ReturnFocusContext).
+  const devicesReturn = useRef<HTMLElement | null>(null)
   const touch = useIsTouch()
   // A phone on its side: the bar becomes a column down the right edge (chromeBands).
   const rail = useRail()
@@ -561,6 +564,7 @@ export function ControlBar({
           icon={<SlidersIcon />}
           label="Audio & video"
           onClick={() => {
+            devicesReturn.current = null
             setModal('devices')
             closeMore()
           }}
@@ -904,10 +908,13 @@ export function ControlBar({
               "Audio & video" in More. */}
           {!compact && (
             <DeviceCaret label="Audio options">
-              {(close) => (
+              {(close, trigger) => (
                 <AudioDevicePanel
                   noise={noise}
                   onMoreSettings={() => {
+                    // Back to the mic arrow on close, not to More: the row that
+                    // opened the dialog unmounts with the popover.
+                    devicesReturn.current = trigger
                     close()
                     setModal('devices')
                   }}
@@ -1115,6 +1122,7 @@ export function ControlBar({
         <Dialog
           open={modal === 'devices'}
           onOpenChange={modalToggle('devices')}
+          returnFocus={devicesReturn.current ? devicesReturn : undefined}
           title="Audio & video"
           description="Choose your camera, microphone and speaker, and tune noise suppression."
         >
@@ -1408,10 +1416,12 @@ function DeviceCaret({
   children,
 }: {
   label: string
-  /** A function child gets `close`, for a row that hands off to a dialog. */
-  children: ReactNode | ((close: () => void) => ReactNode)
+  /** A function child gets `close` and the caret itself, for a row that hands off
+   *  to a dialog (which should return focus to the caret). */
+  children: ReactNode | ((close: () => void, trigger: HTMLElement | null) => ReactNode)
 }) {
   const [open, setOpen] = useState(false)
+  const triggerRef = useRef<HTMLButtonElement>(null)
   return (
     <Popover
       open={open}
@@ -1420,6 +1430,7 @@ function DeviceCaret({
       align="center"
       trigger={
         <IconButton
+          ref={triggerRef}
           label={label}
           size="sm"
           tone="neutral"
@@ -1429,7 +1440,7 @@ function DeviceCaret({
       }
     >
       <div className="w-72 max-w-[85vw]">
-        {typeof children === 'function' ? children(() => setOpen(false)) : children}
+        {typeof children === 'function' ? children(() => setOpen(false), triggerRef.current) : children}
       </div>
     </Popover>
   )
