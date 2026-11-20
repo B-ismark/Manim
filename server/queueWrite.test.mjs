@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { writeWithRetry, QUEUE_WRITE } from './queueWrite.mjs'
-import { mutateQueue, enqueueOp, decideOp } from './core.mjs'
+import { mutateQueue, enqueueOp, decideOp, mutateRoomFlags, setFlagsOp, electOp, rememberRemovedOp, FLAG_REV } from './core.mjs'
+import { removedEntry, wasRemoved } from './removed.mjs'
 import { seal, unseal } from './sealed.mjs'
 
 const SECRET = 'test-secret-that-is-long-enough-for-hmac'
@@ -178,6 +179,115 @@ describe('mutateQueue', () => {
     expect(op.change(q, 1)).toMatchObject({ done: { status: 409, body: { code: 'renamed' } } })
     // Attempt 0 is the handler's own path, which checked the name already.
     expect(op.change([{ ...knock('a', 'Esi') }], 0)).toMatchObject({ result: { status: 200 } })
+  })
+})
+
+describe('mutateRoomFlags', () => {
+  const toggle = (svc, patch, extra = {}) => mutateRoomFlags(svc, ROOM, setFlagsOp(patch, extra), { config: FAST })
+
+  it('a host toggle racing a knock: both survive', async () => {
+    for (let i = 0; i < 5; i++) {
+      const svc = fakeRoomService(await roomWith([], { locked: false }), { writeMs: () => 1 + Math.floor(Math.random() * 6) })
+      const [t, k] = await Promise.all([
+        toggle(svc, { waiting: true }),
+        mutateQueue(svc, SECRET, ROOM, enqueueOp(knock('a', 'Esi')), { config: FAST }),
+      ])
+      expect(t).toEqual({ ok: true, value: true })
+      expect(k.ok).toBe(true)
+      expect(svc.flags.waiting).toBe(true)
+      expect((await queueOf(svc)).map((e) => e.id)).toEqual(['a'])
+    }
+  })
+
+  it('a removal racing an admit: the removed guest stays removed, the admitted one admitted', async () => {
+    for (let i = 0; i < 5; i++) {
+      const svc = fakeRoomService(await roomWith([knock('a', 'Esi')]), { writeMs: () => 1 + Math.floor(Math.random() * 6) })
+      const entry = await removedEntry('Kofi#dev-kofi', '')
+      const [r, a] = await Promise.all([
+        mutateRoomFlags(svc, ROOM, rememberRemovedOp(entry), { config: FAST }),
+        mutateQueue(svc, SECRET, ROOM, decideOp('a', true, 'Esi'), { config: FAST }),
+      ])
+      expect(r.ok).toBe(true)
+      expect(a.value.status).toBe(200)
+      expect(await wasRemoved(svc.flags.removed, 'dev-kofi', '')).toBe(true)
+      expect((await queueOf(svc))[0].status).toBe('approved')
+    }
+  })
+
+  it('two different toggles at once both stick', async () => {
+    const svc = fakeRoomService(await roomWith([], { locked: false }))
+    await Promise.all([toggle(svc, { locked: true }), toggle(svc, { chatHistory: false })])
+    expect(svc.flags).toMatchObject({ locked: true, chatHistory: false, hostId: 'Host#h1' })
+  })
+
+  it('two hosts flipping one switch opposite ways settle on one answer instead of fighting', async () => {
+    for (let i = 0; i < 10; i++) {
+      const svc = fakeRoomService(await roomWith([], { locked: false }), { writeMs: () => 1 + Math.floor(Math.random() * 6) })
+      const [on, off] = await Promise.all([toggle(svc, { locked: true }), toggle(svc, { locked: false })])
+      expect(on.ok && off.ok).toBe(true)
+      expect(typeof svc.flags.locked).toBe('boolean')
+      // Neither kept redoing itself: a fight would run to the attempt limit.
+      expect(svc.writes.length).toBeLessThan(5)
+    }
+  })
+
+  it('a later deliberate change counts as kept; only a reverted tag is redone', () => {
+    const op = setFlagsOp({ locked: true }, { tag: 'mine' })
+    const base = { hostId: 'H', locked: false, [FLAG_REV]: { locked: 'old' } }
+    expect(op.change(base, 0)).toEqual({ patch: { locked: true, [FLAG_REV]: { locked: 'mine' } }, result: true })
+    // A stale write put the old tag back: lost, redo it.
+    expect(op.present(base)).toBe(false)
+    expect(op.change(base, 1)).toMatchObject({ patch: { locked: true } })
+    // Another host set it since (their own tag): theirs stands.
+    const theirs = { ...base, [FLAG_REV]: { locked: 'theirs' } }
+    expect(op.present(theirs)).toBe(true)
+    expect(op.change(theirs, 1)).toEqual({ done: true })
+  })
+
+  it('a retry re-checks authority on the fresh flags', () => {
+    const op = setFlagsOp({ locked: true }, { guard: (f) => (f.coHosts?.includes('Ama#d2') ? undefined : 403) })
+    expect(op.change({ coHosts: ['Ama#d2'] }, 0)).toMatchObject({ result: true })
+    expect(op.change({ coHosts: [] }, 1)).toEqual({ done: 403 })
+  })
+
+  it('host election racing a knock: the seat moves and the knock stays queued', async () => {
+    for (let i = 0; i < 5; i++) {
+      const svc = fakeRoomService(await roomWith([], { coHosts: ['Ama#d2', 'Yaw#d3'] }), { writeMs: () => 1 + Math.floor(Math.random() * 6) })
+      const [e] = await Promise.all([
+        mutateRoomFlags(svc, ROOM, electOp('Ama#d2', 'Host#h1'), { config: FAST }),
+        mutateQueue(svc, SECRET, ROOM, enqueueOp(knock('a', 'Esi')), { config: FAST }),
+      ])
+      expect(e).toEqual({ ok: true, value: 'Ama#d2' })
+      expect(svc.flags).toMatchObject({ hostId: 'Ama#d2', coHosts: ['Yaw#d3'] })
+      expect((await queueOf(svc)).map((x) => x.id)).toEqual(['a'])
+    }
+  })
+
+  it('concurrent elections that picked differently agree on the first that landed', async () => {
+    const svc = fakeRoomService(await roomWith([], { coHosts: ['Ama#d2', 'Yaw#d3'] }))
+    const [x, y] = await Promise.all([
+      mutateRoomFlags(svc, ROOM, electOp('Ama#d2', 'Host#h1'), { config: FAST }),
+      mutateRoomFlags(svc, ROOM, electOp('Yaw#d3', 'Host#h1'), { config: FAST }),
+    ])
+    expect(x.ok && y.ok).toBe(true)
+    expect(x.value).toBe(svc.flags.hostId)
+    expect(y.value).toBe(svc.flags.hostId)
+    expect(svc.flags.coHosts).not.toContain(svc.flags.hostId)
+  })
+
+  it('a failed read is retried, never written as {} over the room', async () => {
+    const svc = fakeRoomService(await roomWith([]), { failReads: 1 })
+    const r = await toggle(svc, { locked: false })
+    expect(r.ok).toBe(true)
+    for (const w of svc.writes) expect(w.hostId).toBe('Host#h1')
+  })
+
+  it('removing the same device twice records it once', async () => {
+    const entry = await removedEntry('Kofi#dev-kofi', '')
+    const svc = fakeRoomService(await roomWith([], { removed: [entry] }))
+    const r = await mutateRoomFlags(svc, ROOM, rememberRemovedOp(entry), { config: FAST })
+    expect(r).toEqual({ ok: true, value: true })
+    expect(svc.writes).toHaveLength(0)
   })
 })
 
