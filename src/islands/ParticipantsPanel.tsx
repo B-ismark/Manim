@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from 'react'
 import {
   useLocalParticipant,
   useParticipants,
@@ -35,6 +35,7 @@ import {
   MoreIcon,
   PinIcon,
   ShareIcon,
+  ChevronDownIcon,
 } from '@/components/icons'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { ContactsDialog } from '@/islands/Contacts'
@@ -43,6 +44,8 @@ import type { ContactRow } from '@/store/useContactsStore'
 import { handQueue, useHandRaised } from '@/features/reactions/useReactions'
 import { CONTROL_TOPIC } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
+import { useWaitingStore } from '@/store/useWaitingStore'
+import { nameMatches, searchMin } from '@/lib/nameSearch'
 import { useAppStore } from '@/store/useAppStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useBlockStore } from '@/store/useBlockStore'
@@ -94,6 +97,14 @@ export function ParticipantsPanel() {
       el.focus({ preventScroll: true })
     }
   }, [order])
+  // Search and sections (Teams' People: a search box, then Waiting / In this
+  // call / Invited, each with its count and its bulk action in its own header,
+  // so it's clear who "Mute all" or "Admit all" applies to).
+  const [query, setQuery] = useState('')
+  const [folded, setFolded] = useState<Record<SectionId, boolean>>({ waiting: false, call: false, invited: false })
+  const toggleSection = (id: SectionId) => setFolded((f) => ({ ...f, [id]: !f[id] }))
+  const waitingAll = useWaitingStore((s) => s.pending)
+  const decideKnock = useWaitingStore((s) => s.decide)
   const { localParticipant } = useLocalParticipant()
   // Your other devices, by the server's signature (metadata alone can be edited).
   const otherSeats = useMyOtherSeats()
@@ -160,6 +171,23 @@ export function ParticipantsPanel() {
   // Co-hosts get the moderation UI too; only the primary host manages the roster.
   const isHost = isPrimaryHost || coHosts.includes(localParticipant.identity)
 
+  // Waiting is the host's to act on; nobody else sees the queue (it's sealed).
+  const waitingList = isHost ? waitingAll : []
+  const total = participants.length + waitingList.length + ghostInvites.length
+  const showSearch = total >= searchMin()
+  const searching = showSearch && query.trim() !== ''
+  const shownCall = searching ? byHand.filter((p) => nameMatches(displayName(p), query)) : byHand
+  const shownWaiting = searching ? waitingList.filter((p) => nameMatches(p.name, query)) : waitingList
+  const shownInvites = searching ? ghostInvites.filter((i) => nameMatches(i.label, query)) : ghostInvites
+  // Searching opens every section: a match inside a folded one would be invisible.
+  const isOpen = (id: SectionId) => searching || !folded[id]
+  // The box goes away when the list gets short again (people left); don't keep
+  // a search nobody can see, waiting to filter the list the next time it appears.
+  useEffect(() => {
+    if (!showSearch && query) setQuery('')
+  }, [showSearch, query])
+
+
   async function toggleCoHost(identity: string, on: boolean) {
     if (!isPrimaryHost) return
     if (!roomToken) return toast('Reconnecting — try again in a moment', 'neutral')
@@ -201,7 +229,7 @@ export function ParticipantsPanel() {
     const href = mailtoHref(to)
     setMailto({ href, to })
     setCallMsg(null)
-    addInvite(to)
+    addInvite(to, 'email')
     window.open(href, '_blank') // best effort; popup blockers may ignore it
   }
 
@@ -223,7 +251,7 @@ export function ParticipantsPanel() {
             ? `Invite emailed to ${to}. This call is encrypted, so also send them the full link.`
             : `Invite emailed to ${to}`,
         )
-        addInvite(to)
+        addInvite(to, 'email')
         return true
       }
       fallbackToMailto(to)
@@ -245,7 +273,7 @@ export function ParticipantsPanel() {
     const err = await ringUser(to, room.name, localParticipant.name || 'Someone', ringSecrets())
     setCallMsg(err ?? `Ringing ${to}…`)
     if (err) return false
-    addInvite(to)
+    addInvite(to, 'ring')
     return true
   }
 
@@ -258,7 +286,7 @@ export function ParticipantsPanel() {
     setCallMsg(err ?? `Ringing ${c.name}…`)
     // Label by name (not email) so the "Invited · waiting" row clears when they
     // join (the ghost matches against participant display names).
-    if (!err) addInvite(c.name)
+    if (!err) addInvite(c.name, 'ring')
   }
 
   // Report flags a participant to the host over the control channel. It is
@@ -368,61 +396,145 @@ export function ParticipantsPanel() {
           </p>
         )}
 
-        <p className="mt-3 text-xs font-medium text-ink-subtle">{participants.length} in call</p>
-      </div>
-      <ul
-        ref={listRef}
-        className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 no-scrollbar">
-        {byHand.map((p) => (
-          <ParticipantRow
-            key={p.identity}
-            participant={p}
-            handPosition={handOrder.indexOf(p.identity) + 1 || null}
-            ambiguous={dupNames.has(displayName(p).toLowerCase())}
-            isLocal={p.identity === localParticipant.identity}
-            myOtherDevice={!p.isLocal && !!p.sid && otherSeats.has(p.sid)}
-            canModerate={isHost && p.identity !== localParticipant.identity}
-            canManageCoHost={isPrimaryHost && p.identity !== localParticipant.identity}
-            isCoHost={coHosts.includes(p.identity)}
-            onToggleCoHost={toggleCoHost}
-            onRequestRemove={(identity, name) => setRemoveTarget({ identity, name })}
-            room={room.name}
-            token={roomToken}
-            onReport={reportUser}
+        {showSearch && (
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            // Esc clears a search before it closes the panel: while there's text
+            // the field owns the key (Radix hears it first, in capture — see
+            // ownsEscape); empty, Esc closes People as it always has.
+            data-own-escape={query ? '' : undefined}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && query) setQuery('')
+            }}
+            placeholder="Search people"
+            aria-label="Search people"
+            autoComplete="off"
+            className="mt-3 h-9 w-full rounded-field bg-sunken px-3 text-base outline-none sm:text-sm placeholder:text-ink-subtle focus-visible:ring-2 focus-visible:ring-accent"
           />
-        ))}
-
-        {ghostInvites.map((inv) => (
-          <li
-            key={inv.id}
-            className="flex items-center gap-3 rounded-field px-2 py-1.5 opacity-70"
+        )}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1 no-scrollbar">
+        {shownWaiting.length > 0 && (
+          <Section
+            id="waiting"
+            title="Waiting"
+            count={shownWaiting.length}
+            open={isOpen('waiting')}
+            onToggle={toggleSection}
+            action={
+              shownWaiting.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    for (const k of shownWaiting) decideKnock(k, true)
+                  }}
+                >
+                  {searching ? `Admit ${shownWaiting.length}` : 'Admit all'}
+                </Button>
+              )
+            }
           >
-            <Avatar name={inv.label} size="sm" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">{inv.label}</p>
-              <p className="text-xs text-ink-subtle">Invited · waiting</p>
-            </div>
-            <IconButton
-              size="sm"
-              tone="neutral"
-              label={`Cancel invite to ${inv.label}`}
-              icon={<CloseIcon />}
-              onClick={() => clearInvite(inv.id)}
-            />
-          </li>
-        ))}
-      </ul>
+            {shownWaiting.map((k) => (
+              <li key={k.id} className="flex items-center gap-3 rounded-field px-2 py-1.5">
+                <Avatar name={k.name} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p dir="auto" className="truncate text-sm font-medium">{k.name}</p>
+                  {k.note && (
+                    <p dir="auto" className="truncate text-xs text-ink-muted" title={k.note}>
+                      “{k.note}”
+                    </p>
+                  )}
+                </div>
+                <Button variant="accent" size="sm" aria-label={`Admit ${k.name}`} onClick={() => decideKnock(k, true)}>
+                  Admit
+                </Button>
+                <IconButton size="sm" tone="neutral" label={`Deny ${k.name}`} icon={<CloseIcon />} onClick={() => decideKnock(k, false)} />
+              </li>
+            ))}
+          </Section>
+        )}
 
-      {isHost && participants.length > 1 && (
-        <div className="flex gap-2 border-t border-line p-2">
-          <Button variant="neutral" size="sm" block onClick={() => muteAll(Track.Source.Microphone, 'mic')}>
-            <MicOffIcon /> Mute all
-          </Button>
-          <Button variant="neutral" size="sm" block onClick={() => muteAll(Track.Source.Camera, 'camera')}>
-            <CameraOffIcon /> Turn off cameras
-          </Button>
-        </div>
-      )}
+        <Section
+          id="call"
+          title="In this call"
+          count={searching ? shownCall.length : participants.length}
+          open={isOpen('call')}
+          onToggle={toggleSection}
+          listRef={listRef}
+          action={
+            isHost &&
+            participants.length > 1 && (
+              <span className="flex items-center">
+                <Button variant="ghost" size="sm" onClick={() => muteAll(Track.Source.Microphone, 'mic')}>
+                  Mute all
+                </Button>
+                <IconButton
+                  size="sm"
+                  tone="neutral"
+                  label="Turn off cameras"
+                  icon={<CameraOffIcon />}
+                  onClick={() => muteAll(Track.Source.Camera, 'camera')}
+                />
+              </span>
+            )
+          }
+        >
+          {shownCall.map((p) => (
+            <ParticipantRow
+              key={p.identity}
+              participant={p}
+              handPosition={handOrder.indexOf(p.identity) + 1 || null}
+              ambiguous={dupNames.has(displayName(p).toLowerCase())}
+              isLocal={p.identity === localParticipant.identity}
+              myOtherDevice={!p.isLocal && !!p.sid && otherSeats.has(p.sid)}
+              canModerate={isHost && p.identity !== localParticipant.identity}
+              canManageCoHost={isPrimaryHost && p.identity !== localParticipant.identity}
+              isCoHost={coHosts.includes(p.identity)}
+              onToggleCoHost={toggleCoHost}
+              onRequestRemove={(identity, name) => setRemoveTarget({ identity, name })}
+              room={room.name}
+              token={roomToken}
+              onReport={reportUser}
+            />
+          ))}
+        </Section>
+
+        {shownInvites.length > 0 && (
+          <Section
+            id="invited"
+            title="Invited"
+            count={shownInvites.length}
+            open={isOpen('invited')}
+            onToggle={toggleSection}
+          >
+            {shownInvites.map((inv) => (
+              <li key={inv.id} className="flex items-center gap-3 rounded-field px-2 py-1.5 opacity-70">
+                <Avatar name={inv.label} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium">{inv.label}</p>
+                  <p className="text-xs text-ink-subtle">{inv.kind === 'ring' ? 'Ringing…' : 'Invited by email'}</p>
+                </div>
+                <IconButton
+                  size="sm"
+                  tone="neutral"
+                  label={`Cancel invite to ${inv.label}`}
+                  icon={<CloseIcon />}
+                  onClick={() => clearInvite(inv.id)}
+                />
+              </li>
+            ))}
+          </Section>
+        )}
+
+        {searching && shownCall.length + shownWaiting.length + shownInvites.length === 0 && (
+          <p role="status" className="px-2 py-6 text-center text-sm text-ink-muted">
+            No one called “{query.trim()}” here
+          </p>
+        )}
+      </div>
 
       <Dialog
         open={removeTarget !== null}
@@ -629,4 +741,60 @@ function ordinal(n: number): string {
   const tens = n % 100
   if (tens >= 11 && tens <= 13) return `${n}th`
   return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
+}
+
+type SectionId = 'waiting' | 'call' | 'invited'
+
+/**
+ * One group in People: a header that folds it away (with its count, and its
+ * bulk action beside it so it's clear who that action is for), then its rows.
+ * The header is a real heading wrapping a disclosure button, so a screen reader
+ * can jump between sections and hear whether each is open.
+ */
+function Section({
+  id,
+  title,
+  count,
+  open,
+  onToggle,
+  action,
+  listRef,
+  children,
+}: {
+  id: SectionId
+  title: string
+  count: number
+  open: boolean
+  onToggle: (id: SectionId) => void
+  action?: ReactNode
+  listRef?: Ref<HTMLUListElement>
+  children: ReactNode
+}) {
+  const listId = `people-section-${id}`
+  return (
+    <section aria-label={`${title} (${count})`} className="mt-1">
+      <div className="flex min-h-9 items-center gap-1 pr-1">
+        <h3 className="min-w-0 flex-1">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={listId}
+            onClick={() => onToggle(id)}
+            className="flex w-full items-center gap-1 rounded-field px-1 py-1.5 text-left text-xs font-medium text-ink-subtle hover:text-ink focus-visible:outline-2 focus-visible:outline-accent [&_svg]:size-3.5"
+          >
+            <span className={cn('transition-transform duration-[var(--dur-fast)]', open ? 'rotate-0' : '-rotate-90')}>
+              <ChevronDownIcon />
+            </span>
+            <span className="truncate">
+              {title} <span className="tabular-nums">({count})</span>
+            </span>
+          </button>
+        </h3>
+        {open && action}
+      </div>
+      <ul id={listId} ref={listRef} hidden={!open} className="space-y-1">
+        {children}
+      </ul>
+    </section>
+  )
 }

@@ -267,6 +267,10 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   will admit and leave a one-line note; both go through `/api/knock-update`, gated
   by the same claim key as knock-status and only while the request is pending, and
   live in the sealed queue, so only a host's `WaitingRoomBanner` reads them.
+  The banner is the ONE fetcher of that queue (`store/useWaitingStore`); People's
+  Waiting section reads the same list. Admit/deny requests go to the server one at
+  a time — each is a read-modify-write of the whole queue, so two in flight undo
+  each other — which is what makes People's "Admit all" safe.
 - **A ring checks who it's sealed to.** `lib/devicePins` remembers each contact's
   device keys in this browser (per signed-in account). First ring: remember. After
   that, anything not yet trusted is asked about BEFORE sealing (`KeyChangeDialog`,
