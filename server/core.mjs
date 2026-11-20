@@ -177,24 +177,6 @@ async function getRoomFlags(roomService, room) {
   }
 }
 
-/**
- * LEGACY — new writers use mutateRoomFlags, which verifies the write stuck; this
- * one is erased by any concurrent writer that read before it. Only the first-join
- * host claim in handleKnock still uses it (it falls back to createRoom when the
- * room doesn't exist yet, which a retry loop would only delay).
- *
- * Read-modify-write of room metadata. The read is what stops a concurrent writer's
- * unrelated keys from being clobbered, so it is NOT optional in general — but a
- * caller that already holds a fresh copy can pass it as `current` to skip a second
- * listRooms round-trip. Only pass it when nothing has been awaited since that read
- * (the window is then effectively zero); when there are awaits in between — knock,
- * which does KV and allowlist I/O — omit it and pay for the fresh read.
- */
-async function mergeRoomFlags(roomService, room, patch, current) {
-  const base = current ?? (await getRoomFlags(roomService, room))
-  await roomService.updateRoomMetadata(room, JSON.stringify({ ...base, ...patch }))
-}
-
 /** A settled (denied) waiting-room request is kept this long, so the guest's poll
  *  can still read "denied", then dropped. Approved ones stay: rejoining needs them. */
 const DENIED_KEEP_MS = 10 * 60_000
@@ -219,7 +201,7 @@ async function queuePatch(apiSecret, room, queue, now = Date.now()) {
 /**
  * Change room flags so a concurrent change to them isn't lost.
  *
- * mergeRoomFlags is a plain read-modify-write, and two requests in different Worker
+ * A plain read-modify-write isn't enough: two requests in different Worker
  * isolates interleave: a host flipping Lock while a guest knocks, a host removing
  * someone while a co-host admits, and the second write erased the first. This
  * re-reads after the write and redoes the change on top of whatever won
@@ -230,8 +212,8 @@ async function queuePatch(apiSecret, room, queue, now = Date.now()) {
  * `change(flags, attempt)` returns `{ patch, result }` to write `{...flags, ...patch}`,
  * or `{ done }` to stop without writing. `present(flags)` says whether this
  * request's change survived. `first` is an already-fresh, strictly-read copy of the
- * flags for attempt 0 (the same rule as mergeRoomFlags' `current`: only when nothing
- * has been awaited since).
+ * flags for attempt 0, only when nothing has been awaited since that read: with
+ * awaits in between (a knock's KV and allowlist I/O) omit it and pay for a fresh read.
  *
  * Returns `{ ok: true, value }`, or `{ ok: false }` when it kept losing (or LiveKit
  * kept failing): the caller says "try again" rather than claiming success. Every
@@ -294,7 +276,11 @@ const revOf = (flags) => (flags[FLAG_REV] && typeof flags[FLAG_REV] === 'object'
  * annotateHostOnly, encrypted, the co-host roster). A key counts as kept while its
  * tag is ours, or anyone's but the one it had before we wrote (someone changed it
  * deliberately since: theirs stands). Only a key back at its pre-write tag — an
- * erased write — is redone. `guard(flags)` re-checks authority on the fresh flags
+ * erased write — is redone. One case slips through: if a stale writer carrying a
+ * THIRD host's tag lands after ours, it reads as "theirs stands" and our change is
+ * reported done though the third host's value shows. The metadata is still the
+ * truth the UI renders, so nobody is shown a switch in a state it isn't.
+ * `guard(flags)` re-checks authority on the fresh flags
  * each attempt; returning anything but undefined stops with that as the answer.
  */
 export function setFlagsOp(patch, { guard, tag = revTag() } = {}) {
@@ -366,6 +352,61 @@ export function rememberRemovedOp(entry) {
     change: (flags) => (has(flags) ? { done: true } : { patch: { removed: withRemoved(flags.removed, entry) }, result: true }),
     present: has,
   }
+}
+
+/**
+ * mutateRoomFlags op: claim the unclaimed host seat for `identity`, with the join
+ * secret's hash. Answers 'won' or 'lost' (someone else holds the seat: theirs
+ * stands, and so does their secretHash). Written even when the seat already reads
+ * as ours on attempt 0: the room may have just been created with it, and a knock
+ * that read the room before it existed can still write over that.
+ */
+export function claimHostOp(identity, patch) {
+  return {
+    change: (flags, attempt) => {
+      if (flags.hostId && flags.hostId !== identity) return { done: 'lost' }
+      if (flags.hostId === identity && attempt > 0) return { done: 'won' }
+      return { patch: { ...patch, hostId: identity }, result: 'won' }
+    },
+    present: (flags) => flags.hostId === identity,
+  }
+}
+
+/**
+ * The first-join host claim. At first join the room usually doesn't exist yet, and
+ * updateRoomMetadata on a missing room fails — so create it with the claim in its
+ * metadata, then verify the claim like any other flags write (claimHostOp). A
+ * concurrent first-joiner's createRoom returns the existing room without touching
+ * its metadata, so exactly one claim wins and the other learns it lost.
+ * Returns 'won' | 'lost' | 'unknown' (LiveKit kept failing).
+ */
+async function claimHost(env, roomService, room, identity, patch) {
+  let exists = true
+  try {
+    exists = (await roomService.listRooms([room])).length > 0
+  } catch {
+    /* unknown: let the verified write below find out */
+  }
+  if (!exists) {
+    try {
+      // First-join room creation — stamp the beta size cap and idle timeouts so
+      // the SFU enforces them itself: maxParticipants caps the room, emptyTimeout
+      // reaps it shortly after the last person leaves, and departureTimeout closes
+      // it quickly once empty — all quota protection that doesn't rely on a client
+      // staying alive to end the call.
+      await roomService.createRoom({
+        name: room,
+        metadata: JSON.stringify({ ...patch, hostId: identity }),
+        maxParticipants: roomCap(env),
+        emptyTimeout: 120,
+        departureTimeout: 60,
+      })
+    } catch {
+      /* the verified write below retries, or reports it couldn't */
+    }
+  }
+  const res = await mutateRoomFlags(roomService, room, claimHostOp(identity, patch))
+  return res.ok ? res.value : 'unknown'
 }
 
 /** mutateQueue op: add a knock's entry (once: a retry finds it already there). */
@@ -549,7 +590,7 @@ export async function handleMe(env, body) {
   return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed } }
 }
 
-export async function handleKnock(env, body) {
+export async function handleKnock(env, body, claimLost = false) {
   const { apiKey, apiSecret, roomService } = services(env)
   const { room, name, deviceId, host, accessToken, secret, seat, hasKey } = body ?? {}
   if (!room || !name) return { status: 400, body: { error: 'Enter your name to join.' } }
@@ -792,36 +833,24 @@ export async function handleKnock(env, body) {
 
   if (isHost || alreadyIn || !flags.waiting || wasApproved) {
     // Record the authoritative host identity ONCE (only when unclaimed), server-side,
-    // so it can't be forged via participant metadata (see ensureHost) and a second
-    // simultaneous first-join can't overwrite it. At first-join the room doesn't
-    // exist yet, so updateRoomMetadata would fail — create it with the metadata
-    // instead. (LiveKit auto-creates the room on connect either way.)
+    // so it can't be forged via participant metadata (see ensureHost). The claim is
+    // verified (claimHost): a knock writing at the same moment can't erase it, and of
+    // two simultaneous first-joiners exactly one is host.
     if (isHost && !flags.hostId) {
       // Record the join-secret hash alongside the host identity, so subsequent
       // joiners must present the matching secret from the invite link. Store only
       // the hash — a metadata leak then never exposes the secret itself.
-      const patch = { hostId: identity }
+      const patch = {}
       if (secret) patch.secretHash = await sha256Hex(secret)
-      try {
-        await mergeRoomFlags(roomService, room, patch)
-      } catch {
-        try {
-          // First-join room creation — stamp the beta size cap and idle timeouts so
-          // the SFU enforces them itself: maxParticipants caps the room, emptyTimeout
-          // reaps it shortly after the last person leaves, and departureTimeout closes
-          // it quickly once empty — all quota protection that doesn't rely on a client
-          // staying alive to end the call.
-          await roomService.createRoom({
-            name: room,
-            metadata: JSON.stringify(patch),
-            maxParticipants: roomCap(env),
-            emptyTimeout: 120,
-            departureTimeout: 60,
-          })
-        } catch {
-          /* non-fatal: host UI/moderation degrades, joining still works */
-        }
-      }
+      const claim = await claimHost(env, roomService, room, identity, patch)
+      // Someone else holds the seat. Everything above assumed we'd be host (it
+      // skipped the lock, the secret and the waiting room), so knock again from the
+      // top as who we really are: a guest, against the room as it now stands. Once.
+      if (claim === 'lost' && !claimLost) return handleKnock(env, body, true)
+      // Never mint a host token on a claim nobody could confirm. `isHost` came from
+      // reads that answer "no host, nobody here" when LiveKit fails, so this is
+      // also what stops a LiveKit hiccup making whoever knocked the host.
+      if (claim !== 'won') return WRITE_BUSY
     }
     const minted = await mintToken(env, room, name, deviceId, isHost, userId)
     return { status: 200, body: { ...minted, host: isHost, alsoOnDevice } }
@@ -1246,7 +1275,9 @@ export async function handleModerate(env, body, token) {
     // account banned by copying their id and getting themselves removed.
     // Verified, not just written: an admit or a knock that read before this write
     // and wrote after it would erase the entry, and the removed guest could knock
-    // straight back in. That costs ~0.3s before they're disconnected.
+    // straight back in. That costs ~0.3s before they're disconnected (seconds, if
+    // LiveKit is failing and the write keeps retrying: remembering them BEFORE
+    // removing them is the point, so that wait is kept).
     // Best effort: a failed write must never stop the removal itself. The read is
     // strict, so a failed lookup is retried, never taken for {} and written over
     // hostId, the queue and the join secret.

@@ -70,6 +70,9 @@ export async function writeWithRetry({ read, write, mutate, verify, first, sleep
       const flags = attempt === 0 && first ? first : await read()
       step = await mutate(flags, attempt)
       if ('done' in step) return { ok: true, value: step.done }
+      // mutate wants to write, so this read showed the change missing: an earlier
+      // write we couldn't read back didn't stick after all.
+      unconfirmed = null
       await write({ ...flags, ...step.patch })
     } catch {
       // A failed read or write: nothing was (knowingly) changed. Try again.

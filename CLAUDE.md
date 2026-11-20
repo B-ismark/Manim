@@ -272,13 +272,16 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   a time, which is what keeps People's "Admit all" from racing itself.
   **Every room-flags change goes through `mutateRoomFlags`** (`server/core.mjs`, over
   `server/queueWrite.mjs`; the queue's `mutateQueue` is a layer on it), never a bare
-  `mergeRoomFlags`: metadata has no compare-and-swap, so two Worker isolates writing
-  at once used to erase each other — a knock, an admit, a Lock toggle, a co-host
-  change, a host election, a removal. It writes, waits a beat, reads back and redoes
+  read-modify-write of `updateRoomMetadata`: metadata has no compare-and-swap, so two
+  Worker isolates writing at once used to erase each other — a knock, an admit, a
+  Lock toggle, a co-host change, a host election, a removal, the first-join host
+  claim. It writes, waits a beat, reads back and redoes
   a lost change (`29-waiting-room` races two guests; `queueWrite.test.mjs` races the
   rest). Host-set flags carry a random `flagRev` tag per key so a stale write that
   put the old value back is told apart from another host setting it back on purpose.
-  The one writer left on `mergeRoomFlags` is the first-join host claim in `handleKnock`.
+  The first-join claim (`claimHost`) creates the room with the seat in it, verifies
+  it, and a loser knocks again from the top as a guest; a claim nobody can confirm
+  answers `busy`, never a host token.
 - **A ring checks who it's sealed to.** `lib/devicePins` remembers each contact's
   device keys in this browser (per signed-in account). First ring: remember. After
   that, anything not yet trusted is asked about BEFORE sealing (`KeyChangeDialog`,

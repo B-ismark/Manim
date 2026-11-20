@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { writeWithRetry, QUEUE_WRITE } from './queueWrite.mjs'
-import { mutateQueue, enqueueOp, decideOp, mutateRoomFlags, setFlagsOp, electOp, rememberRemovedOp, FLAG_REV } from './core.mjs'
+import { mutateQueue, enqueueOp, decideOp, mutateRoomFlags, setFlagsOp, electOp, rememberRemovedOp, claimHostOp, FLAG_REV } from './core.mjs'
 import { removedEntry, wasRemoved } from './removed.mjs'
 import { seal, unseal } from './sealed.mjs'
 
@@ -56,7 +56,7 @@ const knock = (id, name) => ({ id, name, deviceId: `dev-${id}`, userId: '', stat
 describe('the fake room interleaves (control: plain read-modify-write loses one)', () => {
   it('two knocks at once without verify leave one entry', async () => {
     const svc = fakeRoomService(await roomWith([]))
-    // attempts: 1 and a verify that always passes = the old mergeRoomFlags path.
+    // attempts: 1 and a verify that always passes = the old unverified read-modify-write.
     const naive = { ...FAST, attempts: 1 }
     const run = (e) =>
       writeWithRetry({
@@ -149,7 +149,7 @@ describe('mutateQueue', () => {
     }
   })
 
-  it('carries every other key along, as mergeRoomFlags does', async () => {
+  it('carries every other key along', async () => {
     const svc = fakeRoomService(await roomWith([], { coHosts: ['Ama#d2'], waiting: true }))
     await Promise.all([
       mutateQueue(svc, SECRET, ROOM, enqueueOp(knock('a', 'Esi')), { config: FAST }),
@@ -282,6 +282,42 @@ describe('mutateRoomFlags', () => {
     for (const w of svc.writes) expect(w.hostId).toBe('Host#h1')
   })
 
+  it('two first-joiners claiming the host seat: exactly one wins, the other learns it lost', async () => {
+    for (let i = 0; i < 10; i++) {
+      const svc = fakeRoomService({}, { writeMs: () => 1 + Math.floor(Math.random() * 6) })
+      const [a, b] = await Promise.all([
+        mutateRoomFlags(svc, ROOM, claimHostOp('Esi#d1', { secretHash: 'ha' }), { config: FAST }),
+        mutateRoomFlags(svc, ROOM, claimHostOp('Kofi#d2', { secretHash: 'hb' }), { config: FAST }),
+      ])
+      expect([a.value, b.value].sort()).toEqual(['lost', 'won'])
+      const winner = a.value === 'won' ? 'Esi#d1' : 'Kofi#d2'
+      expect(svc.flags.hostId).toBe(winner)
+      // The winner's secret, not a mix.
+      expect(svc.flags.secretHash).toBe(winner === 'Esi#d1' ? 'ha' : 'hb')
+    }
+  })
+
+  it('a host claim racing a knock: the seat and the knock both stick', async () => {
+    for (let i = 0; i < 5; i++) {
+      const svc = fakeRoomService({ queueSealed: await seal(SECRET, ROOM, []) }, { writeMs: () => 1 + Math.floor(Math.random() * 6) })
+      const [c, k] = await Promise.all([
+        mutateRoomFlags(svc, ROOM, claimHostOp('Esi#d1', { secretHash: 'ha' }), { config: FAST }),
+        mutateQueue(svc, SECRET, ROOM, enqueueOp(knock('a', 'Kwame')), { config: FAST }),
+      ])
+      expect(c.value).toBe('won')
+      expect(k.ok).toBe(true)
+      expect(svc.flags).toMatchObject({ hostId: 'Esi#d1', secretHash: 'ha' })
+      expect((await queueOf(svc)).map((e) => e.id)).toEqual(['a'])
+    }
+  })
+
+  it('a host claim rewrites the seat even when it already reads as ours (the room was just created with it)', () => {
+    const op = claimHostOp('Esi#d1', {})
+    expect(op.change({ hostId: 'Esi#d1' }, 0)).toEqual({ patch: { hostId: 'Esi#d1' }, result: 'won' })
+    expect(op.change({ hostId: 'Esi#d1' }, 1)).toEqual({ done: 'won' })
+    expect(op.change({ hostId: 'Kofi#d2' }, 0)).toEqual({ done: 'lost' })
+  })
+
   it('removing the same device twice records it once', async () => {
     const entry = await removedEntry('Kofi#dev-kofi', '')
     const svc = fakeRoomService(await roomWith([], { removed: [entry] }))
@@ -308,6 +344,28 @@ describe('writeWithRetry', () => {
     })
     expect(r).toEqual({ ok: true, value: 'queued' })
     expect(reads).toBeGreaterThan(0)
+  })
+
+  it('a write that couldn\'t be read back, then a read showing it missing, is not reported done', async () => {
+    let reads = 0
+    let writes = 0
+    const r = await writeWithRetry({
+      config: FAST,
+      sleep: async () => {},
+      first: {},
+      // Attempt 0's read-back fails; every later read works and shows it missing.
+      read: async () => {
+        if (++reads === 1) throw new Error('twirp error: unavailable')
+        return {}
+      },
+      // Only attempt 0's write goes through; every later one fails.
+      write: async () => {
+        if (++writes > 1) throw new Error('twirp error: unavailable')
+      },
+      mutate: async () => ({ patch: {}, result: 'queued' }),
+      verify: async () => false,
+    })
+    expect(r).toEqual({ ok: false })
   })
 
   it('gives up after its attempts when the change never sticks', async () => {
