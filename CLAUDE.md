@@ -269,8 +269,11 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   live in the sealed queue, so only a host's `WaitingRoomBanner` reads them.
   The banner is the ONE fetcher of that queue (`store/useWaitingStore`); People's
   Waiting section reads the same list. Admit/deny requests go to the server one at
-  a time — each is a read-modify-write of the whole queue, so two in flight undo
-  each other — which is what makes People's "Admit all" safe.
+  a time, which is what keeps People's "Admit all" from racing itself.
+  **Every queue change goes through `mutateQueue`** (`server/queueWrite.mjs`), never a
+  bare `mergeRoomFlags`: metadata has no compare-and-swap, so two Worker isolates
+  knocking or admitting at once used to erase each other's write. It writes, waits a
+  beat, reads back and redoes a lost change (`29-waiting-room` races two guests).
 - **A ring checks who it's sealed to.** `lib/devicePins` remembers each contact's
   device keys in this browser (per signed-in account). First ring: remember. After
   that, anything not yet trusted is asked about BEFORE sealing (`KeyChangeDialog`,

@@ -90,9 +90,8 @@ test.describe('People sections @people', () => {
     }
   })
 
-  // Each admit rewrites the whole waiting queue server-side, so a burst of them
-  // in parallel used to undo each other and leave guests stuck. They go one at a
-  // time now; both of these must get in.
+  // The banner sends admits one at a time, and the server re-checks each queue
+  // write (server/queueWrite.mjs); both of these must get in.
   test('Admit all lets every waiting guest in', async ({ page, browser }, info) => {
     test.setTimeout(150_000)
     const room = uniqueRoom('padmit')
@@ -101,22 +100,20 @@ test.describe('People sections @people', () => {
     await activate(page, page.getByRole('button', { name: 'Waiting room' }))
     await closePanel(page)
 
-    // They knock ONE AFTER THE OTHER, each seen by the host before the next. Two
-    // knocks landing together can still lose one server-side (knock is the same
-    // read-modify-write of the queue, across Worker isolates; tracked separately),
-    // and that is not what this test is about.
+    // They knock TOGETHER: two knocks landing at once used to lose one server-side
+    // (each rewrote the whole queue); server/queueWrite.mjs now redoes a lost change.
     await openPeople(page)
-    const guests: { ctx: import('@playwright/test').BrowserContext; g: import('@playwright/test').Page }[] = []
-    for (const [i, name] of ['Esi', 'Kwame'].entries()) {
-      const ctx = await browser.newContext({ ...info.project.use, permissions: ['camera', 'microphone'] })
-      const g = await ctx.newPage()
-      guests.push({ ctx, g })
-      await g.goto(`/r/${room}`)
-      await g.getByLabel('Your name').fill(name)
-      await g.getByRole('button', { name: 'Join now' }).click()
-      await expect(g.getByText('Waiting to be let in')).toBeVisible({ timeout: 30_000 })
-      await expect(page.getByRole('region', { name: new RegExp(`^Waiting \\(${i + 1}\\)$`) })).toBeVisible({ timeout: 30_000 })
-    }
+    const guests = await Promise.all(
+      ['Esi', 'Kwame'].map(async (name) => {
+        const ctx = await browser.newContext({ ...info.project.use, permissions: ['camera', 'microphone'] })
+        const g = await ctx.newPage()
+        await g.goto(`/r/${room}`)
+        await g.getByLabel('Your name').fill(name)
+        return { ctx, g }
+      }),
+    )
+    await Promise.all(guests.map(({ g }) => g.getByRole('button', { name: 'Join now' }).click()))
+    for (const { g } of guests) await expect(g.getByText('Waiting to be let in')).toBeVisible({ timeout: 30_000 })
     try {
       const waiting = page.getByRole('region', { name: /^Waiting \(2\)$/ })
       await expect(waiting).toBeVisible({ timeout: 30_000 })
