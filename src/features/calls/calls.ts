@@ -16,7 +16,7 @@ import { useContactsStore } from '@/store/useContactsStore'
 export type { IncomingCall }
 
 /** A ring is a live event, not a sticky state: auto-miss after this long. */
-const RING_TTL_MS = 45_000
+export const RING_TTL_MS = 45_000
 
 /**
  * Ring a Manim user by email — resolves their id via the `profiles` table and

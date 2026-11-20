@@ -6,6 +6,9 @@ export interface PendingInvite {
   label: string
   /** When it was sent (epoch ms), for the auto-expiry sweep. */
   ts: number
+  /** Rung (their phone/browser is ringing now) or emailed (a link in an inbox).
+   *  People says "Ringing" or "Invited" from this. */
+  kind: 'ring' | 'email'
 }
 
 /**
@@ -16,20 +19,20 @@ export interface PendingInvite {
  */
 interface InviteState {
   pending: PendingInvite[]
-  addInvite: (label: string) => void
+  addInvite: (label: string, kind: PendingInvite['kind']) => void
   clearInvite: (id: string) => void
 }
 
 export const useInviteStore = create<InviteState>((set) => ({
   pending: [],
-  addInvite: (label) =>
+  addInvite: (label, kind) =>
     set((s) => {
       const key = label.trim().toLowerCase()
       if (!key || s.pending.some((p) => p.label.toLowerCase() === key)) return s
       return {
         pending: [
           ...s.pending,
-          { id: `${Date.now()}-${key}`, label: label.trim(), ts: Date.now() },
+          { id: `${Date.now()}-${key}`, label: label.trim(), ts: Date.now(), kind },
         ],
       }
     }),

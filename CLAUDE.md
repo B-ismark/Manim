@@ -267,6 +267,9 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   will admit and leave a one-line note; both go through `/api/knock-update`, gated
   by the same claim key as knock-status and only while the request is pending, and
   live in the sealed queue, so only a host's `WaitingRoomBanner` reads them.
+  The banner is the ONE fetcher of that queue (`store/useWaitingStore`); People's
+  Waiting section reads the same list. Admit/deny requests go to the server one at
+  a time, which is what keeps People's "Admit all" from racing itself.
   **Every queue change goes through `mutateQueue`** (`server/queueWrite.mjs`), never a
   bare `mergeRoomFlags`: metadata has no compare-and-swap, so two Worker isolates
   knocking or admitting at once used to erase each other's write. It writes, waits a
