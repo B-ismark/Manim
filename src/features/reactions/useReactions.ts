@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   useLocalParticipant,
   useParticipantAttribute,
+  useParticipants,
 } from '@livekit/components-react'
 import { useDataTopic } from '@/lib/useDataTopic'
-import type { Participant } from 'livekit-client'
+import { RoomEvent, type Participant } from 'livekit-client'
 import { sounds } from '@/lib/sounds'
 import { displayNameOf } from '@/lib/participantName'
 
@@ -12,6 +13,15 @@ import { displayNameOf } from '@/lib/participantName'
 const REACTION_TOPIC = 'mn.reaction'
 /** Persistent per-participant attribute holding raise-hand state ('1' = raised). */
 export const HAND_ATTR = 'mn.hand'
+/**
+ * When the hand went up (ms since epoch, the raiser's clock), so hands can be
+ * called on in order — the "1 ✋, 2 ✋" Teams puts on tiles. A SEPARATE attribute
+ * rather than a timestamp in HAND_ATTR, because everything else (sounds, the
+ * announcer, clients still on an older build) reads HAND_ATTR as `=== '1'`.
+ * Clocks across machines can disagree by a second or so; for a queue of raised
+ * hands that is close enough.
+ */
+export const HAND_AT_ATTR = 'mn.handAt'
 
 /** The reaction palette shown in the picker. Meaning never relies on color alone (STYLE.md §6). */
 export const REACTION_EMOJI = ['👍', '❤️', '😂', '🎉', '👏', '😮'] as const
@@ -82,7 +92,9 @@ export function useReactions() {
   const handRaised = useParticipantAttribute(HAND_ATTR, { participant: localParticipant }) === '1'
 
   const toggleHand = useCallback(async () => {
-    await localParticipant.setAttributes({ [HAND_ATTR]: handRaised ? '' : '1' })
+    await localParticipant.setAttributes(
+      handRaised ? { [HAND_ATTR]: '', [HAND_AT_ATTR]: '' } : { [HAND_ATTR]: '1', [HAND_AT_ATTR]: String(Date.now()) },
+    )
   }, [handRaised, localParticipant])
 
   return { active, sendReaction, handRaised, toggleHand }
@@ -91,4 +103,34 @@ export function useReactions() {
 /** Read whether a given participant currently has their hand raised. */
 export function useHandRaised(participant?: Participant): boolean {
   return useParticipantAttribute(HAND_ATTR, { participant }) === '1'
+}
+
+/**
+ * Everyone with a hand up, earliest first. A hand with no time (raised from an
+ * older build) goes after the timed ones; ties fall back to identity so every
+ * client agrees on the order. Pure, so it's testable without a room.
+ */
+export function handQueue(people: ReadonlyArray<{ identity: string; attributes?: Record<string, string> }>): string[] {
+  return people
+    .filter((p) => p.attributes?.[HAND_ATTR] === '1')
+    .map((p) => {
+      const at = Number(p.attributes?.[HAND_AT_ATTR])
+      return { id: p.identity, at: Number.isFinite(at) && at > 0 ? at : Infinity }
+    })
+    .sort((a, b) => a.at - b.at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+    .map((p) => p.id)
+}
+
+const HAND_EVENTS = [
+  RoomEvent.ParticipantAttributesChanged,
+  RoomEvent.ParticipantConnected,
+  RoomEvent.ParticipantDisconnected,
+]
+
+/** This participant's place in the raised-hand queue (1-based), or null when their hand is down. */
+export function useHandPosition(participant?: Participant): number | null {
+  const people = useParticipants({ updateOnlyOn: HAND_EVENTS })
+  if (!participant) return null
+  const i = handQueue(people).indexOf(participant.identity)
+  return i < 0 ? null : i + 1
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { useLocalParticipant, useMediaDeviceSelect, useRoomContext } from '@livekit/components-react'
+import { useLocalParticipant, useMediaDeviceSelect, useRoomContext, useTrackVolume } from '@livekit/components-react'
+import type { LocalAudioTrack } from 'livekit-client'
 import { toast } from '@/store/useToastStore'
 import { useAnnotateStore } from '@/store/useAnnotateStore'
 import {
@@ -60,13 +61,14 @@ import { useCameraToggle } from '@/lib/useCameraToggle'
 import { MAX_CONCURRENT_SHARES, useScreenShare } from '@/features/calls/useScreenShare'
 import { useSharePresence } from '@/lib/useSharePresence'
 import { useIsTouch } from '@/lib/useIsTouch'
-import { useMediaQuery } from '@/lib/useMediaQuery'
+import { FOLD, useBarFold } from '@/lib/barFold'
 import { useChatCompanion } from '@/lib/chatCompanion'
 import { useRail, useRailTwoCol } from '@/lib/chromeBands'
 import { useFullscreen } from '@/lib/useFullscreen'
 import { useBarDockShift } from '@/lib/panelDock'
 import { useSettleGuard } from '@/lib/useSettleGuard'
 import { cn } from '@/lib/cn'
+import { playTestTone } from '@/lib/testTone'
 import { useShortcutStore } from '@/store/useShortcutStore'
 import { toggleDevice } from '@/lib/deviceToggle'
 
@@ -185,22 +187,12 @@ export function ControlBar({
   useEffect(() => () => setMoreOpen(false), [setMoreOpen])
   const moreRef = useRef<HTMLButtonElement>(null)
   const touch = useIsTouch()
-  // A desktop window narrower than the full bar — 400% zoom on a 1280px screen is
-  // 320 CSS px (WCAG reflow). It used to run off both edges, taking Mute and End
-  // for everyone with it. Narrow, it keeps mic, camera, chat, More and Leave, and
-  // the rest moves into More exactly as it does on touch. The threshold is the
-  // WIDEST bar plus its margins: a host during a share (Annotate and the split
-  // Leave both showing) measures ~614px and the island sits 16px in from each
-  // edge, so anything under ~646px clipped it. 680 leaves room for one more
-  // control; add one and re-measure (24-reflow-and-layers sweeps the widths).
-  const narrowBar = useMediaQuery('(max-width: 679px)') && !touch
   // A phone on its side: the bar becomes a column down the right edge (chromeBands).
   const rail = useRail()
   // A rail too short for one column wraps into two (lib/chromeBands).
   const twoCol = useRailTwoCol()
   const companion = useChatCompanion()
   const companionOpen = companion.mode !== 'none'
-  const compact = touch || narrowBar
   const { supported: canFullscreen, isFullscreen, toggleFullscreen } = useFullscreen()
   // Screen share needs getDisplayMedia — absent on iOS Safari (and iOS Chrome,
   // which is WebKit underneath). Hide the control there instead of offering a
@@ -214,6 +206,18 @@ export function ControlBar({
   const { ref: barRef, shift } = useBarDockShift(panel !== null)
   // ...and the backstop for the widths where it DOES still move.
   const settleBlocks = useSettleGuard(shift)
+  // A desktop window too narrow for the whole bar (400% zoom on a 1280px screen
+  // is 320 CSS px — WCAG reflow) folds controls into More ONE AT A TIME, lowest
+  // priority first, by measuring the bar itself (lib/barFold). It used to be a
+  // single 680px cliff from the full bar straight to the narrowest one.
+  const fold = useBarFold(barRef, !touch, `${canAnnotate}|${canScreenShare}|${isHost}`)
+  const reactionsFolded = fold >= FOLD.reactions
+  const annotateFolded = fold >= FOLD.annotate
+  const shareFolded = fold >= FOLD.share
+  // The last step is the old narrow bar: device carets and the host's split
+  // Leave come off, and More takes over everything that left.
+  const narrowBar = fold >= FOLD.devices
+  const compact = touch || narrowBar
   const setPanel = useRoomStore((s) => s.setPanel)
   const unread = useRoomStore((s) => s.unread)
   const layout = useRoomStore((s) => s.layout)
@@ -383,7 +387,7 @@ export function ControlBar({
   // breakpoint, so nothing duplicates.
   const moreContent = (
     <div className="flex flex-col">
-      <div className={cn('mb-2', !narrowBar && 'pointer-fine:hidden')}>
+      <div className={cn('mb-2', !reactionsFolded && 'pointer-fine:hidden')}>
         <p className="px-1 pb-1 text-xs font-medium text-ink-subtle">React</p>
         <div className="flex flex-wrap items-center justify-center gap-1">
           {REACTION_EMOJI.map((e) => (
@@ -426,7 +430,7 @@ export function ControlBar({
             player's Share again so the two can never disagree. */}
         {canScreenShare && (
           <GridTile
-            className={cn(!narrowBar && 'pointer-fine:hidden')}
+            className={cn(!shareFolded && 'pointer-fine:hidden')}
             icon={<ScreenShareIcon />}
             label={shareSlotsFull ? 'Share screen (in use)' : 'Share screen'}
             active={screenShare.enabled}
@@ -436,7 +440,7 @@ export function ControlBar({
           />
         )}
         {/* A narrow desktop window has no room for Annotate on the bar. */}
-        {canAnnotate && narrowBar && (
+        {canAnnotate && annotateFolded && (
           <GridTile
             icon={<AnnotateIcon />}
             label={annotateActive ? 'Stop annotating' : 'Annotate'}
@@ -900,7 +904,15 @@ export function ControlBar({
               "Audio & video" in More. */}
           {!compact && (
             <DeviceCaret label="Audio options">
-              <AudioDevicePanel noise={noise} />
+              {(close) => (
+                <AudioDevicePanel
+                  noise={noise}
+                  onMoreSettings={() => {
+                    close()
+                    setModal('devices')
+                  }}
+                />
+              )}
             </DeviceCaret>
           )}
         </div>
@@ -948,7 +960,7 @@ export function ControlBar({
             `hidden` in the cascade, so this stayed visible on touch and phones
             showed the control TWICE — here and in the More sheet. Rendering
             conditionally can't lose a specificity race. */}
-        {canScreenShare && !compact && (
+        {canScreenShare && !touch && !shareFolded && (
           <Tooltip
             content={
               shareSlotsFull
@@ -986,7 +998,7 @@ export function ControlBar({
         {/* Annotate — only while someone is actually sharing, and desktop only:
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
-        {canAnnotate && !narrowBar && (
+        {canAnnotate && !annotateFolded && (
           <Tooltip content={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}>
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
@@ -1009,6 +1021,12 @@ export function ControlBar({
               aria-expanded={panel === 'chat'}
               onClick={() => togglePanel('chat')}
             />
+            {/* Open-panel marker: a shape under the button, not only its fill
+                colour, so you can tell chat is open from the bar alone (Teams
+                underlines its open panel's button the same way). */}
+            {panel === 'chat' && !touch && (
+              <span aria-hidden className="pointer-events-none absolute -bottom-1.5 left-1/2 h-0.5 w-4 -translate-x-1/2 rounded-full bg-accent" />
+            )}
             {unread > 0 && panel !== 'chat' && (
               <span aria-hidden className="pointer-events-none absolute -right-0.5 -top-0.5 grid min-w-4 place-items-center rounded-control bg-accent px-1 text-[10px] font-semibold text-accent-ink">
                 {unread > 9 ? '9+' : unread}
@@ -1019,7 +1037,7 @@ export function ControlBar({
 
         {/* Reactions on a laptop. One button — it also carries raise-hand. On
             touch it sits third on the bar instead (above). */}
-        {!narrowBar && !touch && (
+        {!reactionsFolded && !touch && (
           <ReactionButton onPick={sendReaction} handRaised={handRaised} onToggleHand={toggleHand} />
         )}
 
@@ -1385,7 +1403,14 @@ function MenuRow({
  * friendlier. (It used to gate itself with a `hidden` class the cascade ignored,
  * which is how it ended up on phones — see the call site.)
  */
-function DeviceCaret({ label, children }: { label: string; children: ReactNode }) {
+function DeviceCaret({
+  label,
+  children,
+}: {
+  label: string
+  /** A function child gets `close`, for a row that hands off to a dialog. */
+  children: ReactNode | ((close: () => void) => ReactNode)
+}) {
   const [open, setOpen] = useState(false)
   return (
     <Popover
@@ -1403,17 +1428,34 @@ function DeviceCaret({ label, children }: { label: string; children: ReactNode }
         />
       }
     >
-      <div className="w-72 max-w-[85vw]">{children}</div>
+      <div className="w-72 max-w-[85vw]">
+        {typeof children === 'function' ? children(() => setOpen(false)) : children}
+      </div>
     </Popover>
   )
 }
 
-/** Mic + speaker pickers, the Bluetooth-auto toggle, and noise suppression — the
- *  full audio panel behind the mic caret. */
-function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
+/**
+ * Everything behind the mic caret, laid out as a quick sound check — "can they
+ * hear me, can I hear them?" answered without leaving the call (Teams' mic
+ * flyout does the same): the mic picker with a LIVE level, the speaker picker
+ * with a test sound through the speaker you picked, Bluetooth, noise
+ * suppression, and a route to the full Audio & video dialog.
+ */
+function AudioDevicePanel({
+  noise,
+  onMoreSettings,
+}: {
+  noise?: NoiseFilterControls
+  onMoreSettings: () => void
+}) {
+  const { activeDeviceId: outputId } = useMediaDeviceSelect({ kind: 'audiooutput' })
   return (
     <div className="flex flex-col gap-3">
-      <DeviceRow kind="audioinput" label="Microphone" />
+      <div className="flex flex-col gap-1.5">
+        <DeviceRow kind="audioinput" label="Microphone" />
+        <MicLevelMeter />
+      </div>
       {/* "Speaker", not "Audio output" — matching DeviceSettings, and still the
           right name now that the bar's own Audio output button is gone. Touch's
           AudioRouteButton is named `Audio output: <device>`, and the reason to
@@ -1421,7 +1463,17 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
           accessible name doing different things is a real ambiguity for a screen
           reader, and Chromium's fake devices are called "Fake Default Audio
           Output", so a row named for the category collides with its own contents. */}
-      <DeviceRow kind="audiooutput" label="Speaker" />
+      <div className="flex flex-col gap-1">
+        <DeviceRow kind="audiooutput" label="Speaker" />
+        <button
+          type="button"
+          onClick={() => playTestTone(outputId)}
+          className="flex items-center gap-2 self-start rounded-field px-1 py-1 text-sm text-ink-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-accent [&_svg]:size-4"
+        >
+          <SoundOnIcon />
+          Play test sound
+        </button>
+      </div>
       <div className="border-t border-line pt-2">
         <BluetoothToggle />
       </div>
@@ -1430,6 +1482,52 @@ function AudioDevicePanel({ noise }: { noise?: NoiseFilterControls }) {
           <NoiseSuppression controls={noise} />
         </div>
       )}
+      <div className="border-t border-line pt-1">
+        <button
+          type="button"
+          onClick={onMoreSettings}
+          className="w-full rounded-field px-1 py-1.5 text-left text-sm font-medium text-ink hover:bg-sunken focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          More audio settings
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Segments in the mic meter. */
+const METER_SEGMENTS = 16
+
+/**
+ * Your own mic's live level, read from the track you're actually publishing (so
+ * it shows what the call hears, after noise suppression). Off says so in words
+ * rather than as an empty meter, which looks the same as a broken mic.
+ */
+function MicLevelMeter() {
+  const { microphoneTrack, isMicrophoneEnabled } = useLocalParticipant()
+  const track = isMicrophoneEnabled ? (microphoneTrack?.track as LocalAudioTrack | undefined) : undefined
+  const volume = useTrackVolume(track)
+  if (!isMicrophoneEnabled) {
+    return <p className="px-1 text-xs text-ink-subtle">Your mic is off</p>
+  }
+  // Speech sits around 0.05–0.3 here; scale so a normal voice fills most of it.
+  const level = Math.min(1, volume * 3)
+  const lit = Math.round(level * METER_SEGMENTS)
+  return (
+    <div
+      role="meter"
+      aria-label="Microphone level"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(level * 100)}
+      className="flex items-center gap-[3px] px-1"
+    >
+      {Array.from({ length: METER_SEGMENTS }, (_, i) => (
+        <span
+          key={i}
+          className={cn('h-2.5 flex-1 rounded-[2px] transition-colors duration-75', i < lit ? 'bg-accent' : 'bg-line')}
+        />
+      ))}
     </div>
   )
 }

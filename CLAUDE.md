@@ -111,6 +111,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
   and the host's split leave-and-end control both had to come off), and nothing on it
   may be a status indicator: those go in `TopStack`. `test:mobile-sm` asserts the fit.
+  - **The desktop bar folds by measurement, one control at a time** (`lib/barFold`):
+    Reactions → Annotate → Share → device carets + the host's split Leave. Mic,
+    camera, chat, More and Leave never fold. There is no fixed breakpoint to keep in
+    step any more — a new control slots into the fold order instead. **The island is
+    icons-only at every width — no text labels under the buttons** (owner's call,
+    Nov 2026; Teams labels its toolbar, we deliberately don't). `24-reflow` asserts
+    the order.
 - **Speaker choice lives behind the mic caret on desktop — there is no audio-output
   button on the bar.** One used to sit there, and the popover it opened was
   `AudioDevicePanel`: the same component, same props, that the caret two controls to

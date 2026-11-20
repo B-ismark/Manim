@@ -10,6 +10,7 @@ import { useShareLink } from '@/lib/useShareLink'
 import { useElementSize } from '@/lib/useElementSize'
 import { useToastClearance } from '@/lib/toastClearance'
 import { cn } from '@/lib/cn'
+import { playTestTone } from '@/lib/testTone'
 import { APP_NAME } from '@/lib/legal'
 import { countUsage, surface } from '@/lib/usage'
 import { useIsTouch } from '@/lib/useIsTouch'
@@ -526,7 +527,7 @@ function PreJoinScreen({ room, onJoin, encrypted = false, secret, coarse }: PreJ
               icon={<SoundOnIcon />}
               tone="overlay"
               className="absolute right-3 top-3"
-              onClick={playTestTone}
+              onClick={() => playTestTone()}
             />
             <div className="absolute inset-x-0 bottom-3 flex justify-center gap-4">
               <IconButton
@@ -695,24 +696,6 @@ function initialsOf(name: string): string {
   return (parts.map((p) => [...p][0]).join('').slice(0, 2) || '?').toUpperCase()
 }
 
-/** A short 440 Hz tone through the default output, so users can check their speaker. */
-function playTestTone() {
-  try {
-    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-    const ctx = new Ctx()
-    const osc = ctx.createOscillator()
-    const gain = ctx.createGain()
-    osc.frequency.value = 440
-    gain.gain.value = 0.08
-    osc.connect(gain).connect(ctx.destination)
-    osc.start()
-    osc.stop(ctx.currentTime + 0.35)
-    osc.onended = () => void ctx.close().catch(() => {})
-  } catch {
-    /* Web Audio unavailable */
-  }
-}
-
 /** Live mic input level, 0..1, while `micEnabled`. Uses Web Audio; cleans up fully. */
 function useMicLevel(micEnabled: boolean): number {
   const [level, setLevel] = useState(0)
@@ -802,7 +785,7 @@ function MicSpeakerTest({ micEnabled }: { micEnabled: boolean }) {
           style={{ width: `${Math.round(level * 100)}%` }}
         />
       </div>
-      <Button type="button" variant="neutral" size="sm" className="shrink-0" onClick={playTestTone}>
+      <Button type="button" variant="neutral" size="sm" className="shrink-0" onClick={() => playTestTone()}>
         Test speaker
       </Button>
     </>
