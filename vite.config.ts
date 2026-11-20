@@ -9,7 +9,7 @@ export default defineConfig(({ command, mode }) => {
 
   // Build guard. RoomView is rendered only inside `token && LIVEKIT_URL`; if
   // VITE_LIVEKIT_URL is empty at build time, LIVEKIT_URL folds to a falsy
-  // constant, the whole in-call tree becomes dead code, and Rollup tree-shakes
+  // constant, the whole in-call tree becomes dead code, and the bundler tree-shakes
   // it out — producing a bundle that builds fine but can't run a call. That MUST
   // never ship. The VITE_* build vars live in Cloudflare → manim → Settings →
   // Build; a local `.env` is intentionally empty. So: do NOT build/deploy from a
@@ -38,9 +38,17 @@ export default defineConfig(({ command, mode }) => {
           // dependency by far; React + Radix are stable too.
           // Vite 8 bundles with Rolldown, which has no object-form `manualChunks`
           // (the Rollup shape this used to be): groups match module paths instead,
-          // and pull each match's dependencies in with it (the default), as the
-          // object form did. React outranks livekit so components-react's own
-          // `import 'react'` can't drag React into the livekit chunk.
+          // and pull each match's static dependencies in with it (the default).
+          // The react group is broader than the old object form, which resolved
+          // 'react-dom' to its index only: react-dom/client and scheduler now land
+          // in the cacheable react chunk instead of the entry. React outranks
+          // livekit so components-react's own `import 'react'` can't drag React
+          // into the livekit chunk.
+          // HAZARD: a dependency a livekit package shares with the landing page
+          // (e.g. @floating-ui, via a components-core split back out of
+          // components-react) would be pulled INTO the livekit chunk and make the
+          // entry import it eagerly. Nothing fails when that happens, so the
+          // lighthouse job asserts the entry never imports a livekit chunk.
           // NOTE: @livekit/track-processors is intentionally NOT matched — it (and
           // its ~160KB MediaPipe payload) is dynamically imported only when blur is
           // first enabled (see useBackgroundBlur). Capturing it here would force it

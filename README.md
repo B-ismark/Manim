@@ -16,7 +16,7 @@ for media, Supabase for accounts and contacts.
 
 | Layer | What |
 |---|---|
-| UI | React 19, React Router 7, Vite 6, TypeScript, Tailwind 4 (oklch tokens) |
+| UI | React 19, React Router 7, Vite 8, TypeScript 7, Tailwind 4 (oklch tokens) |
 | State | Zustand — many small single-purpose stores (`src/store/`) |
 | Media | `livekit-client` + `@livekit/components-react`; Krisp noise filter, MediaPipe blur |
 | Backend | Cloudflare Workers (`worker/`), shared orchestration core (`server/core.mjs`) |
