@@ -19,6 +19,14 @@ of people (see that PR). Later in Sept 2026: rings and the other-device offer ca
 the call's key locked to the recipient's devices, anonymous usage counts
 (`docs/usage-counts.md`), and a quota pass (static files off the Worker, no 3s
 waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
+Oct–Nov 2026: contact device keys remembered and changes asked about before a ring
+(`lib/devicePins`, `KeyChangeDialog`), per-room account pseudonyms in place of the
+account id, the phone landing header, one touch route to device choice, and the
+product ideas for the end screen (copy link, rating), room readiness, a lobby that
+isn't a dead end and honest reconnecting. Nov 2026: the toolchain and runtime
+upgrade (Node 24, Vite 8, TypeScript 7, Express 5, Vitest 5, Krisp 0.4, a newer
+Workers compatibility date) and the People chip's label, which a screen-reader
+user could not say aloud to voice control.
 
 ## Needs doing outside the code
 
@@ -41,8 +49,10 @@ waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
       Sentry's loader, which is also why some visitors will never report).
 - [ ] Run the new SQL (Sept 2026 batch): the `avatar read own` policy (§3a), the
       push `seen_at` column and trigger (§4c), the nightly clean-up jobs (§4d), and
-      the device keys for sealed rings (§4e, after §4c). Until §4e runs, rings work
-      the old way.
+      the device keys for sealed rings (§4e, after §4c), recent calls on every
+      device (§4f) and who really called (§4g, which drops the old 3-argument
+      `ring()`). Until §4e runs, rings work the old way; until §4g runs, an
+      incoming ring shows the name the caller typed.
 - [ ] After the deploy, check the served site: a file under `/assets/` answers with the
       COOP/COEP/CSP headers, and a call page
       still reports `crossOriginIsolated` true in the console.
@@ -61,25 +71,33 @@ waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
 
 ## Security
 
-- [ ] **Who vouches for a device key.** Rings are sealed to the keys Supabase hands
-      out (`features/calls/deviceKeys.ts`), so Supabase itself could swap one in, and
-      a lookup that fails twice sends the key unsealed so the call still gets
-      through. Fix: remember each contact's device keys the first time and warn on
-      a change, and never fall back once keys have been seen.
+- [ ] **The rest of who vouches for a device key.** Rings now remember a contact's
+      keys and ask before sealing to anything new (`lib/devicePins`). Still open:
+      "Ring anyway" on the nothing-to-seal-to prompt sends the key unsealed; a pin
+      check that throws skips the prompt (`calls.ts`, `.catch(() => null)`); a
+      contact never rung before with no devices is sent unsealed silently; and the
+      other-device offer (`usePresence` → `secretsFor`) still falls back on a failed
+      lookup and never pins your own devices. The Privacy page describes this today.
 - [ ] **Forgeable chat state.** Pins and history replay relay other people's
       messages, so the author and text are whatever the relayer says. Needs signed
       messages to fix properly. (Report notices now name the verified sender.)
 - [ ] Merging an UNENCRYPTED call into an encrypted one still sends the target's
       key over a channel LiveKit can read (disclosed on the Privacy page).
-- [ ] Participants' account id is visible to everyone in every call (participant
-      metadata), which links you across calls. It feeds photos and the
-      same-account-on-another-device check, so a per-room value needs those to
-      move server-side. (The device id is already per call.)
+- [ ] **Someone who leaves keeps the call key.** There is no re-key when people
+      leave or are removed, so they could still decode later media if they can
+      reach it (`lib/roomLink.ts`, "KNOWN LIMITATION").
+- [ ] **The call-wide tag proves membership, not authorship.** Host controls, ink and
+      reactions are tagged with the shared key (`lib/dataTag.ts`), so any member
+      can speak as another and the server can replay a packet. Wider than the
+      chat item above; the same signed-messages fix covers both.
 
 ## Experience
 
-- [ ] Landing brand touches the Setup pill on a 375×667 phone (dev and `?setup` only
-      now: visitors no longer see the pill).
+- [ ] The landing collision test never runs at 375×667: `01-landing` runs on the
+      desktop and Pixel 7 projects, and `mobile-sm` runs only `11-mobile-fit`. The
+      header is fixed for phones; this is the guard that would catch it returning.
+- [ ] Encryption isn't always visible. The padlock sits in the status pill, which
+      hides with the chrome; only a failed-encryption pill stays.
 
 ## Performance
 
@@ -90,15 +108,23 @@ waiting-room poll, far fewer KV writes and Supabase/Sentry calls).
 
 ## Redundancy
 
-- [ ] Noise suppression appears in three places; on touch, device choice has two
-      routes to one dialog. A design call: check Mobbin before collapsing.
+- [ ] Noise suppression still appears in three components, so desktop shows it twice
+      (the mic caret and More → Audio & video). Touch is down to one route. A design
+      call: check Mobbin before collapsing.
 
 ## Product ideas
 
 - Device pickers on prejoin, with the speaker test using the chosen output.
-- The end-of-call screen could add copy link and a one-tap rating.
-- Room readiness before joining ("Host hasn't joined yet", "3 people in the call").
-- A lobby that isn't a dead end (live preview, editable name, note to the host).
-- Honest connection states (offline detection, reconnect timer, Keep trying/Leave).
 - Short, speakable join codes alongside secure links.
-- A permanent encryption indicator in TopStack.
+
+## Upkeep
+
+- [ ] `@playwright/test` is held at 1.61 in the lockfile on purpose: the visual
+      baselines were drawn with its browser. Bump it together with a re-baseline
+      of `09-visual`.
+- [ ] The Workers compatibility date stops at 2026-11-01. The flags dated after it
+      (a new module registry, request abort signals, back-pressure in `pipeTo`, and
+      `cache` keeping Cache-Control) need their own look before moving past it.
+- [ ] The low-bandwidth workflow (`.github/workflows/lowbw.yml`) runs
+      `npm run test:lowbw`, which doesn't exist, so it can't pass. Add the spec
+      and script, or retire the workflow.

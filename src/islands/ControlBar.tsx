@@ -897,7 +897,7 @@ export function ControlBar({
               documents. A caret is the wrong control for a thumb anyway: it opens a
               popover full of nested dropdowns, which is what the mobile device
               picker rework replaces. Touch reaches every one of these devices via
-              the Output button and "Audio & video" in More. */}
+              "Audio & video" in More. */}
           {!compact && (
             <DeviceCaret label="Audio options">
               <AudioDevicePanel noise={noise} />
