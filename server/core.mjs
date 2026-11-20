@@ -901,6 +901,10 @@ export async function handleKnockUpdate(env, body) {
       if (!e || e.status !== 'pending') return { done: { status: 409, body: { error: 'You’re no longer waiting.' } } }
       // An earlier attempt's write that landed after all.
       if (e.name === nextName && (e.note || '') === nextNote) return { done: ok }
+      // Re-checked here too: two edits at once must not both slip under the cap.
+      if ((e.edits || 0) >= MAX_KNOCK_EDITS) {
+        return { done: { status: 429, body: { error: 'You’ve changed this enough times. The host will see it as it is.' } } }
+      }
       if (e.name !== nextName && seatHeldBy(`${nextName}#${e.deviceId || 'web'}`, flags, participants, q, e.id)) {
         return {
           done: {

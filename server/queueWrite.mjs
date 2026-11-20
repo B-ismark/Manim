@@ -27,12 +27,17 @@
  */
 
 export const QUEUE_WRITE = {
-  /** Total read-modify-write attempts before giving up. */
-  attempts: 5,
-  /** Wait after a write before reading it back (see above), plus up to `jitterMs`. */
+  /** Total read-modify-write attempts before giving up. Losers of one round can
+   *  collide again in the next, so a burst of k simultaneous writers needs about k
+   *  rounds in the worst case; 8 covers the bursts a waiting room actually sees. */
+  attempts: 8,
+  /** Wait after a write before reading it back (see above), plus up to `jitterMs`.
+   *  This is paid on EVERY change, raced or not: ~0.3s added to a knock or an admit
+   *  is the price of seeing a later overwrite. */
   settleMs: 250,
   jitterMs: 100,
-  /** Pause before attempt n (n ≥ 1) is `backoffMs * n` plus up to `jitterMs`. */
+  /** Pause before attempt n (n ≥ 1) is `backoffMs * n` plus up to `jitterMs * n`:
+   *  the spread widens each round so retriers stop landing on top of each other. */
   backoffMs: 60,
 }
 
@@ -50,9 +55,12 @@ const realSleep = (ms) => new Promise((r) => setTimeout(r, ms))
  * @returns {Promise<{ ok: true, value: any } | { ok: false }>}
  */
 export async function writeWithRetry({ read, write, mutate, verify, first, sleep = realSleep, random = Math.random, config = QUEUE_WRITE }) {
-  const jitter = () => Math.floor(random() * config.jitterMs)
+  const jitter = (scale = 1) => Math.floor(random() * config.jitterMs * scale)
+  // The latest write that went through but couldn't be read back. Cleared only by
+  // a read that definitely shows the change missing.
+  let unconfirmed = null
   for (let attempt = 0; attempt < config.attempts; attempt++) {
-    if (attempt > 0) await sleep(config.backoffMs * attempt + jitter())
+    if (attempt > 0) await sleep(config.backoffMs * attempt + jitter(attempt))
     let step
     try {
       const flags = attempt === 0 && first ? first : await read()
@@ -66,10 +74,16 @@ export async function writeWithRetry({ read, write, mutate, verify, first, sleep
     await sleep(config.settleMs + jitter())
     try {
       if (await verify(await read())) return { ok: true, value: step.result }
+      unconfirmed = null
     } catch {
       // Couldn't read it back. The write may well have landed; the next attempt
       // starts from a fresh read, and mutate's `done` path recognises it there.
+      unconfirmed = step
     }
   }
+  // Out of attempts, and a write landed that nothing since has shown lost: report it
+  // as done. Saying "busy" for a change that probably stuck is worse: the guest
+  // knocks again under a new id and the host sees them twice.
+  if (unconfirmed) return { ok: true, value: unconfirmed.result }
   return { ok: false }
 }

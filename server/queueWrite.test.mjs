@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { writeWithRetry } from './queueWrite.mjs'
+import { writeWithRetry, QUEUE_WRITE } from './queueWrite.mjs'
 import { mutateQueue, enqueueOp, decideOp } from './core.mjs'
 import { seal, unseal } from './sealed.mjs'
 
@@ -9,7 +9,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 
 /** Small timings so the suite stays fast; the fake's latencies are below settleMs,
  *  as a real read→write gap is below the real one. */
-const FAST = { attempts: 5, settleMs: 40, jitterMs: 10, backoffMs: 5 }
+const FAST = { attempts: QUEUE_WRITE.attempts, settleMs: 40, jitterMs: 10, backoffMs: 5 }
 
 /**
  * A stand-in for LiveKit's RoomServiceClient: one metadata string, no CAS. A read
@@ -90,7 +90,7 @@ describe('mutateQueue', () => {
     const svc = fakeRoomService(await roomWith([]), { writeMs: () => 2 + Math.floor(Math.random() * 8) })
     const ids = ['a', 'b', 'c', 'd', 'e']
     const res = await Promise.all(
-      ids.map((id) => mutateQueue(svc, SECRET, ROOM, enqueueOp(knock(id, id)), { config: { ...FAST, attempts: 8 } })),
+      ids.map((id) => mutateQueue(svc, SECRET, ROOM, enqueueOp(knock(id, id)), { config: FAST })),
     )
     expect(res.every((r) => r.ok)).toBe(true)
     expect((await queueOf(svc)).map((e) => e.id).sort()).toEqual(ids)
@@ -140,11 +140,11 @@ describe('mutateQueue', () => {
         mutateQueue(svc, SECRET, ROOM, decideOp('a', false), { config: FAST }),
       ])
       const status = (await queueOf(svc))[0].status
-      // Never both told "done" for contradictory outcomes unless the later one stands,
-      // and whichever stands was told 200.
-      if (status === 'approved') expect(yes.value.status).toBe(200)
-      else expect(no.value.status).toBe(200)
       expect(['approved', 'denied']).toContain(status)
+      // Whichever stands was told 200; the other host was told it lost, never 200.
+      const [won, lost] = status === 'approved' ? [yes, no] : [no, yes]
+      expect(won.value.status).toBe(200)
+      expect(lost.value).toMatchObject({ status: 409, body: { code: 'decided' } })
     }
   })
 
@@ -182,6 +182,24 @@ describe('mutateQueue', () => {
 })
 
 describe('writeWithRetry', () => {
+  it('reports a write it could not read back as done, not busy', async () => {
+    let reads = 0
+    const r = await writeWithRetry({
+      config: FAST,
+      sleep: async () => {},
+      first: {},
+      read: async () => {
+        reads++
+        throw new Error('twirp error: unavailable')
+      },
+      write: async () => {},
+      mutate: async () => ({ patch: {}, result: 'queued' }),
+      verify: async () => true,
+    })
+    expect(r).toEqual({ ok: true, value: 'queued' })
+    expect(reads).toBeGreaterThan(0)
+  })
+
   it('gives up after its attempts when the change never sticks', async () => {
     let writes = 0
     const r = await writeWithRetry({
