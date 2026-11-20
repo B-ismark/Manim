@@ -174,9 +174,9 @@ Leave the microphone **on** and the camera however you like.
 
 ### 9. People
 
-1. **Phone:** swipe to the "People (1)" button near the top right. **Desktop:** that button, or press P.
+1. **Phone:** swipe to the "People, 1" button near the top right. **Desktop:** that button, or press P.
 
-**You should hear:** "People (1)", then a list with you in it.
+**You should hear:** "People, 1", then a list with you in it.
 
 - [ ] People panel reachable and readable
   Notes: ______________________________________

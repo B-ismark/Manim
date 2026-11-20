@@ -50,7 +50,7 @@ test.describe('Waiting room', () => {
       await page.screenshot({ path: `test-results/shots/29-host-banner-${info.project.name}.png` })
       await activate(page, page.getByRole('button', { name: 'Admit Kofi' }))
       await expect(guest.getByRole('region', { name: 'Call controls' })).toBeAttached({ timeout: 45_000 })
-      await expect(page.getByRole('button', { name: /People \(2\)/ })).toBeAttached({ timeout: 30_000 })
+      await expect(page.getByRole('button', { name: /People, 2$/ })).toBeAttached({ timeout: 30_000 })
       await expect(page.getByText('Kofi', { exact: true }).first()).toBeAttached()
     } finally {
       await closeContext(ctx)
