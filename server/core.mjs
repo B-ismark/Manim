@@ -133,6 +133,12 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
   return { token: await at.toJwt(), identity, seat: await seatKey(apiSecret, room, identity) }
 }
 
+/** Like listParticipants, but a failed lookup THROWS instead of reading as "nobody
+ *  here". A room that doesn't exist yet still answers [] (LiveKit doesn't error). */
+async function listParticipantsStrict(roomService, room) {
+  return roomService.listParticipants(room)
+}
+
 async function listParticipants(roomService, room) {
   try {
     return await roomService.listParticipants(room)
@@ -643,11 +649,22 @@ export async function handleKnock(env, body, claimLost = false) {
   // Read room flags in the same breath so host election keys off the recorded
   // hostId, not just a (racy) participant count. The recorded host reclaims host on
   // reconnect; a brand-new room with no host yet is claimed by its first occupant.
-  const [account, flags, participants] = await Promise.all([
-    verifySupabaseUser(env, accessToken),
-    roomService ? getRoomFlags(roomService, room) : null,
-    roomService ? listParticipants(roomService, room) : [],
-  ])
+  //
+  // Both LiveKit reads are STRICT: every gate below reads them, and a failed read
+  // taken for "no flags, nobody here" turns the lock, the invite secret, the waiting
+  // room and the removed list all off, and lets a knock under a live guest's
+  // identity skip the seat key. A knock that can't see the room answers busy (the
+  // client retries) rather than letting anyone in on a guess.
+  let account, flags, participants
+  try {
+    ;[account, flags, participants] = await Promise.all([
+      verifySupabaseUser(env, accessToken),
+      roomService ? readRoomFlagsStrict(roomService, room) : null,
+      roomService ? listParticipantsStrict(roomService, room) : [],
+    ])
+  } catch {
+    return WRITE_BUSY
+  }
   const userId = account?.id || ''
   const email = account?.email || ''
 
@@ -952,7 +969,14 @@ export async function handleKnockStatus(env, query) {
   if (!(await claimKeyValid(apiSecret, room, requestId, claim))) {
     return { status: 403, body: { status: 'expired', error: 'Not your request' } }
   }
-  const flags = await getRoomFlags(roomService, room)
+  // Strict: a failed read taken for {} has no queue, and would tell a guest the
+  // host is about to admit that their request expired. A 5xx keeps them waiting.
+  let flags
+  try {
+    flags = await readRoomFlagsStrict(roomService, room)
+  } catch {
+    return WRITE_BUSY
+  }
   const queue = await readQueue(apiSecret, room, flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
@@ -967,7 +991,13 @@ export async function handleKnockStatus(env, query) {
     // Checked again at the mint: the seat may have been taken since the knock
     // (or the rename), and an approval must never hand out someone else's seat.
     const identity = `${entry.name}#${entry.deviceId || 'web'}`
-    const participants = await listParticipants(roomService, room)
+    // Strict: "nobody here" on a failed lookup would mint a seat someone is in.
+    let participants
+    try {
+      participants = await listParticipantsStrict(roomService, room)
+    } catch {
+      return WRITE_BUSY
+    }
     if (seatHeldBy(identity, flags, participants, queue, entry.id)) return { status: 200, body: { status: 'denied' } }
     const minted = await mintToken(env, room, entry.name, entry.deviceId, false, entry.userId)
     return { status: 200, body: { status: 'approved', ...minted } }
@@ -1023,7 +1053,14 @@ export async function handleKnockUpdate(env, body) {
   if (note != null && (typeof note !== 'string' || note.length > MAX_NOTE_LEN || /[\u0000-\u001f\u007f]/.test(note))) {
     return { status: 400, body: { error: `Keep the note to one line of ${MAX_NOTE_LEN} characters.` } }
   }
-  const [flags, participants] = await Promise.all([getRoomFlags(roomService, room), listParticipants(roomService, room)])
+  // Strict, both: an empty read would say "you're no longer waiting" to someone
+  // who is, and "nobody here" would let them rename into a live guest's seat.
+  let flags, participants
+  try {
+    ;[flags, participants] = await Promise.all([readRoomFlagsStrict(roomService, room), listParticipantsStrict(roomService, room)])
+  } catch {
+    return WRITE_BUSY
+  }
   const queue = await readQueue(apiSecret, room, flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry || entry.status !== 'pending') return { status: 409, body: { error: 'You’re no longer waiting.' } }
