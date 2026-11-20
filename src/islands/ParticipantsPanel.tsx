@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   useLocalParticipant,
   useParticipants,
@@ -40,7 +40,7 @@ import { ConnectionQuality } from '@/islands/ConnectionQuality'
 import { ContactsDialog } from '@/islands/Contacts'
 import { AddPeople } from '@/islands/AddPeople'
 import type { ContactRow } from '@/store/useContactsStore'
-import { useHandRaised } from '@/features/reactions/useReactions'
+import { handQueue, useHandRaised } from '@/features/reactions/useReactions'
 import { CONTROL_TOPIC } from '@/features/session/useSessionControl'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useAppStore } from '@/store/useAppStore'
@@ -69,6 +69,31 @@ function displayName(p: Participant): string {
 export function ParticipantsPanel() {
   // Each row follows its own speaking state (useIsSpeaking), so the list doesn't.
   const participants = useParticipants({ updateOnlyOn: ROSTER_EVENTS })
+  // Raised hands first, in the order they went up, so the host reads the queue
+  // top-down; everyone else keeps the list's own order.
+  const handOrder = handQueue(participants)
+  const byHand = [
+    ...handOrder.flatMap((id) => participants.filter((p) => p.identity === id)),
+    ...participants.filter((p) => !handOrder.includes(p.identity)),
+  ]
+  // Re-sorting MOVES rows in the DOM, and moving the row that holds focus drops
+  // it to <body> — a host tabbing through the list would be thrown back to the
+  // top of the page whenever someone raised or lowered a hand. Note what holds
+  // focus inside the list as this render starts (the DOM hasn't moved yet) and
+  // put it back after the commit if the move dropped it.
+  const listRef = useRef<HTMLUListElement>(null)
+  const focusBefore = useRef<Element | null>(null)
+  const order = byHand.map((p) => p.identity).join('\n')
+  if (typeof document !== 'undefined') {
+    const active = document.activeElement
+    focusBefore.current = active && listRef.current?.contains(active) ? active : null
+  }
+  useLayoutEffect(() => {
+    const el = focusBefore.current
+    if (el instanceof HTMLElement && el.isConnected && document.activeElement !== el) {
+      el.focus({ preventScroll: true })
+    }
+  }, [order])
   const { localParticipant } = useLocalParticipant()
   // Your other devices, by the server's signature (metadata alone can be edited).
   const otherSeats = useMyOtherSeats()
@@ -345,11 +370,14 @@ export function ParticipantsPanel() {
 
         <p className="mt-3 text-xs font-medium text-ink-subtle">{participants.length} in call</p>
       </div>
-      <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 no-scrollbar">
-        {participants.map((p) => (
+      <ul
+        ref={listRef}
+        className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 no-scrollbar">
+        {byHand.map((p) => (
           <ParticipantRow
             key={p.identity}
             participant={p}
+            handPosition={handOrder.indexOf(p.identity) + 1 || null}
             ambiguous={dupNames.has(displayName(p).toLowerCase())}
             isLocal={p.identity === localParticipant.identity}
             myOtherDevice={!p.isLocal && !!p.sid && otherSeats.has(p.sid)}
@@ -417,6 +445,7 @@ export function ParticipantsPanel() {
 
 function ParticipantRow({
   participant,
+  handPosition,
   ambiguous,
   isLocal,
   myOtherDevice,
@@ -430,6 +459,8 @@ function ParticipantRow({
   onReport,
 }: {
   participant: Participant
+  /** Place in the raised-hand queue (1-based), or null when the hand is down. */
+  handPosition: number | null
   /** This display name is shared with another participant — show a short id suffix. */
   ambiguous: boolean
   isLocal: boolean
@@ -516,6 +547,13 @@ function ParticipantRow({
               <PinIcon className="size-3" /> Pinned
             </Badge>
           )}
+          {/* The queue in words: raised hands sort to the top in the order they
+              went up, and this says which one you're looking at. */}
+          {handRaised && handPosition && (
+            <Badge tone="warning" className="mt-0.5">
+              <HandIcon className="size-3" /> {ordinal(handPosition)} hand
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -584,4 +622,11 @@ function ParticipantRow({
       </DropdownMenu>
     </li>
   )
+}
+
+/** 1 → "1st", 2 → "2nd", 11 → "11th". */
+function ordinal(n: number): string {
+  const tens = n % 100
+  if (tens >= 11 && tens <= 13) return `${n}th`
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`
 }

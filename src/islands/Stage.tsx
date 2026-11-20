@@ -34,7 +34,7 @@ import { moderate } from '@/lib/orchestrator'
 import { useAppStore } from '@/store/useAppStore'
 import { useFlipCamera } from '@/lib/useFlipCamera'
 import { ConnectionQuality } from '@/islands/ConnectionQuality'
-import { useHandRaised } from '@/features/reactions/useReactions'
+import { useHandPosition, useHandRaised } from '@/features/reactions/useReactions'
 import { useRoomStore } from '@/store/useRoomStore'
 import { useBlurControls } from '@/features/effects/BlurContext'
 import { useBlockStore } from '@/store/useBlockStore'
@@ -74,6 +74,8 @@ function tileLabel(opts: {
   micOff: boolean
   speaking: boolean
   handRaised: boolean
+  /** Place in the raised-hand queue (1-based), when the hand is up. */
+  handPosition?: number | null
   hasVideo: boolean
   pinned: boolean
 }): string {
@@ -88,7 +90,7 @@ function tileLabel(opts: {
   if (!opts.isScreen) {
     states.push(opts.micOff ? 'muted' : 'unmuted')
     if (opts.speaking) states.push('speaking')
-    if (opts.handRaised) states.push('hand raised')
+    if (opts.handRaised) states.push(opts.handPosition ? `hand raised, number ${opts.handPosition} in line` : 'hand raised')
     if (!opts.hasVideo) states.push('camera off')
   }
   if (opts.pinned) states.push('pinned')
@@ -2084,6 +2086,7 @@ function Tile({
   const speaking = useIsSpeaking(p)
   const micOff = !p.isMicrophoneEnabled
   const handRaised = useHandRaised(p)
+  const handPosition = useHandPosition(handRaised ? p : undefined)
 
   const pinned = useRoomStore((s) => s.pinned) === p.identity
   const togglePin = useRoomStore((s) => s.togglePin)
@@ -2193,6 +2196,7 @@ function Tile({
     micOff,
     speaking,
     handRaised,
+    handPosition,
     hasVideo,
     pinned,
   })
@@ -2288,7 +2292,10 @@ function Tile({
         )}
         {handRaised && (
           <span aria-hidden className="flex items-center gap-1 rounded-control bg-overlay px-2 py-0.5 text-xs font-medium text-warning">
-            <HandIcon className="size-3" /> Hand
+            {/* Its place in line (Teams' "1 ✋"), so a host can call on people in
+                the order they asked. "Hand" only for the moment before the
+                queue has read the new attribute. */}
+            <HandIcon className="size-3" /> {handPosition ?? 'Hand'}
           </span>
         )}
       </div>

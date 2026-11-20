@@ -111,6 +111,13 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   almost no slack. Adding anything to the bar means measuring it (a labelled route chip
   and the host's split leave-and-end control both had to come off), and nothing on it
   may be a status indicator: those go in `TopStack`. `test:mobile-sm` asserts the fit.
+  - **The desktop bar folds by measurement, one control at a time** (`lib/barFold`):
+    Reactions → Annotate → Share → device carets + the host's split Leave. Mic,
+    camera, chat, More and Leave never fold. There is no fixed breakpoint to keep in
+    step any more — a new control slots into the fold order instead. **The island is
+    icons-only at every width — no text labels under the buttons** (owner's call,
+    Nov 2026; Teams labels its toolbar, we deliberately don't). `24-reflow` asserts
+    the order.
 - **Speaker choice lives behind the mic caret on desktop — there is no audio-output
   button on the bar.** One used to sit there, and the popover it opened was
   `AudioDevicePanel`: the same component, same props, that the caret two controls to
@@ -280,4 +287,8 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 Work landing on a feature branch but never reaching `main` is a recurring failure.
 - **Finish = merged.** When a task is done and gates pass, merge to `main` (fast-forward
   or PR) and push. Don't leave the only copy on a feature branch.
+- **Adversarial review before every merge** (owner's standing rule). Review the whole
+  branch diff against `origin/main` as an adversary — line by line, every removed
+  behaviour, every caller of a changed function, every CLAUDE.md rule — and fix what
+  it finds (or say why not) BEFORE merging. Re-run the affected gates after the fixes.
 - Check before ending: `npm run unmerged` (lists commits on HEAD not yet on `origin/main`).
