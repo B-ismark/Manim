@@ -56,7 +56,7 @@ import { useMyOtherSeats } from '@/lib/sameAccount'
 import { moderate, sendEmailInvite, setRoomFlags } from '@/lib/orchestrator'
 import { countSettled } from '@/lib/settle'
 import { displayNameOf } from '@/lib/participantName'
-import { ringUser } from '@/features/calls/calls'
+import { RING_TTL_MS, ringUser } from '@/features/calls/calls'
 import { authEnabled } from '@/lib/supabase'
 import { cn } from '@/lib/cn'
 import { linkWithoutKey, parseRoomHash } from '@/lib/roomLink'
@@ -105,6 +105,11 @@ export function ParticipantsPanel() {
   const toggleSection = (id: SectionId) => setFolded((f) => ({ ...f, [id]: !f[id] }))
   const waitingAll = useWaitingStore((s) => s.pending)
   const decideKnock = useWaitingStore((s) => s.decide)
+  // Deciding on someone removes their row, and the button you pressed with it:
+  // focus would fall to <body>. Hand it to the next person waiting (or, when
+  // that was the last, the In this call header) once the row has gone.
+  const focusNext = useRef<string | null>(null)
+  const scrollRef = useRef<HTMLDivElement>(null)
   const { localParticipant } = useLocalParticipant()
   // Your other devices, by the server's signature (metadata alone can be edited).
   const otherSeats = useMyOtherSeats()
@@ -178,9 +183,42 @@ export function ParticipantsPanel() {
   const searching = showSearch && query.trim() !== ''
   const shownCall = searching ? byHand.filter((p) => nameMatches(displayName(p), query)) : byHand
   const shownWaiting = searching ? waitingList.filter((p) => nameMatches(p.name, query)) : waitingList
+  // "Ringing…" is only true for as long as the ring itself (RING_TTL_MS, after
+  // which the callee's ring gives up). Tick while a ring is that young, so the
+  // row moves on to "No answer yet" even if nothing else redraws the panel.
+  const [now, setNow] = useState(() => Date.now())
+  // The next ring to stop (the soonest end still in the future), re-armed after each.
+  const nextRingEnd = Math.min(
+    Infinity,
+    ...ghostInvites.filter((i) => i.kind === 'ring' && i.ts + RING_TTL_MS > now).map((i) => i.ts + RING_TTL_MS),
+  )
+  useEffect(() => {
+    if (!Number.isFinite(nextRingEnd)) return
+    const t = window.setTimeout(() => setNow(Date.now()), Math.max(0, nextRingEnd - Date.now()) + 50)
+    return () => window.clearTimeout(t)
+  }, [nextRingEnd])
   const shownInvites = searching ? ghostInvites.filter((i) => nameMatches(i.label, query)) : ghostInvites
   // Searching opens every section: a match inside a folded one would be invisible.
   const isOpen = (id: SectionId) => searching || !folded[id]
+  const decide = (k: { id: string }, approve: boolean) => {
+    const i = shownWaiting.findIndex((w) => w.id === k.id)
+    const next = shownWaiting[i + 1] ?? shownWaiting[i - 1]
+    focusNext.current = next ? `admit-${next.id}` : 'section-call'
+    decideKnock(k as (typeof shownWaiting)[number], approve)
+  }
+  useLayoutEffect(() => {
+    const target = focusNext.current
+    if (!target) return
+    focusNext.current = null
+    const root = scrollRef.current
+    const el = target.startsWith('admit-')
+      ? root?.querySelector<HTMLElement>(`[data-admit="${CSS.escape(target.slice(6))}"]`)
+      : root?.querySelector<HTMLElement>('[data-section="call"] button[aria-expanded]')
+    // Only if the press really dropped it — never pull focus from somewhere else.
+    if (el && (document.activeElement === document.body || !document.activeElement?.isConnected)) {
+      el.focus({ preventScroll: false })
+    }
+  }, [shownWaiting.length])
   // The box goes away when the list gets short again (people left); don't keep
   // a search nobody can see, waiting to filter the list the next time it appears.
   useEffect(() => {
@@ -415,7 +453,7 @@ export function ParticipantsPanel() {
           />
         )}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1 no-scrollbar">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1 no-scrollbar">
         {shownWaiting.length > 0 && (
           <Section
             id="waiting"
@@ -429,6 +467,7 @@ export function ParticipantsPanel() {
                   variant="ghost"
                   size="sm"
                   onClick={() => {
+                    focusNext.current = 'section-call'
                     for (const k of shownWaiting) decideKnock(k, true)
                   }}
                 >
@@ -448,10 +487,15 @@ export function ParticipantsPanel() {
                     </p>
                   )}
                 </div>
-                <Button variant="accent" size="sm" aria-label={`Admit ${k.name}`} onClick={() => decideKnock(k, true)}>
+                {/* Full size, both labelled: as in the banner, admitting or denying
+                    a person is consequential, and in a phone's sheet these are thumb
+                    targets side by side. */}
+                <Button variant="accent" data-admit={k.id} aria-label={`Admit ${k.name}`} onClick={() => decide(k, true)}>
                   Admit
                 </Button>
-                <IconButton size="sm" tone="neutral" label={`Deny ${k.name}`} icon={<CloseIcon />} onClick={() => decideKnock(k, false)} />
+                <Button variant="ghost" aria-label={`Deny ${k.name}`} onClick={() => decide(k, false)}>
+                  Deny
+                </Button>
               </li>
             ))}
           </Section>
@@ -465,19 +509,20 @@ export function ParticipantsPanel() {
           onToggle={toggleSection}
           listRef={listRef}
           action={
+            // Not while searching: the header would read "In this call (1)" and
+            // Mute all would still mute all twelve. (Admit all narrows to its
+            // matches instead, because admitting a subset is a real choice;
+            // muting "everyone I searched for" is not.)
             isHost &&
+            !searching &&
             participants.length > 1 && (
-              <span className="flex items-center">
+              <span className="flex shrink-0 items-center">
                 <Button variant="ghost" size="sm" onClick={() => muteAll(Track.Source.Microphone, 'mic')}>
                   Mute all
                 </Button>
-                <IconButton
-                  size="sm"
-                  tone="neutral"
-                  label="Turn off cameras"
-                  icon={<CameraOffIcon />}
-                  onClick={() => muteAll(Track.Source.Camera, 'camera')}
-                />
+                <Button variant="ghost" size="sm" onClick={() => muteAll(Track.Source.Camera, 'camera')}>
+                  Cameras off
+                </Button>
               </span>
             )
           }
@@ -515,7 +560,7 @@ export function ParticipantsPanel() {
                 <Avatar name={inv.label} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{inv.label}</p>
-                  <p className="text-xs text-ink-subtle">{inv.kind === 'ring' ? 'Ringing…' : 'Invited by email'}</p>
+                  <p className="text-xs text-ink-subtle">{inviteStatus(inv, now)}</p>
                 </div>
                 <IconButton
                   size="sm"
@@ -772,8 +817,10 @@ function Section({
 }) {
   const listId = `people-section-${id}`
   return (
-    <section aria-label={`${title} (${count})`} className="mt-1">
-      <div className="flex min-h-9 items-center gap-1 pr-1">
+    <section aria-label={`${title} (${count})`} data-section={id} className="mt-1">
+      {/* Sticky, so a section's bulk action is still within reach after
+          scrolling down a long list (it used to be pinned under the list). */}
+      <div className="sticky top-0 z-10 flex min-h-9 items-center gap-1 bg-surface pr-1">
         <h3 className="min-w-0 flex-1">
           <button
             type="button"
@@ -797,4 +844,9 @@ function Section({
       </ul>
     </section>
   )
+}
+
+function inviteStatus(inv: { kind: 'ring' | 'email'; ts: number }, now: number): string {
+  if (inv.kind === 'email') return 'Invited by email'
+  return now - inv.ts < RING_TTL_MS ? 'Ringing…' : 'No answer yet'
 }

@@ -34,6 +34,8 @@ test.describe('People sections @people', () => {
       const search = page.getByRole('searchbox', { name: 'Search people' })
       await search.fill('benjamin') // no accent typed; the name has one
       await expect(page.getByRole('region', { name: /^In this call \(1\)$/ })).toBeVisible()
+      // "Mute all" would still mean all of them, not the one match: it steps aside.
+      await expect(page.getByRole('button', { name: 'Mute all' })).toHaveCount(0)
       await expect(page.getByText('Benjamín', { exact: true }).last()).toBeVisible()
 
       await search.fill('zzz')
@@ -75,7 +77,10 @@ test.describe('People sections @people', () => {
       await openPeople(page)
       const waiting = page.getByRole('region', { name: /^Waiting \(1\)$/ })
       await expect(waiting).toBeVisible({ timeout: 30_000 })
-      await activate(page, waiting.getByRole('button', { name: 'Admit Esi' }))
+      // By keyboard: the row (and the button) go, and focus must not fall to <body>.
+      await waiting.getByRole('button', { name: 'Admit Esi' }).focus()
+      await page.keyboard.press('Enter')
+      await expect(page.getByRole('button', { name: /^In this call/ })).toBeFocused()
 
       await expect(guest.getByRole('region', { name: 'Call controls' })).toBeAttached({ timeout: 45_000 })
       await expect(page.getByRole('region', { name: /^In this call \(2\)$/ })).toBeVisible({ timeout: 30_000 })
