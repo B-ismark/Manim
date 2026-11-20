@@ -37,10 +37,10 @@ jobs:
       VITE_LIVEKIT_URL: ws://127.0.0.1:7880
       LOWBW_PROFILE: ${{ inputs.profile }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Install Playwright Chromium
@@ -146,7 +146,7 @@ jobs:
             echo '_No report produced — see the job log._' >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: lowbw-report-${{ inputs.profile }}

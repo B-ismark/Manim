@@ -35,10 +35,10 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Typecheck
@@ -63,7 +63,7 @@ jobs:
       LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
       VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Skip if LiveKit creds are not configured
         id: guard
         run: |
@@ -73,10 +73,10 @@ jobs:
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.guard.outputs.run == 'true'
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
         if: steps.guard.outputs.run == 'true'
@@ -108,14 +108,14 @@ jobs:
       - name: Run visual scenarios (screenshots + edge cases)
         if: steps.guard.outputs.run == 'true'
         run: npm run test:visual
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: ${{ always() && steps.guard.outputs.run == 'true' }}
         with:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
       - name: Upload scenario screenshots
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: ${{ always() && steps.guard.outputs.run == 'true' }}
         with:
           name: scenario-screenshots
@@ -154,10 +154,10 @@ jobs:
       LIVEKIT_URL: ws://127.0.0.1:7880
       VITE_LIVEKIT_URL: ws://127.0.0.1:7880
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
       - name: Install Playwright Chromium
@@ -204,7 +204,7 @@ jobs:
       - name: Run E2E — mobile-sm
         run: npm run test:mobile-sm -- --workers=1
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: playwright-report-local
@@ -221,7 +221,7 @@ jobs:
     env:
       VITE_LIVEKIT_URL: ${{ secrets.VITE_LIVEKIT_URL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Skip if build var is not configured
         id: guard
         run: |
@@ -231,16 +231,32 @@ jobs:
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.guard.outputs.run == 'true'
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
       - run: npm ci
         if: steps.guard.outputs.run == 'true'
       - name: Build
         if: steps.guard.outputs.run == 'true'
         run: npm run build
+      - name: Landing must not load the call code
+        if: steps.guard.outputs.run == 'true'
+        # The entry chunk importing livekit means every landing visit downloads
+        # and runs the whole calling stack. Nothing else fails when the chunk
+        # groups in vite.config.ts start pulling it in (see HAZARD there).
+        run: |
+          entry=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html | head -1)
+          test -n "$entry" || { echo "::error::no entry chunk found in dist/index.html"; exit 1; }
+          # Static imports only: the lazy routes legitimately name it in their
+          # preload map.
+          if grep -qE '(from|import) ?"\./livekit-[A-Za-z0-9_-]+\.js"' "dist/$entry" \
+            || grep -qE 'modulepreload[^>]*livekit-' dist/index.html; then
+            echo "::error::$entry loads the livekit chunk up front: landing would download the call code"
+            exit 1
+          fi
+          ls -l dist/assets/*.js | awk '{print $5, $9}' | sort -n
       - name: Lighthouse CI
         if: steps.guard.outputs.run == 'true'
         run: npm run lighthouse
@@ -266,7 +282,7 @@ jobs:
       SUBSCRIBERS: ${{ github.event.inputs.subscribers }}
       DURATION: ${{ github.event.inputs.duration }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Guard on creds
         id: guard
         run: |
@@ -276,9 +292,9 @@ jobs:
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         if: steps.guard.outputs.run == 'true'
-        with: { node-version: 20, cache: npm }
+        with: { node-version: 24, cache: npm }
       - run: npm ci
         if: steps.guard.outputs.run == 'true'
       - name: Install livekit-cli
@@ -308,7 +324,7 @@ jobs:
         run: |
           sleep 10   # let publishers ramp into the room first
           npx playwright test 10-loadtest-observe --project=desktop --workers=1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: ${{ always() && steps.guard.outputs.run == 'true' }}
         with:
           name: loadtest-results

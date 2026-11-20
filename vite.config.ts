@@ -9,7 +9,7 @@ export default defineConfig(({ command, mode }) => {
 
   // Build guard. RoomView is rendered only inside `token && LIVEKIT_URL`; if
   // VITE_LIVEKIT_URL is empty at build time, LIVEKIT_URL folds to a falsy
-  // constant, the whole in-call tree becomes dead code, and Rollup tree-shakes
+  // constant, the whole in-call tree becomes dead code, and the bundler tree-shakes
   // it out — producing a bundle that builds fine but can't run a call. That MUST
   // never ship. The VITE_* build vars live in Cloudflare → manim → Settings →
   // Build; a local `.env` is intentionally empty. So: do NOT build/deploy from a
@@ -31,18 +31,43 @@ export default defineConfig(({ command, mode }) => {
       },
     },
     build: {
-      rollupOptions: {
+      rolldownOptions: {
         output: {
           // Split the heavy, rarely-changing vendor code into long-lived cacheable
           // chunks so app edits don't bust the whole bundle. livekit is the biggest
           // dependency by far; React + Radix are stable too.
-          // NOTE: @livekit/track-processors is intentionally NOT listed — it (and
+          // Vite 8 bundles with Rolldown, which has no object-form `manualChunks`
+          // (the Rollup shape this used to be): groups match module paths instead,
+          // and pull each match's static dependencies in with it (the default).
+          // The react group is broader than the old object form, which resolved
+          // 'react-dom' to its index only: react-dom/client and scheduler now land
+          // in the cacheable react chunk instead of the entry. React outranks
+          // livekit so components-react's own `import 'react'` can't drag React
+          // into the livekit chunk.
+          // HAZARD: a dependency a livekit package shares with the landing page
+          // (e.g. @floating-ui, via a components-core split back out of
+          // components-react) would be pulled INTO the livekit chunk and make the
+          // entry import it eagerly. Nothing fails when that happens, so the
+          // lighthouse job asserts the entry never imports a livekit chunk.
+          // NOTE: @livekit/track-processors is intentionally NOT matched — it (and
           // its ~160KB MediaPipe payload) is dynamically imported only when blur is
-          // first enabled (see useBackgroundBlur). Naming it here would force it
-          // into the eagerly-loaded room chunk and defeat that lazy boundary.
-          manualChunks: {
-            livekit: ['livekit-client', '@livekit/components-react'],
-            react: ['react', 'react-dom', 'react-router-dom'],
+          // first enabled (see useBackgroundBlur). Capturing it here would force it
+          // into the eagerly-loaded room chunk and defeat that lazy boundary. The
+          // livekit pattern names its two packages exactly for that reason, so a
+          // broader `@livekit/` match must never replace it.
+          codeSplitting: {
+            groups: [
+              {
+                name: 'react',
+                test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler)[\\/]/,
+                priority: 20,
+              },
+              {
+                name: 'livekit',
+                test: /[\\/]node_modules[\\/](livekit-client|@livekit[\\/]components-react)[\\/]/,
+                priority: 10,
+              },
+            ],
           },
         },
       },
