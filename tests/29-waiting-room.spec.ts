@@ -84,6 +84,62 @@ test.describe('Waiting room', () => {
     expect(ok.status()).toBe(200)
   })
 
+  // Every knock rewrites the whole sealed queue in room metadata. Two landing
+  // together used to erase one (the later write replacing the earlier): that guest
+  // read "Waiting to be let in" and then expired, never on the host's banner.
+  // server/queueWrite.mjs re-reads after each write and redoes a lost change.
+  test('two guests knocking at the same moment both reach the host', async ({ page, browser }, info) => {
+    test.setTimeout(150_000)
+    const room = uniqueRoom('lobby-race')
+    await join(page, room, 'Host')
+    await openHostControls(page)
+    await activate(page, page.getByRole('button', { name: 'Waiting room' }))
+    await closePanel(page)
+
+    const names = ['Esi', 'Kwame']
+    const guests = await Promise.all(
+      names.map(async (name) => {
+        const ctx = await browser.newContext({ ...info.project.use, permissions: ['camera', 'microphone'] })
+        const g = await ctx.newPage()
+        await g.goto(`/r/${room}`)
+        await g.getByLabel('Your name').fill(name)
+        return { ctx, g }
+      }),
+    )
+    try {
+      // Both presses in the same tick: their knocks reach the server together.
+      await Promise.all(guests.map(({ g }) => g.getByRole('button', { name: 'Join now' }).click()))
+      for (const { g } of guests) await expect(g.getByText('Waiting to be let in')).toBeVisible({ timeout: 30_000 })
+      for (const name of names) {
+        await expect(page.getByRole('button', { name: `Admit ${name}` })).toBeVisible({ timeout: 30_000 })
+      }
+      // ...and both are really let in, not just listed.
+      for (const name of names) await activate(page, page.getByRole('button', { name: `Admit ${name}` }))
+      for (const { g } of guests) {
+        await expect(g.getByRole('region', { name: 'Call controls' })).toBeAttached({ timeout: 60_000 })
+      }
+    } finally {
+      for (const { ctx } of guests) await closeContext(ctx)
+    }
+  })
+
+  test('a burst of simultaneous knocks keeps every one', async ({ page, request }) => {
+    const room = uniqueRoom('lobby-burst')
+    await join(page, room, 'Host')
+    await openHostControls(page)
+    await activate(page, page.getByRole('button', { name: 'Waiting room' }))
+    await closePanel(page)
+
+    const names = ['Abena', 'Yaw', 'Akosua', 'Kojo']
+    const knocks = await Promise.all(
+      names.map((name, i) => request.post('/api/knock', { data: { room, name, deviceId: `burst-${i}` } })),
+    )
+    for (const k of knocks) expect((await k.json()).pending).toBe(true)
+    for (const name of names) {
+      await expect(page.getByRole('button', { name: `Admit ${name}` })).toBeVisible({ timeout: 30_000 })
+    }
+  })
+
   test('only the guest who knocked can change their request', async ({ request }) => {
     const room = uniqueRoom('lobby-api')
     const res = await request.post('/api/knock-update', { data: { room, requestId: 'anything', claim: 'nope', note: 'hi' } })

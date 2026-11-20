@@ -15,6 +15,7 @@ import { accountClaim, accountPseudonym } from './account.mjs'
 import { withoutE2eeKey } from './invite.mjs'
 import { removedEntry, withRemoved, wasRemoved } from './removed.mjs'
 import { roomTitle } from './preview.mjs'
+import { writeWithRetry } from './queueWrite.mjs'
 
 const HTML_ESCAPE = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }
 /** Escape user-supplied text before interpolating into email HTML. */
@@ -160,6 +161,13 @@ async function resolveTrackSid(roomService, room, identity, source) {
   }
 }
 
+/** Like getRoomFlags, but a failed read THROWS instead of reading as {}: a writer
+ *  that took {} for the truth would write over every key the room has. */
+async function readRoomFlagsStrict(roomService, room) {
+  const rooms = await roomService.listRooms([room])
+  return rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {}
+}
+
 async function getRoomFlags(roomService, room) {
   try {
     const rooms = await roomService.listRooms([room])
@@ -202,6 +210,86 @@ async function queuePatch(apiSecret, room, queue, now = Date.now()) {
   })
   return { queueSealed: await seal(apiSecret, room, kept.slice(-50)), queue: undefined }
 }
+
+/**
+ * Change the waiting-room queue so a concurrent change to it isn't lost.
+ *
+ * mergeRoomFlags is a plain read-modify-write, and two requests in different Worker
+ * isolates interleave: two guests knocking together, or a host and a co-host
+ * admitting together, and the second write erased the first. This re-reads after
+ * the write and redoes the change on top of whatever won (server/queueWrite.mjs
+ * has the why and the limits). Every attempt starts from a fresh read, so the
+ * other keys are carried along exactly as mergeRoomFlags does, and queuePatch
+ * still prunes before the 50-cap.
+ *
+ * `change(queue, attempt)` edits the unsealed queue in place and returns
+ * `{ result }` to write it, or `{ done }` to stop without writing. `present(queue)`
+ * says whether this request's change survived. `first` is an already-fresh copy of
+ * the flags for attempt 0 (the same rule as mergeRoomFlags' `current`).
+ *
+ * Returns `{ ok: true, value }`, or `{ ok: false }` when it kept losing (or LiveKit
+ * kept failing): the caller says "try again" rather than claiming success.
+ */
+export function mutateQueue(roomService, apiSecret, room, { change, present, now, first }, opts = {}) {
+  return writeWithRetry({
+    ...opts,
+    first,
+    read: () => readRoomFlagsStrict(roomService, room),
+    write: (flags) => roomService.updateRoomMetadata(room, JSON.stringify(flags)),
+    mutate: async (flags, attempt) => {
+      const queue = await readQueue(apiSecret, room, flags)
+      const step = await change(queue, attempt)
+      if ('done' in step) return step
+      return { patch: await queuePatch(apiSecret, room, queue, now ?? Date.now()), result: step.result }
+    },
+    verify: async (flags) => present(await readQueue(apiSecret, room, flags)),
+  })
+}
+
+/** mutateQueue op: add a knock's entry (once: a retry finds it already there). */
+export function enqueueOp(entry) {
+  return {
+    change: (q) => {
+      if (q.some((e) => e.id === entry.id)) return { done: true }
+      q.push(entry)
+      return { result: true }
+    },
+    present: (q) => q.some((e) => e.id === entry.id),
+  }
+}
+
+/** mutateQueue op: a host's decision on one request. Attempt 0 behaves exactly as
+ *  the plain write did; a retry first checks what happened while ours was lost. */
+export function decideOp(requestId, approve, name) {
+  const want = approve ? 'approved' : 'denied'
+  return {
+    change: (q, attempt) => {
+      const e = q.find((x) => x.id === requestId)
+      if (!e) return { done: { status: 404, body: { error: 'request not found' } } }
+      if (attempt > 0) {
+        // Our earlier write landed after all, or another host decided the same.
+        if (e.status === want) return { done: { status: 200, body: { ok: true } } }
+        // Another host decided the other way while ours was lost: theirs stands.
+        if (e.status !== 'pending') {
+          return { done: { status: 409, body: { error: 'Someone else already decided.', code: 'decided' } } }
+        }
+        // The guest renamed in the meantime: same rule as handleAdmit's own check.
+        if (approve && typeof name === 'string' && name !== e.name) {
+          return {
+            done: { status: 409, body: { error: 'They changed their name. Check who’s waiting again.', code: 'renamed' } },
+          }
+        }
+      }
+      e.status = want
+      e.settledAt = Date.now()
+      return { result: { status: 200, body: { ok: true } } }
+    },
+    present: (q) => q.find((x) => x.id === requestId)?.status === want,
+  }
+}
+
+/** The answer when a queue change couldn't be made to stick. */
+const QUEUE_BUSY = { status: 503, body: { error: 'Lots happening at once — try again.', code: 'busy' } }
 
 // Resolve the caller's identity from their LiveKit JWT — the same token they hold
 // to join the room. The signature is verified with the API secret, so the identity
@@ -639,8 +727,12 @@ export async function handleKnock(env, body) {
   // burst of dead knocks can't evict fresh ones — the earlier-pending-evicted-as-
   // expired bug — and the queue self-cleans. Approved entries are kept (rejoin needs
   // them). The whole queue is sealed: room metadata is readable by everyone in it.
-  const next = [...queue, { id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now }]
-  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, next, now))
+  // Two guests knocking at once used to lose one of the two entries (the second
+  // write replacing the first), and that guest then polled straight into "expired".
+  // mutateQueue re-reads after writing and re-adds the entry if it went missing.
+  const entry = { id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now }
+  const queued = await mutateQueue(roomService, apiSecret, room, { now, ...enqueueOp(entry) })
+  if (!queued.ok) return QUEUE_BUSY
   // Sealed or not, never let a request id alone be enough to collect the token:
   // the claim key is what knock-status actually honours, and only this caller has it.
   return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
@@ -799,13 +891,35 @@ export async function handleKnockUpdate(env, body) {
       body: { error: 'Someone with this name is already part of this call. Try another.', code: 'seat_taken' },
     }
   }
-  entry.name = nextName
-  entry.note = nextNote
-  entry.edits = (entry.edits || 0) + 1
-  // Re-read just before writing (no base passed), so a host change made while
-  // this was unsealing isn't written back over.
-  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue))
-  return { status: 200, body: { ok: true, name: entry.name, note: entry.note } }
+  // Applied to a fresh read each attempt (no base passed), so a host change made
+  // while this was unsealing isn't written back over, and re-checked there: the
+  // host may have settled it, or someone taken the name, in the meantime.
+  const ok = { status: 200, body: { ok: true, name: nextName, note: nextNote } }
+  const res = await mutateQueue(roomService, apiSecret, room, {
+    change: (q) => {
+      const e = q.find((x) => x.id === requestId)
+      if (!e || e.status !== 'pending') return { done: { status: 409, body: { error: 'You’re no longer waiting.' } } }
+      // An earlier attempt's write that landed after all.
+      if (e.name === nextName && (e.note || '') === nextNote) return { done: ok }
+      if (e.name !== nextName && seatHeldBy(`${nextName}#${e.deviceId || 'web'}`, flags, participants, q, e.id)) {
+        return {
+          done: {
+            status: 409,
+            body: { error: 'Someone with this name is already part of this call. Try another.', code: 'seat_taken' },
+          },
+        }
+      }
+      e.name = nextName
+      e.note = nextNote
+      e.edits = (e.edits || 0) + 1
+      return { result: ok }
+    },
+    present: (q) => {
+      const e = q.find((x) => x.id === requestId)
+      return Boolean(e) && e.name === nextName && (e.note || '') === nextNote
+    },
+  })
+  return res.ok ? res.value : QUEUE_BUSY
 }
 
 export async function handlePending(env, query, token) {
@@ -834,11 +948,14 @@ export async function handleAdmit(env, body, token) {
   if (approve && typeof name === 'string' && name !== entry.name) {
     return { status: 409, body: { error: 'They changed their name. Check who’s waiting again.', code: 'renamed' } }
   }
-  entry.status = approve ? 'approved' : 'denied'
-  entry.settledAt = Date.now()
-  // Only local crypto awaited since the flags were read, so reuse them.
-  await mergeRoomFlags(roomService, room, await queuePatch(apiSecret, room, queue), auth.flags)
-  return { status: 200, body: { ok: true } }
+  // Two hosts admitting at once used to lose one decision, leaving that guest
+  // pending; mutateQueue redoes ours on top of the other one's.
+  const res = await mutateQueue(roomService, apiSecret, room, {
+    // Only local crypto awaited since the flags were read, so attempt 0 reuses them.
+    first: auth.flags,
+    ...decideOp(requestId, Boolean(approve), name),
+  })
+  return res.ok ? res.value : QUEUE_BUSY
 }
 
 /**

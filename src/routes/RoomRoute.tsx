@@ -83,7 +83,9 @@ function friendlyJoinError(e: unknown, raw: string): string {
 function isTransientJoinError(e: unknown, raw: string): boolean {
   // A gateway error page (502/504, Cloudflare's 52x) has no JSON body: the Worker
   // never answered, so trying again is the right move.
-  if (e instanceof ApiError) return !e.fromServer && e.status >= 502
+  // `busy`: the waiting-room queue kept losing a race with other knocks (server
+  // mutateQueue). Nothing was queued that we hold a claim to, so knock again.
+  if (e instanceof ApiError) return (!e.fromServer && e.status >= 502) || e.code === 'busy'
   const m = raw.toLowerCase()
   return (
     m.includes('timeout') ||
@@ -315,7 +317,10 @@ export function RoomRoute() {
         if (isTransientJoinError(e, raw) && attempt < JOIN_MAX_ATTEMPTS) {
           // Stay on the JoiningScreen (connecting && !error) and tell the user we're
           // retrying rather than flashing an error card between attempts.
-          toast('Connection dropped — trying again…', 'info')
+          toast(
+            e instanceof ApiError && e.code === 'busy' ? 'Lots of people joining — trying again…' : 'Connection dropped — trying again…',
+            'info',
+          )
           await delay(JOIN_BACKOFF_MS[attempt - 1])
           continue
         }
