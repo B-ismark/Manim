@@ -1,11 +1,15 @@
 /**
- * Verify-and-retry for read-modify-write of room metadata (the waiting-room queue).
+ * Verify-and-retry for read-modify-write of room metadata. Every server write of
+ * room flags goes through it (core.mjs `mutateRoomFlags`; the waiting-room queue's
+ * `mutateQueue` is a layer on top).
  *
  * LiveKit room metadata is one string with no compare-and-swap, and on Workers two
  * requests in different isolates can interleave their read and their write. Then
  * the second write replaces the first and a change vanishes: two guests knock at
  * once and one is never queued, two hosts admit at once and one guest stays
- * pending. This doesn't make the write atomic; it closes that window in practice:
+ * pending, a host locks the call while a guest knocks and the lock silently
+ * reverts, a removal is erased and the removed guest knocks straight back in.
+ * This doesn't make the write atomic; it closes that window in practice:
  *
  *   read → mutate → write → wait a beat → read again → is my change there?
  *                                                       no → back off, redo it
@@ -32,8 +36,8 @@ export const QUEUE_WRITE = {
    *  rounds in the worst case; 8 covers the bursts a waiting room actually sees. */
   attempts: 8,
   /** Wait after a write before reading it back (see above), plus up to `jitterMs`.
-   *  This is paid on EVERY change, raced or not: ~0.3s added to a knock or an admit
-   *  is the price of seeing a later overwrite. */
+   *  This is paid on EVERY change, raced or not: ~0.3s added to a knock, an admit,
+   *  a host toggle or a removal is the price of seeing a later overwrite. */
   settleMs: 250,
   jitterMs: 100,
   /** Pause before attempt n (n ≥ 1) is `backoffMs * n` plus up to `jitterMs * n`:
@@ -66,6 +70,9 @@ export async function writeWithRetry({ read, write, mutate, verify, first, sleep
       const flags = attempt === 0 && first ? first : await read()
       step = await mutate(flags, attempt)
       if ('done' in step) return { ok: true, value: step.done }
+      // mutate wants to write, so this read showed the change missing: an earlier
+      // write we couldn't read back didn't stick after all.
+      unconfirmed = null
       await write({ ...flags, ...step.patch })
     } catch {
       // A failed read or write: nothing was (knowingly) changed. Try again.

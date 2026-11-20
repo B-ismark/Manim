@@ -133,6 +133,12 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
   return { token: await at.toJwt(), identity, seat: await seatKey(apiSecret, room, identity) }
 }
 
+/** Like listParticipants, but a failed lookup THROWS instead of reading as "nobody
+ *  here". A room that doesn't exist yet still answers [] (LiveKit doesn't error). */
+async function listParticipantsStrict(roomService, room) {
+  return roomService.listParticipants(room)
+}
+
 async function listParticipants(roomService, room) {
   try {
     return await roomService.listParticipants(room)
@@ -177,19 +183,6 @@ async function getRoomFlags(roomService, room) {
   }
 }
 
-/**
- * Read-modify-write of room metadata. The read is what stops a concurrent writer's
- * unrelated keys from being clobbered, so it is NOT optional in general — but a
- * caller that already holds a fresh copy can pass it as `current` to skip a second
- * listRooms round-trip. Only pass it when nothing has been awaited since that read
- * (the window is then effectively zero); when there are awaits in between — knock,
- * which does KV and allowlist I/O — omit it and pay for the fresh read.
- */
-async function mergeRoomFlags(roomService, room, patch, current) {
-  const base = current ?? (await getRoomFlags(roomService, room))
-  await roomService.updateRoomMetadata(room, JSON.stringify({ ...base, ...patch }))
-}
-
 /** A settled (denied) waiting-room request is kept this long, so the guest's poll
  *  can still read "denied", then dropped. Approved ones stay: rejoining needs them. */
 const DENIED_KEEP_MS = 10 * 60_000
@@ -212,38 +205,214 @@ async function queuePatch(apiSecret, room, queue, now = Date.now()) {
 }
 
 /**
- * Change the waiting-room queue so a concurrent change to it isn't lost.
+ * Change room flags so a concurrent change to them isn't lost.
  *
- * mergeRoomFlags is a plain read-modify-write, and two requests in different Worker
- * isolates interleave: two guests knocking together, or a host and a co-host
- * admitting together, and the second write erased the first. This re-reads after
- * the write and redoes the change on top of whatever won (server/queueWrite.mjs
- * has the why and the limits). Every attempt starts from a fresh read, so the
- * other keys are carried along exactly as mergeRoomFlags does, and queuePatch
- * still prunes before the 50-cap.
+ * A plain read-modify-write isn't enough: two requests in different Worker
+ * isolates interleave: a host flipping Lock while a guest knocks, a host removing
+ * someone while a co-host admits, and the second write erased the first. This
+ * re-reads after the write and redoes the change on top of whatever won
+ * (server/queueWrite.mjs has the why and the limits). Every attempt starts from a
+ * fresh STRICT read (a failed read throws and is retried; it never becomes `{}`
+ * written over the room), and every key the change doesn't touch is carried along.
  *
- * `change(queue, attempt)` edits the unsealed queue in place and returns
- * `{ result }` to write it, or `{ done }` to stop without writing. `present(queue)`
- * says whether this request's change survived. `first` is an already-fresh copy of
- * the flags for attempt 0 (the same rule as mergeRoomFlags' `current`).
+ * `change(flags, attempt)` returns `{ patch, result }` to write `{...flags, ...patch}`,
+ * or `{ done }` to stop without writing. `present(flags)` says whether this
+ * request's change survived. `first` is an already-fresh, strictly-read copy of the
+ * flags for attempt 0, only when nothing has been awaited since that read: with
+ * awaits in between (a knock's KV and allowlist I/O) omit it and pay for a fresh read.
  *
  * Returns `{ ok: true, value }`, or `{ ok: false }` when it kept losing (or LiveKit
- * kept failing): the caller says "try again" rather than claiming success.
+ * kept failing): the caller says "try again" rather than claiming success. Every
+ * change pays the settle delay (~0.3s) before it answers; clients see the new flags
+ * from the room-metadata event as soon as the first write lands, so a switch flips
+ * just as fast as before — only the HTTP reply waits for the check.
  */
-export function mutateQueue(roomService, apiSecret, room, { change, present, now, first }, opts = {}) {
+export function mutateRoomFlags(roomService, room, { change, present, first }, opts = {}) {
   return writeWithRetry({
     ...opts,
     first,
     read: () => readRoomFlagsStrict(roomService, room),
     write: (flags) => roomService.updateRoomMetadata(room, JSON.stringify(flags)),
-    mutate: async (flags, attempt) => {
-      const queue = await readQueue(apiSecret, room, flags)
-      const step = await change(queue, attempt)
-      if ('done' in step) return step
-      return { patch: await queuePatch(apiSecret, room, queue, now ?? Date.now()), result: step.result }
-    },
-    verify: async (flags) => present(await readQueue(apiSecret, room, flags)),
+    mutate: (flags, attempt) => change(flags, attempt),
+    verify: (flags) => present(flags),
   })
+}
+
+/**
+ * Change the waiting-room queue so a concurrent change to it isn't lost:
+ * mutateRoomFlags over the unsealed queue. queuePatch still prunes before the 50-cap.
+ *
+ * `change(queue, attempt)` edits the unsealed queue in place and returns
+ * `{ result }` to write it, or `{ done }` to stop without writing. `present(queue)`
+ * says whether this request's change survived.
+ */
+export function mutateQueue(roomService, apiSecret, room, { change, present, now, first }, opts = {}) {
+  return mutateRoomFlags(
+    roomService,
+    room,
+    {
+      first,
+      change: async (flags, attempt) => {
+        const queue = await readQueue(apiSecret, room, flags)
+        const step = await change(queue, attempt)
+        if ('done' in step) return step
+        return { patch: await queuePatch(apiSecret, room, queue, now ?? Date.now()), result: step.result }
+      },
+      present: async (flags) => present(await readQueue(apiSecret, room, flags)),
+    },
+    opts,
+  )
+}
+
+/**
+ * Who last set each host-set flag: `flagRev[key]` is a random tag written with the
+ * value. A value alone can't tell "a stale write put the old value back" (redo
+ * mine) from "another host deliberately set it back" (theirs stands): both read as
+ * the old value. The tag can — a stale writer carries the tag from BEFORE my
+ * write, a deliberate one writes its own. Without it, two hosts flipping one
+ * switch opposite ways would each keep redoing their own until both gave up.
+ * Random, so it says nothing to the participants who can read room metadata.
+ */
+export const FLAG_REV = 'flagRev'
+const revTag = () => crypto.randomUUID().slice(0, 8)
+const revOf = (flags) => (flags[FLAG_REV] && typeof flags[FLAG_REV] === 'object' ? flags[FLAG_REV] : {})
+
+/**
+ * mutateRoomFlags op: set host-set flags (lock, waiting room, chat history,
+ * annotateHostOnly, encrypted, the co-host roster). A key counts as kept while its
+ * tag is ours, or anyone's but the one it had before we wrote (someone changed it
+ * deliberately since: theirs stands). Only a key back at its pre-write tag — an
+ * erased write — is redone. One case slips through: if a stale writer carrying a
+ * THIRD host's tag lands after ours, it reads as "theirs stands" and our change is
+ * reported done though the third host's value shows. The metadata is still the
+ * truth the UI renders, so nobody is shown a switch in a state it isn't.
+ * `guard(flags)` re-checks authority on the fresh flags
+ * each attempt; returning anything but undefined stops with that as the answer.
+ */
+export function setFlagsOp(patch, { guard, tag = revTag() } = {}) {
+  const keys = Object.keys(patch)
+  /** Each key's tag as first seen, before any write of ours. */
+  let before = null
+  const kept = (rev, k) => rev[k] === tag || rev[k] !== before[k]
+  return {
+    change: (flags, attempt) => {
+      const rev = revOf(flags)
+      if (!before) before = Object.fromEntries(keys.map((k) => [k, rev[k]]))
+      const stop = guard?.(flags)
+      if (stop !== undefined) return { done: stop }
+      const redo = attempt === 0 ? keys : keys.filter((k) => !kept(rev, k))
+      if (redo.length === 0) return { done: true }
+      const out = {}
+      const nextRev = { ...rev }
+      for (const k of redo) {
+        out[k] = patch[k]
+        nextRev[k] = tag
+      }
+      return { patch: { ...out, [FLAG_REV]: nextRev }, result: true }
+    },
+    present: (flags) => {
+      if (!before) return false
+      const rev = revOf(flags)
+      return keys.every((k) => kept(rev, k))
+    },
+  }
+}
+
+/**
+ * mutateRoomFlags op: move the primary seat from `priorHostId` (who's gone) to
+ * `successor`. Every client that notices runs the same deterministic pick, so
+ * concurrent elections agree; if another one moved the seat first (a different
+ * snapshot of who's present), that answer stands and is the one reported. Kept
+ * while the seat is still ours and its holder isn't also listed as a co-host.
+ */
+export function electOp(successor, priorHostId) {
+  const prior = priorHostId || ''
+  const roster = (flags) => (Array.isArray(flags.coHosts) ? flags.coHosts : [])
+  const moved = (flags) => (flags.hostId || '') !== prior
+  /** The seat our last write gave. Checked exactly, so an election that lost to a
+   *  different pick re-reads and answers with the winner, not its own pick. */
+  let wrote = null
+  return {
+    change: (flags) => {
+      const coHosts = roster(flags)
+      if (moved(flags) && !coHosts.includes(flags.hostId)) return { done: flags.hostId }
+      // Another election moved it (but left its holder on the roster): finish that one.
+      const seat = moved(flags) ? flags.hostId : successor
+      const patch = { hostId: seat }
+      if (coHosts.includes(seat)) {
+        patch.coHosts = coHosts.filter((id) => id !== seat)
+        patch[FLAG_REV] = { ...revOf(flags), coHosts: revTag() }
+      }
+      wrote = seat
+      return { patch, result: seat }
+    },
+    present: (flags) => flags.hostId === wrote && !roster(flags).includes(wrote),
+  }
+}
+
+/** mutateRoomFlags op: remember a removed participant (server/removed.mjs), once. */
+export function rememberRemovedOp(entry) {
+  const has = (flags) =>
+    Array.isArray(flags.removed) && flags.removed.some((e) => e && e.d === entry.d && e.u === entry.u)
+  return {
+    change: (flags) => (has(flags) ? { done: true } : { patch: { removed: withRemoved(flags.removed, entry) }, result: true }),
+    present: has,
+  }
+}
+
+/**
+ * mutateRoomFlags op: claim the unclaimed host seat for `identity`, with the join
+ * secret's hash. Answers 'won' or 'lost' (someone else holds the seat: theirs
+ * stands, and so does their secretHash). Written even when the seat already reads
+ * as ours on attempt 0: the room may have just been created with it, and a knock
+ * that read the room before it existed can still write over that.
+ */
+export function claimHostOp(identity, patch) {
+  return {
+    change: (flags, attempt) => {
+      if (flags.hostId && flags.hostId !== identity) return { done: 'lost' }
+      if (flags.hostId === identity && attempt > 0) return { done: 'won' }
+      return { patch: { ...patch, hostId: identity }, result: 'won' }
+    },
+    present: (flags) => flags.hostId === identity,
+  }
+}
+
+/**
+ * The first-join host claim. At first join the room usually doesn't exist yet, and
+ * updateRoomMetadata on a missing room fails — so create it with the claim in its
+ * metadata, then verify the claim like any other flags write (claimHostOp). A
+ * concurrent first-joiner's createRoom returns the existing room without touching
+ * its metadata, so exactly one claim wins and the other learns it lost.
+ * Returns 'won' | 'lost' | 'unknown' (LiveKit kept failing).
+ */
+async function claimHost(env, roomService, room, identity, patch) {
+  let exists = true
+  try {
+    exists = (await roomService.listRooms([room])).length > 0
+  } catch {
+    /* unknown: let the verified write below find out */
+  }
+  if (!exists) {
+    try {
+      // First-join room creation — stamp the beta size cap and idle timeouts so
+      // the SFU enforces them itself: maxParticipants caps the room, emptyTimeout
+      // reaps it shortly after the last person leaves, and departureTimeout closes
+      // it quickly once empty — all quota protection that doesn't rely on a client
+      // staying alive to end the call.
+      await roomService.createRoom({
+        name: room,
+        metadata: JSON.stringify({ ...patch, hostId: identity }),
+        maxParticipants: roomCap(env),
+        emptyTimeout: 120,
+        departureTimeout: 60,
+      })
+    } catch {
+      /* the verified write below retries, or reports it couldn't */
+    }
+  }
+  const res = await mutateRoomFlags(roomService, room, claimHostOp(identity, patch))
+  return res.ok ? res.value : 'unknown'
 }
 
 /** mutateQueue op: add a knock's entry (once: a retry finds it already there). */
@@ -288,8 +457,8 @@ export function decideOp(requestId, approve, name) {
   }
 }
 
-/** The answer when a queue change couldn't be made to stick. */
-const QUEUE_BUSY = { status: 503, body: { error: 'Lots happening at once — try again.', code: 'busy' } }
+/** The answer when a flags change couldn't be made to stick. */
+const WRITE_BUSY = { status: 503, body: { error: 'Lots happening at once — try again.', code: 'busy' } }
 
 // Resolve the caller's identity from their LiveKit JWT — the same token they hold
 // to join the room. The signature is verified with the API secret, so the identity
@@ -427,7 +596,7 @@ export async function handleMe(env, body) {
   return { status: 200, body: { signedIn: Boolean(account), betaGate: gate, allowed } }
 }
 
-export async function handleKnock(env, body) {
+export async function handleKnock(env, body, claimLost = false) {
   const { apiKey, apiSecret, roomService } = services(env)
   const { room, name, deviceId, host, accessToken, secret, seat, hasKey } = body ?? {}
   if (!room || !name) return { status: 400, body: { error: 'Enter your name to join.' } }
@@ -480,11 +649,22 @@ export async function handleKnock(env, body) {
   // Read room flags in the same breath so host election keys off the recorded
   // hostId, not just a (racy) participant count. The recorded host reclaims host on
   // reconnect; a brand-new room with no host yet is claimed by its first occupant.
-  const [account, flags, participants] = await Promise.all([
-    verifySupabaseUser(env, accessToken),
-    roomService ? getRoomFlags(roomService, room) : null,
-    roomService ? listParticipants(roomService, room) : [],
-  ])
+  //
+  // Both LiveKit reads are STRICT: every gate below reads them, and a failed read
+  // taken for "no flags, nobody here" turns the lock, the invite secret, the waiting
+  // room and the removed list all off, and lets a knock under a live guest's
+  // identity skip the seat key. A knock that can't see the room answers busy (the
+  // client retries) rather than letting anyone in on a guess.
+  let account, flags, participants
+  try {
+    ;[account, flags, participants] = await Promise.all([
+      verifySupabaseUser(env, accessToken),
+      roomService ? readRoomFlagsStrict(roomService, room) : null,
+      roomService ? listParticipantsStrict(roomService, room) : [],
+    ])
+  } catch {
+    return WRITE_BUSY
+  }
   const userId = account?.id || ''
   const email = account?.email || ''
 
@@ -670,36 +850,24 @@ export async function handleKnock(env, body) {
 
   if (isHost || alreadyIn || !flags.waiting || wasApproved) {
     // Record the authoritative host identity ONCE (only when unclaimed), server-side,
-    // so it can't be forged via participant metadata (see ensureHost) and a second
-    // simultaneous first-join can't overwrite it. At first-join the room doesn't
-    // exist yet, so updateRoomMetadata would fail — create it with the metadata
-    // instead. (LiveKit auto-creates the room on connect either way.)
+    // so it can't be forged via participant metadata (see ensureHost). The claim is
+    // verified (claimHost): a knock writing at the same moment can't erase it, and of
+    // two simultaneous first-joiners exactly one is host.
     if (isHost && !flags.hostId) {
       // Record the join-secret hash alongside the host identity, so subsequent
       // joiners must present the matching secret from the invite link. Store only
       // the hash — a metadata leak then never exposes the secret itself.
-      const patch = { hostId: identity }
+      const patch = {}
       if (secret) patch.secretHash = await sha256Hex(secret)
-      try {
-        await mergeRoomFlags(roomService, room, patch)
-      } catch {
-        try {
-          // First-join room creation — stamp the beta size cap and idle timeouts so
-          // the SFU enforces them itself: maxParticipants caps the room, emptyTimeout
-          // reaps it shortly after the last person leaves, and departureTimeout closes
-          // it quickly once empty — all quota protection that doesn't rely on a client
-          // staying alive to end the call.
-          await roomService.createRoom({
-            name: room,
-            metadata: JSON.stringify(patch),
-            maxParticipants: roomCap(env),
-            emptyTimeout: 120,
-            departureTimeout: 60,
-          })
-        } catch {
-          /* non-fatal: host UI/moderation degrades, joining still works */
-        }
-      }
+      const claim = await claimHost(env, roomService, room, identity, patch)
+      // Someone else holds the seat. Everything above assumed we'd be host (it
+      // skipped the lock, the secret and the waiting room), so knock again from the
+      // top as who we really are: a guest, against the room as it now stands. Once.
+      if (claim === 'lost' && !claimLost) return handleKnock(env, body, true)
+      // Never mint a host token on a claim nobody could confirm. `isHost` came from
+      // reads that answer "no host, nobody here" when LiveKit fails, so this is
+      // also what stops a LiveKit hiccup making whoever knocked the host.
+      if (claim !== 'won') return WRITE_BUSY
     }
     const minted = await mintToken(env, room, name, deviceId, isHost, userId)
     return { status: 200, body: { ...minted, host: isHost, alsoOnDevice } }
@@ -732,7 +900,7 @@ export async function handleKnock(env, body) {
   // mutateQueue re-reads after writing and re-adds the entry if it went missing.
   const entry = { id: requestId, name, deviceId, userId: userId || '', status: 'pending', ts: now }
   const queued = await mutateQueue(roomService, apiSecret, room, { now, ...enqueueOp(entry) })
-  if (!queued.ok) return QUEUE_BUSY
+  if (!queued.ok) return WRITE_BUSY
   // Sealed or not, never let a request id alone be enough to collect the token:
   // the claim key is what knock-status actually honours, and only this caller has it.
   return { status: 200, body: { pending: true, requestId, claim: await claimKey(apiSecret, room, requestId) } }
@@ -801,7 +969,14 @@ export async function handleKnockStatus(env, query) {
   if (!(await claimKeyValid(apiSecret, room, requestId, claim))) {
     return { status: 403, body: { status: 'expired', error: 'Not your request' } }
   }
-  const flags = await getRoomFlags(roomService, room)
+  // Strict: a failed read taken for {} has no queue, and would tell a guest the
+  // host is about to admit that their request expired. A 5xx keeps them waiting.
+  let flags
+  try {
+    flags = await readRoomFlagsStrict(roomService, room)
+  } catch {
+    return WRITE_BUSY
+  }
   const queue = await readQueue(apiSecret, room, flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry) return { status: 200, body: { status: 'expired' } }
@@ -816,7 +991,13 @@ export async function handleKnockStatus(env, query) {
     // Checked again at the mint: the seat may have been taken since the knock
     // (or the rename), and an approval must never hand out someone else's seat.
     const identity = `${entry.name}#${entry.deviceId || 'web'}`
-    const participants = await listParticipants(roomService, room)
+    // Strict: "nobody here" on a failed lookup would mint a seat someone is in.
+    let participants
+    try {
+      participants = await listParticipantsStrict(roomService, room)
+    } catch {
+      return WRITE_BUSY
+    }
     if (seatHeldBy(identity, flags, participants, queue, entry.id)) return { status: 200, body: { status: 'denied' } }
     const minted = await mintToken(env, room, entry.name, entry.deviceId, false, entry.userId)
     return { status: 200, body: { status: 'approved', ...minted } }
@@ -872,7 +1053,14 @@ export async function handleKnockUpdate(env, body) {
   if (note != null && (typeof note !== 'string' || note.length > MAX_NOTE_LEN || /[\u0000-\u001f\u007f]/.test(note))) {
     return { status: 400, body: { error: `Keep the note to one line of ${MAX_NOTE_LEN} characters.` } }
   }
-  const [flags, participants] = await Promise.all([getRoomFlags(roomService, room), listParticipants(roomService, room)])
+  // Strict, both: an empty read would say "you're no longer waiting" to someone
+  // who is, and "nobody here" would let them rename into a live guest's seat.
+  let flags, participants
+  try {
+    ;[flags, participants] = await Promise.all([readRoomFlagsStrict(roomService, room), listParticipantsStrict(roomService, room)])
+  } catch {
+    return WRITE_BUSY
+  }
   const queue = await readQueue(apiSecret, room, flags)
   const entry = queue.find((e) => e.id === requestId)
   if (!entry || entry.status !== 'pending') return { status: 409, body: { error: 'You’re no longer waiting.' } }
@@ -923,7 +1111,7 @@ export async function handleKnockUpdate(env, body) {
       return Boolean(e) && e.name === nextName && (e.note || '') === nextNote
     },
   })
-  return res.ok ? res.value : QUEUE_BUSY
+  return res.ok ? res.value : WRITE_BUSY
 }
 
 export async function handlePending(env, query, token) {
@@ -959,7 +1147,7 @@ export async function handleAdmit(env, body, token) {
     first: auth.flags,
     ...decideOp(requestId, Boolean(approve), name),
   })
-  return res.ok ? res.value : QUEUE_BUSY
+  return res.ok ? res.value : WRITE_BUSY
 }
 
 /**
@@ -1006,10 +1194,14 @@ export async function handleElectHost(env, body, token) {
   const caller = await verifyCaller(env, token, room)
   if (!caller) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
 
-  const [flags, participants] = await Promise.all([
-    getRoomFlags(roomService, room),
-    listParticipants(roomService, room),
-  ])
+  let flags, participants
+  try {
+    // Strict: a failed read taken for {} would look like "no host" and elect one
+    // over a host who's still here.
+    ;[flags, participants] = await Promise.all([readRoomFlagsStrict(roomService, room), listParticipants(roomService, room)])
+  } catch {
+    return WRITE_BUSY
+  }
   // Only a real occupant can trigger an election (no drive-by promotions).
   if (!participants.some((p) => p.identity === caller)) return { status: 403, body: { error: 'not in room' } }
   // Host still present, or the room's empty → nothing to elect.
@@ -1027,16 +1219,14 @@ export async function handleElectHost(env, body, token) {
   const presentCoHosts = participants.filter((p) => coHosts.includes(p.identity)).sort(byTenure)
   const successor = (presentCoHosts[0] || [...participants].sort(byTenure)[0]).identity
 
-  // The new primary shouldn't also sit in its own co-host list. Deliberately NOT
-  // passing the flags read above as the merge base: they were fetched in parallel
-  // with listParticipants, so by the time that settles they're already a round-trip
-  // stale, and a knock landing in that gap would get its queue entry clobbered.
-  // Election is rare — pay for the fresh read.
-  await mergeRoomFlags(roomService, room, {
-    hostId: successor,
-    coHosts: coHosts.filter((id) => id !== successor),
-  })
-  return { status: 200, body: { ok: true, hostId: successor } }
+  // The new primary shouldn't also sit in its own co-host list (electOp). Deliberately
+  // NOT passing the flags read above as `first`: they were fetched in parallel with
+  // listParticipants, so by the time that settles they're already a round-trip
+  // stale. Election is rare — pay for the fresh read, and verify it stuck: a knock's
+  // queue write that read before ours would otherwise put the absent host back.
+  const res = await mutateRoomFlags(roomService, room, electOp(successor, flags.hostId))
+  if (!res.ok) return WRITE_BUSY
+  return { status: 200, body: { ok: true, hostId: res.value } }
 }
 
 /**
@@ -1120,15 +1310,17 @@ export async function handleModerate(env, body, token) {
     // Keyed on the device only: the account id in live participant metadata is
     // client-writable, so trusting it would let someone get ANOTHER person's
     // account banned by copying their id and getting themselves removed.
-    // Best effort: a failed write must never stop the removal itself, and an
-    // empty read (the lookup failed) must not become the merge base, or the
-    // write would wipe hostId, the queue and the join secret.
+    // Verified, not just written: an admit or a knock that read before this write
+    // and wrote after it would erase the entry, and the removed guest could knock
+    // straight back in. That costs ~0.3s before they're disconnected (seconds, if
+    // LiveKit is failing and the write keeps retrying: remembering them BEFORE
+    // removing them is the point, so that wait is kept).
+    // Best effort: a failed write must never stop the removal itself. The read is
+    // strict, so a failed lookup is retried, never taken for {} and written over
+    // hostId, the queue and the join secret.
     try {
       const entry = await removedEntry(target, '')
-      const fresh = await getRoomFlags(roomService, room)
-      if (entry && Object.keys(fresh).length > 0) {
-        await mergeRoomFlags(roomService, room, { removed: withRemoved(fresh.removed, entry) }, fresh)
-      }
+      if (entry) await mutateRoomFlags(roomService, room, rememberRemovedOp(entry))
     } catch {
       /* the removal below still happens */
     }
@@ -1151,9 +1343,17 @@ export async function handleRoomflags(env, body, token) {
   if (!roomService) return { status: 500, body: { error: 'not configured' } }
   const identity = await verifyCaller(env, token, room)
   if (!identity) return { status: 401, body: { error: 'Your session expired — rejoin to continue.' } }
-  const flags = await getRoomFlags(roomService, room)
-  const isPrimary = Boolean(flags.hostId) && flags.hostId === identity
-  const isCo = Array.isArray(flags.coHosts) && flags.coHosts.includes(identity)
+  let flags
+  try {
+    // Strict: it's the merge base for attempt 0 below.
+    flags = await readRoomFlagsStrict(roomService, room)
+  } catch {
+    return WRITE_BUSY
+  }
+  const primaryIn = (f) => Boolean(f.hostId) && f.hostId === identity
+  const coIn = (f) => Array.isArray(f.coHosts) && f.coHosts.includes(identity)
+  const isPrimary = primaryIn(flags)
+  const isCo = coIn(flags)
   if (!isPrimary && !isCo) return { status: 403, body: { error: 'Host only.' } }
 
   const patch = {}
@@ -1179,8 +1379,21 @@ export async function handleRoomflags(env, body, token) {
       .slice(0, 20)
   }
   if (Object.keys(patch).length === 0) return { status: 400, body: { error: 'nothing to update' } }
-  // Patch built synchronously from the read above — no re-read needed.
-  await mergeRoomFlags(roomService, room, patch, flags)
+  // Patch built synchronously from the read above, so it's attempt 0's base. A
+  // retry re-checks authority on the fresh flags: a host demoted while their write
+  // was being erased doesn't get to redo it.
+  const HOST_ONLY = { status: 403, body: { error: 'Host only.' } }
+  const res = await mutateRoomFlags(roomService, room, {
+    first: flags,
+    ...setFlagsOp(patch, {
+      guard: (f) => {
+        if (patch.coHosts !== undefined) return primaryIn(f) ? undefined : HOST_ONLY
+        return primaryIn(f) || coIn(f) ? undefined : HOST_ONLY
+      },
+    }),
+  })
+  if (!res.ok) return WRITE_BUSY
+  if (res.value !== true) return res.value
   return { status: 200, body: { ok: true, ...patch } }
 }
 
