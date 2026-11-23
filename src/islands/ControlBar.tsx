@@ -1006,7 +1006,15 @@ export function ControlBar({
             drawing has to capture touch, which would fight the control bar's
             tap-to-reveal. Touch devices still SEE everyone's strokes. */}
         {canAnnotate && !annotateFolded && (
-          <Tooltip content={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}>
+          <Tooltip
+            content={
+              <>
+                {annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
+                {/* The one modifier the pen has; desktop-only, like the pen. */}
+                <span className="mt-0.5 block text-ink-subtle">Hold Shift for a straight line</span>
+              </>
+            }
+          >
             <IconButton
               label={annotateActive ? 'Stop annotating' : 'Annotate shared screen'}
               icon={<AnnotateIcon />}

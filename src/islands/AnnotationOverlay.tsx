@@ -98,9 +98,14 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
       return { x: e.clientX - r.left, y: e.clientY - r.top }
     }
 
+    // Shift draws a straight line (engine.extendLocal). Held position so that
+    // pressing or releasing Shift re-aims at once, without waiting for a move.
+    let pen: { x: number; y: number } | null = null
+
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return
-      if (!beginLocal(local(e))) return // outside the painted video (letterbox bars)
+      if (!beginLocal(local(e), e.shiftKey)) return // outside the painted video (letterbox bars)
+      pen = local(e)
       canvas.setPointerCapture(e.pointerId)
       // Stop Tile's double-tap/long-press gesture from firing under the pen —
       // the same stopPropagation escape hatch the tile's own controls use.
@@ -115,19 +120,31 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
       // event React would have surfaced — this is what makes the curve smooth.
       const raw = e.getCoalescedEvents?.() ?? [e]
       const events = raw.length > 0 ? raw : [e]
-      engine.extendLocal(events.map((c) => ({ x: c.clientX - r.left, y: c.clientY - r.top })))
+      const pts = events.map((c) => ({ x: c.clientX - r.left, y: c.clientY - r.top }))
+      pen = pts[pts.length - 1]
+      engine.extendLocal(pts, e.shiftKey)
     }
 
     const onUp = (e: PointerEvent) => {
       if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId)
+      pen = null
       engine.endLocal()
+    }
+
+    const onShift = (e: KeyboardEvent) => {
+      if (e.key !== 'Shift' || !pen) return
+      engine.extendLocal([pen], e.type === 'keydown')
     }
 
     canvas.addEventListener('pointerdown', onDown)
     canvas.addEventListener('pointermove', onMove, { passive: true })
     canvas.addEventListener('pointerup', onUp)
     canvas.addEventListener('pointercancel', onUp)
+    window.addEventListener('keydown', onShift)
+    window.addEventListener('keyup', onShift)
     return () => {
+      window.removeEventListener('keydown', onShift)
+      window.removeEventListener('keyup', onShift)
       canvas.removeEventListener('pointerdown', onDown)
       canvas.removeEventListener('pointermove', onMove)
       canvas.removeEventListener('pointerup', onUp)
@@ -173,7 +190,7 @@ export const AnnotationOverlay = memo(function AnnotationOverlay({
   useEffect(() => {
     if (armed.current === canDraw) return
     armed.current = canDraw
-    announce(canDraw ? 'Annotation on. Draw on the shared screen.' : 'Annotation off')
+    announce(canDraw ? 'Annotation on. Draw on the shared screen; hold Shift for a straight line.' : 'Annotation off')
   }, [canDraw, announce])
 
   return (

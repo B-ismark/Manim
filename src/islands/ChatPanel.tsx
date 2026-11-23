@@ -725,7 +725,10 @@ const MessageList = memo(function MessageList({
 function HistoryNote({ className }: { className?: string }) {
   const on = useChatHistoryOn()
   return (
-    <p className={cn('flex items-center justify-center gap-1.5 text-xs text-ink-subtle [&_svg]:size-3.5 [&_svg]:shrink-0', className)}>
+    // The padlock rides INLINE at the start of the first line: as a flex sibling it
+    // centred against both lines once the sentence wrapped and floated off to the
+    // left of a centred paragraph. text-balance keeps the two lines even.
+    <p className={cn('text-balance text-center text-xs text-ink-subtle [&_svg]:mr-1 [&_svg]:inline-block [&_svg]:size-3.5 [&_svg]:align-[-0.15em]', className)}>
       <LockIcon aria-hidden />
       <span>
         {on

@@ -208,7 +208,7 @@ export function useAnnotate(featuredShareId: string | null) {
   }, [roomMetadata, localParticipant.identity, setAllowed])
 
   const beginLocal = useCallback(
-    (p: { x: number; y: number }) => engine.beginLocal(p, localParticipant.identity),
+    (p: { x: number; y: number }, straight = false) => engine.beginLocal(p, localParticipant.identity, straight),
     [engine, localParticipant.identity],
   )
 

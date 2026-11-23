@@ -50,7 +50,7 @@ describe('rewriteHead', () => {
   it('leaves the landing page indexable with its own copy', () => {
     const html = at('/')
     expect(html).not.toContain('noindex')
-    expect(html).toContain('<title>Manim — video calls</title>')
+    expect(html).toContain('<title>Manim</title>')
   })
 
   it('treats $ in a room name as text, not a replacement pattern', () => {

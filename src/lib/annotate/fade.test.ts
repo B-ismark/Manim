@@ -1,5 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { opacityForAge, isExpired, HOLD_MS, FADE_MS, LIFETIME_MS } from './fade'
+import {
+  opacityForAge,
+  isExpired,
+  tailTrimForAge,
+  chipOpacity,
+  HOLD_MS,
+  FADE_MS,
+  LIFETIME_MS,
+  CHIP_HOLD_MS,
+  CHIP_FADE_MS,
+} from './fade'
 
 describe('opacityForAge', () => {
   it('is fully opaque while held', () => {
@@ -62,5 +72,35 @@ describe('isExpired', () => {
     for (let age = 0; age < LIFETIME_MS * 1.5; age += 50) {
       if (isExpired(age)) expect(opacityForAge(age)).toBe(0)
     }
+  })
+})
+
+describe('tail dissolve', () => {
+  it('holds the whole stroke, then eats it from the tail over the fade', () => {
+    expect(tailTrimForAge(0)).toBe(0)
+    expect(tailTrimForAge(HOLD_MS)).toBe(0)
+    const mid = tailTrimForAge(HOLD_MS + FADE_MS / 2)
+    expect(mid).toBeGreaterThan(0.3)
+    expect(mid).toBeLessThan(0.7)
+    expect(tailTrimForAge(LIFETIME_MS)).toBe(1)
+  })
+
+
+  it('runs alongside the opacity fade and ends when the stroke expires', () => {
+    const mid = HOLD_MS + FADE_MS / 2
+    expect(tailTrimForAge(mid)).toBeGreaterThan(0)
+    expect(opacityForAge(mid)).toBeLessThan(1)
+    expect(tailTrimForAge(LIFETIME_MS)).toBe(1)
+    expect(opacityForAge(LIFETIME_MS)).toBe(0)
+  })
+})
+
+describe('chipOpacity', () => {
+  it('is solid while points are arriving and gone about a second after', () => {
+    expect(chipOpacity(0)).toBe(1)
+    expect(chipOpacity(CHIP_HOLD_MS)).toBe(1)
+    expect(chipOpacity(CHIP_HOLD_MS + CHIP_FADE_MS)).toBe(0)
+    expect(CHIP_HOLD_MS + CHIP_FADE_MS).toBeLessThanOrEqual(1000)
+    expect(CHIP_HOLD_MS + CHIP_FADE_MS).toBeLessThan(HOLD_MS)
   })
 })

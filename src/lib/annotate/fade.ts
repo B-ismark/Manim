@@ -13,13 +13,22 @@
  * Pure functions — no canvas, no timers — so the timing curve is unit-testable.
  */
 
-/** How long a stroke stays fully opaque after its last point, in ms. */
-export const HOLD_MS = 2200
+/**
+ * How long ink stays fully opaque after its author's last point, in ms.
+ *
+ * This is measured per AUTHOR, not per stroke (the Slack huddle model): while
+ * someone keeps drawing — a word, a diagram, an underline then an arrow — every
+ * stroke they've made stays put, and only once they've paused this long does the
+ * whole drawing clear together. So it is really the pause that ends a drawing:
+ * long enough to lift the pen and think between letters, short enough that the
+ * ink is gone a few seconds after they're done.
+ */
+export const HOLD_MS = 3000
 
 /** How long the fade-out itself takes, in ms. */
 export const FADE_MS = 1800
 
-/** Total lifetime of a stroke measured from its last point. */
+/** Total lifetime of a drawing, measured from its author's last point. */
 export const LIFETIME_MS = HOLD_MS + FADE_MS
 
 /**
@@ -46,3 +55,35 @@ export function opacityForAge(age: number): number {
 
 /** Has a stroke whose last point landed `age` ms ago fully expired? */
 export const isExpired = (age: number): boolean => age >= LIFETIME_MS
+
+/**
+ * Tail dissolve: what fraction of a stroke, from its START, has been eaten by
+ * age `age`. 0 through HOLD_MS, then it runs to 1 over FADE_MS — the same
+ * lifetime as the opacity fade, so expiry, the parked loop and every test of the
+ * TTL are unchanged. Ease-in, so the trail starts slowly and finishes briskly,
+ * the way a laser pointer's afterglow does.
+ */
+export function tailTrimForAge(age: number): number {
+  if (!(age > HOLD_MS)) return 0
+  const t = (age - HOLD_MS) / FADE_MS
+  if (t >= 1) return 1
+  return t * t * (3 - 2 * t) // smoothstep 0 → 1
+}
+
+
+/**
+ * A name chip follows the pen while its author is drawing and goes a beat after
+ * they stop. A remote viewer can't see pen-up (the wire has no end-of-stroke
+ * marker), so "drawing" means "a point landed within CHIP_HOLD_MS"; then the chip
+ * fades over CHIP_FADE_MS — about a second after the pen lifts, long before the
+ * ink itself goes.
+ */
+export const CHIP_HOLD_MS = 300
+export const CHIP_FADE_MS = 700
+export function chipOpacity(age: number): number {
+  if (!(age > CHIP_HOLD_MS)) return 1
+  const t = (age - CHIP_HOLD_MS) / CHIP_FADE_MS
+  if (t >= 1) return 0
+  const inv = 1 - t
+  return inv * inv * (3 - 2 * inv)
+}
