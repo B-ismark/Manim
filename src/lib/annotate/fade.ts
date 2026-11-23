@@ -61,14 +61,6 @@ export function tailTrimForAge(age: number): number {
   return t * t * (3 - 2 * t) // smoothstep 0 → 1
 }
 
-/**
- * Opacity of what's left of a dissolving stroke. Solid until the last fifth of
- * the trail, then it fades as it goes, so the final few pixels don't blink out.
- */
-export function dissolveOpacity(trim: number): number {
-  if (trim >= 1) return 0
-  return Math.min(1, (1 - trim) / 0.2)
-}
 
 /**
  * A name chip follows the pen while its author is drawing and goes a beat after

@@ -63,7 +63,7 @@ describe('inkSize', () => {
   it('scales with the content and stays within bounds', () => {
     expect(inkSize(100, 50)).toBe(MIN_INK_PX)
     expect(inkSize(8000, 4000)).toBe(MAX_INK_PX)
-    expect(inkSize(1920, 1080)).toBeCloseTo(1080 * 0.0075)
+    expect(inkSize(1920, 1080)).toBeCloseTo(1080 * 0.0045)
   })
 })
 

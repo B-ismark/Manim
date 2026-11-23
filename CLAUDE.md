@@ -223,7 +223,8 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   restrict drawing with the `annotateHostOnly` room flag. Ink is a filled, tapered
   outline (perfect-freehand over a Catmull-Rom resample, `lib/annotate/ink.ts`), so
   the RDP-thinned points a viewer receives come out as round as the author's; it
-  dissolves from its tail (plain fade under reduced motion) on the same lifetime.
+  fades out while it dissolves from its tail (fade only under reduced motion), on
+  the same lifetime.
   Attribution is ONE colour-filled name chip per remote author, only while they
   draw (~1s after the last point) — never a name per stroke, and none on your own
   pen. No halo, no `shadowBlur`/CSS `drop-shadow`: a 1px offset fill is the shadow,

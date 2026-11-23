@@ -23,7 +23,6 @@ import {
   opacityForAge,
   isExpired,
   tailTrimForAge,
-  dissolveOpacity,
   chipOpacity,
 } from '@/lib/annotate/fade'
 import { inkSize, densify, outline, chipTextColor, chipBox, CHIP_PAD_X } from '@/lib/annotate/ink'
@@ -460,10 +459,11 @@ export class AnnotationEngine {
       if (stroke.len === 0) continue
       const age = now - stroke.lastAt
       const drawing = key === this.localKey
-      // The tail dissolve eats the stroke from its first point; reduced motion
-      // gets the old whole-stroke fade instead. Same lifetime either way.
+      // Clean-up is a fade-out, and — unless reduced motion is on — the stroke
+      // is also eaten from its first point as it fades, like a laser trail.
+      // Same lifetime either way.
       const trim = dissolve && !drawing ? tailTrimForAge(age) : 0
-      const alpha = dissolve ? dissolveOpacity(trim) : opacityForAge(age)
+      const alpha = opacityForAge(age)
       if (alpha <= 0) continue
       // The head tapers once the pen has (as far as anyone can tell) lifted.
       const complete = !drawing && age > PEN_UP_MS

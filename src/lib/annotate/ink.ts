@@ -22,9 +22,9 @@
 import { getStroke } from 'perfect-freehand'
 
 /** Ink width as a fraction of the content box's smaller side (resolution-independent). */
-export const INK_SIZE_FRACTION = 0.0075
-export const MIN_INK_PX = 4
-export const MAX_INK_PX = 10
+export const INK_SIZE_FRACTION = 0.0045
+export const MIN_INK_PX = 2.5
+export const MAX_INK_PX = 6
 
 export function inkSize(contentW: number, contentH: number): number {
   return Math.max(MIN_INK_PX, Math.min(MAX_INK_PX, Math.min(contentW, contentH) * INK_SIZE_FRACTION))

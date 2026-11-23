@@ -3,7 +3,6 @@ import {
   opacityForAge,
   isExpired,
   tailTrimForAge,
-  dissolveOpacity,
   chipOpacity,
   HOLD_MS,
   FADE_MS,
@@ -86,15 +85,13 @@ describe('tail dissolve', () => {
     expect(tailTrimForAge(LIFETIME_MS)).toBe(1)
   })
 
-  it('keeps what is left solid until the last fifth, then fades it out', () => {
-    expect(dissolveOpacity(0)).toBe(1)
-    expect(dissolveOpacity(0.8)).toBeCloseTo(1)
-    expect(dissolveOpacity(0.9)).toBeCloseTo(0.5)
-    expect(dissolveOpacity(1)).toBe(0)
-  })
 
-  it('ends exactly when the stroke expires', () => {
-    expect(dissolveOpacity(tailTrimForAge(LIFETIME_MS))).toBe(0)
+  it('runs alongside the opacity fade and ends when the stroke expires', () => {
+    const mid = HOLD_MS + FADE_MS / 2
+    expect(tailTrimForAge(mid)).toBeGreaterThan(0)
+    expect(opacityForAge(mid)).toBeLessThan(1)
+    expect(tailTrimForAge(LIFETIME_MS)).toBe(1)
+    expect(opacityForAge(LIFETIME_MS)).toBe(0)
   })
 })
 
