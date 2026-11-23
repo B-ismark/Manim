@@ -220,7 +220,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   disable, not an enable, so an unset build var still ships it. Strokes are ephemeral:
   they fade after ~4s, which is *why* there is deliberately no persistence, no
   late-joiner sync and no clear-all. Desktop draws, touch is view-only, and a host can
-  restrict drawing with the `annotateHostOnly` room flag. A presenter sees their own
+  restrict drawing with the `annotateHostOnly` room flag. Ink is a filled, tapered
+  outline (perfect-freehand over a Catmull-Rom resample, `lib/annotate/ink.ts`), so
+  the RDP-thinned points a viewer receives come out as round as the author's; it
+  dissolves from its tail (plain fade under reduced motion) on the same lifetime.
+  Attribution is ONE colour-filled name chip per remote author, only while they
+  draw (~1s after the last point) — never a name per stroke, and none on your own
+  pen. No halo, no `shadowBlur`/CSS `drop-shadow`: a 1px offset fill is the shadow,
+  because this loop shares frames with the video decoder. A presenter sees their own
   share the whole time they're sharing (with an Annotate button on the share tile) — a
   remote share still wins the big region. Stroke data must never reach React state or a
   store — read the header of `AnnotationEngine.ts` before touching it.

@@ -46,3 +46,43 @@ export function opacityForAge(age: number): number {
 
 /** Has a stroke whose last point landed `age` ms ago fully expired? */
 export const isExpired = (age: number): boolean => age >= LIFETIME_MS
+
+/**
+ * Tail dissolve: what fraction of a stroke, from its START, has been eaten by
+ * age `age`. 0 through HOLD_MS, then it runs to 1 over FADE_MS — the same
+ * lifetime as the opacity fade, so expiry, the parked loop and every test of the
+ * TTL are unchanged. Ease-in, so the trail starts slowly and finishes briskly,
+ * the way a laser pointer's afterglow does.
+ */
+export function tailTrimForAge(age: number): number {
+  if (!(age > HOLD_MS)) return 0
+  const t = (age - HOLD_MS) / FADE_MS
+  if (t >= 1) return 1
+  return t * t * (3 - 2 * t) // smoothstep 0 → 1
+}
+
+/**
+ * Opacity of what's left of a dissolving stroke. Solid until the last fifth of
+ * the trail, then it fades as it goes, so the final few pixels don't blink out.
+ */
+export function dissolveOpacity(trim: number): number {
+  if (trim >= 1) return 0
+  return Math.min(1, (1 - trim) / 0.2)
+}
+
+/**
+ * A name chip follows the pen while its author is drawing and goes a beat after
+ * they stop. A remote viewer can't see pen-up (the wire has no end-of-stroke
+ * marker), so "drawing" means "a point landed within CHIP_HOLD_MS"; then the chip
+ * fades over CHIP_FADE_MS — about a second after the pen lifts, long before the
+ * ink itself goes.
+ */
+export const CHIP_HOLD_MS = 300
+export const CHIP_FADE_MS = 700
+export function chipOpacity(age: number): number {
+  if (!(age > CHIP_HOLD_MS)) return 1
+  const t = (age - CHIP_HOLD_MS) / CHIP_FADE_MS
+  if (t >= 1) return 0
+  const inv = 1 - t
+  return inv * inv * (3 - 2 * inv)
+}

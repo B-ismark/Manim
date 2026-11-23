@@ -20,7 +20,7 @@ import { LIFETIME_MS } from '@/lib/annotate/fade'
 
 let frameQueue: FrameRequestCallback[] = []
 let clock = 0
-/** Total lineTo calls across all Path2D instances — the per-frame path cost. */
+/** Total segments issued across all Path2D instances — the per-frame path cost. */
 let pathLineTos = 0
 
 /** Node has no Path2D; this records the geometry work the engine issues. */
@@ -29,6 +29,13 @@ class FakePath2D {
   lineTo() {
     pathLineTos++
   }
+  quadraticCurveTo() {
+    pathLineTos++
+  }
+  arc() {
+    pathLineTos++
+  }
+  closePath() {}
 }
 
 /** Run exactly one pending frame, as the browser would. */
@@ -46,6 +53,10 @@ function fakeCanvas() {
     moveTo: vi.fn(),
     lineTo: vi.fn(),
     stroke: vi.fn(),
+    fill: vi.fn(),
+    translate: vi.fn(),
+    rect: vi.fn(),
+    roundRect: vi.fn(),
     strokeText: vi.fn(),
     fillText: vi.fn(),
     measureText: vi.fn(() => ({ width: 40 })),
@@ -316,7 +327,7 @@ describe('lifecycle', () => {
     expect(engine.beginLocal({ x: 800, y: 450 }, 'Ada#1')).toBe(true)
     expect(frameQueue.length).toBeGreaterThan(0) // the loop woke up again
     pumpFrame()
-    expect(canvas.__ctx.stroke).toHaveBeenCalled() // and it actually painted
+    expect(canvas.__ctx.fill).toHaveBeenCalled() // and it actually painted
   })
 
   it('tolerates pointer input after detach', () => {
@@ -366,11 +377,10 @@ describe('geometry and rendering', () => {
     expect(spy.mock.calls.length).toBeGreaterThan(before)
   })
 
-  it('extends the cached path instead of rebuilding it each frame', () => {
+  it('reuses the cached outline instead of rebuilding it each frame', () => {
     // The fade repaints every live stroke every frame, so rebuilding the path
-    // would make per-frame cost O(total points) — issued twice per stroke, for
-    // the halo and the colour. Measured at ~82% decode retention with three
-    // people drawing before this was cached.
+    // would make per-frame cost O(total points). Measured at ~82% decode
+    // retention with three people drawing before this was cached.
     const { engine, canvas } = makeEngine()
     engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
     engine.extendLocal([{ x: 200, y: 200 }, { x: 300, y: 300 }])
@@ -381,7 +391,7 @@ describe('geometry and rendering', () => {
     pumpFrame()
     expect(pathLineTos).toBe(before)
     // ...but the strokes themselves keep being painted.
-    expect(canvas.__ctx.stroke).toHaveBeenCalled()
+    expect(canvas.__ctx.fill).toHaveBeenCalled()
   })
 
   it('rebuilds cached paths when the container resizes', () => {
@@ -408,7 +418,84 @@ describe('geometry and rendering', () => {
     const { engine, canvas } = makeEngine()
     engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
     pumpFrame()
-    expect(canvas.__ctx.stroke).toHaveBeenCalled()
+    expect(canvas.__ctx.fill).toHaveBeenCalled()
+  })
+
+  it('does not rebuild a held stroke once the pen has lifted', () => {
+    // After the head tapers (one rebuild) a stroke sitting on screen through
+    // its hold must cost no geometry at all.
+    const { engine } = makeEngine()
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 200, y: 200 }, { x: 300, y: 250 }])
+    engine.endLocal()
+    clock = 500
+    pumpFrame()
+    const before = pathLineTos
+    clock = 1500
+    pumpFrame()
+    clock = 2000
+    pumpFrame()
+    expect(pathLineTos).toBe(before)
+  })
+
+  it('dissolves a stroke from its tail as it ages', () => {
+    const { engine } = makeEngine()
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 400, y: 100 }, { x: 700, y: 300 }])
+    engine.endLocal()
+    clock = 1000
+    pumpFrame()
+    const held = pathLineTos
+    clock = 3000 // inside the fade window: the trail is being eaten
+    pumpFrame()
+    expect(pathLineTos).toBeGreaterThan(held)
+  })
+})
+
+describe('name chips', () => {
+  const packet = (points: number[], strokeId: number, seq = 0): StrokePacket => ({
+    colorIdx: 0,
+    strokeId,
+    seq,
+    target: 0,
+    points: Float32Array.from(points),
+  })
+
+  it('shows ONE chip per remote author, however many strokes they have', () => {
+    const { engine, canvas } = makeEngine()
+    engine.ingest('Bo#1', packet([0.1, 0.1, 0.2, 0.2], 1), 'Bo')
+    engine.ingest('Bo#1', packet([0.5, 0.5, 0.6, 0.6], 2), 'Bo')
+    engine.ingest('Bo#1', packet([0.7, 0.2, 0.8, 0.3], 3), 'Bo')
+    pumpFrame()
+    const names = canvas.__ctx.fillText.mock.calls.map((c) => c[0])
+    expect(names).toEqual(['Bo'])
+    expect(canvas.__ctx.strokeText).not.toHaveBeenCalled()
+  })
+
+  it('gives each remote author their own chip', () => {
+    const { engine, canvas } = makeEngine()
+    engine.ingest('Bo#1', packet([0.1, 0.1, 0.2, 0.2], 1), 'Bo')
+    engine.ingest('Cy#2', packet([0.5, 0.5, 0.6, 0.6], 1), 'Cy')
+    pumpFrame()
+    const names = canvas.__ctx.fillText.mock.calls.map((c) => c[0]).sort()
+    expect(names).toEqual(['Bo', 'Cy'])
+  })
+
+  it('puts no chip on your own pen', () => {
+    const { engine, canvas } = makeEngine()
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 200, y: 200 }])
+    pumpFrame()
+    expect(canvas.__ctx.fillText).not.toHaveBeenCalled()
+  })
+
+  it('takes the chip away about a second after the pen stops, long before the ink', () => {
+    const { engine, canvas } = makeEngine()
+    engine.ingest('Bo#1', packet([0.1, 0.1, 0.2, 0.2], 1), 'Bo')
+    clock = 1200
+    pumpFrame()
+    expect(canvas.__ctx.fillText).not.toHaveBeenCalled()
+    expect(canvas.__ctx.fill).toHaveBeenCalled() // the ink is still there
   })
 })
 

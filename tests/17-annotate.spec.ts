@@ -179,9 +179,13 @@ test.describe('Annotation over a shared screen @annotate', () => {
 
     await drawStroke(page, 0.3, 0.7, 0.5)
 
-    // Let the packet cross the data channel and both sides paint. Kept short —
-    // strokes start fading a couple of seconds after their last point.
-    await page.waitForTimeout(400)
+    // Let the packet cross the data channel and both sides paint — AND let the
+    // viewer's name chip go. Bo sees an "Ada" chip beside the pen while it moves
+    // (the author sees none on their own pen), and it would widen Bo's ink bounds
+    // by its own width. It is gone ~1s after the last point (CHIP_HOLD_MS +
+    // CHIP_FADE_MS); the ink holds, whole, until HOLD_MS (2.2s), so 1.4s measures
+    // the ink alone on both screens.
+    await page.waitForTimeout(1400)
 
     const [inkA, inkB] = await Promise.all([
       inkBoundsUnit(page, SHARE_ASPECT),
@@ -237,8 +241,8 @@ test.describe('Annotation over a shared screen @annotate', () => {
 
     // ...and it is EXPLAINED. Ink that just appears, on a device with no pen control
     // and no way to make it, is unattributed motion over someone's screen. The
-    // author's name is drawn beside the live stroke head, but only while the stroke
-    // is alive — easy to miss on a phone. This is that announcement made visible.
+    // author's name rides on a chip beside their pen, but only while they draw —
+    // easy to miss on a phone. This is that announcement made visible.
     await expect(page.getByText(/Ada is drawing on the shared screen/)).toBeVisible({
       timeout: 10_000,
     })
