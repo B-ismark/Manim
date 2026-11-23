@@ -13,13 +13,22 @@
  * Pure functions — no canvas, no timers — so the timing curve is unit-testable.
  */
 
-/** How long a stroke stays fully opaque after its last point, in ms. */
-export const HOLD_MS = 2200
+/**
+ * How long ink stays fully opaque after its author's last point, in ms.
+ *
+ * This is measured per AUTHOR, not per stroke (the Slack huddle model): while
+ * someone keeps drawing — a word, a diagram, an underline then an arrow — every
+ * stroke they've made stays put, and only once they've paused this long does the
+ * whole drawing clear together. So it is really the pause that ends a drawing:
+ * long enough to lift the pen and think between letters, short enough that the
+ * ink is gone a few seconds after they're done.
+ */
+export const HOLD_MS = 3000
 
 /** How long the fade-out itself takes, in ms. */
 export const FADE_MS = 1800
 
-/** Total lifetime of a stroke measured from its last point. */
+/** Total lifetime of a drawing, measured from its author's last point. */
 export const LIFETIME_MS = HOLD_MS + FADE_MS
 
 /**

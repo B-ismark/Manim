@@ -138,3 +138,32 @@ export function chipBox(
   y = Math.max(content.y, Math.min(bottom - h, y))
   return { x, y, w, h }
 }
+
+/**
+ * Shift-drawn lines snap to multiples of this many degrees. 15° rather than the
+ * 45° of a shape tool: an annotation points at things anywhere on the screen, so
+ * it needs plenty of angles, while a nearly-level underline still lands exactly
+ * level (anything within 7.5° of it does).
+ */
+export const SNAP_DEG = 15
+
+/**
+ * The end of a line from (ax, ay) towards (x, y), rotated to the nearest
+ * `stepDeg` angle and keeping its length projected onto that angle, so the end
+ * tracks the pointer along the snapped direction. In PIXELS: a unit-space angle
+ * would come out skewed on any non-square share.
+ */
+export function snapLine(ax: number, ay: number, x: number, y: number, stepDeg: number): { x: number; y: number } {
+  const dx = x - ax
+  const dy = y - ay
+  if (dx === 0 && dy === 0) return { x: ax, y: ay }
+  const step = (stepDeg * Math.PI) / 180
+  const angle = Math.round(Math.atan2(dy, dx) / step) * step
+  const ux = Math.cos(angle)
+  const uy = Math.sin(angle)
+  const len = Math.max(0, dx * ux + dy * uy)
+  // Exact zeros for the axes, so a level line is level to the last bit.
+  const ex = Math.abs(ux) < 1e-9 ? 0 : ux * len
+  const ey = Math.abs(uy) < 1e-9 ? 0 : uy * len
+  return { x: ax + ex, y: ay + ey }
+}

@@ -183,7 +183,7 @@ test.describe('Annotation over a shared screen @annotate', () => {
     // viewer's name chip go. Bo sees an "Ada" chip beside the pen while it moves
     // (the author sees none on their own pen), and it would widen Bo's ink bounds
     // by its own width. It is gone ~1s after the last point (CHIP_HOLD_MS +
-    // CHIP_FADE_MS); the ink holds, whole, until HOLD_MS (2.2s), so 1.4s measures
+    // CHIP_FADE_MS); the ink holds, whole, until HOLD_MS (3s), so 1.4s measures
     // the ink alone on both screens.
     await page.waitForTimeout(1400)
 
@@ -206,6 +206,48 @@ test.describe('Annotation over a shared screen @annotate', () => {
     expect(inkB!.x1).toBeCloseTo(inkA!.x1, 1)
     expect(inkB!.y0).toBeCloseTo(inkA!.y0, 1)
     expect(inkB!.y1).toBeCloseTo(inkA!.y1, 1)
+
+    await closeContext(ctxB)
+    await closeContext(sharer.context)
+  })
+
+  test('Shift draws a straight, level line, and a viewer gets it straight too', async ({
+    page,
+    browser,
+  }) => {
+    test.setTimeout(150_000)
+    test.skip(await isTouch(page), 'drawing is desktop-only')
+    const room = uniqueRoom('annot')
+    const sharer = await addSharer(browser, room)
+    await join(page, room, 'Ada')
+    await expect(page.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+    const ctxB = await browser.newContext({ ...DESKTOP, permissions: [...DESKTOP.permissions] })
+    const viewer = await ctxB.newPage()
+    await join(viewer, room, 'Bo')
+    await expect(viewer.getByTestId('annotation-canvas')).toBeVisible({ timeout: 30_000 })
+
+    await revealChrome(page)
+    await page.getByRole('button', { name: /Annotate shared screen/i }).click()
+    const g = await canvasGeometry(page)
+    const at = (ux: number, uy: number) => ({ x: g.left + g.cx + ux * g.cw, y: g.top + g.cy + uy * g.ch })
+    // A wobbly hand, a few degrees off level, with Shift held throughout.
+    const wobble = [0.5, 0.53, 0.48, 0.54, 0.49, 0.52, 0.47, 0.53, 0.51]
+    await page.keyboard.down('Shift')
+    await page.mouse.move(at(0.3, 0.5).x, at(0.3, 0.5).y)
+    await page.mouse.down()
+    for (let i = 1; i <= 8; i++) await page.mouse.move(at(0.3 + 0.05 * i, wobble[i]).x, at(0.3 + 0.05 * i, wobble[i]).y)
+    await page.mouse.up()
+    await page.keyboard.up('Shift')
+    await page.waitForTimeout(1400) // the viewer's name chip goes; the ink holds
+
+    for (const [who, p] of [['author', page], ['viewer', viewer]] as const) {
+      const ink = await inkBoundsUnit(p, SHARE_ASPECT)
+      expect(ink, `the ${who} sees the line`).not.toBeNull()
+      expect(ink!.x0, `the ${who}'s line starts where it was drawn`).toBeCloseTo(0.3, 1)
+      expect(ink!.x1, `and ends at the pen`).toBeCloseTo(0.7, 1)
+      // The freehand path spans 0.47..0.54; a level line is only as tall as the ink.
+      expect(ink!.y1 - ink!.y0, `the ${who}'s line is level`).toBeLessThan(0.025)
+    }
 
     await closeContext(ctxB)
     await closeContext(sharer.context)

@@ -25,7 +25,7 @@ import {
   tailTrimForAge,
   chipOpacity,
 } from '@/lib/annotate/fade'
-import { inkSize, densify, outline, chipTextColor, chipBox, CHIP_PAD_X } from '@/lib/annotate/ink'
+import { inkSize, densify, outline, chipTextColor, chipBox, snapLine, CHIP_PAD_X, SNAP_DEG } from '@/lib/annotate/ink'
 import { chunk, type StrokePacket } from '@/lib/annotate/wire'
 import { colorVar } from '@/lib/annotate/palette'
 import type { Rect } from '@/lib/shareLayout'
@@ -47,14 +47,20 @@ const INITIAL_CAPACITY_POINTS = 256
  * Stroke data is keyed `identity:strokeId`, and strokeId is a u16 off the wire, so
  * without a cap one peer could open 65536 concurrent strokes — a few hundred KB of
  * packets turning into hundreds of MB of buffers here. Expiry alone doesn't cover
- * it: everything inside one ~4s fade window is live at once.
+ * it: a drawing stays live for as long as its author keeps going.
  *
  * Both limits sit far above real drawing. A stroke is a few hundred points, and a
- * fast hand produces maybe a dozen in four seconds; these are 4096 and 64. They're
+ * fast hand produces maybe a dozen in four seconds; these are 4096 and 64. Past
+ * the stroke cap the sender's OLDEST stroke retires to make room (`evictOldest`),
+ * so a long drawing session keeps flowing instead of freezing the pen. They're
  * per SENDER, not global, so a flooder can't crowd out anyone else's ink either.
  */
 export const MAX_POINTS_PER_STROKE = 4096
 export const MAX_STROKES_PER_SENDER = 64
+
+/** Your own strokes have no `owner`; they're one author among the rest. */
+const LOCAL_AUTHOR = ''
+const authorOf = (s: { local: boolean; owner?: string }) => (s.local ? LOCAL_AUTHOR : `r:${s.owner ?? ''}`)
 
 /** Used only if a palette token can't be resolved (engine detached mid-frame). */
 const FALLBACK_COLOR = 'oklch(0.7 0.19 25)'
@@ -101,6 +107,8 @@ interface LiveStroke {
   /** Sender identity for remote strokes — lets prune() decrement the right
    *  per-sender count without re-parsing the map key. */
   owner?: string
+  /** A Shift line still being aimed: drawn here, not yet sent (see extendLocal). */
+  straight?: boolean
   /** Cached width of the rendered name; measured once, never changes. */
   labelW?: number
   /** Resampled centre line in PIXEL space (see lib/annotate/ink), and how many
@@ -136,6 +144,7 @@ export class AnnotationEngine {
   private localStrokeId = 0
   private localColorIdx = 0
   private localName = ''
+  private localIdentity = ''
 
   private boxW = 0
   private boxH = 0
@@ -249,13 +258,23 @@ export class AnnotationEngine {
    * outside the painted video — the letterbox bars aren't shared content, so a
    * stroke there would be meaningless on every other screen.
    */
-  beginLocal(p: Point, identity: string): boolean {
+  beginLocal(p: Point, identity: string, straight = false): boolean {
     const rect = this.content()
     if (!(rect.w > 0) || !(rect.h > 0)) return false
     if (p.x < rect.x || p.x > rect.x + rect.w || p.y < rect.y || p.y > rect.y + rect.h) return false
+    this.localIdentity = identity
+    this.startLocal(toUnit(p, rect), straight)
+    return true
+  }
+
+  private startLocal(u: Point, straight: boolean) {
+    // Your own drawing gets the same ceiling as anyone else's, the same way.
+    let mine = 0
+    for (const st of this.strokes.values()) if (st.local) mine++
+    if (mine >= MAX_STROKES_PER_SENDER) this.evictOldest(LOCAL_AUTHOR)
 
     this.localStrokeId = (this.localStrokeId + 1) & 0xffff
-    this.localKey = `${identity}:${this.localStrokeId}`
+    this.localKey = `${this.localIdentity}:${this.localStrokeId}`
     const stroke: LiveStroke = {
       id: this.localStrokeId,
       points: new Float32Array(INITIAL_CAPACITY_POINTS * 2),
@@ -267,31 +286,63 @@ export class AnnotationEngine {
       seq: 0,
       local: true,
       pathLen: 0,
+      straight,
     }
     this.strokes.set(this.localKey, stroke)
-    this.appendUnit(stroke, toUnit(p, rect))
+    this.appendUnit(stroke, u)
     this.wake()
-    return true
   }
 
   /**
    * Append pointer samples to the live local stroke. Takes an array because
    * `getCoalescedEvents()` hands back every sample the device produced since the
    * last frame — using them all is what makes the local curve smooth.
+   *
+   * `straight` is Shift: the ink becomes a line from where the pen was when Shift
+   * went down, angle snapped to {@link SNAP_DEG}° (lib/annotate/ink `snapLine`).
+   * The line is its OWN two-point stroke — two points densify to an exactly
+   * straight centre line on every screen, where a straight run inside a freehand
+   * stroke would be bent by the spline through its neighbours and by RDP. Pressing
+   * or releasing Shift mid-drag ends one stroke and starts the next at the same
+   * spot, so the ink stays joined. A line is held back from the wire while it's
+   * being aimed (a sent point can't be taken back) and sent once, when it's set
+   * down — viewers see the finished line, not every angle it swept through.
    */
-  extendLocal(points: readonly Point[]) {
-    const stroke = this.localKey ? this.strokes.get(this.localKey) : null
-    if (!stroke) return
+  extendLocal(points: readonly Point[], straight = false) {
+    let stroke = this.localKey ? this.strokes.get(this.localKey) : null
+    if (!stroke || points.length === 0) return
     const rect = this.content()
     if (!(rect.w > 0)) return
-    for (const p of points) this.appendUnit(stroke, toUnit(p, rect))
+    if (!!stroke.straight !== straight) {
+      // Hand over at the pen's current spot (a line's head is its live end).
+      const at = { x: stroke.points[(stroke.len - 1) * 2], y: stroke.points[(stroke.len - 1) * 2 + 1] }
+      stroke.straight = false // a finished line goes on the wire next frame
+      this.startLocal(at, straight)
+      stroke = this.strokes.get(this.localKey!)!
+    }
+    if (straight) {
+      const a = fromUnit({ x: stroke.points[0], y: stroke.points[1] }, rect)
+      const last = points[points.length - 1]
+      const end = snapLine(a.x, a.y, last.x, last.y, SNAP_DEG)
+      stroke.len = 1
+      // A pure tap with Shift stays a dot rather than a zero-length line.
+      if (end.x !== a.x || end.y !== a.y) this.appendUnit(stroke, toUnit(end, rect))
+      // Same point count, new geometry: neither cache can tell, so drop both.
+      stroke.dense = undefined
+      stroke.path = undefined
+    } else {
+      for (const p of points) this.appendUnit(stroke, toUnit(p, rect))
+    }
     stroke.lastAt = this.now()
     this.wake()
   }
 
   endLocal() {
-    // Nothing to finalise: the fade owns the stroke's lifetime from here, and
-    // the next frame flushes whatever tail is still unsent.
+    // Nothing else to finalise: the fade owns the stroke's lifetime from here,
+    // and the next frame flushes whatever tail is still unsent — including a
+    // straight line, which is released for sending now.
+    const stroke = this.localKey ? this.strokes.get(this.localKey) : null
+    if (stroke) stroke.straight = false
     this.localKey = null
     this.wake()
   }
@@ -324,8 +375,8 @@ export class AnnotationEngine {
     const key = `${identity}:${packet.strokeId}`
     let stroke = this.strokes.get(key)
     if (!stroke) {
+      if ((this.senderStrokes.get(identity) ?? 0) >= MAX_STROKES_PER_SENDER) this.evictOldest(`r:${identity}`)
       const live = this.senderStrokes.get(identity) ?? 0
-      if (live >= MAX_STROKES_PER_SENDER) return
       const n = packet.points.length >> 1
       stroke = {
         id: packet.strokeId,
@@ -398,9 +449,10 @@ export class AnnotationEngine {
     if (this.disposed) return
 
     const now = this.now()
-    this.prune(now)
+    const active = this.activity(now)
+    this.prune(now, active)
     this.flush()
-    this.draw(now)
+    this.draw(now, active)
 
     // Keep going only while something is still visible — a live stroke's opacity
     // changes every frame, so "alive" means "needs redrawing". When the last one
@@ -410,24 +462,58 @@ export class AnnotationEngine {
     }
   }
 
-  private prune(now: number) {
+  /**
+   * When each author last put ink down. Lifetime is measured from THIS, not from a
+   * stroke's own last point: a drawing stays whole while its author keeps adding to
+   * it and clears together once they pause (see HOLD_MS). Your own pen counts as
+   * active the whole time it's down, however slowly it moves.
+   */
+  private activity(now: number): Map<string, number> {
+    const at = new Map<string, number>()
     for (const [key, s] of this.strokes) {
-      // The stroke being drawn right now never expires mid-gesture.
-      if (key === this.localKey) continue
-      if (!isExpired(now - s.lastAt)) continue
-      this.strokes.delete(key)
-      if (s.owner) {
-        const left = (this.senderStrokes.get(s.owner) ?? 1) - 1
-        if (left > 0) this.senderStrokes.set(s.owner, left)
-        else this.senderStrokes.delete(s.owner)
-      }
+      const author = authorOf(s)
+      const t = key === this.localKey ? now : s.lastAt
+      if (t > (at.get(author) ?? -Infinity)) at.set(author, t)
+    }
+    return at
+  }
+
+  private prune(now: number, active: Map<string, number>) {
+    for (const [key, s] of this.strokes) {
+      if (!isExpired(now - (active.get(authorOf(s)) ?? s.lastAt))) continue
+      this.drop(key, s)
+    }
+  }
+
+  private drop(key: string, s: LiveStroke) {
+    this.strokes.delete(key)
+    if (s.owner) {
+      const left = (this.senderStrokes.get(s.owner) ?? 1) - 1
+      if (left > 0) this.senderStrokes.set(s.owner, left)
+      else this.senderStrokes.delete(s.owner)
+    }
+  }
+
+  /**
+   * Make room for one more stroke by `author` by retiring their OLDEST — Map
+   * order is insertion order. A drawing now lives as long as its author keeps
+   * going, so a long session can reach the cap; dropping the NEW stroke there
+   * would freeze the pen mid-sentence, while losing the first scribble of a
+   * dozen is something nobody notices.
+   */
+  /** `author` is an `authorOf` key. */
+  private evictOldest(author: string) {
+    for (const [key, s] of this.strokes) {
+      if (key === this.localKey || authorOf(s) !== author) continue
+      this.drop(key, s)
+      return
     }
   }
 
   /** Send whatever the local stroke has produced since the last frame. */
   private flush() {
     for (const s of this.strokes.values()) {
-      if (!s.local || s.len <= s.sent) continue
+      if (!s.local || s.straight || s.len <= s.sent) continue
       // Re-send the last already-sent point so the receiver's segments connect.
       const from = s.sent > 0 ? s.sent - 1 : 0
       const tail = s.points.slice(from * 2, s.len * 2)
@@ -440,7 +526,7 @@ export class AnnotationEngine {
     }
   }
 
-  private draw(now: number) {
+  private draw(now: number, active: Map<string, number>) {
     const ctx = this.ctx
     if (!ctx || !(this.boxW > 0)) return
     const rect = this.content()
@@ -457,13 +543,16 @@ export class AnnotationEngine {
 
     for (const [key, stroke] of this.strokes) {
       if (stroke.len === 0) continue
+      // `age` is the stroke's own (the pen-up taper and the name chip are about
+      // THIS stroke); `life` is its author's, and owns the fade and dissolve.
       const age = now - stroke.lastAt
+      const life = now - (active.get(authorOf(stroke)) ?? stroke.lastAt)
       const drawing = key === this.localKey
       // Clean-up is a fade-out, and — unless reduced motion is on — the stroke
       // is also eaten from its first point as it fades, like a laser trail.
       // Same lifetime either way.
-      const trim = dissolve && !drawing ? tailTrimForAge(age) : 0
-      const alpha = opacityForAge(age)
+      const trim = dissolve && !drawing ? tailTrimForAge(life) : 0
+      const alpha = opacityForAge(life)
       if (alpha <= 0) continue
       // The head tapers once the pen has (as far as anyone can tell) lifted.
       const complete = !drawing && age > PEN_UP_MS

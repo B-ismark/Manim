@@ -5,7 +5,8 @@ import {
   MAX_STROKES_PER_SENDER,
 } from './AnnotationEngine'
 import type { StrokePacket } from '@/lib/annotate/wire'
-import { LIFETIME_MS } from '@/lib/annotate/fade'
+import { HOLD_MS, LIFETIME_MS } from '@/lib/annotate/fade'
+import { snapLine, SNAP_DEG } from '@/lib/annotate/ink'
 
 /**
  * Engine behaviour without a browser. Vitest runs in Node here (see
@@ -228,6 +229,14 @@ describe('ingest (remote strokes)', () => {
 })
 
 describe('fade and the frame loop', () => {
+  const packet = (points: number[], strokeId = 7, seq = 0): StrokePacket => ({
+    colorIdx: 1,
+    strokeId,
+    seq,
+    target: 0,
+    points: Float32Array.from(points),
+  })
+
   it('drops a stroke once it expires', () => {
     const { engine } = makeEngine()
     engine.ingest(
@@ -275,6 +284,60 @@ describe('fade and the frame loop', () => {
       'Cy',
     )
     expect(frameQueue.length).toBe(1)
+  })
+
+  it('keeps an author\'s whole drawing while they keep drawing (the Slack model)', () => {
+    const { engine } = makeEngine()
+    engine.ingest('Bo#2', packet([0.1, 0.1, 0.2, 0.2], 1), 'Bo')
+    // Bo keeps adding strokes, each within the pause window, for far longer than
+    // any one stroke's lifetime. The first must still be there.
+    for (let id = 2; id < 12; id++) {
+      clock += HOLD_MS - 200
+      engine.ingest('Bo#2', packet([0.3, 0.3, 0.4, 0.4], id), 'Bo')
+      pumpFrame()
+    }
+    expect(clock).toBeGreaterThan(LIFETIME_MS * 5)
+    expect(engine.liveStrokes).toBe(11)
+    // Then Bo stops, and the whole drawing clears together.
+    clock += LIFETIME_MS + 1
+    pumpFrame()
+    expect(engine.liveStrokes).toBe(0)
+  })
+
+  it('a pause longer than the hold ends the drawing', () => {
+    const { engine } = makeEngine()
+    engine.ingest('Bo#2', packet([0.1, 0.1], 1), 'Bo')
+    clock += LIFETIME_MS + 1
+    pumpFrame()
+    engine.ingest('Bo#2', packet([0.3, 0.3], 2), 'Bo')
+    pumpFrame()
+    // The old drawing had already expired; the new stroke doesn't bring it back.
+    expect(engine.liveStrokes).toBe(1)
+  })
+
+  it('one author drawing does not keep anyone else\'s ink alive', () => {
+    const { engine } = makeEngine()
+    engine.ingest('Cy#3', packet([0.6, 0.6], 1), 'Cy')
+    for (let id = 1; id < 6; id++) {
+      clock += HOLD_MS - 200
+      engine.ingest('Bo#2', packet([0.1, 0.1], id), 'Bo')
+      pumpFrame()
+    }
+    // Bo's five strokes are live; Cy, who stopped long ago, has cleared.
+    expect(engine.liveStrokes).toBe(5)
+  })
+
+  it('your own earlier strokes stay while your pen is down', () => {
+    const { engine } = makeEngine()
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 120, y: 120 }])
+    engine.endLocal()
+    clock += HOLD_MS - 200
+    engine.beginLocal({ x: 200, y: 200 }, 'Ada#1')
+    // A slow second stroke: the pen stays down well past the first's lifetime.
+    clock += LIFETIME_MS * 2
+    pumpFrame()
+    expect(engine.liveStrokes).toBe(2)
   })
 
   it('does not expire the stroke currently being drawn', () => {
@@ -338,6 +401,62 @@ describe('lifecycle', () => {
       engine.extendLocal([{ x: 200, y: 200 }])
       pumpFrame()
     }).not.toThrow()
+  })
+})
+
+describe('Shift: straight lines', () => {
+  it('a Shift drag is a two-point line, held back until it is set down', () => {
+    const sent: StrokePacket[] = []
+    const { engine } = makeEngine((p) => sent.push(p))
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1', true)
+    engine.extendLocal([{ x: 300, y: 130 }, { x: 600, y: 110 }], true)
+    pumpFrame()
+    expect(sent, 'nothing on the wire while the line is being aimed').toHaveLength(0)
+    engine.extendLocal([{ x: 800, y: 104 }], true)
+    engine.endLocal()
+    pumpFrame()
+    expect(sent).toHaveLength(1)
+    const pts = Array.from(sent[0].points)
+    expect(pts).toHaveLength(4) // start and end, nothing between
+    // Within 7.5 degrees of level, so it lands EXACTLY level.
+    expect(pts[1]).toBe(pts[3])
+  })
+
+  it('releasing Shift mid-drag carries on freehand from the line\'s end', () => {
+    const sent: StrokePacket[] = []
+    const { engine } = makeEngine((p) => sent.push(p))
+    engine.beginLocal({ x: 100, y: 100 }, 'Ada#1')
+    engine.extendLocal([{ x: 150, y: 140 }])
+    engine.extendLocal([{ x: 600, y: 140 }], true) // Shift down: a line from (150,140)
+    engine.extendLocal([{ x: 650, y: 200 }], false) // Shift up: freehand again
+    engine.endLocal()
+    pumpFrame()
+    const byStroke = new Map<number, number[]>()
+    for (const p of sent) byStroke.set(p.strokeId, [...(byStroke.get(p.strokeId) ?? []), ...p.points])
+    const strokes = [...byStroke.values()]
+    expect(strokes).toHaveLength(3)
+    const [free, line, after] = strokes
+    // Joined end to end: each stroke starts where the last one ended.
+    expect(line.slice(0, 2)).toEqual(free.slice(-2))
+    expect(after.slice(0, 2)).toEqual(line.slice(-2))
+    expect(line).toHaveLength(4)
+  })
+})
+
+describe('snapLine', () => {
+  it('snaps to 15 degree steps and keeps the projected length', () => {
+    const level = snapLine(0, 0, 100, 6, SNAP_DEG)
+    expect(level.y).toBe(0)
+    expect(level.x).toBeCloseTo(100, 5)
+    const upright = snapLine(0, 0, -5, -80, SNAP_DEG)
+    expect(upright.x).toBe(0)
+    expect(upright.y).toBeCloseTo(-80 * Math.cos((5 / 80)), 0)
+    const diag = snapLine(0, 0, 100, 95, SNAP_DEG)
+    expect(diag.x).toBeCloseTo(diag.y, 6) // 45 degrees
+  })
+
+  it('a zero-length drag stays a point', () => {
+    expect(snapLine(5, 5, 5, 5, SNAP_DEG)).toEqual({ x: 5, y: 5 })
   })
 })
 
@@ -446,7 +565,7 @@ describe('geometry and rendering', () => {
     clock = 1000
     pumpFrame()
     const held = pathLineTos
-    clock = 3000 // inside the fade window: the trail is being eaten
+    clock = HOLD_MS + 800 // inside the fade window: the trail is being eaten
     pumpFrame()
     expect(pathLineTos).toBeGreaterThan(held)
   })
@@ -525,6 +644,20 @@ describe('bounds on remote input', () => {
       engine.ingest('Flood#9', packet([0.1, 0.1], id), 'Flood')
     }
     engine.ingest('Bo#2', packet([0.5, 0.5], 1), 'Bo')
+    expect(engine.liveStrokes).toBe(MAX_STROKES_PER_SENDER + 1)
+  })
+
+  it('at the cap, retires the sender\'s OLDEST stroke so a long drawing keeps flowing', () => {
+    const { engine } = makeEngine()
+    for (let id = 0; id < MAX_STROKES_PER_SENDER; id++) {
+      engine.ingest('Bo#2', packet([0.1, 0.1], id), 'Bo')
+    }
+    engine.ingest('Cy#3', packet([0.5, 0.5], 1), 'Cy')
+    // One more from Bo is accepted, and costs Bo — not Cy — a stroke.
+    engine.ingest('Bo#2', packet([0.9, 0.9], 500), 'Bo')
+    expect(engine.liveStrokes).toBe(MAX_STROKES_PER_SENDER + 1)
+    // The new stroke keeps growing (it's the one that survived).
+    engine.ingest('Bo#2', packet([0.9, 0.9, 0.8, 0.8], 500, 1), 'Bo')
     expect(engine.liveStrokes).toBe(MAX_STROKES_PER_SENDER + 1)
   })
 

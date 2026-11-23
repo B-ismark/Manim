@@ -217,9 +217,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
 - **No page scroll** on primary surfaces (landing, prejoin, in-call) — exceptions:
   the chat message list and menus scrolling *internally*. Check the short phone (`mobile-sm`).
 - **Screen annotation is ON.** `VITE_ANNOTATE=false` is the kill switch — the flag is a
-  disable, not an enable, so an unset build var still ships it. Strokes are ephemeral:
-  they fade after ~4s, which is *why* there is deliberately no persistence, no
-  late-joiner sync and no clear-all. Desktop draws, touch is view-only, and a host can
+  disable, not an enable, so an unset build var still ships it. Strokes are ephemeral,
+  per AUTHOR (the Slack model): a drawing stays whole while its author keeps drawing,
+  and clears together ~5s after they pause (3s hold + fade; `HOLD_MS`). That is
+  *why* there is deliberately no persistence, no late-joiner sync and no clear-all.
+  Past 64 live strokes an author's OLDEST retires, so a long session never freezes
+  the pen. Shift draws a straight line snapped to 15° — its own two-point stroke,
+  sent once it's set down (a straight run inside a freehand stroke would be bent by
+  the spline and RDP). Desktop draws, touch is view-only, and a host can
   restrict drawing with the `annotateHostOnly` room flag. Ink is a filled, tapered
   outline (perfect-freehand over a Catmull-Rom resample, `lib/annotate/ink.ts`), so
   the RDP-thinned points a viewer receives come out as round as the author's; it
