@@ -60,3 +60,48 @@ describe('a knock that cannot read the room fails closed', () => {
     expect(r.body).toMatchObject({ code: 'busy' })
   })
 })
+
+describe('a room that does not exist yet is empty, not unreadable', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  // LiveKit Cloud answers a lookup on a room nobody has opened (a brand-new
+  // meeting, or an old one whose room was reaped) with 404 not_found, where a
+  // self-hosted server answers []. Read as a failure, the first person into every
+  // room got "busy" forever.
+  const notFound = () => Object.assign(new Error('requested room does not exist'), { status: 404, code: 'not_found' })
+
+  it('first arrival into a room LiveKit Cloud says does not exist: claims host and gets a token', async () => {
+    let meta = null
+    vi.spyOn(RoomServiceClient.prototype, 'listParticipants').mockRejectedValue(notFound())
+    vi.spyOn(RoomServiceClient.prototype, 'listRooms').mockImplementation(async () =>
+      meta == null ? [] : [{ name: ROOM, metadata: meta }],
+    )
+    vi.spyOn(RoomServiceClient.prototype, 'createRoom').mockImplementation(async (o) => {
+      meta = o.metadata
+      return { name: ROOM, metadata: meta }
+    })
+    vi.spyOn(RoomServiceClient.prototype, 'updateRoomMetadata').mockImplementation(async (_r, m) => {
+      meta = m
+      return { name: ROOM, metadata: m }
+    })
+    const r = await handleKnock(env, { room: ROOM, name: 'Bismark', deviceId: 'dev-b', host: true })
+    expect(r.status).toBe(200)
+    expect(r.body.token).toBeTruthy()
+    expect(r.body.host).toBe(true)
+  })
+
+  it('a 404 from the flags read is also "no room", not busy', async () => {
+    vi.spyOn(RoomServiceClient.prototype, 'listRooms').mockRejectedValueOnce(notFound())
+    vi.spyOn(RoomServiceClient.prototype, 'listParticipants').mockRejectedValue(notFound())
+    vi.spyOn(RoomServiceClient.prototype, 'createRoom').mockResolvedValue({ name: ROOM })
+    let meta = ''
+    vi.spyOn(RoomServiceClient.prototype, 'updateRoomMetadata').mockImplementation(async (_r, m) => {
+      meta = m
+      return {}
+    })
+    RoomServiceClient.prototype.listRooms.mockImplementation(async () => [{ name: ROOM, metadata: meta }])
+    const r = await handleKnock(env, { room: ROOM, name: 'Bismark', deviceId: 'dev-b', host: true })
+    expect(r.status).toBe(200)
+    expect(r.body.token).toBeTruthy()
+  })
+})

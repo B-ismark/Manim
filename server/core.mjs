@@ -133,10 +133,25 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
   return { token: await at.toJwt(), identity, seat: await seatKey(apiSecret, room, identity) }
 }
 
+/** LiveKit's answer "that room doesn't exist" — an ANSWER, not a failure. A room
+ *  that was never created, or was reaped after its last person left, has nobody in
+ *  it and no flags. A self-hosted server says so with an empty list; LiveKit Cloud
+ *  says it with a 404 `not_found`. Treating that 404 as "can't see the room" turned
+ *  every first arrival (a new meeting, or an old one whose room had closed) into a
+ *  "busy" loop that never let anyone in. */
+function isRoomNotFound(e) {
+  return e?.status === 404 || e?.code === 'not_found'
+}
+
 /** Like listParticipants, but a failed lookup THROWS instead of reading as "nobody
- *  here". A room that doesn't exist yet still answers [] (LiveKit doesn't error). */
+ *  here". A room that doesn't exist answers [] — however LiveKit phrases it. */
 async function listParticipantsStrict(roomService, room) {
-  return roomService.listParticipants(room)
+  try {
+    return await roomService.listParticipants(room)
+  } catch (e) {
+    if (isRoomNotFound(e)) return []
+    throw e
+  }
 }
 
 async function listParticipants(roomService, room) {
@@ -170,7 +185,13 @@ async function resolveTrackSid(roomService, room, identity, source) {
 /** Like getRoomFlags, but a failed read THROWS instead of reading as {}: a writer
  *  that took {} for the truth would write over every key the room has. */
 async function readRoomFlagsStrict(roomService, room) {
-  const rooms = await roomService.listRooms([room])
+  let rooms
+  try {
+    rooms = await roomService.listRooms([room])
+  } catch (e) {
+    if (isRoomNotFound(e)) return {}
+    throw e
+  }
   return rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {}
 }
 
