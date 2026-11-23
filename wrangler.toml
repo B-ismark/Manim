@@ -55,6 +55,10 @@ VAPID_PUBLIC_KEY = "BADDBgiHH8moL6Wc4Re005pxPOulTr9lNuQvFTTqHpvl_C4NuYRM5Qs-a61R
 # or every host (you included) gets locked out. Room size is capped at ROOM_CAP
 # (default 10) and links carry LINK_EPOCH (default "1"); set those only to override.
 BETA_GATE = "true"
+# 15 people per call: the team's daily call is 13, plus room for a guest or two.
+# It's stamped onto each LiveKit room as maxParticipants when the room is created,
+# so a room already open keeps its old cap until it empties and is reaped (~2 min).
+ROOM_CAP = "15"
 
 # Native Workers rate limiter (no external store) guarding the unauthenticated
 # email-invite endpoint against spam/abuse: 5 requests per 60s per client IP.
