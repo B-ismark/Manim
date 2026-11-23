@@ -104,4 +104,25 @@ describe('a room that does not exist yet is empty, not unreadable', () => {
     expect(r.status).toBe(200)
     expect(r.body.token).toBeTruthy()
   })
+
+  it('a not_found roster beside a room that DOES exist is a disagreement: busy, never a token', async () => {
+    // The live call is locked. If the roster's 404 were read as "nobody here", a
+    // knock under a live guest's identity could skip its seat key.
+    vi.spyOn(RoomServiceClient.prototype, 'listRooms').mockResolvedValue([
+      { name: ROOM, metadata: JSON.stringify({ hostId: 'Host#h1', locked: true }) },
+    ])
+    vi.spyOn(RoomServiceClient.prototype, 'listParticipants').mockRejectedValue(notFound())
+    const r = await handleKnock(env, { room: ROOM, name: 'Ama', deviceId: 'dev-ama' })
+    expect(r.status).toBe(503)
+    expect(r.body).toMatchObject({ code: 'busy' })
+    expect(r.body.token).toBeUndefined()
+  })
+
+  it('a not_found room list beside people in the room: busy, never a token', async () => {
+    vi.spyOn(RoomServiceClient.prototype, 'listRooms').mockRejectedValue(notFound())
+    vi.spyOn(RoomServiceClient.prototype, 'listParticipants').mockResolvedValue([{ identity: 'Host#h1', joinedAt: 1n }])
+    const r = await handleKnock(env, { room: ROOM, name: 'Kofi', deviceId: 'dev-kofi' })
+    expect(r.status).toBe(503)
+    expect(r.body.token).toBeUndefined()
+  })
 })

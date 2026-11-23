@@ -282,12 +282,14 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   The first-join claim (`claimHost`) creates the room with the seat in it, verifies
   it, and a loser knocks again from the top as a guest; a claim nobody can confirm
   answers `busy`, never a host token.
-  **A room that doesn't exist is EMPTY, not unreadable.** The strict reads
-  (`readRoomFlagsStrict`, `listParticipantsStrict`) fail closed on real errors, but
-  LiveKit Cloud answers a lookup on an unopened or reaped room with 404 `not_found`
-  where a local `--dev` server answers `[]` — so `e2e-local` can't see the
-  difference. Treating that 404 as a failure answered `busy` to the first person
-  into EVERY room. `isRoomNotFound` maps it to "nobody here, no flags".
+  **A room that doesn't exist is EMPTY, not unreadable — at the knock only.**
+  LiveKit Cloud answers a lookup on an unopened or reaped room with 404
+  `not_found` where a local `--dev` server answers `[]`, so `e2e-local` can't see
+  the difference; treating that 404 as a failure answered `busy` to the first
+  person into EVERY room. `readKnockRoom` reads it as "nobody here, no flags" only
+  when BOTH reads agree the room is absent. Don't widen it to the strict reads the
+  settings writes and host election use: there the caller is in the room, and a
+  stray 404 read as `{}` would write over the lock and secret.
 - **A ring checks who it's sealed to.** `lib/devicePins` remembers each contact's
   device keys in this browser (per signed-in account). First ring: remember. After
   that, anything not yet trusted is asked about BEFORE sealing (`KeyChangeDialog`,

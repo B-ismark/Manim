@@ -133,25 +133,10 @@ async function mintToken(env, room, name, deviceId, isHost, userId) {
   return { token: await at.toJwt(), identity, seat: await seatKey(apiSecret, room, identity) }
 }
 
-/** LiveKit's answer "that room doesn't exist" — an ANSWER, not a failure. A room
- *  that was never created, or was reaped after its last person left, has nobody in
- *  it and no flags. A self-hosted server says so with an empty list; LiveKit Cloud
- *  says it with a 404 `not_found`. Treating that 404 as "can't see the room" turned
- *  every first arrival (a new meeting, or an old one whose room had closed) into a
- *  "busy" loop that never let anyone in. */
-function isRoomNotFound(e) {
-  return e?.status === 404 || e?.code === 'not_found'
-}
-
 /** Like listParticipants, but a failed lookup THROWS instead of reading as "nobody
- *  here". A room that doesn't exist answers [] — however LiveKit phrases it. */
+ *  here". A room that doesn't exist yet still answers [] (LiveKit doesn't error). */
 async function listParticipantsStrict(roomService, room) {
-  try {
-    return await roomService.listParticipants(room)
-  } catch (e) {
-    if (isRoomNotFound(e)) return []
-    throw e
-  }
+  return roomService.listParticipants(room)
 }
 
 async function listParticipants(roomService, room) {
@@ -185,14 +170,45 @@ async function resolveTrackSid(roomService, room, identity, source) {
 /** Like getRoomFlags, but a failed read THROWS instead of reading as {}: a writer
  *  that took {} for the truth would write over every key the room has. */
 async function readRoomFlagsStrict(roomService, room) {
-  let rooms
-  try {
-    rooms = await roomService.listRooms([room])
-  } catch (e) {
-    if (isRoomNotFound(e)) return {}
-    throw e
-  }
+  const rooms = await roomService.listRooms([room])
   return rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {}
+}
+
+/** LiveKit's "that room doesn't exist": an ANSWER, not a failure. A self-hosted
+ *  server answers a lookup on an unopened or reaped room with an empty list;
+ *  LiveKit Cloud answers 404 `not_found`. */
+function isRoomNotFound(e) {
+  return e?.status === 404 || e?.code === 'not_found'
+}
+
+/**
+ * The knock's view of the room: its flags and who's in it, both read strictly.
+ * The one difference from readRoomFlagsStrict + listParticipantsStrict: a room
+ * LiveKit says doesn't exist reads as no flags and nobody here, which is the truth
+ * for a new meeting or an old one whose room was reaped. Cloud says that with a
+ * 404, and #48 took the 404 for "can't see the room", so the first person into
+ * EVERY room got busy forever.
+ *
+ * Only when the two reads agree. A not_found from one read beside a room the other
+ * can see is not "no room"; it fails closed like any other error, since an empty
+ * roster there would let a knock under a live guest's identity skip its seat key.
+ * Kept to the knock: the settings writes and the host election start from a room
+ * the caller is IN, where a not_found is never the truth, and reading it as {}
+ * would write over the lock and the secret, or elect over a present host.
+ */
+async function readKnockRoom(roomService, room) {
+  const [roomsRes, peopleRes] = await Promise.allSettled([roomService.listRooms([room]), roomService.listParticipants(room)])
+  if (roomsRes.status === 'rejected' && !isRoomNotFound(roomsRes.reason)) throw roomsRes.reason
+  const rooms = roomsRes.status === 'fulfilled' ? roomsRes.value : []
+  const exists = rooms.length > 0
+  let participants
+  if (peopleRes.status === 'fulfilled') participants = peopleRes.value
+  else if (isRoomNotFound(peopleRes.reason) && !exists) participants = []
+  else throw peopleRes.reason
+  // listRooms said not_found, yet people are in it: the reads disagree.
+  if (!exists && participants.length > 0 && roomsRes.status === 'rejected') throw roomsRes.reason
+  const flags = rooms[0]?.metadata ? JSON.parse(rooms[0].metadata) : {}
+  return { flags, participants }
 }
 
 async function getRoomFlags(roomService, room) {
@@ -678,11 +694,12 @@ export async function handleKnock(env, body, claimLost = false) {
   // client retries) rather than letting anyone in on a guess.
   let account, flags, participants
   try {
-    ;[account, flags, participants] = await Promise.all([
+    let seen
+    ;[account, seen] = await Promise.all([
       verifySupabaseUser(env, accessToken),
-      roomService ? readRoomFlagsStrict(roomService, room) : null,
-      roomService ? listParticipantsStrict(roomService, room) : [],
+      roomService ? readKnockRoom(roomService, room) : { flags: null, participants: [] },
     ])
+    ;({ flags, participants } = seen)
   } catch {
     return WRITE_BUSY
   }
