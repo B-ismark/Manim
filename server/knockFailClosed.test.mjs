@@ -125,4 +125,31 @@ describe('a room that does not exist yet is empty, not unreadable', () => {
     expect(r.status).toBe(503)
     expect(r.body.token).toBeUndefined()
   })
+
+  it('a claim LiveKit never lets us confirm (created, but not readable or writable yet): the first arrival still gets in as host', async () => {
+    // What LiveKit Cloud appears to do with a room nobody has connected to: it can
+    // be created, but reads don't show it and metadata writes say not_found. #48
+    // answered busy here, so nobody could ever start a call.
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    vi.spyOn(RoomServiceClient.prototype, 'listRooms').mockResolvedValue([])
+    vi.spyOn(RoomServiceClient.prototype, 'listParticipants').mockRejectedValue(notFound())
+    vi.spyOn(RoomServiceClient.prototype, 'createRoom').mockResolvedValue({ name: ROOM })
+    vi.spyOn(RoomServiceClient.prototype, 'updateRoomMetadata').mockRejectedValue(notFound())
+    const r = await handleKnock(env, { room: ROOM, name: 'Bismark', deviceId: 'dev-b', host: true })
+    expect(r.status).toBe(200)
+    expect(r.body.token).toBeTruthy()
+    expect(r.body.host).toBe(true)
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('[claimHost] unconfirmed'))
+  }, 20_000)
+
+  it('a claim someone else holds still never yields a host token', async () => {
+    vi.spyOn(RoomServiceClient.prototype, 'listParticipants').mockResolvedValue([])
+    // First read: no host. Every read after: someone else won the seat.
+    vi.spyOn(RoomServiceClient.prototype, 'listRooms')
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([{ name: ROOM, metadata: JSON.stringify({ hostId: 'Esi#d1' }) }])
+    vi.spyOn(RoomServiceClient.prototype, 'createRoom').mockResolvedValue({ name: ROOM })
+    const r = await handleKnock(env, { room: ROOM, name: 'Bismark', deviceId: 'dev-b', host: true })
+    expect(r.body.host).not.toBe(true)
+  })
 })

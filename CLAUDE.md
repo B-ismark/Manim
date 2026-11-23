@@ -281,7 +281,11 @@ Quick reference (⚠️ LiveKit gates frozen — see banner above):
   put the old value back is told apart from another host setting it back on purpose.
   The first-join claim (`claimHost`) creates the room with the seat in it, verifies
   it, and a loser knocks again from the top as a guest; a claim nobody can confirm
-  answers `busy`, never a host token.
+  still lets the first arrival in as host (logged as `[claimHost] unconfirmed`):
+  LiveKit Cloud can't confirm a claim on a room nobody has connected to yet, and
+  answering `busy` there locked EVERYONE out of every new call. Only a claim that
+  is LOST twice answers `busy`. This is safe only because the knock's reads are
+  strict — never make them lenient again.
   **A room that doesn't exist is EMPTY, not unreadable — at the knock only.**
   LiveKit Cloud answers a lookup on an unopened or reaped room with 404
   `not_found` where a local `--dev` server answers `[]`, so `e2e-local` can't see
